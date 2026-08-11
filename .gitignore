@@ -1,0 +1,11 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+
+# Stack TBD — this file will be replaced with a language/framework-specific
+# .gitignore once the tooling for this repo is chosen.
