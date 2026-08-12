@@ -1460,6 +1460,7 @@ dependencies = [
 name = "helve-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "helve-tool-manifest",
  "semver",
  "serde",
  "serde_json",

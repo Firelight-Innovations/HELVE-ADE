@@ -1,0 +1,100 @@
+/*
+ * The drag ghost and its drop-target outlines — the one moment this parcel
+ * owns. Values lifted from the interaction crops in
+ * docs/handoffs/shell-spec.html (INTERACTION 01 and 02); see DragGhost.tsx
+ * and DropTargets.tsx for exactly which line each rule comes from.
+ *
+ * Everything here is `position: fixed` and `pointer-events: none` — the
+ * overlay sits above every region (FrameSlots.overlay is the last thing
+ * Frame.tsx renders) but must never be the thing a drop lands on.
+ */
+
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* --- the ghost chip --------------------------------------------------- */
+
+.drag-ghost {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent-line-strong);
+  opacity: 0.92;
+  white-space: nowrap;
+  pointer-events: none;
+  /* A small offset from the raw pointer position so the cursor doesn't sit
+     directly on top of the label — matches the crop, where the chip trails
+     below and to the right of the grab cursor. */
+  transform: translate(14px, 12px);
+  will-change: left, top;
+}
+
+.drag-ghost--tool {
+  height: 28px;
+  padding: 0 13px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.drag-ghost--terminal {
+  height: 25px;
+  padding: 0 11px;
+  gap: 7px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+.drag-ghost-label {
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.drag-ghost--tool .drag-ghost-label {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.drag-ghost--terminal .drag-ghost-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.drag-ghost-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+/* --- detach outline: "outline previews the new window" ---------------- */
+
+.drag-detach-outline {
+  position: fixed;
+  width: 220px;
+  height: 140px;
+  border-radius: 5px;
+  /* Exact crop value (rgba(217,138,63,.6)) — no named token lands on .6,
+     see DropTargets.tsx. */
+  border: 1.5px dashed rgba(217, 138, 63, 0.6);
+  background: var(--accent-wash-faint);
+  pointer-events: none;
+  transform: translate(-24px, 8px);
+  will-change: left, top;
+}
+
+/* --- panel drop outline: "drop target lit" ----------------------------- */
+
+.drag-panel-outline {
+  position: fixed;
+  height: var(--h-paneltabs);
+  background: var(--surface-gap);
+  /* Exact crop value (rgba(217,138,63,.55)) — no named token lands on .55. */
+  border-bottom: 2px solid rgba(217, 138, 63, 0.55);
+  pointer-events: none;
+}

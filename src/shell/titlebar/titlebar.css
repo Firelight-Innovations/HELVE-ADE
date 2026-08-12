@@ -1,0 +1,250 @@
+/*
+ * Title bar geometry and colour.
+ *
+ * Every value here is lifted from `docs/handoffs/shell-spec.html`'s screen 01
+ * markup (search `>File<`) and its REFERENCE table, with one exception: the
+ * spec never draws an *open* menu — only the closed bar. The dropdown/
+ * accordion surface (`.menubar__dropdown`, `.hamburger__dropdown`,
+ * `.menu-list__item` and friends) is built from the closest analogues the
+ * spec *does* draw and measure — the search field's "FILTER BY TYPE" popover
+ * and the tool-health popover, both `var(--surface)` on `var(--line)`, 6px
+ * radius, `0 10px 28px rgba(0,0,0,.55)` — rather than invented from nothing.
+ * If the real handoff for an open menu ever lands, replace this block from
+ * that, not from guesswork.
+ *
+ * Nothing here sets the bar's own height or background — `frame.css` already
+ * gives `.frame__titlebar` `var(--h-titlebar)`, `var(--surface)`, and the
+ * bottom hairline. This file only styles what's inside it.
+ */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+/* --- logo -------------------------------------------------------------- */
+
+.titlebar__logo {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 10px;
+}
+
+.titlebar__logo-icon {
+  color: var(--text);
+}
+
+/* --- inline menu bar, >=1100px ------------------------------------------ */
+
+.menubar {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.menubar__item-wrap {
+  position: relative;
+  display: flex;
+}
+
+.menubar__item {
+  appearance: none;
+  border: none;
+  margin: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font: 400 11px/1 var(--sans);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.menubar__item:hover,
+.menubar__item[data-open] {
+  background: var(--surface-2);
+}
+
+.menubar__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  padding: 6px 0;
+}
+
+/* --- hamburger, <1100px -------------------------------------------------- */
+
+.hamburger {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.hamburger__button {
+  appearance: none;
+  border: none;
+  background: none;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.hamburger__button:hover,
+.hamburger__button[data-open] {
+  background: var(--surface-2);
+}
+
+.hamburger__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 224px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 6px 0;
+}
+
+.hamburger__group-label {
+  appearance: none;
+  border: none;
+  background: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font: 500 12px/1 var(--sans);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.hamburger__group-label:hover,
+.hamburger__group-label[data-open] {
+  background: var(--surface-2);
+}
+
+.hamburger__group .menu-list {
+  padding-bottom: 4px;
+}
+
+.hamburger__group .menu-list__item {
+  padding-left: 24px;
+}
+
+/* --- the item tree, shared by the inline dropdown and the accordion ----- */
+
+.menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menu-list__separator {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--line);
+}
+
+.menu-list__item {
+  appearance: none;
+  border: none;
+  background: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 6px 12px;
+  font: 400 12px/1 var(--sans);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.menu-list__item:hover {
+  background: var(--surface-2);
+}
+
+.menu-list__label {
+  white-space: nowrap;
+}
+
+.menu-list__accel {
+  font: 400 10px/1 var(--mono);
+  color: var(--text-dim-3);
+  white-space: nowrap;
+}
+
+/* --- title, absolutely centred ------------------------------------------
+   Spread across the whole bar and left under everything else on purpose —
+   the spec is explicit that it may sit under other elements, and that no
+   collision avoidance should be added. */
+
+.titlebar__title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 400 11.5px var(--sans);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.titlebar__title-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* --- spacer + window controls -------------------------------------------- */
+
+.titlebar__spacer {
+  flex: 1;
+}
+
+.titlebar__controls {
+  flex: none;
+  display: flex;
+  height: 100%;
+}
+
+.titlebar__control {
+  appearance: none;
+  border: none;
+  background: none;
+  width: var(--w-window-button);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.titlebar__control:hover {
+  background: var(--surface-2);
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { cachedStack, loadStack, type StackSnapshot } from "./bindings";
-import Shell from "./shell/Shell";
+import WindowRoot from "./shell/WindowRoot";
+import { fakeStack, isFake } from "./shell/state/fakeBackend";
 
 /**
  * Owns the stack snapshot and hands it to the shell.
@@ -16,6 +17,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
 
   const rescan = useCallback(async () => {
+    if (isFake()) return;
     setBusy(true);
     try {
       setSnapshot(await loadStack());
@@ -30,6 +32,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // `?fake=1` runs the shell in a plain browser with no Tauri underneath —
+    // see `shell/state/fakeBackend.ts` for why that exists.
+    if (isFake()) {
+      setSnapshot(fakeStack());
+      return;
+    }
+
     // `boot::start` already read the manifest and scanned every checkout
     // once, behind the splash window, before this window was ever shown —
     // so pick up its cached result here instead of paying for a second scan
@@ -51,5 +60,12 @@ export default function App() {
     })();
   }, [rescan]);
 
-  return <Shell snapshot={snapshot} error={error} busy={busy} onRescan={() => void rescan()} />;
+  return (
+    <WindowRoot
+      snapshot={snapshot}
+      error={error}
+      rescanning={busy}
+      onRescan={() => void rescan()}
+    />
+  );
 }

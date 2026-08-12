@@ -1,0 +1,100 @@
+/*
+ * Window geometry. Measured values only — every number here appears in the
+ * handoff's geometry table or its screen markup.
+ *
+ * Nothing in this file animates. The bars are fixed heights and the split is a
+ * flex row; motion in the shell belongs to the contents of these boxes, never
+ * to the boxes themselves.
+ */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* --- the four bars ---------------------------------------------------------
+   `flex: none` on all of them so a long tool or a flood of terminal output can
+   never push a bar off screen — the split row is the only thing that grows. */
+
+.frame__titlebar {
+  flex: none;
+  height: var(--h-titlebar);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  /* The title is absolutely centred against this box, so it has to be the
+     positioning context. */
+  position: relative;
+}
+
+.frame__switcher {
+  flex: none;
+  height: var(--h-switcher);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.frame__statusbar {
+  flex: none;
+  height: var(--h-statusbar);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+/* --- the split row -------------------------------------------------------- */
+
+.frame__split {
+  flex: 1;
+  display: flex;
+  /* Without this, a tall child sets the row's height and the status bar goes
+     below the fold — exactly when there is most to report. */
+  min-height: 0;
+}
+
+.frame__toolwindow {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  position: relative;
+}
+
+.frame__handle {
+  flex: none;
+  width: var(--w-resize-handle);
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  /* The pointer is captured on this element during a drag; letting the browser
+     start a text selection or a touch scroll at the same time makes the drag
+     stutter. */
+  touch-action: none;
+  user-select: none;
+}
+
+.frame__handle[data-collapsed] {
+  cursor: default;
+}
+
+.frame__grip {
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.frame__panel {
+  flex: none;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* The width is driven by a motion value from Frame.tsx. It is deliberately
+     not set here: two owners of one property is how a resize drag ends up
+     fighting a stylesheet. */
+  overflow: hidden;
+}

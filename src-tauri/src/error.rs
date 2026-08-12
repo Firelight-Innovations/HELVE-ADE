@@ -43,6 +43,13 @@ pub enum AppError {
         #[source]
         source: tauri_plugin_opener::Error,
     },
+
+    #[error("could not create window `{label}`: {source}")]
+    Window {
+        label: String,
+        #[source]
+        source: tauri::Error,
+    },
 }
 
 /// Tauri sends a command's error across the IPC boundary into JavaScript, so the

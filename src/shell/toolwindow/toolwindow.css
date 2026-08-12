@@ -1,0 +1,211 @@
+/*
+ * The tool window: the mount surface for docked tools, plus its boot and
+ * empty states.
+ *
+ * Measured against SCREEN 01, SCREEN 02, and the "Starting Forger" crop in
+ * REGION DETAIL (docs/handoffs/shell-spec.html). This renders into
+ * `.frame__toolwindow`, which already carries the box's background and
+ * `position: relative` (src/shell/frame/frame.css) — nothing here repeats
+ * that.
+ */
+
+.toolwindow {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- mount slots ------------------------------------------------------- */
+
+/* One per docked tool, always rendered. Hidden with `visibility: hidden`
+   rather than `display: none` or unmounting, so an inactive tool's iframe
+   never reloads just because it isn't the one on screen. */
+.toolwindow__slot {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.toolwindow__slot[data-active] {
+  visibility: visible;
+}
+
+.toolwindow__iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--bg);
+}
+
+/* --- boot overlay -------------------------------------------------------
+   Laid over a mounting or still-resolving tool. Measured from the "Starting
+   Forger" crop; its dashed inset border is unique to this state — screen 02
+   (no tool active) draws no such border. */
+
+.boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.boot__inset {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+  pointer-events: none;
+}
+
+.boot__column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 250px;
+}
+
+.boot__arc {
+  display: flex;
+}
+
+.boot__title {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text);
+}
+
+.boot__track {
+  position: relative;
+  width: 200px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.boot__fill {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.boot__fill--indeterminate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 70px;
+}
+
+.boot__step {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim-3);
+}
+
+.boot__cancel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+/* --- empty / unavailable -------------------------------------------------
+   Shared between "no tool active" (screen 02) and a single tool's
+   unavailable slot — the handoff gives the empty state's typography and the
+   brief asks the unavailable state to match it exactly. */
+
+.toolwindow__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolwindow__empty-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+  max-width: 380px;
+  text-align: center;
+}
+
+.toolwindow__empty-glyph {
+  color: var(--line-3);
+}
+
+.toolwindow__empty-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+
+.toolwindow__empty-body {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--text-dim-3);
+}
+
+.toolwindow__empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.toolwindow__action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toolwindow__action-label {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.toolwindow__action-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-dim-3);
+}
+
+.toolwindow__action--accent {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+}
+
+.toolwindow__action--accent .toolwindow__action-label {
+  color: var(--accent);
+}
+
+.toolwindow__action--accent .toolwindow__action-hint {
+  color: var(--accent-dim);
+}
