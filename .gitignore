@@ -17,4 +17,6 @@ npm-debug.log*
 pnpm-debug.log*
 
 # Rust / Tauri
-# (src-tauri/ has its own .gitignore for target/ and generated schemas)
+# The build directory is at the workspace root now, not under src-tauri/.
+# (src-tauri/ still has its own .gitignore for the schemas Tauri generates.)
+/target/

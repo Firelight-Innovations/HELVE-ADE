@@ -1,0 +1,12 @@
+[package]
+name = "helve-rpc"
+description = "JSON-RPC over newline-delimited JSON on the standard streams — both the host and tool halves"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

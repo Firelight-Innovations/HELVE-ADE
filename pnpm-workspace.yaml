@@ -1,0 +1,12 @@
+# The orchestrator app itself is the root package. Everything listed here is a
+# package it publishes or ships alongside:
+#
+#   packages/*      libraries other Helve repos consume — @helve/bridge today
+#   examples/*/ui   frontends of the reference tools, which import those
+#                   libraries the same way a real tool repo would
+#
+# The `workspace:*` protocol resolves those imports to the local source, so a
+# change to the bridge is visible to the echo tool without a publish step.
+packages:
+  - "packages/*"
+  - "examples/*/ui"

@@ -4,9 +4,9 @@ The entry point for the Helve stack. Organizes and loads the dev tools and
 holds the shared baseline code that glues everything together and gets the
 stack running.
 
-Each dev tool may end up integrated as something like a separate web app
-loaded into this — exact approach still being worked out, as is how engine
-building fits in.
+Each dev tool is its own repository shipping a Rust core and a React frontend.
+Its own Tauri app is one host for that pair; this orchestrator is a second.
+`docs/tool-protocol.md` is the contract between them.
 
 This is a development tool; it does not ship with games built on Helve.
 
@@ -69,13 +69,18 @@ minutes; subsequent runs are incremental and fast. Editing anything under `src/`
 hot-reloads; editing anything under `src-tauri/src/` recompiles and restarts the
 app automatically.
 
-Other useful commands:
+Other useful commands, run from the repo root:
 
 ```sh
-cargo test    --manifest-path src-tauri/Cargo.toml
-cargo clippy  --manifest-path src-tauri/Cargo.toml   # Rust linter
-cargo fmt     --manifest-path src-tauri/Cargo.toml   # Rust formatter
+cargo test              # every crate in the workspace
+cargo clippy --all-targets -- -D warnings   # Rust linter
+cargo fmt --all                             # Rust formatter
 ```
+
+Note that `cargo clippy` replays cached diagnostics — it will report "Finished"
+in well under a second without actually rechecking anything. To force a real
+check of a crate you just changed, `cargo clean -p <crate>` first. That rebuilds
+only that crate, not the dependency tree.
 
 Note there is no separate "build the frontend" step for running the app.
 `pnpm build` and `pnpm dev` are only the frontend half; `tauri.conf.json` invokes
@@ -89,7 +94,7 @@ pnpm app:build
 
 Compiles the frontend to static files, embeds them in an optimized binary, and
 produces installers. Takes a few minutes — the release profile has no cheap
-incremental rebuild. Artifacts land in `src-tauri/target/release/`:
+incremental rebuild. Artifacts land in `target/release/`:
 
 | Path | What |
 |---|---|
@@ -114,8 +119,26 @@ orchestrator can be pointed at a workspace directly, run it from the repo.
 
 ### Layout
 
+This repo is both a Cargo workspace and a pnpm workspace. It isn't only the
+desktop app any more: the tool protocol needs libraries that *other* Helve
+repos depend on, so those live outside `src-tauri/` and are shared through the
+workspace. One consequence worth knowing — Rust build output is at `target/`,
+not `src-tauri/target/`, so every crate compiles the Tauri dependency tree once
+between them rather than once each.
+
 ```
+Cargo.toml            Rust workspace root
+pnpm-workspace.yaml   Node workspace root
 helve.toml            stack manifest — pinned component versions
+docs/
+  tool-protocol.md      the wire contract between the shell and a tool
+crates/               Rust libraries shared with the tool repos
+  helve-tool-manifest/  parses and validates helve-tool.toml
+  helve-rpc/            JSON-RPC over the standard streams, both halves
+packages/             npm packages shipped to the tool repos
+  bridge/               @helve/bridge — one tool frontend, either host
+examples/
+  echo-tool/            reference tool: manifest + core + frontend
 index.html            Vite entry point (main window)
 splash.html           Vite entry point (splash window)
 src/                  React frontend
@@ -172,12 +195,30 @@ The tool surface is **intentionally blank**. Each tool is separate software in
 its own repo and none are integrated yet, and there is no project to open them
 against.
 
-How they will mount is settled in
-`company/docs/design/helve-tool-integration.md`. In short: a tool ships a Rust
-core plus a React frontend, its own Tauri app is just one host for that pair
-and this shell is a second, and the frontend mounts in an iframe served from
-the checkout. The engine is not one of those surfaces — it is a C++ runtime
-with no frontend that the orchestrator starts and the tools talk to directly.
+How they will mount is settled: `company/docs/design/helve-tool-integration.md`
+has the reasoning, `docs/tool-protocol.md` has the wire format. In short, a tool
+ships a Rust core plus a React frontend, its own Tauri app is just one host for
+that pair and this shell is a second, and the frontend mounts in an iframe
+served from the checkout. The engine is not one of those surfaces — it is a C++
+runtime with no frontend that the orchestrator starts and the tools talk to
+directly.
+
+### Tools
+
+The protocol is built ahead of the first real tool, and `examples/echo-tool` is
+what it is tested against — a complete tool in miniature, with a
+`helve-tool.toml`, a core that speaks JSON-RPC over its standard streams, and a
+frontend whose only host coupling is `@helve/bridge`. Copying it is the
+intended way to start a tool repo.
+
+Two transports meet in the shell. The frontend talks to the shell over window
+messages; the shell talks to the core over the child process's standard
+streams. Tool code sees neither: it calls `invoke("echo", …)` from the bridge
+and gets an answer, under either host.
+
+The broker that joins those two transports is not built yet — the shell's tool
+surface is still blank. `crates/helve-rpc` is the shell's half of the second
+transport, and `packages/bridge` is the tool's half of the first.
 
 Adding a command: write it in `commands.rs`, register it in the
 `generate_handler!` list in `lib.rs`, then add a typed wrapper in

@@ -1,0 +1,35 @@
+# Cargo workspace root.
+#
+# The orchestrator started as a single crate under `src-tauri/`. It isn't one
+# any more: the tool protocol needs a manifest parser and an RPC transport that
+# both the orchestrator *and* every tool repo will depend on, plus a reference
+# tool to test them against. Those are libraries, not Tauri code, so they live
+# outside `src-tauri/` and are shared through this workspace.
+#
+# Note this moves the build directory from `src-tauri/target/` to `target/` —
+# one shared directory for every member, which is the whole point (the Tauri
+# dependency tree gets compiled once, not once per crate).
+
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "crates/*",
+    "examples/echo-tool",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Firelight Innovations"]
+license = "UNLICENSED"
+
+# Versions are pinned here and referenced from members as `serde.workspace =
+# true`, so two crates in this repo can't drift onto different releases of the
+# same dependency and force cargo to compile both.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+thiserror = "2"
+semver = "1"
