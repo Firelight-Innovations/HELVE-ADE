@@ -12,29 +12,25 @@ import type { ResolvedTool } from "../bindings";
  *
  * ## What this is a seam for
  *
- * When tools do arrive, this component is where the decision about *how* they
- * render gets made, and it is not one decision — it is at least two:
+ * Every tool that mounts here is a web frontend, so there is exactly one
+ * mechanism: an iframe served from the tool's checkout through a custom URI
+ * scheme, or in development pointed straight at that tool's own Vite server so
+ * its hot-reload works inside the real shell.
  *
- *   - The authoring tools are web apps. Those can be hosted in an iframe
- *     pointed at their built assets (served through a custom Tauri URI
- *     scheme) or, in development, straight at their own Vite dev server so
- *     their hot-reload works inside the real shell.
+ * The engine does not mount here at all. It is a C++ runtime with no frontend
+ * — the orchestrator only starts and supervises it, and the tools talk to it
+ * directly over a named pipe. An earlier draft of this comment had the engine
+ * rendering into a native child surface composited over the webview; that was
+ * wrong, and dropping it removes the one part of this design that would have
+ * needed platform window handles and input-routing rules.
  *
- *   - The engine is not a web app. It is a native runtime that renders on the
- *     GPU, and there is no iframe that can host that. It needs a native child
- *     surface positioned over the webview, which is a genuinely different
- *     hosting mechanism with different rules about z-order, resizing, and
- *     input routing.
- *
- * So the eventual shape here is a switch on some per-tool "host kind" rather
- * than one embedding strategy applied uniformly. That field does not exist on
- * `ToolSpec` yet, and inventing it before the first real tool exists would be
- * guessing. The important thing today is that the seam sits here, and that
- * nothing upstream of it has assumed an answer.
+ * See `company/docs/design/helve-tool-integration.md` for the full contract:
+ * what a tool repo ships, the bridge package that lets one tool run under
+ * either host, and the transport split between tools and the engine.
  *
  * `tool` is unused for the moment and that is fine — it is the input the real
- * implementation will switch on, and keeping it in the signature means the
- * call site in `Shell.tsx` does not have to change when that happens.
+ * implementation reads to resolve an iframe source, and keeping it in the
+ * signature means the call site in `Shell.tsx` does not have to change.
  */
 export default function ToolSurface({ tool }: { tool: ResolvedTool | null }) {
   void tool;

@@ -170,9 +170,14 @@ entry puts it in the UI with no shell code change.
 
 The tool surface is **intentionally blank**. Each tool is separate software in
 its own repo and none are integrated yet, and there is no project to open them
-against. See the comment in `ToolSurface.tsx` for what that seam has to
-support — notably that the authoring tools are web apps but the engine is a
-native GPU surface, which is a different hosting mechanism entirely.
+against.
+
+How they will mount is settled in
+`company/docs/design/helve-tool-integration.md`. In short: a tool ships a Rust
+core plus a React frontend, its own Tauri app is just one host for that pair
+and this shell is a second, and the frontend mounts in an iframe served from
+the checkout. The engine is not one of those surfaces — it is a C++ runtime
+with no frontend that the orchestrator starts and the tools talk to directly.
 
 Adding a command: write it in `commands.rs`, register it in the
 `generate_handler!` list in `lib.rs`, then add a typed wrapper in
