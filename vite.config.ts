@@ -42,8 +42,16 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore the Rust side
+      //
+      // `target/**` is not optional on Windows. Cargo holds an exclusive lock
+      // on the DLL it is linking, and a watch against a locked file fails
+      // outright with EBUSY rather than degrading — which kills the whole dev
+      // server mid-compile. This used to be covered by the `src-tauri` entry
+      // alone, because build output lived at `src-tauri/target/`; it moved to
+      // the workspace root when this repo became a Cargo workspace, and the
+      // ignore rule has to follow it.
+      ignored: ["**/src-tauri/**", "**/target/**"],
     },
   },
 }));

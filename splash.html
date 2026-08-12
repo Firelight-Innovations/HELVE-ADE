@@ -4,9 +4,74 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Helve</title>
+    <!--
+      This skeleton is inlined on purpose, and it duplicates values from
+      tokens.css and splash/splash.css instead of importing them.
+
+      Everything this window normally styles itself with arrives through the
+      script tag below: splash.css is imported by main.tsx, so nothing gets
+      painted until that whole module graph has loaded and React has mounted.
+      In a release build that's fast. Under `tauri dev` Vite serves every
+      module as its own request, and the gap is long enough to show as a blank
+      window at exactly the moment the user is looking for a sign the app
+      started — which is the only job this window has.
+
+      So the markup below is painted from HTML and inline CSS alone: no
+      request, no script, no wait. React clears the container and replaces it
+      on mount, and it's drawn to match the mounted first frame (same text,
+      same empty bar in the same place) so the swap doesn't flicker.
+
+      The duplication is the price of having nothing in front of first paint.
+      Keep it in sync with tokens.css and splash.css by hand.
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #14161a;
+      }
+      #root {
+        height: 100%;
+      }
+      .boot {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+        background: #1b1e24;
+        border: 1px solid #2c313b;
+        color: #e4e7ec;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 14px;
+      }
+      .boot__content {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .boot__label {
+        margin: 0;
+        color: #949cab;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 0.85em;
+      }
+      /* Matches .splash__bar: bottom 10%, full width, flush to the frame. */
+      .boot__bar {
+        flex: 0 0 10%;
+        background: #22262e;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot">
+        <div class="boot__content"><p class="boot__label">Starting…</p></div>
+        <div class="boot__bar"></div>
+      </div>
+    </div>
     <script type="module" src="/src/splash/main.tsx"></script>
   </body>
 </html>

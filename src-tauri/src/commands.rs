@@ -12,7 +12,10 @@ use crate::boot;
 use crate::discovery::{self, StackSnapshot};
 use crate::error::{AppError, Result};
 use crate::manifest::{self, Manifest};
+use crate::shell_state::{EngineState, ShellSnapshot, ShellState};
 use crate::state::AppState;
+use crate::tool_frontend;
+use crate::windows;
 use tauri::State;
 use tauri_plugin_opener::OpenerExt;
 
@@ -90,4 +93,104 @@ pub fn boot_status(state: State<'_, AppState>) -> boot::BootStatus {
         total: boot::STEPS,
         label: "Starting…".to_string(),
     })
+}
+
+// --- shell state ------------------------------------------------------------
+//
+// Placement and terminal sessions are shared across every HELVE window, so they
+// live in `ShellState` rather than in any window's React tree. Each of these
+// mutators broadcasts `shell:state` on the way out — see `ShellState::mutate`.
+//
+// Every one takes the calling window's label explicitly rather than inferring
+// it from a `Window` argument. The caller always knows which window it is (it
+// was told on the URL), and passing it makes the drag commands honest: moving a
+// terminal names a *destination*, which is not the window running the code.
+
+/// The current shared state, for a window that has just mounted.
+///
+/// Tauri events have no replay buffer, so a window that subscribes to
+/// `shell:state` after the last broadcast would sit empty until the next drag.
+/// Same gap the splash window hit with `boot:status`, same fix: subscribe
+/// first, then call this to catch up.
+#[tauri::command]
+pub fn shell_state(shell: State<'_, ShellState>) -> ShellSnapshot {
+    shell.snapshot()
+}
+
+#[tauri::command]
+pub fn set_docked_tools(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    label: String,
+    tool_ids: Vec<String>,
+) {
+    shell.set_docked(&app, &label, tool_ids);
+}
+
+#[tauri::command]
+pub fn set_active_tool(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    label: String,
+    tool_id: Option<String>,
+) {
+    shell.set_active_tool(&app, &label, tool_id);
+}
+
+/// Which HELVE window the cursor is over, or `None` if it is over none of them.
+///
+/// Called by the drag layer on drop, to find out which window's panel a
+/// terminal was let go over. The frontend cannot answer this for itself — see
+/// `windows::at_cursor`.
+#[tauri::command]
+pub fn window_at_cursor(app: tauri::AppHandle) -> Option<String> {
+    windows::at_cursor(&app)
+}
+
+/// Drag a tab clear of the switcher bar. The only way a tool detaches.
+#[tauri::command]
+pub fn detach_tool(app: tauri::AppHandle, shell: State<'_, ShellState>, tool_id: String) -> Result<()> {
+    windows::detach(&app, &shell, &tool_id)
+}
+
+#[tauri::command]
+pub fn create_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, label: String) -> String {
+    shell.create_terminal(&app, &label)
+}
+
+#[tauri::command]
+pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, id: String) {
+    shell.close_terminal(&app, &id);
+}
+
+/// Drop a terminal into another window's panel. `to_label` is the destination,
+/// which may be any HELVE window including the one it is already in.
+#[tauri::command]
+pub fn move_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    id: String,
+    to_label: String,
+) {
+    shell.move_terminal(&app, &id, &to_label);
+}
+
+/// Where to point a tool's iframe, or why there is nothing to point it at.
+///
+/// The tool window calls this once per tool it mounts. Resolution is per-tool
+/// and on demand rather than part of the stack snapshot: a tool's dev server
+/// can come and go while the shell is running, and a checkout can be built
+/// after the shell started.
+#[tauri::command]
+pub fn tool_frontend(app: tauri::AppHandle, id: String) -> Result<tool_frontend::ToolFrontend> {
+    tool_frontend::resolve(&app, &id)
+}
+
+/// Stubbed until the engine has something real to report. Kept as a command so
+/// the seam is already the right shape — when the engine reports for itself,
+/// this stops being called by the frontend and starts being called by whatever
+/// supervises the process.
+#[tauri::command]
+pub fn set_engine_state(app: tauri::AppHandle, shell: State<'_, ShellState>, engine: EngineState) {
+    shell.set_engine(&app, engine);
 }

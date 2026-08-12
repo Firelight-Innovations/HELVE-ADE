@@ -24,14 +24,26 @@ body {
 .splash {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Everything above the progress bar, centred in the height the bar leaves.
+   `min-height: 0` matters: a flex item defaults to `min-height: auto`, so
+   without it tall content here would refuse to shrink and would push the bar
+   off the bottom edge instead of being clipped. */
+.splash__content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 26px;
-  width: 100%;
-  height: 100%;
   padding: 40px;
-  background: var(--surface);
-  border: 1px solid var(--line);
 }
 
 .splash__body {
@@ -47,11 +59,20 @@ body {
   color: var(--text-dim);
 }
 
+/* Locked to the bottom of the window: full width, flush to the frame on the
+   bottom and both sides, no rounding.
+
+   Kept in the flex flow rather than absolutely positioned, and that's the
+   part worth knowing. `height: 10%` on an absolutely positioned child
+   resolves against the containing block's *height*, but the matching
+   `padding-bottom` needed to stop the centred content sliding underneath it
+   would resolve against its *width* — 10% of 560px, not of 360px. Two
+   different bases for one number is how that drifts silently the moment the
+   window size changes. As a flex item, `flex-basis: 10%` is 10% of the
+   height and the content above simply gets the other 90%. */
 .splash__bar {
+  flex: 0 0 10%;
   width: 100%;
-  max-width: 320px;
-  height: 4px;
-  border-radius: 999px;
   background: var(--surface-2);
   overflow: hidden;
 }

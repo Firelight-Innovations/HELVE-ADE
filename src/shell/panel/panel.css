@@ -1,0 +1,239 @@
+/*
+ * The secondary panel: its tab row, terminal body, and collapsed strip.
+ *
+ * Measured against the handoff's SCREEN 01/02 panel crops and the isolated
+ * "Panel collapsed" crop (docs/handoffs/shell-spec.html). This renders into
+ * `.frame__panel`, which already owns the panel's width, background, and the
+ * collapse animation (src/shell/frame/frame.css) — nothing here repeats
+ * those, and nothing here sets a width.
+ */
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* --- the tab row ------------------------------------------------------------
+   The handoff is explicit that this uses the same segment style as the tool
+   switcher bar: full height, hairline dividers, an accent rule on the active
+   segment. The row's own height never animates — only the rule inside it
+   does. */
+
+.panel__tabs {
+  flex: none;
+  height: var(--h-paneltabs);
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel__tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  color: var(--text-dim);
+  cursor: pointer;
+  /* Positioning context for the accent rule. */
+  position: relative;
+}
+
+.panel__tab--active {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.panel__tab-label {
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 400;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.panel__tab--active .panel__tab-label {
+  font-weight: 500;
+}
+
+/* The dot means *this agent finished*. Not tool health — it never appears on
+   a tool tab, only here. */
+.panel__tab-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  display: block;
+}
+
+.panel__newbtn {
+  flex: none;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.panel__spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+/* The worktree tab is a trailing segment built the same way as a session
+   tab — 34px rather than the 30px of the plain icon buttons either side of
+   it, and it can carry the active rule like any other tab. */
+.panel__worktreebtn {
+  flex: none;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  position: relative;
+}
+
+.panel__worktreebtn.panel__tab--active {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.panel__collapsebtn {
+  flex: none;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* The active segment's accent rule — a separate motion.div with
+   layoutId="panel-rule", not a box-shadow, so it slides between tabs
+   (including into and out of the worktree segment) instead of blinking. The
+   segment boxes above never move. */
+.panel__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* --- the body ----------------------------------------------------------- */
+
+/* The shared scroll container for both the terminal output and the worktree
+   view. Unpadded on purpose: the terminal's padding lives on
+   `.panel__terminal` below rather than here, so a future worktree view isn't
+   forced into a terminal's spacing. */
+.panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.panel__terminal {
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* `tone` picks the colour, not the content — mapped once, here. */
+.panel__line--prompt {
+  color: var(--text-dim-2);
+}
+
+.panel__line--ok {
+  color: var(--ok);
+}
+
+.panel__line--info {
+  color: var(--text-dim);
+}
+
+.panel__line--muted {
+  color: var(--text-dim-3);
+}
+
+.panel__cursor {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  background: var(--text-dim);
+  vertical-align: -2px;
+}
+
+/* --- the collapsed strip -------------------------------------------------
+   34px wide (--w-panel-collapsed, owned by Frame). A column of three fixed
+   items pinned to the top, not stretched to fill the window's height. */
+
+.panel__collapsed {
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 0;
+  gap: 12px;
+}
+
+.panel__restorebtn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.panel__collapsed-label {
+  flex: none;
+  writing-mode: vertical-rl;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: 0.05em;
+  padding: 8px 0;
+  border-left: 2px solid var(--accent);
+}
+
+.panel__collapsed-branch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim-2);
+}

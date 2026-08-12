@@ -1,0 +1,140 @@
+/*
+ * The worktree tab's body: the branch row, the changed-file list, and the
+ * no-worktree empty state.
+ *
+ * Measured against the handoff's "Worktree tab selected" and "Worktree tab,
+ * repository with no worktree" crops (docs/handoffs/shell-spec.html, lines
+ * ~213-249). This renders into `.panel__body` (src/shell/panel/panel.css),
+ * which already owns the scroll container and its background — nothing here
+ * repeats those.
+ *
+ * No motion here — see the header comment in WorktreeView.tsx.
+ */
+
+.worktree {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- the branch row -------------------------------------------------------
+   Icon + name in --text-dim by default (the icon inherits via currentColor),
+   with the name and the trailing count each overriding their own colour. */
+
+.worktree__branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.worktree__branch-name {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text);
+}
+
+.worktree__branch-spacer {
+  flex: 1;
+}
+
+.worktree__branch-count {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-dim-2);
+}
+
+/* --- the changed-file list -------------------------------------------------
+   Plain stacked rows, no dividers between them — the crop draws none. */
+
+.worktree__changes {
+  padding: 7px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.worktree__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+}
+
+.worktree__kind {
+  flex: none;
+  width: 14px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  /* colour is set inline per row from contract.ts's CHANGE_TOKEN */
+}
+
+.worktree__file {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+}
+
+/* A deleted file's name renders dimmer, matching the handoff's
+   legacy-bar.tsx row. */
+.worktree__file--deleted {
+  color: var(--text-dim);
+}
+
+.worktree__dir {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-dim-3);
+}
+
+/* --- the no-worktree empty state ------------------------------------------
+   Every value below is lifted verbatim from the crop. Fills whatever height
+   `.panel__body` gives it rather than a fixed 214px, since that number was
+   the total height of the crop's mock window chrome, not of this view. */
+
+.worktree__empty {
+  height: 100%;
+  min-height: 214px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 0 46px;
+  text-align: center;
+}
+
+.worktree__empty-glyph {
+  color: var(--line-2);
+}
+
+.worktree__empty-title {
+  font: 500 12.5px/1.3 "IBM Plex Sans", sans-serif;
+  color: var(--text-dim);
+}
+
+.worktree__empty-body {
+  font: 400 11px/1.55 "IBM Plex Sans", sans-serif;
+  color: var(--text-dim-3);
+}
+
+.worktree__empty-button {
+  margin-top: 4px;
+  font: 500 11px/1 "IBM Plex Sans", sans-serif;
+  color: var(--accent);
+  padding: 7px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}

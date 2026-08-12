@@ -115,34 +115,39 @@ export default function Splash() {
         : "Startup failed";
 
   return (
+    // The bar is a sibling of the content rather than living inside it: it's
+    // pinned to the bottom edge of the window, and the art and label centre
+    // themselves in whatever height is left over.
     <div className="splash">
-      <SplashArt />
+      <div className="splash__content">
+        <SplashArt />
 
-      <div className="splash__body">
-        <p className="splash__label mono">{label}</p>
+        <div className="splash__body">
+          <p className="splash__label mono">{label}</p>
 
-        <div
-          className="splash__bar"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={1}
-          aria-valuenow={progress}
-        >
-          <div className="splash__bar-fill" style={{ width: `${progress * 100}%` }} />
+          {status.phase === "failed" && (
+            <>
+              <p className="splash__error mono">{status.message}</p>
+              <button
+                type="button"
+                className="splash__continue"
+                onClick={() => finishBoot().catch((err) => console.error(String(err)))}
+              >
+                Continue anyway
+              </button>
+            </>
+          )}
         </div>
+      </div>
 
-        {status.phase === "failed" && (
-          <>
-            <p className="splash__error mono">{status.message}</p>
-            <button
-              type="button"
-              className="splash__continue"
-              onClick={() => finishBoot().catch((err) => console.error(String(err)))}
-            >
-              Continue anyway
-            </button>
-          </>
-        )}
+      <div
+        className="splash__bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={1}
+        aria-valuenow={progress}
+      >
+        <div className="splash__bar-fill" style={{ width: `${progress * 100}%` }} />
       </div>
     </div>
   );

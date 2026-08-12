@@ -1,28 +1,87 @@
 /*
  * Design tokens shared by every entry point.
  *
- * Split out of styles.css so the splash window (src/splash/splash.css) can
- * use the same palette and base resets without pulling in the whole app
- * stylesheet — a separate Vite entry only buys the "loads fast" property
- * from vite.config.ts if its CSS stays small too.
+ * Every value here is lifted from `docs/handoffs/shell-spec.html` — the decoded
+ * handoff. Nothing in this file is a choice; if a value looks wrong, the spec
+ * is the thing to check, not this file. Do not add a colour that does not
+ * appear there.
+ *
+ * Split out of styles.css so the splash window (src/splash/splash.css) can use
+ * the same palette and base resets without pulling in the whole app stylesheet
+ * — a separate Vite entry only buys the "loads fast" property from
+ * vite.config.ts if its CSS stays small too.
  */
 
-:root {
-  --bg: #14161a;
-  --surface: #1b1e24;
-  --surface-2: #22262e;
-  --line: #2c313b;
-  --text: #e4e7ec;
-  --text-dim: #949cab;
-  --accent: #d98a3f;
-  --ok: #5fb37a;
-  --warn: #d9a93f;
-  --err: #d9635f;
+/* The handoff is drawn in IBM Plex Sans and IBM Plex Mono. Bundled rather than
+   fetched: this is a desktop app, and a webfont that arrives over the network
+   is a webfont that doesn't arrive at all when the machine is offline. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 
-  --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+:root {
+  /* --- the ten named tokens (handoff reference table) ------------------- */
+
+  --bg: #14161a; /* page, tool window, active tab */
+  --surface: #1b1e24; /* all four bars, panel */
+  --surface-2: #22262e; /* selected panel tab, menu hover, ghost chip */
+  --line: #2c313b; /* every hairline and divider */
+  --text: #e4e7ec; /* active tab, selected labels */
+  --text-dim: #949cab; /* inactive tabs, all icon strokes */
+  --accent: #d98a3f; /* active tab rule, focus, drop targets, primary action */
+  --ok: #5fb37a; /* engine and GitHub healthy, agent finished */
+  --warn: #d9a93f; /* warning badge, needs update, modified file */
+  --err: #d9635f; /* not installed, build failed, deleted file */
+
+  /* --- greys the spec draws with but never names ------------------------
+     These appear throughout the handoff markup with no entry in its token
+     table. They are named here so a component never inlines a raw hex; the
+     names are ours, the values are the spec's. */
+
+  --text-dim-2: #6d747f; /* popover section headers, terminal prompt */
+  --text-dim-3: #5b616c; /* secondary captions, an uninstalled tool's tab */
+  --text-faint: #4a505b; /* keyboard hints (⌘K) */
+  --line-2: #3a404b; /* checkbox borders, detached window edge */
+  --line-3: #343a45; /* the big empty-state glyph */
+  --surface-gap: #191c21; /* the hole a dragged tab leaves behind */
+  --dot-off: #4f5663; /* the "No engine" status dot */
+  --accent-dim: #8a6431; /* a keyboard hint inside an accent button */
+
+  /* --- accent washes ----------------------------------------------------
+     Drop targets and primary actions are drawn as translucent accent rather
+     than as opaque tints, so they read correctly over both --bg and
+     --surface. */
+
+  --accent-line: rgba(217, 138, 63, 0.45);
+  --accent-line-strong: rgba(217, 138, 63, 0.7);
+  --accent-wash: rgba(217, 138, 63, 0.08);
+  --accent-wash-faint: rgba(217, 138, 63, 0.05);
+
+  /* --- type ------------------------------------------------------------- */
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* --- region geometry --------------------------------------------------
+     The four bars and the panel. Exposed as tokens because the verification
+     pass measures against these exact numbers, and because a bar height that
+     lives in one place cannot drift between the main window and a detached
+     one. */
+
+  --h-titlebar: 34px;
+  --h-switcher: 36px;
+  --h-paneltabs: 34px;
+  --h-statusbar: 22px;
+  --w-resize-handle: 6px;
+  --w-panel-default: 380px;
+  --w-panel-collapsed: 34px;
+  --w-window-button: 46px;
 
   color-scheme: dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--sans);
   font-size: 14px;
   color: var(--text);
   background: var(--bg);

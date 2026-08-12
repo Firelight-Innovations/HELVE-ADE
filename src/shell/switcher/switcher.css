@@ -1,0 +1,244 @@
+/*
+ * The tool switcher bar and its health popover.
+ *
+ * Measured against the handoff's SCREEN 01/02 switcher crops and the isolated
+ * TOOL HEALTH popover crop (docs/handoffs/shell-spec.html). This component
+ * renders into `.frame__switcher`, which already carries the bar's height,
+ * background and bottom hairline (src/shell/frame/frame.css) — nothing here
+ * repeats those.
+ */
+
+.switcher {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.switcher__tabs {
+  display: flex;
+  align-items: stretch;
+}
+
+/* A tab is a name and nothing else — no version, no status chip, no per-tool
+   colour. The one exception is the dim/inert treatment for a not-installed
+   tool, applied via `.switcher__tab--dim` below. */
+.switcher__tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  /* Positioning context for the accent rule. */
+  position: relative;
+}
+
+.switcher__tab:disabled {
+  cursor: default;
+  /* Belt and braces alongside the `disabled` attribute: a not-installed tab
+     takes no hover state at all. */
+  pointer-events: none;
+}
+
+.switcher__tab--active {
+  background: var(--bg);
+}
+
+.switcher__tab-label {
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.switcher__tab--active .switcher__tab-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.switcher__tab--dim .switcher__tab-label {
+  color: var(--text-dim-3);
+}
+
+/* The active tab's accent rule — a separate motion.div with
+   layoutId="tool-rule", not a box-shadow, so it slides between tabs instead
+   of blinking. The tab boxes above never move. */
+.switcher__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.switcher__spacer {
+  flex: 1;
+}
+
+/* While the search field is expanded it takes every pixel back to the active
+   tab itself, so the spacer that normally pushes the badge/search to the
+   trailing edge has nothing left to reserve. */
+.switcher__spacer--collapsed {
+  flex: 0;
+}
+
+.switcher__badge-wrap {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+}
+
+.switcher__badge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.switcher__badge-icon {
+  flex: none;
+  /* The icon strokes currentColor; this is the CSS token that feeds it. */
+  color: var(--warn);
+}
+
+.switcher__badge-count {
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* --- the collapsed search default --------------------------------------- */
+
+.switcher__search-default {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-left: 1px solid var(--line);
+}
+
+.switcher__search-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.switcher__search-label {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1;
+  color: var(--text-dim-3);
+  white-space: nowrap;
+}
+
+.switcher__search-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+/* --- the health popover --------------------------------------------------
+   420px, anchored under the badge. Right-edge aligned to the badge rather
+   than left, so it opens toward the middle of the bar instead of running
+   under (or past) the search slot to its right. */
+
+.switcher__popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+  /* Not in the isolated popover crop — no other floating panel in the spec
+     carries a shadow value either except the search type-filter dropdown and
+     the drag ghost, both of which use this same figure. Reused rather than
+     invented from nothing; flagged in the handoff notes. */
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  z-index: 20;
+}
+
+.switcher__popover-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-dim-2);
+  letter-spacing: 0.1em;
+}
+
+.switcher__popover-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+/* The handoff draws the separator between rows in a lighter grey than the
+   line token used everywhere else (the header/footer hairlines) — kept as
+   drawn rather than collapsed into --line. */
+.switcher__popover-row:not(:first-child) {
+  border-top: 1px solid var(--surface-2);
+}
+
+.switcher__popover-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.switcher__popover-name {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text);
+}
+
+.switcher__popover-spacer {
+  flex: 1;
+}
+
+.switcher__popover-state {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-dim-2);
+  white-space: nowrap;
+}
+
+.switcher__popover-rescan {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+}
