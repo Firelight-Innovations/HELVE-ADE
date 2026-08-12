@@ -1,0 +1,32 @@
+[package]
+name = "helve-orchestrator"
+version = "0.1.0"
+description = "Entry point for the Helve stack — loads and orchestrates the dev tools"
+authors = ["Firelight Innovations"]
+edition = "2021"
+
+[lib]
+# The binary and the library can't share a name on Windows, hence the `_lib`
+# suffix. `main.rs` is a thin shim that calls into this library, which also lets
+# integration tests and the mobile entry point reach the same code.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "helve_orchestrator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+
+# Serialization. `derive` is the feature that enables `#[derive(Serialize)]`.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+
+# Ergonomic error enums — see src/error.rs.
+thiserror = "2"
+
+# Parsing and comparing the pinned component versions.
+semver = "1"

@@ -1,0 +1,107 @@
+@import "../tokens.css";
+
+/*
+ * The splash window itself is opaque (`transparent` is left unset in
+ * tauri.conf.json), so it renders as a plain rectangle with square corners.
+ * WebView2's transparency support is finicky enough — a compositor hint on
+ * the Rust side, a fully transparent path through every layer of CSS here —
+ * that it isn't worth the risk on a screen whose only job is to appear
+ * instantly and get out of the way. The upgrade path, if this ever needs
+ * rounded corners floating over the desktop: flip `transparent` on for the
+ * `splash` window in tauri.conf.json, then give `.splash` a border-radius
+ * and drop its background down to something that isn't a solid fill.
+ */
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  width: 100%;
+  height: 100%;
+  padding: 40px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.splash__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.splash__label {
+  min-height: 1.2em;
+  color: var(--text-dim);
+}
+
+.splash__bar {
+  width: 100%;
+  max-width: 320px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.splash__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  /* Boot reports at most 3 discrete steps, so each update is a visible jump
+     rather than a smooth fill — this eases each jump instead of snapping. */
+  transition: width 180ms ease-out;
+}
+
+.splash__error {
+  max-width: 380px;
+  margin: 0;
+  text-align: center;
+  color: var(--err);
+}
+
+.splash__continue {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.splash__continue:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- art ---------------------------------------------------------------- */
+
+.splash-art__spark {
+  transform-origin: 50px 56px;
+  animation: splash-spark-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes splash-spark-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}

@@ -1,0 +1,38 @@
+/*
+ * Design tokens shared by every entry point.
+ *
+ * Split out of styles.css so the splash window (src/splash/splash.css) can
+ * use the same palette and base resets without pulling in the whole app
+ * stylesheet — a separate Vite entry only buys the "loads fast" property
+ * from vite.config.ts if its CSS stays small too.
+ */
+
+:root {
+  --bg: #14161a;
+  --surface: #1b1e24;
+  --surface-2: #22262e;
+  --line: #2c313b;
+  --text: #e4e7ec;
+  --text-dim: #949cab;
+  --accent: #d98a3f;
+  --ok: #5fb37a;
+  --warn: #d9a93f;
+  --err: #d9635f;
+
+  --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
