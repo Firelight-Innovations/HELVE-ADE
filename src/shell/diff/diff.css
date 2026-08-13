@@ -11,3 +11,38 @@
   width: 100%;
   height: 100%;
 }
+
+/* --- the diff decorations -------------------------------------------------
+   Monaco ships a stylesheet whose insert/delete rules are a flat, opaque
+   `red` placeholder, meant to be overridden by the rules its theme service
+   generates from a theme's `diffEditor.*` colours. That generator is part of
+   what `editor.main` registers, and DiffView deliberately imports
+   `editor.api` instead (see its header for the bundle-size reason), so the
+   placeholder is what actually paints: every changed line, inserted or
+   deleted, comes out solid #f00.
+
+   So the four colours `defineTheme` sets in DiffView.tsx are restated here as
+   CSS, which is the layer that actually wins. They are the same values —
+   --ok and --err at a wash alpha for the line, stronger for the changed span
+   within it — and they have to stay in step with that theme block by hand.
+   Written as rgb()/alpha rather than var(--ok) because a token is an opaque
+   hex and these have to be translucent to let the line's own background
+   through. */
+
+.diff .line-insert,
+.diff .inline-added {
+  background-color: rgba(95, 179, 122, 0.08); /* --ok, wash alpha */
+}
+
+.diff .char-insert {
+  background-color: rgba(95, 179, 122, 0.25); /* --ok */
+}
+
+.diff .line-delete,
+.diff .inline-deleted {
+  background-color: rgba(217, 99, 95, 0.08); /* --err, wash alpha */
+}
+
+.diff .char-delete {
+  background-color: rgba(217, 99, 95, 0.25); /* --err */
+}

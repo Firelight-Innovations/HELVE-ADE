@@ -9,6 +9,7 @@ mod boot;
 mod commands;
 mod discovery;
 mod error;
+mod git;
 mod manifest;
 mod pty;
 mod shell_state;
@@ -120,6 +121,11 @@ pub fn run() {
             commands::set_terminal_title,
             commands::set_engine_state,
             commands::tool_frontend,
+            git::git_status,
+            git::git_diff,
+            git::git_stage,
+            git::git_unstage,
+            git::git_commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

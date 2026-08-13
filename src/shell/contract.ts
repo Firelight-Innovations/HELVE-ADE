@@ -276,41 +276,91 @@ export interface TerminalTransport {
 }
 
 // ---------------------------------------------------------------------------
-// Worktree — stubbed git, real list
+// Source control — real git, one shot at a time
 // ---------------------------------------------------------------------------
+//
+// These replace an earlier `Worktree`/`WorktreeSource` pair, which was a
+// subscription over a single flat change list and had nowhere to put the half
+// of git that matters: the index. What is here instead is request/reply, because
+// there is no watcher — the panel re-asks after every mutation and when the
+// shown tool changes, and that is the whole update model.
 
-export type ChangeKind = "M" | "A" | "D";
+export type GitChangeKind = "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
 
-export const CHANGE_TOKEN: Record<ChangeKind, string> = {
-  M: "var(--warn)",
-  A: "var(--ok)",
-  D: "var(--err)",
+/**
+ * The single letter git itself would print in a status short-format, which is
+ * also what the row's leading column draws. `untracked` is `?` rather than `U`
+ * because `U` is already git's letter for an unmerged path.
+ */
+export const GIT_KIND_LETTER: Record<GitChangeKind, string> = {
+  modified: "M",
+  added: "A",
+  deleted: "D",
+  renamed: "R",
+  untracked: "?",
+  conflicted: "U",
 };
 
-export interface WorktreeChange {
-  kind: ChangeKind;
-  /** File name only — the directory is a separate, dimmer column. */
+/**
+ * The colour token for that letter. Modified/added/deleted keep the three the
+ * worktree list has always used; the three kinds that list could not express
+ * borrow from the same small palette rather than introduce new tokens —
+ * renamed reads as a modification, untracked as not-yet-anything, and a
+ * conflict as the error it is.
+ */
+export const GIT_KIND_TOKEN: Record<GitChangeKind, string> = {
+  modified: "var(--warn)",
+  added: "var(--ok)",
+  deleted: "var(--err)",
+  renamed: "var(--warn)",
+  untracked: "var(--text-dim-3)",
+  conflicted: "var(--err)",
+};
+
+/**
+ * One path, in one of the two lists.
+ *
+ * A path that is staged *and* then modified again appears twice — once in
+ * `staged` and once in `unstaged`, each with its own kind — because those are
+ * two different diffs and the user has to be able to click either one.
+ */
+export interface GitFileChange {
+  /** Repo-relative, forward slashes. The identity: what the commands take. */
+  path: string;
+  /** Basename only — the directory is a separate, dimmer column. */
   file: string;
   dir: string;
+  kind: GitChangeKind;
+  staged: boolean;
+  renamedFrom?: string;
 }
 
-/** `null` means the repository has no worktree attached: the empty state. */
-export interface Worktree {
+export interface GitStatus {
   branch: string;
   /**
-   * Commits ahead of and behind the upstream. The status bar draws these as
-   * `main · ↑1 ↓0`, which is why they live here rather than being folded into
-   * `branch` as a pre-formatted string — the bar has to be able to render the
-   * arrows in their own colour, and a caller with no upstream has to be able
-   * to omit them rather than print `↑0 ↓0`.
+   * Commits ahead of and behind the upstream. Both `0` when there is no
+   * tracking ref at all, which is not an error — a fresh branch is a normal
+   * state, and the bar simply omits the arrows.
    */
   ahead: number;
   behind: number;
-  changes: WorktreeChange[];
+  staged: GitFileChange[];
+  unstaged: GitFileChange[];
 }
 
-export interface WorktreeSource {
-  subscribe(cb: (tree: Worktree | null) => void): () => void;
+/** Two blobs, ready for `DiffView`. Never a patch: Monaco diffs whole texts. */
+export interface GitDiff {
+  original: string;
+  modified: string;
+}
+
+export interface GitControl {
+  /** `null` when the tool has no checkout or the checkout is not a repo. */
+  status(toolId: string): Promise<GitStatus | null>;
+  diff(toolId: string, path: string, staged: boolean): Promise<GitDiff>;
+  stage(toolId: string, paths: string[]): Promise<void>;
+  unstage(toolId: string, paths: string[]): Promise<void>;
+  commit(toolId: string, message: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

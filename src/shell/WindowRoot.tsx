@@ -19,13 +19,13 @@ import StatusBar from "./statusbar/StatusBar";
 import SearchSlot from "./search/SearchSlot";
 import { useDrag } from "./drag/useDrag";
 import { useKeyboard } from "./keys/useKeyboard";
-import WorktreeView from "./worktree/WorktreeView";
+import SourceControlView from "./worktree/SourceControlView";
+import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
-import { stubWorktreeSource } from "./stubs/worktree";
-import type { Worktree } from "./contract";
 import { idleEngineStatus } from "./stubs/engineStatus";
 import { useShellState, windowLabel, setActiveTool } from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
+import { gitControl } from "./state/git";
 
 /**
  * One HELVE window.
@@ -301,12 +301,13 @@ export default function WindowRoot({
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
 
-  // The status bar and the worktree tab read the same subscription. Two
-  // subscriptions to one source would be two chances to disagree about which
-  // branch is checked out, and the whole point of the branch appearing in the
-  // status bar is that it is the answer, not a second opinion.
-  const [tree, setTree] = useState<Worktree | null>(null);
-  useEffect(() => stubWorktreeSource.subscribe(setTree), []);
+  // The status bar and the source-control tab read one status. Two fetches
+  // would be two chances to disagree about which branch is checked out, and the
+  // whole point of the branch appearing in the status bar is that it is the
+  // answer, not a second opinion. It also has to outlive the tab: the panel
+  // keeps `worktreeView` mounted but hidden, and a status owned by the view
+  // would still be re-fetched on every remount of it.
+  const git = useGitStatus(gitControl, shownToolId);
 
   // The drag layer is the only thing in the shell that spans regions, so it is
   // the only thing that has to be handed down rather than owned locally. The
@@ -422,7 +423,7 @@ export default function WindowRoot({
                   onTitle={(id, title) => terminalControl.setTitle(id, title)}
                 />
               }
-              worktreeView={<WorktreeView source={stubWorktreeSource} />}
+              worktreeView={<SourceControlView control={gitControl} toolId={shownToolId} git={git} />}
               dragHandleFor={(session) =>
                 drag.terminalHandle({
                   kind: "terminal",
@@ -437,7 +438,7 @@ export default function WindowRoot({
           statusBar: (
             <StatusBar
               engine={engine}
-              branch={tree && { name: tree.branch, ahead: tree.ahead, behind: tree.behind }}
+              branch={git.status && { name: git.status.branch, ahead: git.status.ahead, behind: git.status.behind }}
               githubOk={!error}
             />
           ),
