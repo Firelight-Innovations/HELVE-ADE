@@ -185,6 +185,17 @@ export interface TerminalControl {
  * terminal.
  */
 export interface TerminalTransport {
+  /**
+   * Start receiving this session's output.
+   *
+   * `onData` is called with everything the shell has already said before it is
+   * called with anything new, so an emulator that mounts late still sees the
+   * whole session. That is not a convenience: a pty starts talking the instant
+   * it is spawned, well before React has mounted anything, and on Windows its
+   * opening line is a question the shell blocks on until an emulator answers.
+   * A transport that only carried live events would leave every terminal
+   * permanently blank. See `src-tauri/src/pty.rs`.
+   */
   attach(id: string, onData: (chunk: string) => void): () => void;
   write(id: string, data: string): void;
   /**

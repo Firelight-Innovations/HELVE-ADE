@@ -30,12 +30,12 @@
 //! feature never has to be threaded through the transport later.
 
 use crate::error::{AppError, Result};
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize, SlavePty};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 /// One session's output, as it arrives. Per-session rather than one global
@@ -43,6 +43,32 @@ use tauri::{AppHandle, Emitter};
 /// build in one tab does not wake every other tab's listener.
 pub fn data_event(id: &str) -> String {
     format!("pty:data:{id}")
+}
+
+/// One emission on `pty:data:<id>`.
+///
+/// Carries a sequence number as well as the bytes, so an emulator that has just
+/// been handed the backlog can tell which live events it has already seen. See
+/// [`PtySessions::attach`].
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Chunk {
+    pub seq: u64,
+    pub data: String,
+}
+
+/// Everything a freshly-mounted emulator needs to catch up, answered in one
+/// call by [`PtySessions::attach`].
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    /// Every byte the shell has produced so far, oldest first.
+    pub text: String,
+    /// The sequence number the next live event will carry. Anything below this
+    /// is already inside `text`.
+    pub next_seq: u64,
+    /// The shell already ended. The `pty:exit` event that said so may have been
+    /// emitted before anyone was listening, so it is repeated here.
+    pub exited: bool,
 }
 
 /// The shell exited. The frontend closes the tab on this; nothing else does.
@@ -72,6 +98,67 @@ fn tap_input<'a>(_id: &str, data: &'a str) -> Cow<'a, str> {
 
 // --- sessions ---------------------------------------------------------------
 
+/// How much output a session remembers for an emulator that has not attached
+/// yet, or that attaches again after moving windows. Whole chunks are dropped
+/// from the front once this is exceeded — enough to repaint a screen and a
+/// useful amount of history, far short of xterm's own 10,000-line scrollback,
+/// which is the real one.
+const BACKLOG_BYTES: usize = 512 * 1024;
+
+/// A session's output, and whether anyone is listening for it yet.
+///
+/// This exists because of the first four bytes a Windows shell produces.
+/// ConPTY opens by asking the terminal where the cursor is (`ESC[6n`) and then
+/// *blocks the shell* until something answers — an emulator replies
+/// automatically, and until it does, the shell prints nothing at all, not even
+/// a prompt. Tauri events have no replay buffer, so an event emitted before the
+/// webview registered its listener is simply gone. The launch terminal is
+/// opened during `.setup()`, long before any JavaScript runs, so that question
+/// was being asked to an empty room every single time: the shell waited
+/// forever, and the panel showed a permanently blank terminal that was, in
+/// every other respect, working.
+///
+/// So nothing is emitted until an emulator has said it is listening. Until
+/// then output accumulates here.
+#[derive(Default)]
+struct Backlog {
+    /// `(seq, text)`, oldest first.
+    chunks: VecDeque<(u64, String)>,
+    bytes: usize,
+    next_seq: u64,
+    /// Set by [`PtySessions::attach`]. False means "emit nothing, just store".
+    attached: bool,
+    exited: bool,
+}
+
+impl Backlog {
+    /// Record a chunk and answer whether it should also go out as an event.
+    ///
+    /// Both halves happen under one lock on purpose. If storing and the
+    /// attached check could interleave with `attach`, a chunk could land in the
+    /// gap between the backlog being read and the flag being set — emitted to
+    /// nobody, and absent from the text the emulator was just handed.
+    fn push(&mut self, text: String) -> Option<Chunk> {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+
+        self.bytes += text.len();
+        self.chunks.push_back((seq, text.clone()));
+        // Trimming whole chunks rather than bytes: a chunk boundary is already
+        // an arbitrary read boundary, so dropping at one adds no new way to cut
+        // an escape sequence in half. It can still orphan the tail of a
+        // sequence whose head was trimmed, which is why this is a large budget
+        // and not a small one.
+        while self.bytes > BACKLOG_BYTES && self.chunks.len() > 1 {
+            if let Some((_, old)) = self.chunks.pop_front() {
+                self.bytes -= old.len();
+            }
+        }
+
+        self.attached.then(|| Chunk { seq, data: text })
+    }
+}
+
 struct Session {
     /// Held for its whole life, for two reasons: dropping the master closes the
     /// pty and kills the shell, and it is what `resize` talks to.
@@ -80,6 +167,11 @@ struct Session {
     /// handle has to be kept rather than re-derived per keystroke.
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
+    /// Shared with this session's reader thread. Its own lock, deliberately not
+    /// the map's: the reader must be able to store a chunk while another thread
+    /// is writing a keystroke, and making both wait on one lock would let a
+    /// chatty build block typing.
+    backlog: Arc<Mutex<Backlog>>,
 }
 
 /// Every live pty, keyed by the session id `ShellState` handed out.
@@ -112,27 +204,7 @@ impl PtySessions {
                 reason: e.to_string(),
             })?;
 
-        let mut last_err = String::from("no shell candidate was tried");
-        let mut spawned = None;
-        for (name, mut cmd) in shell_candidates() {
-            cmd.cwd(cwd);
-            // Programs decide what they may draw from `TERM`. Without it, most
-            // TUIs fall back to a dumb-terminal path and render as a wall of
-            // plain text — which would look like our emulator was broken.
-            cmd.env("TERM", "xterm-256color");
-            match pty.slave.spawn_command(cmd) {
-                Ok(child) => {
-                    spawned = Some((name, child));
-                    break;
-                }
-                Err(e) => last_err = e.to_string(),
-            }
-        }
-
-        let (name, child) = spawned.ok_or_else(|| AppError::Pty {
-            id: id.to_string(),
-            reason: format!("no usable shell found: {last_err}"),
-        })?;
+        let (name, child) = spawn_shell(&*pty.slave, id, cwd)?;
 
         // The slave end must be dropped now that the child holds its own copy.
         // Keeping it alive here would mean the pty always has a writer open, so
@@ -149,7 +221,8 @@ impl PtySessions {
             reason: e.to_string(),
         })?;
 
-        pump(app.clone(), id.to_string(), reader);
+        let backlog = Arc::new(Mutex::new(Backlog::default()));
+        pump(app.clone(), id.to_string(), reader, Arc::clone(&backlog));
 
         self.inner.lock().expect("pty map poisoned").insert(
             id.to_string(),
@@ -157,10 +230,34 @@ impl PtySessions {
                 master: pty.master,
                 writer,
                 child,
+                backlog,
             },
         );
 
         Ok(name)
+    }
+
+    /// An emulator has mounted and registered its listener. Hand it everything
+    /// the shell has said so far, and start emitting live from here.
+    ///
+    /// Returns `None` for a session that does not exist — a tab closed while
+    /// its view was still mounting, which is not an error.
+    pub fn attach(&self, id: &str) -> Option<Attachment> {
+        // The map lock is released before the backlog lock is taken. Holding
+        // both would put this thread and the reader thread in opposite orders
+        // on two locks, which is the shape a deadlock needs.
+        let backlog = {
+            let map = self.inner.lock().expect("pty map poisoned");
+            Arc::clone(&map.get(id)?.backlog)
+        };
+
+        let mut b = backlog.lock().expect("backlog poisoned");
+        b.attached = true;
+        Some(Attachment {
+            text: b.chunks.iter().map(|(_, t)| t.as_str()).collect(),
+            next_seq: b.next_seq,
+            exited: b.exited,
+        })
     }
 
     /// A keystroke, or anything else the emulator wants the shell to receive.
@@ -208,6 +305,45 @@ impl PtySessions {
     }
 }
 
+/// Try each shell candidate in turn and return the first that actually starts.
+///
+/// Split out of [`PtySessions::open`] so it can be tested without an
+/// `AppHandle` — spawning a shell is the one step here that talks to the
+/// operating system and can fail for reasons no amount of reading the code will
+/// reveal, so it needs to be reachable from `cargo test`.
+///
+/// Takes `&dyn SlavePty` rather than the `PtyPair` it comes from: this only
+/// needs the end the child will hold, and narrowing the parameter is what lets
+/// the test hand it a bare pty of its own.
+fn spawn_shell(
+    slave: &dyn SlavePty,
+    id: &str,
+    cwd: &Path,
+) -> Result<(String, Box<dyn Child + Send + Sync>)> {
+    let mut last_err = String::from("no shell candidate was tried");
+
+    for (name, mut cmd) in shell_candidates() {
+        cmd.cwd(cwd);
+        // Programs decide what they may draw from `TERM`. Without it, most TUIs
+        // fall back to a dumb-terminal path and render as a wall of plain text
+        // — which would look like our emulator was broken.
+        cmd.env("TERM", "xterm-256color");
+        match slave.spawn_command(cmd) {
+            Ok(child) => return Ok((name, child)),
+            // Not fatal on its own. The candidate list is ordered by
+            // preference, and "pwsh is not installed" is the ordinary case on a
+            // machine that only has the PowerShell that ships with Windows.
+            // Only running out of candidates is an error.
+            Err(e) => last_err = format!("{name}: {e}"),
+        }
+    }
+
+    Err(AppError::Pty {
+        id: id.to_string(),
+        reason: format!("no usable shell found: {last_err}"),
+    })
+}
+
 /// Read the pty until it ends, and emit what comes out.
 ///
 /// One OS thread per session rather than async: this is a blocking `read` on a
@@ -215,7 +351,7 @@ impl PtySessions {
 /// dedicated thread underneath it anyway. `move` transfers ownership of the
 /// handle and the id into the thread, because the thread outlives this function
 /// and so cannot borrow from it.
-fn pump(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>) {
+fn pump(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>, backlog: Arc<Mutex<Backlog>>) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         // Bytes from the end of the last read that were a *partial* UTF-8
@@ -252,11 +388,19 @@ fn pump(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>) {
             pending = rest;
 
             if !text.is_empty() {
-                let out = tap_output(&id, &text);
-                let _ = app.emit(&data_event(&id), out.as_ref());
+                let out = tap_output(&id, &text).into_owned();
+                // Stored either way; emitted only once someone is listening.
+                let live = backlog.lock().expect("backlog poisoned").push(out);
+                if let Some(chunk) = live {
+                    let _ = app.emit(&data_event(&id), chunk);
+                }
             }
         }
 
+        // Recorded as well as emitted, for the same reason the output is: a
+        // shell that fails instantly can be gone before any window exists to
+        // hear about it, and a tab whose process died has to close either way.
+        backlog.lock().expect("backlog poisoned").exited = true;
         let _ = app.emit(&exit_event(&id), ());
     });
 }
@@ -349,4 +493,146 @@ pub fn busy(sessions: &PtySessions, id: &str) -> Option<Busy> {
         .map(|p| Busy {
             process: p.name().to_string_lossy().to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Nothing goes out before someone is listening, and nothing is lost
+    /// waiting. This is the invariant the blank-terminal bug came down to.
+    #[test]
+    fn nothing_is_emitted_before_an_emulator_attaches() {
+        let mut b = Backlog::default();
+
+        // The cursor-position request ConPTY opens with, arriving during
+        // `.setup()` with no webview alive to hear it.
+        assert!(
+            b.push("\u{1b}[6n".to_string()).is_none(),
+            "an unattached session must not emit"
+        );
+
+        b.attached = true;
+        let live = b.push("PS C:\\> ".to_string()).expect("an attached session emits");
+        assert_eq!(live.seq, 1, "sequence numbers count every chunk, not every emission");
+
+        let held: String = b.chunks.iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(
+            held, "\u{1b}[6nPS C:\\> ",
+            "the chunk emitted to nobody is still there for the emulator that arrives late"
+        );
+        assert_eq!(b.next_seq, 2, "attach tells the emulator where the live stream resumes");
+    }
+
+    /// A build left running overnight must not grow this without bound.
+    #[test]
+    fn the_backlog_is_bounded() {
+        let mut b = Backlog::default();
+        let chunk = "x".repeat(8192);
+        for _ in 0..200 {
+            b.push(chunk.clone());
+        }
+
+        assert!(
+            b.bytes <= BACKLOG_BYTES + chunk.len(),
+            "backlog grew to {} bytes against a {BACKLOG_BYTES}-byte budget",
+            b.bytes
+        );
+        assert_eq!(b.next_seq, 200, "trimming drops history, never the sequence");
+    }
+
+    /// The one thing in this module that cannot be verified by reading it: does
+    /// a shell actually start on *this* machine, and do its bytes come back?
+    ///
+    /// Everything above is arrangement — which candidate to try, where to split
+    /// a UTF-8 read, which event name to emit. This is the step that talks to
+    /// the OS, and it is exactly the step that failed silently in the app, since
+    /// `lib.rs` cannot do anything useful with a launch failure except report
+    /// it. So it gets a test that spawns a real shell rather than a fake one.
+    #[test]
+    fn spawns_a_real_shell_and_talks_to_it() {
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("the OS provides a pty");
+
+        let cwd = std::env::temp_dir();
+        let (name, mut child) =
+            spawn_shell(&*pty.slave, "test", &cwd).expect("a usable shell exists on this machine");
+
+        // Same as the real path: the child holds its own copy of the slave end,
+        // and this one has to go or the reader below never sees end-of-file.
+        drop(pty.slave);
+
+        let mut reader = pty.master.try_clone_reader().expect("the master can be read");
+        let mut writer = pty.master.take_writer().expect("the master can be written");
+
+        // Reading a pty blocks, and a shell that never prints anything would
+        // hang the whole test run rather than fail it. So the read happens on
+        // its own thread and this one waits with a deadline — a hang becomes a
+        // failure with a message.
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                if tx.send(String::from_utf8_lossy(&buf[..n]).to_string()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let opening = rx
+            .recv_timeout(Duration::from_secs(15))
+            .unwrap_or_else(|e| panic!("`{name}` said nothing within 15s ({e})"));
+        assert!(!opening.is_empty(), "`{name}` produced an empty first read");
+
+        // On Windows that opening is a question, not output: ConPTY asks where
+        // the cursor is and the shell stays silent until it is answered. An
+        // emulator answers automatically; here it has to be done by hand, and
+        // *not* doing it is precisely the state the app was stuck in.
+        if opening.contains('\u{1b}') {
+            let _ = writer.write_all(b"\x1b[1;1R");
+            let _ = writer.flush();
+        }
+
+        // A shell at a prompt may print nothing further until it is spoken to.
+        // `exit` guarantees output and a process that ends itself.
+        let _ = writer.write_all(b"exit\r\n");
+        let _ = writer.flush();
+
+        let reply = rx
+            .recv_timeout(Duration::from_secs(15))
+            .unwrap_or_else(|e| panic!("`{name}` went silent after the handshake ({e})"));
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(!name.is_empty(), "the spawned shell has a name to put on a tab");
+        assert!(!reply.is_empty(), "`{name}` answered the handshake with nothing");
+    }
+
+    /// `HELVE_SHELL` is the documented one-line override, and a typo'd path in
+    /// it must not fall back to PowerShell and pretend it worked.
+    #[test]
+    fn an_explicit_shell_is_the_only_candidate() {
+        // Not `std::env::set_var` — tests share a process, and mutating the
+        // environment would race with the test above resolving its own shell.
+        // The candidate list is pure apart from that one read, so asserting on
+        // the default list is the honest half of this.
+        let names: Vec<String> = shell_candidates().into_iter().map(|(n, _)| n).collect();
+        assert!(!names.is_empty(), "some shell is always worth trying");
+
+        #[cfg(windows)]
+        assert_eq!(names.last().map(String::as_str), Some("cmd"), "cmd is the last resort");
+    }
 }

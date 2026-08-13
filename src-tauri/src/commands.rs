@@ -236,6 +236,21 @@ pub fn terminal_write(ptys: State<'_, PtySessions>, id: String, data: String) {
     ptys.write(&id, &data);
 }
 
+/// An emulator has mounted and is listening. Answers with everything the shell
+/// has said so far and where the live stream picks up.
+///
+/// Called once per emulator, right after its listener is registered, and it is
+/// what makes a terminal work at all rather than an optimisation. A pty starts
+/// talking the instant it is spawned — on Windows, by asking the terminal where
+/// the cursor is and then waiting for the answer before printing anything else
+/// — and Tauri events have no replay. Without this call, the launch terminal's
+/// opening question is emitted into an empty room and the shell waits for a
+/// reply that can never come.
+#[tauri::command]
+pub fn terminal_attach(ptys: State<'_, PtySessions>, id: String) -> Option<pty::Attachment> {
+    ptys.attach(&id)
+}
+
 /// The emulator has measured itself. See `PtySessions::resize` for why this is
 /// not cosmetic.
 #[tauri::command]

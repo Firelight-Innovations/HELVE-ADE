@@ -36,6 +36,19 @@ export const terminalControl: TerminalControl = {
   },
 };
 
+/** Mirrors `pty::Chunk` — one emission on `pty:data:<id>`. */
+interface PtyChunk {
+  seq: number;
+  data: string;
+}
+
+/** Mirrors `pty::Attachment` — what `terminal_attach` answers with. */
+interface PtyAttachment {
+  text: string;
+  nextSeq: number;
+  exited: boolean;
+}
+
 export const terminalTransport: TerminalTransport = {
   attach(id, onData) {
     if (isFake()) return fakeTransport.attach(id, onData);
@@ -48,12 +61,46 @@ export const terminalTransport: TerminalTransport = {
     let live = true;
     const unlisteners: (() => void)[] = [];
 
+    // Nothing may reach the emulator until the backlog has, or history would
+    // arrive after the present. Live events that land in the meantime wait
+    // here; `cursor` is the sequence number the backlog ends at, so a chunk the
+    // backlog already contains — possible when re-attaching to a session that
+    // was already streaming to another window — is dropped rather than shown
+    // twice.
+    let ready = false;
+    let cursor = 0;
+    const queued: PtyChunk[] = [];
+
     void (async () => {
-      const stop = await listen<string>(`pty:data:${id}`, (e) => {
-        if (live) onData(e.payload);
+      const stop = await listen<PtyChunk>(`pty:data:${id}`, (e) => {
+        if (!live) return;
+        if (!ready) queued.push(e.payload);
+        else if (e.payload.seq >= cursor) onData(e.payload.data);
       });
-      if (live) unlisteners.push(stop);
-      else stop();
+      if (!live) return stop();
+      unlisteners.push(stop);
+
+      // Only now — with a listener actually registered — does Rust start
+      // emitting. Everything the shell said before this point comes back in
+      // one piece, which for the launch terminal is the cursor-position
+      // request the shell is sitting and waiting on. Writing it into the
+      // emulator is what produces the reply that unblocks it.
+      const caught = await invoke<PtyAttachment | null>("terminal_attach", { id });
+      if (!live) return;
+      if (!caught) return; // the tab closed while this view was mounting.
+
+      if (caught.text) onData(caught.text);
+      cursor = caught.nextSeq;
+      ready = true;
+      for (const chunk of queued) {
+        if (chunk.seq >= cursor) onData(chunk.data);
+      }
+      queued.length = 0;
+
+      // The shell was already gone before anyone attached — a bad `HELVE_SHELL`
+      // or a crash on startup. `pty:exit` fired into the same empty room the
+      // output did, so the reap has to happen here instead.
+      if (caught.exited) terminalControl.close(id);
     })();
 
     void (async () => {

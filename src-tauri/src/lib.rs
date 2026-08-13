@@ -76,18 +76,25 @@ pub fn run() {
             // The launch terminal. Opened here rather than baked into
             // `ShellState::default` because a session must not exist before the
             // shell behind it does — and spawning a process is exactly the kind
-            // of work a `Default` impl has no business doing. A failure is
-            // swallowed on purpose: a machine with no usable shell should still
-            // get an orchestrator, with an empty panel and a working "+".
+            // of work a `Default` impl has no business doing.
+            //
+            // A failure is not fatal: a machine with no usable shell should
+            // still get an orchestrator, with an empty panel and a working "+".
+            // It is reported rather than swallowed, though — this is the one
+            // step in a terminal's life that can fail for reasons no amount of
+            // reading the code will reveal, and a silently empty panel gives
+            // whoever hits it nothing to go on.
             let handle = app.handle().clone();
-            let _ = commands::open_terminal(
+            if let Err(e) = commands::open_terminal(
                 &handle,
                 &handle.state::<ShellState>(),
                 &handle.state::<PtySessions>(),
                 "main",
                 80,
                 24,
-            );
+            ) {
+                eprintln!("helve: could not open the launch terminal: {e}");
+            }
 
             Ok(())
         })
@@ -104,6 +111,7 @@ pub fn run() {
             commands::window_at_cursor,
             commands::create_terminal,
             commands::close_terminal,
+            commands::terminal_attach,
             commands::terminal_write,
             commands::terminal_resize,
             commands::terminal_busy,
