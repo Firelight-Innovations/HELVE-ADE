@@ -67,6 +67,45 @@ export function revealTool(id: string): Promise<void> {
 }
 
 /**
+ * Mirrors `apps::AppInfo` — one first-party app, as the switcher needs it.
+ *
+ * Note what an app has that a tool doesn't, and vice versa. There is a `url`
+ * here because an app's frontend is built by this repo and its address is known
+ * without asking the filesystem anything; a tool's has to be resolved on demand
+ * (`tool_frontend`) because its dev server can come and go. There is no
+ * `status` here because an app ships in the binary — it cannot be missing, and
+ * it cannot disagree with a pinned version it doesn't have.
+ */
+export interface AppInfo {
+  id: string;
+  name: string;
+  description: string;
+  /** Root-relative, so it resolves against whatever origin the shell is on. */
+  url: string;
+}
+
+/**
+ * Every app this build ships. Compiled into the binary, so unlike `loadStack`
+ * this answers the same thing every time and is worth asking exactly once.
+ */
+export function listApps(): Promise<AppInfo[]> {
+  return invoke<AppInfo[]>("list_apps");
+}
+
+/**
+ * Forward one `invoke` from an app's iframe to that app's Rust half.
+ *
+ * Called by `ToolWindow`, which is the only thing that knows which mounted
+ * frame a message came from, and never by an app itself — an app calls
+ * `invoke` from `@helve/bridge` and the shell relays it here. A rejection
+ * carries `{ code, message, data? }`, the JSON-RPC error object the bridge
+ * turns back into a `HelveRpcError`.
+ */
+export function appCall(id: string, method: string, params?: unknown): Promise<unknown> {
+  return invoke<unknown>("app_call", { id, method, params });
+}
+
+/**
  * Mirrors `boot::BootStatus`.
  *
  * Same internally tagged shape as `ToolStatus` above, but keyed on `phase`

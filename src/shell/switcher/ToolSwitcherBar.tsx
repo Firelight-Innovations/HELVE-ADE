@@ -8,7 +8,19 @@ import HealthPopover, { type UnhealthyTool } from "./HealthPopover";
 import "./switcher.css";
 
 export interface ToolSwitcherBarProps {
+  /** What the bar draws tabs for. */
   tools: ToolPresentation[];
+  /**
+   * What the warning badge and its health list report on, when that is not the
+   * same set as the tabs. Defaults to `tools`.
+   *
+   * The two came apart when the tools stopped being docked: nothing that can
+   * mount in this build is ever unhealthy — an app cannot be missing or out of
+   * date — so a badge reading only the tabs would have gone quiet and taken
+   * the stack's one health surface with it. What a window *shows* and what it
+   * *reports on* are different questions, and this is the bar admitting that.
+   */
+  healthOf?: ToolPresentation[];
   activeToolId: string | null;
   onSelect: (id: string) => void;
   onRescan: () => void;
@@ -34,6 +46,7 @@ function isUnhealthy(tool: ToolPresentation): tool is UnhealthyTool {
  */
 export default function ToolSwitcherBar({
   tools,
+  healthOf,
   activeToolId,
   onSelect,
   onRescan,
@@ -43,7 +56,7 @@ export default function ToolSwitcherBar({
 }: ToolSwitcherBarProps) {
   const [healthOpen, setHealthOpen] = useState(false);
   const badgeWrapRef = useRef<HTMLDivElement>(null);
-  const unhealthy = tools.filter(isUnhealthy);
+  const unhealthy = (healthOf ?? tools).filter(isUnhealthy);
 
   // Dismiss like every other popover in the shell: a click outside, or Escape.
   useEffect(() => {

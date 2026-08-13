@@ -129,62 +129,57 @@
       }
 
       /* `object-fit: cover` rather than shipping the art pre-cropped: the
-         source is 1920x1080 (16:9 ≈ 1.78) and this box is roughly 1.73:1 at
-         the window's default size, close enough that cover only trims a
-         sliver off the sides — but window size is the one thing here that
-         is not fixed by this file, so the crop has to be computed, not
-         baked in.
+         source is 1920x805 (≈2.39:1) and this box is roughly 1.73:1 at the
+         window's default size, so cover trims a little over an eighth off
+         each side — and window size is the one thing here that is not
+         fixed by this file, so that crop has to be computed, not baked in.
 
-         `height: 120%` + `object-position: top` rather than a plain 100%
-         box: the source art's own linework stops at roughly y=820 of its
-         1080-tall canvas — the bottom ~24% of the file is flat, undrawn
-         background, not a fade (checked by rendering the source with its
-         `floor`/`vig`/`glow` overlay rects stripped out entirely: the dead
-         band is identical, so it is the line geometry itself that ends
-         there, not something an overlay is hiding). A 100%-tall box shows
-         all 1080 rows, which stretches that dead band across the bottom of
-         the content area as a wide strip of nothing before the bar even
-         starts — that strip *is* the "gap" this has repeatedly come back
-         to. Overscaling the box to 120% and anchoring to the top instead
-         crops off source rows ~900-1080 — comfortably past where the last
-         visible line is, into rows already flat background colour — so
-         `.splash__content`'s `overflow: hidden` clips only dead pixels, and
-         what reaches `.splash__field-seam` below is real (if faint) art
-         instead of a pre-emptied canvas. */
+         A plain 100%-tall box is all this needs. It used to be
+         `height: 120%` + `object-position: top`, and that was a workaround
+         for the asset rather than a layout choice: the source was a
+         1080-tall canvas whose linework stopped dead at y≈815, so its
+         bottom ~24% was flat, undrawn background (not a fade — rendering
+         the source with its overlay rects stripped out left the same dead
+         band, so it was the line geometry itself that ended there). A
+         full-height box stretched that band across the bottom of the
+         content area as a wide strip of nothing before the bar even
+         started — that strip *was* the "gap" this kept coming back to, and
+         overscaling to 120% only pushed it out of frame. The asset is
+         cropped to where its art actually ends now, so there is nothing
+         left to hide: cover fills this box with drawn field top to bottom,
+         and `object-position` only ever mattered for a vertical crop that
+         no longer happens. */
       .splash__field {
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
-        height: 120%;
+        height: 100%;
         object-fit: cover;
-        object-position: top;
         display: block;
       }
 
-      /* The art already fades to near-black on its own — that gradient is
-         baked into the source, not added here — but it fades to `--bg`
-         (#14161a), one step darker than `.splash__bar` sitting right below
-         it (`--surface-2`, #22262e). Against a flat background that gap is
-         invisible; against a busy field of lines it reads as a seam, a
-         visible edge where the art stops rather than a continuation into
-         the bar. This does not touch or replace that fade — it only carries
-         the last stretch of it the rest of the way, into the exact colour
-         the bar already is, so the two meet instead of meeting a step.
+      /* Where the art meets `.splash__bar`. The field's own ground is `--bg`
+         (#14161a), one step darker than the bar right below it
+         (`--surface-2`, #22262e), and its linework now runs live all the
+         way to the bottom edge — since the asset was cropped to where its
+         art ends, nothing thins out on the way down for free any more.
+         Left alone that boundary reads as a seam: a colour step *and* a row
+         of lines stopping mid-stroke, right where the eye is already
+         looking for the edge of the panel. This carries the art the last
+         stretch into the exact colour the bar already is, so the two meet
+         instead of meeting a step.
 
-         First attempt at this was a flat 28px linear fade, and it traded one
-         visible seam for a fainter but still-visible one: the source's own
-         fade covers roughly the bottom 145px at this box's size and slows
-         down as it goes, so a short *linear* patch grafted onto the end of a
-         long *eased* one is still a kink — a sudden change in fade *rate*
-         right at 28px from the bottom, which the eye catches as a line even
-         though the colours themselves line up exactly at both ends of it
-         (Mach banding). Matching the source's easing, not just its
-         endpoints, is what actually removes it: this stays flat through its
-         first third — doing nothing, on top of a stretch of the source that
-         is already doing very little — and backloads the actual blending
-         into its final third, so the *rate* of darkening changes gradually
-         going in, not at a hard boundary. */
+         The easing is the part worth keeping. A flat 28px linear fade was
+         tried first and traded one visible seam for a fainter one: over a
+         busy field, a short fade concentrates the whole change into a thin
+         strip, and the sudden change in fade *rate* at its top edge is
+         itself a line the eye catches even when the colours match exactly
+         at both ends of it (Mach banding). Spreading the fade over 110px
+         and backloading it fixes that — it stays flat through its first
+         third, doing nothing at all, then puts the actual blending into its
+         final third, so the *rate* of darkening comes on gradually rather
+         than switching on at a boundary. */
       .splash__field-seam {
         position: absolute;
         left: 0;

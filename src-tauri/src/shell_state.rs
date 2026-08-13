@@ -104,13 +104,23 @@ impl Default for ShellState {
         Self {
             inner: RwLock::new(ShellSnapshot {
                 // The main window exists before anything is discovered, and
-                // starts holding nothing. Which tools dock into it is decided
-                // by the frontend once the stack snapshot arrives, not here —
-                // the backend has no opinion about which tool you want open.
+                // starts holding nothing — which tools dock into it is decided
+                // by the frontend once the stack snapshot arrives.
+                //
+                // The *active* tool is the one exception, and it is one the
+                // backend is entitled to have an opinion about. Every other id
+                // names something that might not be on this machine, so naming
+                // one here would be guessing; `home` is compiled into this
+                // binary (see `apps::REGISTRY`) and cannot be absent. And HELVE
+                // opening on Home is a decision about the product rather than
+                // an accident of whichever tab happened to seed first, so it is
+                // stated where it can't drift — `set_docked` preserves an active
+                // id that is still in the list, so the seeding pass leaves it
+                // alone.
                 windows: vec![WindowPlacement {
                     label: "main".to_string(),
                     tool_ids: Vec::new(),
-                    active_tool_id: None,
+                    active_tool_id: Some("home".to_string()),
                 }],
                 // No terminals until one has a shell behind it. This used to
                 // start with a hardcoded "bash" to match the handoff's default

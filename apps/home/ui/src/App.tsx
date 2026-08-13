@@ -1,0 +1,344 @@
+import { useCallback, useEffect, useState } from "react";
+import { HelveRpcError, invoke } from "@helve/bridge";
+import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
+import "./home.css";
+
+/**
+ * One project, as `home/state` reports it.
+ *
+ * Declared here rather than imported from the orchestrator's `src/bindings.ts`,
+ * for the same reason `icons.tsx` draws its own glyphs: an app's only coupling to
+ * its host is `@helve/bridge` and the shape of what crosses it. Only what this
+ * pane actually draws is described — there is no `format` below, because Home
+ * does not yet have anything to say about a project written by a newer HELVE.
+ */
+interface Project {
+  name: string;
+  path: string;
+  id: string | null;
+  /** Whether a `<name>.helve` manifest is there. `false` is a plain folder. */
+  initialized: boolean;
+  /** Whether the folder is still on disk. A recent can outlive its project. */
+  exists: boolean;
+  /** Milliseconds since the Unix epoch. */
+  lastOpened: number | null;
+  modified: number | null;
+}
+
+interface Projects {
+  open: Project | null;
+  recents: Project[];
+}
+
+/** `home/state` is `Projects` plus the stack's version, for the heading. */
+type State = Projects & { version?: string | null };
+
+/**
+ * The three ways a session starts.
+ *
+ * A table rather than three copies of the same row markup, because the only
+ * thing that differs between them is the icon, the words and the method — and
+ * the moment that stops being true is the moment one of them quietly grows a
+ * different hover, a different focus ring, or a different disabled state.
+ */
+const START: {
+  method: string;
+  label: string;
+  icon: typeof FolderPlus;
+  /** Set when the action cannot be taken yet, and says why. */
+  unavailable?: string;
+}[] = [
+  { method: "home/new-project", label: "New Project", icon: FolderPlus },
+  { method: "home/open-project", label: "Open Project", icon: FolderOpen },
+  {
+    method: "home/clone-project",
+    label: "Clone Project",
+    icon: GitBranch,
+    unavailable: "Not built yet — clone the repository yourself, then use Open Project",
+  },
+];
+
+/**
+ * The right-hand column, standing in for what will go there.
+ *
+ * Drawn rather than left blank, and inert rather than hidden: the column is part
+ * of the layout being built, and an empty half-screen would read as a bug in a
+ * way that three cards marked "soon" does not. Nothing here navigates anywhere —
+ * a card that looked live and did nothing would be worse than one that says it
+ * isn't.
+ */
+const TUTORIALS = [
+  {
+    title: "Your first project",
+    blurb: "What a HELVE project is, what lands in .helve/, and how to open one.",
+  },
+  {
+    title: "The stack, end to end",
+    blurb: "What Engine, Forger, Journeyman and the rest of the stack are each for.",
+  },
+  {
+    title: "Working with agents",
+    blurb: "Running an agent against a project, and reading the trace it leaves.",
+  },
+];
+
+export default function App() {
+  const [state, setState] = useState<State | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /**
+   * Which method is in flight, or `null`. A boolean would do for disabling, but
+   * not for the label — New and Open both open a *native folder picker*, which
+   * blocks until the user answers it. On the second monitor, or behind the
+   * window, that is a UI that has silently stopped responding unless it says
+   * what it is waiting for.
+   */
+  const [pending, setPending] = useState<string | null>(null);
+
+  const run = useCallback(
+    (method: string, params?: Record<string, unknown>) => {
+      // One picker at a time. Two would fight over the same parent window, and
+      // whichever answered second would act on a stale list.
+      if (pending) return;
+
+      setPending(method);
+      void invoke<Projects>(method, params)
+        .then((next) => {
+          // `version` comes only from `home/state`; a mutator answers with the
+          // projects alone. Carried forward rather than dropped so `state` stays
+          // a faithful copy of what the host last reported — nothing on this
+          // page draws it today, and a mutator's reply is not evidence that the
+          // stack under it changed version.
+          setState((previous) => ({ ...next, version: previous?.version ?? null }));
+          setError(null);
+        })
+        .catch((e: unknown) => setError(describe(e)))
+        .finally(() => setPending(null));
+    },
+    [pending],
+  );
+
+  useEffect(() => {
+    let live = true;
+
+    void invoke<State>("home/state")
+      .then((next) => {
+        if (live) {
+          setState(next);
+          setError(null);
+        }
+      })
+      .catch((e: unknown) => {
+        if (live) setError(describe(e));
+      });
+
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const open = state?.open ?? null;
+  const recents = state?.recents ?? [];
+
+  return (
+    <div className="home">
+      <div className="home__inner">
+        <header className="home__hero">
+          {/*
+           * The lockup from section 03 of the brand packet: the mark, then the
+           * name. Every measurement in it — the mark's own size included — is a
+           * ratio of one number, so it lives in `home.css` rather than being
+           * passed in here; `Mark` takes the size from the CSS. The word is set
+           * in mixed case and uppercased by the stylesheet, exactly as the
+           * packet sets it, which also keeps a screen reader saying "Helve"
+           * rather than spelling out five letters.
+           */}
+          <h1 className="home__lockup">
+            <Mark className="home__lockup-mark" />
+            <span className="home__lockup-word">Helve</span>
+          </h1>
+          <p className="home__tagline">The Veistra custom game development stack</p>
+        </header>
+
+        {open && (
+          <div className="home__open">
+            <span className="home__open-label">Open</span>
+            <span className="home__open-name">{open.name}</span>
+            <span className="home__open-path" title={open.path}>
+              {open.path}
+            </span>
+            {!open.initialized && (
+              <button
+                type="button"
+                className="home__ghost"
+                disabled={pending !== null}
+                onClick={() => run("home/initialize-project", { path: open.path })}
+              >
+                Set up as a HELVE project
+              </button>
+            )}
+            <button
+              type="button"
+              className="home__ghost"
+              disabled={pending !== null}
+              onClick={() => run("home/close-project")}
+            >
+              Close
+            </button>
+          </div>
+        )}
+
+        {error && <p className="home__error">{error}</p>}
+
+        <div className="home__columns">
+          <section className="home__column">
+            <h2 className="home__heading">Start</h2>
+            <ul className="home__actions">
+              {START.map(({ method, label, icon: Icon, unavailable }) => (
+                <li key={method}>
+                  <button
+                    type="button"
+                    className="home__action"
+                    // A clone button that opened a dialog to say "not yet" would
+                    // be a worse answer than one that never suggested it could.
+                    disabled={unavailable !== undefined || pending !== null}
+                    title={unavailable}
+                    onClick={() => run(method)}
+                  >
+                    <Icon size={18} className="home__action-icon" />
+                    <span>{label}</span>
+                    {pending === method && <span className="home__waiting">choose a folder…</span>}
+                    {unavailable && <span className="home__soon">soon</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <h2 className="home__heading home__heading--spaced">Recent</h2>
+            {recents.length === 0 ? (
+              <p className="home__empty">
+                {state === null && !error
+                  ? "Reading…"
+                  : "Nothing yet. Open a folder and it will be waiting here next time."}
+              </p>
+            ) : (
+              <ul className="home__recents">
+                {recents.map((project) => (
+                  <Recent
+                    key={project.path}
+                    project={project}
+                    busy={pending !== null}
+                    onOpen={() => run("home/open-recent", { path: project.path })}
+                    onForget={() => run("home/forget-recent", { path: project.path })}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="home__column">
+            <h2 className="home__heading">Tutorials</h2>
+            <ul className="home__cards">
+              {TUTORIALS.map((tutorial) => (
+                <li key={tutorial.title} className="home__card" aria-disabled="true">
+                  <span className="home__card-mark">
+                    <Book size={16} />
+                  </span>
+                  <span className="home__card-text">
+                    <span className="home__card-title">{tutorial.title}</span>
+                    <span className="home__card-blurb">{tutorial.blurb}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="home__empty">Tutorials aren&apos;t written yet.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Recent({
+  project,
+  busy,
+  onOpen,
+  onForget,
+}: {
+  project: Project;
+  busy: boolean;
+  onOpen: () => void;
+  onForget: () => void;
+}) {
+  const when = since(project.lastOpened);
+
+  return (
+    <li className={`home__recent${project.exists ? "" : " home__recent--gone"}`}>
+      <button
+        type="button"
+        className="home__recent-open"
+        // A folder that isn't there cannot be opened, and the row says so rather
+        // than failing on click. Forget still works — that is the whole action
+        // left that makes sense for it.
+        disabled={busy || !project.exists}
+        onClick={onOpen}
+        title={project.path}
+      >
+        <span className="home__recent-name">{project.name}</span>
+        <span className="home__recent-path">{project.path}</span>
+        <span className="home__recent-meta">
+          {!project.exists ? "missing" : !project.initialized ? "not set up" : when}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="home__forget"
+        disabled={busy}
+        onClick={onForget}
+        aria-label={`Remove ${project.name} from the recent list`}
+        title="Remove from this list — nothing is deleted"
+      >
+        <Close size={14} />
+      </button>
+    </li>
+  );
+}
+
+/**
+ * "2 hours ago", from a timestamp.
+ *
+ * `Intl.RelativeTimeFormat` rather than a hand-rolled ladder, because it is
+ * already in the webview and already knows the plural rules. The units run
+ * largest to smallest and the first one the gap clears wins, which is what makes
+ * three days read as "3 days ago" rather than "72 hours ago".
+ */
+const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 31_536_000_000],
+  ["month", 2_592_000_000],
+  ["week", 604_800_000],
+  ["day", 86_400_000],
+  ["hour", 3_600_000],
+  ["minute", 60_000],
+];
+
+function since(at: number | null): string {
+  if (!at) return "";
+
+  const delta = at - Date.now();
+  for (const [unit, size] of UNITS) {
+    if (Math.abs(delta) >= size) return RELATIVE.format(Math.round(delta / size), unit);
+  }
+  return "just now";
+}
+
+/**
+ * A `HelveRpcError` carries the JSON-RPC code its host produced it from, which
+ * is the difference between "this build has no such method" and "the call never
+ * reached a host at all". Anything else is shown as-is rather than guessed at.
+ */
+function describe(error: unknown): string {
+  if (error instanceof HelveRpcError) return `[${error.code}] ${error.message}`;
+  if (error instanceof Error) return error.message;
+  return String(error);
+}

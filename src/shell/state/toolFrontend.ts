@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { isFake, fakeToolPage } from "./fakeBackend";
+import { isFake, fakeApps, fakeToolPage } from "./fakeBackend";
 
 /** Mirrors `tool_frontend::ToolFrontend`. */
 export type ToolFrontend =
@@ -66,6 +66,14 @@ export function useToolFrontend(toolId: string | null): ToolFrontend | null {
  * be measured against a window that never mounts one.
  */
 function fakeFrontend(toolId: string): ToolFrontend {
+  // An app resolves to its real entry point here, not to a fixture. Vite serves
+  // those files in a plain browser, so this is the same URL and the same page
+  // the packaged app mounts — the only thing missing is the Rust half behind
+  // its `invoke` calls. Checked before the tool branches for the same reason
+  // `tool_frontend::resolve` checks apps first: an app cannot be missing.
+  const app = fakeApps().find((a) => a.id === toolId);
+  if (app) return { state: "mountable", url: app.url };
+
   if (toolId === "forger" || toolId === "journeyman") {
     return { state: "mountable", url: fakeToolPage(toolId) };
   }

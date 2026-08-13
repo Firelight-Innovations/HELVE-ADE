@@ -20,10 +20,38 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 
+# The native folder picker behind Home's New/Open Project.
+#
+# `rfd` directly rather than `tauri-plugin-dialog`, which is a thin wrapper over
+# this same crate. Two reasons, and the second one is not a preference:
+#
+#  1. That plugin exists to expose dialogs to *frontend JavaScript*, gated by an
+#     entry in `capabilities/`. We call the picker only from Rust (apps/home.rs),
+#     and handing every tool iframe the ability to open native dialogs is not
+#     something anything has asked for.
+#  2. It hard-enables `rfd/common-controls-v6` — not behind a feature, so it
+#     cannot be turned off. That pulls in `TaskDialogIndirect`, which lives only
+#     in the side-by-side ComCtl32 v6 and so requires a Windows application
+#     manifest. `tauri-build` embeds one in the app binary, but nothing embeds
+#     one in a *test* binary, so every `cargo test` in this crate died at load
+#     with STATUS_ENTRYPOINT_NOT_FOUND before it ran a line.
+#
+# We never show a message dialog, only `pick_folder`, which goes through
+# IFileOpenDialog and needs none of that. Default features off: the rest are
+# Linux portal and async-runtime plumbing this uses none of.
+rfd = { version = "0.16", default-features = false }
+
 # Reading `helve-tool.toml` out of a tool's checkout — where its frontend's dev
 # URL and built `dist` directory are declared. Shared with every tool repo, so
 # the orchestrator and the tools cannot disagree about the manifest's shape.
 helve-tool-manifest = { path = "../crates/helve-tool-manifest" }
+
+# The wire types of transport A. The orchestrator is not spawning tool cores yet,
+# but `RpcError` is already the error shape a frontend receives: an app's Rust
+# half (`src/apps/`) fails with one, and it crosses to the iframe unchanged. Two
+# error vocabularies for one `invoke` — one for apps, one for tools — is exactly
+# the drift this crate exists to prevent.
+helve-rpc = { path = "../crates/helve-rpc" }
 
 # Serialization. `derive` is the feature that enables `#[derive(Serialize)]`.
 serde = { version = "1", features = ["derive"] }

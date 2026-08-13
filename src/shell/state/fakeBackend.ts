@@ -17,7 +17,7 @@
  * in the shipped app reads it: `isFake()` is false unless the query is present,
  * and a packaged build has no way to set it.
  */
-import type { ResolvedTool, StackSnapshot } from "../../bindings";
+import type { AppInfo, ResolvedTool, StackSnapshot } from "../../bindings";
 import type { ShellSnapshot, TerminalSessionState } from "./shellState";
 
 let cached: boolean | null = null;
@@ -91,6 +91,151 @@ export function fakeStack(): StackSnapshot {
       tool("wright", "Wright", "Audio authoring and composition tooling.", { state: "missing" }),
     ],
   };
+}
+
+/**
+ * The apps `apps::REGISTRY` compiles in, restated.
+ *
+ * Unlike the tool fixture above, these are not stand-ins. The URLs are the real
+ * ones, they point at the real app entry points, and Vite serves them in a plain
+ * browser exactly as Tauri's asset host does in the packaged app — so `?fake=1`
+ * mounts the actual Home and Files frontends and runs their actual handshake.
+ * Only their `invoke` calls have no backend to reach; `callApp` answers those
+ * with an error, and the apps render their failure path.
+ *
+ * This list is the one thing here that can drift from Rust without anything
+ * noticing, since it is a copy of a table in another language. Kept to id, name
+ * and description on purpose — the smallest thing the switcher needs — so that
+ * when it does drift, what is stale is a label rather than behaviour.
+ */
+export function fakeApps(): AppInfo[] {
+  return [
+    {
+      id: "home",
+      name: "Home",
+      description: "Where a session starts — the stack at a glance.",
+      url: "/apps/home/ui/index.html",
+    },
+    {
+      id: "files",
+      name: "Files",
+      description: "Browse and read the files of the open checkout.",
+      url: "/apps/files/ui/index.html",
+    },
+  ];
+}
+
+// --- the fake project store --------------------------------------------------
+//
+// Home is the one app worth answering under `?fake=1`. It is what the shell
+// opens on, its layout is the thing most worth measuring in a browser, and every
+// state it can be in — a project open, none open, a recent whose folder has gone
+// — is a *layout*, which is exactly what this fixture exists to make reachable.
+//
+// Files is deliberately left rejecting. Answering it would mean faking a
+// filesystem, and a fake directory tree is a much larger lie than a fake list of
+// four projects: it would have to invent file sizes, nesting, and read errors,
+// none of which the pane's geometry actually depends on.
+//
+// The three actions that open a *native folder picker* are not faked either.
+// There is no picker in a browser, and inventing a folder the user did not
+// choose would make this fixture disagree with the backend in the direction of
+// looking healthier — the exact failure that hid the empty switcher bar. They
+// reject, and Home draws the error path it would draw for any other refusal.
+
+interface FakeProject {
+  name: string;
+  path: string;
+  id: string | null;
+  initialized: boolean;
+  exists: boolean;
+  lastOpened: number | null;
+  modified: number | null;
+}
+
+const HOUR = 3_600_000;
+
+let fakeProjects: FakeProject[] = [
+  {
+    name: "Torn Apart",
+    path: "C:\\Users\\bjsea\\Documents\\games\\Torn Apart",
+    id: "0000000000000001a1b2c3d4e5f60001",
+    initialized: true,
+    exists: true,
+    lastOpened: Date.now() - 2 * HOUR,
+    modified: Date.now() - HOUR,
+  },
+  {
+    name: "ACRE Turbulence",
+    path: "C:\\Users\\bjsea\\Documents\\games\\ACRE Turbulence",
+    id: "0000000000000002a1b2c3d4e5f60002",
+    initialized: true,
+    exists: true,
+    lastOpened: Date.now() - 3 * 24 * HOUR,
+    modified: Date.now() - 4 * 24 * HOUR,
+  },
+  // A folder HELVE was pointed at that was never set up — the "adopt" path.
+  {
+    name: "prototype-scratch",
+    path: "C:\\Users\\bjsea\\Documents\\games\\prototype-scratch",
+    id: null,
+    initialized: false,
+    exists: true,
+    lastOpened: Date.now() - 9 * 24 * HOUR,
+    modified: Date.now() - 9 * 24 * HOUR,
+  },
+  // A project whose folder has since moved or been deleted.
+  {
+    name: "Old Jam Entry",
+    path: "D:\\jam\\Old Jam Entry",
+    id: "0000000000000004a1b2c3d4e5f60004",
+    initialized: false,
+    exists: false,
+    lastOpened: Date.now() - 200 * 24 * HOUR,
+    modified: null,
+  },
+];
+
+let fakeOpen: string | null = null;
+
+function fakeProjectState() {
+  return {
+    open: fakeProjects.find((p) => p.path === fakeOpen) ?? null,
+    recents: fakeProjects,
+  };
+}
+
+/**
+ * Answer one app `invoke` from a fixture, or `undefined` to let the caller
+ * refuse it as it always has. See the note above for what is answered and why
+ * the rest is not.
+ */
+export function fakeAppCall(method: string, params?: unknown): unknown | undefined {
+  const path = (params as { path?: string } | undefined)?.path;
+
+  switch (method) {
+    case "home/state":
+      return { ...fakeProjectState(), version: "0.1.0" };
+
+    case "home/open-recent":
+      if (fakeProjects.some((p) => p.path === path && p.exists)) fakeOpen = path ?? null;
+      return fakeProjectState();
+
+    case "home/initialize-project":
+      fakeProjects = fakeProjects.map((p) => (p.path === path ? { ...p, initialized: true } : p));
+      return fakeProjectState();
+
+    case "home/forget-recent":
+      fakeProjects = fakeProjects.filter((p) => p.path !== path);
+      return fakeProjectState();
+
+    case "home/close-project":
+      fakeOpen = null;
+      return fakeProjectState();
+
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -176,8 +321,23 @@ function fakeSnapshot(): ShellSnapshot {
     windows: [
       {
         label: "main",
-        toolIds: ["forger", "journeyman", "turner", "scrivener", "quickener", "wright"],
-        activeToolId: "forger",
+        // The apps, and only the apps — what `WindowRoot`'s seeding effect
+        // docks against the real backend now that the tools are held back
+        // until the broker exists.
+        //
+        // This list being hardcoded is what hid a real bug for as long as it
+        // existed: `ShellState::default` docks *nothing*, and nothing on the
+        // frontend ever docked anything either, so the packaged app opened with
+        // an empty switcher bar while `?fake=1` showed a full one. A fixture
+        // that disagrees with the backend in the direction of looking healthier
+        // is worse than no fixture. It stays hardcoded — a fake of a broadcast
+        // has to say something — but it now says what the real path produces.
+        //
+        // The six tools stay in `fakeStack()` regardless, two of them unhealthy:
+        // they are what the warning badge reports on, and dropping them here
+        // would leave that fixture's whole reason for existing untestable.
+        toolIds: ["home", "files"],
+        activeToolId: "home",
       },
     ],
     terminals: fakeTerminals,

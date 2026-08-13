@@ -8,10 +8,12 @@
 //! JS by that same snake_case string, but their *arguments* are converted to
 //! camelCase. The typed wrappers in `src/bindings.ts` hide that asymmetry.
 
+use crate::apps;
 use crate::boot;
 use crate::discovery::{self, StackSnapshot};
 use crate::error::{AppError, Result};
 use crate::manifest::{self, Manifest};
+use crate::project;
 use crate::pty::{self, PtySessions};
 use crate::shell_state::{EngineState, ShellSnapshot, ShellState};
 use crate::state::AppState;
@@ -208,16 +210,22 @@ pub fn open_terminal(
     Ok(id)
 }
 
-/// Where a new terminal opens: the stack root, where helve.toml lives.
+/// Where a new terminal opens: the open project, or the stack root when nothing
+/// is open.
 ///
-/// Not the process's working directory, which `tauri dev` sets to `src-tauri/` —
-/// nobody's idea of where a terminal should start. The fallbacks only matter
-/// when there is no manifest at all, which is a broken install rather than a
-/// state worth failing a terminal over.
+/// The project comes first because a terminal is opened to do something to the
+/// thing you are working on, and until there is a project that thing is the
+/// stack itself. Not the process's working directory, which `tauri dev` sets to
+/// `src-tauri/` — nobody's idea of where a terminal should start. The last two
+/// fallbacks only matter when there is no manifest at all, which is a broken
+/// install rather than a state worth failing a terminal over.
 fn terminal_cwd(app: &tauri::AppHandle) -> PathBuf {
-    manifest::locate(app)
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
+    project::open_path(app)
+        .or_else(|| {
+            manifest::locate(app)
+                .ok()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+        })
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
 }
@@ -333,6 +341,64 @@ pub fn set_terminal_title(app: tauri::AppHandle, shell: State<'_, ShellState>, i
 #[tauri::command]
 pub fn tool_frontend(app: tauri::AppHandle, id: String) -> Result<tool_frontend::ToolFrontend> {
     tool_frontend::resolve(&app, &id)
+}
+
+/// Every first-party app this build ships, for the switcher bar.
+///
+/// Not part of the stack snapshot, and not refreshable: apps are compiled in
+/// (see `apps::REGISTRY`), so the answer cannot change while the app is running
+/// the way a tool's checkout can. The frontend asks once.
+#[tauri::command]
+pub fn list_apps() -> Vec<apps::AppInfo> {
+    apps::list()
+}
+
+/// One `invoke` from an app's frontend, routed to that app's Rust half.
+///
+/// This is the shell end of transport B for apps. The iframe posts a `request`
+/// message, `ToolWindow` forwards it here, and the reply goes back as a
+/// `response` — so an app's UI calls `invoke("files/list")` through
+/// `@helve/bridge` exactly as a tool's UI would, and never learns that its host
+/// answered in-process rather than over a pipe.
+///
+/// The error type is `RpcError`, not this crate's `AppError`: it carries the
+/// JSON-RPC `code` the bridge turns back into a `HelveRpcError`, which is what
+/// lets a frontend tell "no such method" from "that file isn't text" without
+/// parsing an error string.
+///
+/// ## Why this runs on a blocking thread
+///
+/// A synchronous `#[tauri::command]` runs on the **main thread**, and an app's
+/// Rust half does things that must not happen there. `home/open-project` opens a
+/// native folder picker, which needs the main thread to pump events while it is
+/// up — called from the main thread it would be waiting for a thread it is
+/// itself occupying, and the app would hang with a dialog that never appears.
+/// `files/read` is a milder case of the same thing: a quarter-megabyte read off
+/// a slow disk freezes every window for as long as it takes.
+///
+/// So the whole dispatch moves to a blocking worker and this command awaits it.
+/// The cost is one thread hop per `invoke`; the property bought is that an app's
+/// Rust half can do ordinary blocking work without having to know it is running
+/// somewhere that forbids it.
+#[tauri::command]
+pub async fn app_call(
+    app: tauri::AppHandle,
+    id: String,
+    method: String,
+    params: Option<serde_json::Value>,
+) -> std::result::Result<serde_json::Value, helve_rpc::RpcError> {
+    tauri::async_runtime::spawn_blocking(move || apps::call(&app, &id, &method, params))
+        .await
+        // The worker itself failed — it panicked, or the runtime is shutting
+        // down. Neither is something the app's own error vocabulary describes,
+        // so it becomes a plain internal error rather than being unwrapped into
+        // a panic that would take the main thread with it.
+        .unwrap_or_else(|e| {
+            Err(helve_rpc::RpcError::new(
+                helve_rpc::INTERNAL_ERROR,
+                format!("the app call did not complete: {e}"),
+            ))
+        })
 }
 
 /// Stubbed until the engine has something real to report. Kept as a command so

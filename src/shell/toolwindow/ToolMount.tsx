@@ -27,7 +27,12 @@ export default function ToolMount({
   active: boolean;
   /** Whether this tool's hello/ready handshake has completed. */
   ready: boolean;
-  registerFrame: (toolId: string, win: Window) => void;
+  /**
+   * `isApp` travels with the registration rather than being looked up later:
+   * it decides where this frame's requests are routed, and the tool window
+   * should learn it from the same call that established the frame's identity.
+   */
+  registerFrame: (toolId: string, isApp: boolean, win: Window) => void;
   unregisterFrame: (win: Window) => void;
 }) {
   const frontend = useToolFrontend(tool.id);
@@ -41,9 +46,9 @@ export default function ToolMount({
     (el: HTMLIFrameElement | null) => {
       if (windowRef.current) unregisterFrame(windowRef.current);
       windowRef.current = el?.contentWindow ?? null;
-      if (windowRef.current) registerFrame(tool.id, windowRef.current);
+      if (windowRef.current) registerFrame(tool.id, tool.isApp, windowRef.current);
     },
-    [tool.id, registerFrame, unregisterFrame],
+    [tool.id, tool.isApp, registerFrame, unregisterFrame],
   );
 
   useEffect(() => {
