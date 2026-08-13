@@ -50,6 +50,17 @@ pub enum AppError {
         #[source]
         source: tauri::Error,
     },
+
+    /// `portable-pty` reports failures as `anyhow::Error`, which is not an
+    /// error *type* we can hold as a `#[source]` without taking on anyhow as a
+    /// dependency of our own. The message is all the frontend ever shows, so it
+    /// is flattened to a string at the boundary instead.
+    ///
+    /// The field is `reason`, not `source`: `thiserror` treats a field called
+    /// `source` as the underlying error and requires it to implement
+    /// `std::error::Error`, which a `String` does not.
+    #[error("terminal `{id}` failed: {reason}")]
+    Pty { id: String, reason: String },
 }
 
 /// Tauri sends a command's error across the IPC boundary into JavaScript, so the

@@ -1,0 +1,46 @@
+/*
+ * The terminal deck: one xterm instance per session, all mounted, one shown.
+ *
+ * Owns the deck's own layout and the hide/show mechanics `XTermView` depends
+ * on. Does not own: the panel's tab row, its collapse animation, or its
+ * width — those are `src/shell/panel/panel.css`'s (`.frame__panel` already
+ * gives this deck a sized box to fill). Does not touch xterm's internal
+ * canvas/theme styling either; that is `XTermView`'s, built from
+ * `src/tokens.css` at construction time because a canvas can't consume a CSS
+ * custom property.
+ */
+
+.terminal__deck {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* One per session, always rendered. `display: none` — not `visibility:
+   hidden` — is load-bearing: it collapses the hidden slot to 0×0, which is
+   what tells `XTermView`'s `ResizeObserver` to stop fitting a terminal
+   nobody can see, and fires again with the real size the moment this
+   attribute flips back. */
+.terminal__slot {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.terminal__slot[data-active] {
+  display: block;
+}
+
+/* xterm measures this element's box to compute cols/rows, so it has to
+   actually fill the slot rather than size to its own content. `Terminal.open`
+   adds the `xterm` class to the element it's given directly (not to some
+   child) — this is that element, which is why the padding below lands here
+   rather than on a nested selector. */
+.terminal__view {
+  width: 100%;
+  height: 100%;
+  /* The panel's fake transcript used 13px/14px (`.panel__terminal` in
+     panel.css). Matched here so a real session doesn't visibly jump when it
+     replaces the fake one. */
+  padding: 13px 14px;
+}

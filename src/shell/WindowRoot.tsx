@@ -13,12 +13,12 @@ import SearchSlot from "./search/SearchSlot";
 import { useDrag } from "./drag/useDrag";
 import { useKeyboard } from "./keys/useKeyboard";
 import WorktreeView from "./worktree/WorktreeView";
-import { stubTerminalSource } from "./stubs/terminal";
+import TerminalDeck from "./terminal/TerminalDeck";
 import { stubWorktreeSource } from "./stubs/worktree";
 import type { Worktree } from "./contract";
 import { idleEngineStatus } from "./stubs/engineStatus";
 import { useShellState, windowLabel, setActiveTool } from "./state/shellState";
-import type { TerminalSession } from "./contract";
+import { terminalControl, terminalTransport } from "./state/terminals";
 
 /**
  * One HELVE window.
@@ -118,18 +118,50 @@ export default function WindowRoot({
 
   // --- terminals ------------------------------------------------------------
   //
-  // Session *identity* is Rust's (it survives a window closing, and sessions
-  // drag between windows); session *content* is still the stub, because there
-  // is no PTY yet. Subscribing to the stub keeps the panel real — tabs open and
-  // close for real — and swapping in a live source later is one import.
-  const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  useEffect(() => stubTerminalSource.subscribe(setSessions), []);
+  // Sessions come from `shell:state` and nowhere else. They have to: a terminal
+  // can be dragged into another window, so the list of what this panel holds is
+  // a filter over shared state rather than anything this window owns. Each one
+  // has a real pty behind it (src-tauri/src/pty.rs) — the panel is not showing
+  // a fixture any more.
+  const sessions = useMemo(
+    () =>
+      (shell?.terminals ?? [])
+        .filter((t) => t.windowLabel === label)
+        .map(({ id, title, agentFinished }) => ({ id, title, agentFinished })),
+    [shell?.terminals, label],
+  );
+
   const [activePanelTab, setActivePanelTab] = useState<string>("");
   const panelTabId = sessions.some((s) => s.id === activePanelTab)
     ? activePanelTab
     : activePanelTab === "worktree"
       ? "worktree"
       : (sessions[0]?.id ?? "");
+
+  const onNewTerminal = useCallback(async () => {
+    // 80×24 is a placeholder the emulator overwrites the moment it has measured
+    // itself. A pty has to be created with *some* size, and a shell that prints
+    // a banner before the first resize would otherwise wrap against nothing.
+    const id = await terminalControl.create(label, 80, 24);
+    setActivePanelTab(id);
+  }, [label]);
+
+  // Closing the tab you were looking at has to leave you somewhere. Rust drops
+  // the session from the broadcast, so `panelTabId` above would fall to the
+  // first remaining terminal on its own — but only after a round trip, which
+  // reads as a flicker. Choosing the neighbour here means the switch happens on
+  // the same frame as the click, and the broadcast then agrees with it.
+  const onCloseTab = useCallback(
+    (id: string) => {
+      if (id === panelTabId) {
+        const i = sessions.findIndex((s) => s.id === id);
+        const next = sessions[i + 1] ?? sessions[i - 1];
+        setActivePanelTab(next?.id ?? "worktree");
+      }
+      terminalControl.close(id);
+    },
+    [panelTabId, sessions],
+  );
 
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
@@ -217,8 +249,21 @@ export default function WindowRoot({
               activeTabId={panelTabId}
               collapsed={panelCollapsed}
               onSelectTab={setActivePanelTab}
-              onNewTerminal={() => setActivePanelTab(stubTerminalSource.create())}
+              onNewTerminal={onNewTerminal}
               onToggleCollapse={() => setPanelCollapsed((c) => !c)}
+              onCloseTab={onCloseTab}
+              checkBusy={(id) => terminalControl.busy(id)}
+              // Every session's emulator, all mounted, one visible. Passed as a
+              // slot for the same reason the worktree view is: the panel owns
+              // the tab row and the geometry, and has no business knowing that
+              // a terminal is xterm rather than anything else.
+              terminalView={
+                <TerminalDeck
+                  sessions={sessions}
+                  activeId={panelTabId === "worktree" ? "" : panelTabId}
+                  transport={terminalTransport}
+                />
+              }
               worktreeView={<WorktreeView source={stubWorktreeSource} />}
               dragHandleFor={(session) =>
                 drag.terminalHandle({

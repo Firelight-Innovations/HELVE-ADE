@@ -119,14 +119,24 @@ export interface EngineStatusSource {
 }
 
 // ---------------------------------------------------------------------------
-// Terminals — stubbed sessions, real tabs
+// Terminals — real PTYs, real emulation
 // ---------------------------------------------------------------------------
-
-/** One line of terminal output. `tone` picks the colour, not the content. */
-export interface TerminalLine {
-  text: string;
-  tone: "prompt" | "ok" | "info" | "muted";
-}
+//
+// A session is two separate things, and they are deliberately two interfaces.
+//
+// `TerminalSource` is *identity and lifetime*: which sessions exist, what they
+// are called, which window's panel holds one. That is shared state — a terminal
+// can be dragged between windows and outlives whichever window is showing it —
+// so it is Rust's, and this is a projection of `shell:state`.
+//
+// `TerminalTransport` is *bytes*: one PTY's output going to one emulator, and
+// that emulator's keystrokes going back. It is per-session, high-volume, and
+// nothing outside the terminal view has any business seeing it.
+//
+// Keeping them apart is what makes the interception point in Rust worth having.
+// Every byte in either direction crosses one seam there, so a wrapper around a
+// coding harness — tracking what it did, injecting input, restarting it — is
+// written once in the transport and needs no cooperation from anything here.
 
 export interface TerminalSession {
   id: string;
@@ -136,13 +146,55 @@ export interface TerminalSession {
    * health, and it never appears on a tool tab.
    */
   agentFinished: boolean;
-  lines: TerminalLine[];
 }
 
-export interface TerminalSource {
-  subscribe(cb: (sessions: TerminalSession[]) => void): () => void;
-  create(): string;
+/**
+ * What a session is running, when it is running anything.
+ *
+ * Only ever asked for at the moment someone clicks the close button, which is
+ * what keeps it cheap: there is no polling and no per-session watcher, just one
+ * question answered once. `null` means the shell is sitting at a prompt with no
+ * child of its own, and that close needs no confirming.
+ */
+export interface TerminalBusy {
+  /** The child process's name, so the dialog can say what it would kill. */
+  process: string;
+}
+
+/**
+ * Opening and closing sessions.
+ *
+ * There is deliberately no `subscribe` here. Which sessions exist is part of
+ * `shell:state` — it has to be, since a terminal can be dragged into another
+ * window — so a second subscription would be a second answer to a question that
+ * already has one, and the two could disagree.
+ */
+export interface TerminalControl {
+  /** Resolves once the shell is actually running and the session has an id. */
+  create(windowLabel: string, cols: number, rows: number): Promise<string>;
   close(id: string): void;
+  busy(id: string): Promise<TerminalBusy | null>;
+}
+
+/**
+ * One session's byte stream, in both directions.
+ *
+ * `attach` returns its own unsubscribe rather than taking an id to detach,
+ * because the emulator that attached is the only thing that should be able to
+ * stop listening — an id-keyed `detach` lets any caller silence someone else's
+ * terminal.
+ */
+export interface TerminalTransport {
+  attach(id: string, onData: (chunk: string) => void): () => void;
+  write(id: string, data: string): void;
+  /**
+   * Tell the PTY how big its viewport is, in character cells.
+   *
+   * Not optional and not cosmetic: a TUI asks the pty for its size and draws to
+   * exactly that, so a pty that disagrees with the emulator produces a corrupt
+   * frame rather than a scaled one.
+   */
+  resize(id: string, cols: number, rows: number): void;
 }
 
 // ---------------------------------------------------------------------------

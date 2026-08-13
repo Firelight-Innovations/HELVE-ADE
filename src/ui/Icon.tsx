@@ -126,6 +126,19 @@ export function ChevronLeft({ size = 13, className }: IconProps) {
 }
 
 /**
+ * Closes a terminal tab. Sits in the same slot as the agent-finished dot and
+ * replaces it on hover/keyboard focus rather than appearing beside it, so it
+ * is drawn small and centred like the dot it stands in for.
+ */
+export function Close({ size = 9, className }: IconProps) {
+  return (
+    <Outline size={size} strokeWidth={2} className={className}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </Outline>
+  );
+}
+
+/**
  * Settings, at the trailing edge of the status bar — sliders, not a cog. The
  * knob circles are filled with the surface behind them so the rules appear to
  * pass under rather than through, which means the fill has to be told what it

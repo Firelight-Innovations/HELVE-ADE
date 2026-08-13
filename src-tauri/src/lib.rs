@@ -10,12 +10,14 @@ mod commands;
 mod discovery;
 mod error;
 mod manifest;
+mod pty;
 mod shell_state;
 mod state;
 mod tool;
 mod tool_frontend;
 mod windows;
 
+use pty::PtySessions;
 use shell_state::ShellState;
 use state::AppState;
 use tauri::{Manager, WindowEvent};
@@ -45,6 +47,12 @@ pub fn run() {
         // is what the *stack* looks like on disk, this is what the *shell*
         // currently looks like on screen.
         .manage(ShellState::default())
+        // The live pseudo-terminals, keyed by the session ids `ShellState`
+        // hands out. Kept apart from `ShellState` deliberately: that is small,
+        // serializable, and broadcast to every window on every change, whereas
+        // this holds OS handles and reader threads that must never be cloned or
+        // sent anywhere near the frontend.
+        .manage(PtySessions::default())
         // A detached window closing must not strand the tool inside it. This
         // fires before the window is gone, and hands its tools and terminals
         // back to the main window — so closing a detached Journeyman puts its
@@ -64,6 +72,23 @@ pub fn run() {
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
             boot::start(app.handle().clone());
+
+            // The launch terminal. Opened here rather than baked into
+            // `ShellState::default` because a session must not exist before the
+            // shell behind it does — and spawning a process is exactly the kind
+            // of work a `Default` impl has no business doing. A failure is
+            // swallowed on purpose: a machine with no usable shell should still
+            // get an orchestrator, with an empty panel and a working "+".
+            let handle = app.handle().clone();
+            let _ = commands::open_terminal(
+                &handle,
+                &handle.state::<ShellState>(),
+                &handle.state::<PtySessions>(),
+                "main",
+                80,
+                24,
+            );
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -79,6 +104,9 @@ pub fn run() {
             commands::window_at_cursor,
             commands::create_terminal,
             commands::close_terminal,
+            commands::terminal_write,
+            commands::terminal_resize,
+            commands::terminal_busy,
             commands::move_terminal,
             commands::set_engine_state,
             commands::tool_frontend,

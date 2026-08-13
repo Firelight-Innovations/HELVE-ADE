@@ -105,16 +105,17 @@ impl Default for ShellState {
                     tool_ids: Vec::new(),
                     active_tool_id: None,
                 }],
-                // One terminal on launch, matching the handoff's default screen.
-                terminals: vec![TerminalSession {
-                    id: "term-1".to_string(),
-                    title: "bash".to_string(),
-                    window_label: "main".to_string(),
-                    agent_finished: false,
-                }],
+                // No terminals until one has a shell behind it. This used to
+                // start with a hardcoded "bash" to match the handoff's default
+                // screen, which was honest while the panel was drawing canned
+                // lines and became a lie the moment tabs got real ptys — a tab
+                // here with no process behind it is a tab that swallows
+                // keystrokes. `lib.rs` opens the launch terminal properly, at
+                // setup, through the same path everything else uses.
+                terminals: Vec::new(),
                 engine: EngineState::Idle,
             }),
-            next_terminal: RwLock::new(2),
+            next_terminal: RwLock::new(1),
         }
     }
 }
@@ -220,23 +221,29 @@ impl ShellState {
         });
     }
 
-    pub fn create_terminal(&self, app: &AppHandle, label: &str) -> String {
-        let id = {
-            let mut n = self.next_terminal.write().expect("terminal counter poisoned");
-            let id = format!("term-{n}");
-            *n += 1;
-            id
-        };
-        let title = format!("bash {}", id.trim_start_matches("term-"));
+    /// Claim the next session id and its ordinal, without creating anything.
+    ///
+    /// Split from `add_terminal` so a pty can be spawned *between* the two. The
+    /// id is what names the pty, and a session must not appear in the shared
+    /// state until there is a real shell behind it — otherwise a failed spawn
+    /// leaves a tab that looks alive and silently eats every keystroke.
+    pub fn claim_terminal_id(&self) -> (String, u32) {
+        let mut n = self.next_terminal.write().expect("terminal counter poisoned");
+        let ordinal = *n;
+        *n += 1;
+        (format!("term-{ordinal}"), ordinal)
+    }
+
+    /// Publish a session whose shell is already running.
+    pub fn add_terminal(&self, app: &AppHandle, id: &str, title: &str, label: &str) {
         self.mutate(app, |s| {
             s.terminals.push(TerminalSession {
-                id: id.clone(),
-                title: title.clone(),
+                id: id.to_string(),
+                title: title.to_string(),
                 window_label: label.to_string(),
                 agent_finished: false,
             });
         });
-        id
     }
 
     pub fn close_terminal(&self, app: &AppHandle, id: &str) {
