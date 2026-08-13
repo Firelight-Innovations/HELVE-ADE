@@ -12,10 +12,17 @@
  * and drop its background down to something that isn't a solid fill.
  */
 
+/*
+ * Deliberately not `display: flex` here. `.splash` already fills the window
+ * on its own (`width: 100%; height: 100%` below), so there's nothing left
+ * for body to center — and a flex row does the opposite of what centering
+ * was meant to do: its lone child (`#root`) gets no explicit width, so as a
+ * flex item it shrinks to fit its own content instead of filling the row,
+ * and every fixed-percentage size inside it collapses along with it. Plain
+ * block layout has no such trap: a block child with no width set simply
+ * fills its parent, which is exactly what #root needs to do here.
+ */
 body {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
@@ -31,10 +38,10 @@ body {
   border: 1px solid var(--line);
 }
 
-/* Everything above the progress bar, centred in the height the bar leaves.
-   `min-height: 0` matters: a flex item defaults to `min-height: auto`, so
-   without it tall content here would refuse to shrink and would push the bar
-   off the bottom edge instead of being clipped. */
+/* The top 90%: the art and, under it, the wordmark (or, once boot fails,
+   the error in its place — see `.splash__error` below). `min-height: 0`
+   matters: a flex item defaults to `min-height: auto`, so without it tall
+   content here would refuse to shrink instead of being clipped. */
 .splash__content {
   flex: 1;
   min-height: 0;
@@ -42,60 +49,43 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 26px;
+  gap: 24px;
   padding: 40px;
 }
 
-.splash__body {
+.splash__wordmark {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  /* Optical centring for the added letter-spacing: without this the mark
+     reads as shifted right, since tracking adds its full gap after the
+     last letter too and nothing balances it on the left. */
+  margin-left: 0.16em;
+  color: var(--text);
+}
+
+.splash__error {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  width: 100%;
 }
 
-.splash__label {
-  min-height: 1.2em;
-  color: var(--text-dim);
-}
-
-/* Locked to the bottom of the window: full width, flush to the frame on the
-   bottom and both sides, no rounding.
-
-   Kept in the flex flow rather than absolutely positioned, and that's the
-   part worth knowing. `height: 10%` on an absolutely positioned child
-   resolves against the containing block's *height*, but the matching
-   `padding-bottom` needed to stop the centred content sliding underneath it
-   would resolve against its *width* — 10% of 560px, not of 360px. Two
-   different bases for one number is how that drifts silently the moment the
-   window size changes. As a flex item, `flex-basis: 10%` is 10% of the
-   height and the content above simply gets the other 90%. */
-.splash__bar {
-  flex: 0 0 10%;
-  width: 100%;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.splash__bar-fill {
-  height: 100%;
-  background: var(--accent);
-  /* Boot reports at most 3 discrete steps, so each update is a visible jump
-     rather than a smooth fill — this eases each jump instead of snapping. */
-  transition: width 180ms ease-out;
-}
-
-.splash__error {
+.splash__error-message {
   max-width: 380px;
   margin: 0;
   text-align: center;
+  font-family: var(--mono);
+  font-size: 12px;
   color: var(--err);
 }
 
 .splash__continue {
   padding: 5px 14px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--surface-2);
   color: var(--text);
   font: inherit;
@@ -108,21 +98,80 @@ body {
   color: var(--accent);
 }
 
-/* --- art ---------------------------------------------------------------- */
-
-.splash-art__spark {
-  transform-origin: 50px 56px;
-  animation: splash-spark-pulse 1.4s ease-in-out infinite;
+/* --- art -----------------------------------------------------------------
+   The ring (`BootArc`) and the mark (`BrandGlyph`) are both stock icons from
+   `src/ui/Icon.tsx` — see SplashArt.tsx for why. Grid rather than absolute
+   positioning to stack them: both land in the same single cell and
+   `place-items: center` centres each independently, so neither needs to know
+   the other's size to stay concentric. */
+.splash-art {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
 }
 
-@keyframes splash-spark-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.25);
-  }
+.splash-art__ring,
+.splash-art__mark {
+  grid-area: 1 / 1;
+}
+
+.splash-art__mark {
+  color: var(--text);
+}
+
+/* --- bottom bar ------------------------------------------------------------
+   The bottom 10%: full width, flush to the frame on the bottom and both
+   sides, no rounding. One bar doing two jobs — its own width is the
+   progress fill, and it also carries the current label and step count.
+
+   Kept in the flex flow rather than absolutely positioned: `height: 10%` on
+   an absolutely positioned child resolves against the containing block's
+   *height*, but `.splash__content`'s implicit 90% would need to resolve the
+   same way for the two to add up — and a flex item's `flex-basis: 10%`
+   already does resolve against height (the cross axis, since `.splash` is a
+   column), with the content above simply getting the other 90% for free. */
+.splash__bar {
+  position: relative;
+  flex: 0 0 10%;
+  width: 100%;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* Translucent rather than a solid fill: solid `--accent` under light text
+   reads fine at 100% width but fights the label at 30–60%, exactly the
+   range most of a 3-step boot spends in. `--accent-line-strong` is dark
+   enough over `--surface-2` to keep `.splash__bar-label` readable at every
+   width, while still clearly reading as an amber fill advancing left to
+   right. */
+.splash__bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: var(--accent-line-strong);
+}
+
+.splash__bar-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 100%;
+  padding: 0 16px;
+}
+
+.splash__bar-label {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.splash__bar-step {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim-2);
 }

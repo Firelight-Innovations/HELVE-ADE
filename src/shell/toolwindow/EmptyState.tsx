@@ -22,7 +22,7 @@ export default function EmptyState({
   return (
     <div className="toolwindow__empty">
       <div className="toolwindow__empty-column">
-        <BrandGlyph size={38} strokeWidth={1.5} className="toolwindow__empty-glyph" />
+        <BrandGlyph size={38} className="toolwindow__empty-glyph" />
         <div className="toolwindow__empty-title">No tool active</div>
         <div className="toolwindow__empty-body">
           Pick a tool from the switcher above, or press the number key for its slot.

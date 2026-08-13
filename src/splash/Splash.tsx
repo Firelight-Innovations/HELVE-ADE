@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { bootStatus, finishBoot, onBootStatus, type BootStatus } from "../bindings";
+import { snap } from "../shell/motion";
 import SplashArt from "./SplashArt";
 
 /**
@@ -107,7 +109,7 @@ export default function Splash() {
   const progress =
     status.phase === "working" ? status.step / status.total : status.phase === "ready" ? 1 : 0;
 
-  const label =
+  const title =
     status.phase === "working"
       ? status.label
       : status.phase === "ready"
@@ -115,31 +117,33 @@ export default function Splash() {
         : "Startup failed";
 
   return (
-    // The bar is a sibling of the content rather than living inside it: it's
-    // pinned to the bottom edge of the window, and the art and label centre
-    // themselves in whatever height is left over.
     <div className="splash">
+      {/* The 90%: the art, and — in place of it once boot fails, since
+          that's the one moment this window needs the user to actually do
+          something — the error and its recovery button. */}
       <div className="splash__content">
-        <SplashArt />
+        <SplashArt spinning={status.phase === "working"} />
 
-        <div className="splash__body">
-          <p className="splash__label mono">{label}</p>
-
-          {status.phase === "failed" && (
-            <>
-              <p className="splash__error mono">{status.message}</p>
-              <button
-                type="button"
-                className="splash__continue"
-                onClick={() => finishBoot().catch((err) => console.error(String(err)))}
-              >
-                Continue anyway
-              </button>
-            </>
-          )}
-        </div>
+        {status.phase === "failed" ? (
+          <div className="splash__error">
+            <p className="splash__error-message">{status.message}</p>
+            <button
+              type="button"
+              className="splash__continue"
+              onClick={() => finishBoot().catch((err) => console.error(String(err)))}
+            >
+              Continue anyway
+            </button>
+          </div>
+        ) : (
+          <p className="splash__wordmark">HELVE</p>
+        )}
       </div>
 
+      {/* The bottom 10%: one bar doing two jobs at once — its fill is the
+          progress indicator, and it's also where the current step and label
+          are written, rather than splitting that status across two separate
+          widgets the way the art region and this bar used to. */}
       <div
         className="splash__bar"
         role="progressbar"
@@ -147,7 +151,19 @@ export default function Splash() {
         aria-valuemax={1}
         aria-valuenow={progress}
       >
-        <div className="splash__bar-fill" style={{ width: `${progress * 100}%` }} />
+        <motion.div className="splash__bar-fill" animate={{ width: `${progress * 100}%` }} transition={snap} />
+
+        <div className="splash__bar-row">
+          <span className="splash__bar-label">{title}</span>
+          {/* `step 0 of 3` is a real value of `INITIAL_STATUS`, not a real
+              step — excluded here alongside `ready` and `failed` rather
+              than only those two. */}
+          {status.phase === "working" && status.step > 0 && (
+            <span className="splash__bar-step">
+              step {status.step} of {status.total}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
