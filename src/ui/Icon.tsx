@@ -54,18 +54,27 @@ function Outline({
 }
 
 /**
- * The HELVE mark, and — at a larger size and lighter stroke — the placeholder
- * every tool shares. The handoff is explicit that tool icons are placeholders
- * until each tool earns its own, so there is deliberately only one of these.
+ * The HELVE mark: a capital H whose crossbar cants and tapers, reading as
+ * the grip of a hafted tool. Filled, not stroked — the path comes straight
+ * out of `assets/helve-mark.svg` in the brand packet, which draws it as one
+ * continuous 14-point outline so there are no subpath seams to hairline at
+ * small sizes. Also serves — at a larger size — as the placeholder every
+ * tool shares, per the handoff's note that tool icons are placeholders
+ * until each tool earns its own.
  */
-export function BrandGlyph({ size = 15, strokeWidth = 2, className }: IconProps & { strokeWidth?: number }) {
+export function BrandGlyph({ size = 15, className }: IconProps) {
   return (
-    <Outline size={size} strokeWidth={strokeWidth} className={className}>
-      <rect x="4" y="4" width="6" height="6" rx="1" />
-      <rect x="14" y="4" width="6" height="6" rx="1" />
-      <rect x="4" y="14" width="6" height="6" rx="1" />
-      <rect x="14" y="14" width="6" height="6" rx="1" />
-    </Outline>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      <path d="M6 3h2.5v9l7-3V3H20v16l-2 2h-2.5v-7l-7 2v5H4V5z" />
+    </svg>
   );
 }
 
@@ -121,6 +130,19 @@ export function ChevronLeft({ size = 13, className }: IconProps) {
   return (
     <Outline size={size} className={className} linejoin="round">
       <path d="M15 6l-6 6 6 6" />
+    </Outline>
+  );
+}
+
+/**
+ * Closes a terminal tab. Sits in the same slot as the agent-finished dot and
+ * replaces it on hover/keyboard focus rather than appearing beside it, so it
+ * is drawn small and centred like the dot it stands in for.
+ */
+export function Close({ size = 9, className }: IconProps) {
+  return (
+    <Outline size={size} strokeWidth={2} className={className}>
+      <path d="M5 5l14 14M19 5L5 19" />
     </Outline>
   );
 }

@@ -11,7 +11,7 @@ export default function UnavailableState({ tool, reason }: { tool: ToolPresentat
   return (
     <div className="toolwindow__empty">
       <div className="toolwindow__empty-column">
-        <BrandGlyph size={38} strokeWidth={1.5} className="toolwindow__empty-glyph" />
+        <BrandGlyph size={38} className="toolwindow__empty-glyph" />
         <div className="toolwindow__empty-title">{tool.name}</div>
         <div className="toolwindow__empty-body">{reason}</div>
       </div>

@@ -91,7 +91,19 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  /* The shell is a fixed-viewport desktop UI: every region is sized to the
+     window and only inner regions scroll. Without these two rules the root
+     scroller still exists, so a trackpad two-finger swipe over a non-scrolling
+     area rubber-bands the whole frame — the "spring" bouncy look. Locking
+     overflow + overscroll-behavior here makes that root scroller inert. */
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
   background: var(--bg);
 }

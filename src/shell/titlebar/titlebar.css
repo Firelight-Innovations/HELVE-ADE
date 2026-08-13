@@ -190,6 +190,24 @@
   background: var(--surface-2);
 }
 
+/* The Terminal menu's Split/Kill/Clear while there's no session to act on
+   (the worktree tab is active). Dimmed and inert rather than removed, so
+   the menu's shape never changes depending on what tab happens to be
+   showing — a menu whose item count moves under you is harder to learn than
+   one whose items grey out. */
+.menu-list__item:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.menu-list__item:disabled:hover {
+  background: none;
+}
+
+.menu-list__item:disabled .menu-list__accel {
+  color: var(--text-dim-3);
+}
+
 .menu-list__label {
   white-space: nowrap;
 }

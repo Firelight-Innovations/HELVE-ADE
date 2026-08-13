@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Splash preview</title>
+    <!--
+      A dev-only harness for iterating on splash.html. Not part of the app and
+      not part of the build: vite.config.ts's `rollupOptions.input` lists only
+      index.html and splash.html, so this file is served in dev and never
+      reaches dist/. Delete it whenever; nothing imports it.
+
+      It exists because splash.html is hard to judge in a browser tab. It is
+      designed for a 560x360 window, and stretched across a maximised viewport
+      its proportions lie — the art floats in dead space and the bottom bar
+      becomes a stripe. So this renders it in an iframe at exactly 560x360.
+
+      It also stands in for the Rust backend. splash.html talks to Tauri
+      through `window.__TAURI__`, which does not exist in a plain browser, so
+      on its own it bails early (by design) and sits on its initial frame
+      forever. This installs a fake one, which means the buttons below drive
+      the real shipped code — the actual listener, the actual render path —
+      rather than poking at the DOM from outside.
+
+      Live updates are polled rather than pushed. Vite's own client is
+      stripped out of the copy loaded below, because that client's response to
+      an edit is to reload its page — and the iframe's page is about:blank
+      (the document is written into it, not navigated to), so its reload would
+      blank the frame instead of refreshing it. Polling the file directly
+      sidesteps that, and re-applies whatever state you had selected so the
+      view does not jump back to "Starting" every time you save.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: #0b0c0e;
+        color: #e4e7ec;
+        font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+
+      /* A ring around the frame so the splash's own 1px border stays legible
+         against the page, and the real window bounds are obvious. */
+      .stage {
+        width: 560px;
+        height: 360px;
+        box-shadow: 0 0 0 1px #23262c, 0 18px 50px rgba(0, 0, 0, 0.55);
+      }
+
+      iframe {
+        display: block;
+        width: 560px;
+        height: 360px;
+        border: 0;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+        max-width: 560px;
+      }
+
+      button {
+        padding: 5px 11px;
+        border: 1px solid #2c313b;
+        border-radius: 5px;
+        background: #16181d;
+        color: #949cab;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: #d98a3f;
+        color: #d98a3f;
+      }
+
+      button[aria-pressed="true"] {
+        border-color: #d98a3f;
+        background: rgba(217, 138, 63, 0.12);
+        color: #d98a3f;
+      }
+
+      .meta {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        font-size: 11px;
+        color: #5b616c;
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #5fb37a;
+        display: inline-block;
+        margin-right: 5px;
+        vertical-align: middle;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage"><iframe id="frame" src="about:blank"></iframe></div>
+
+    <div class="controls" id="controls"></div>
+
+    <div class="meta">
+      <span><span class="dot"></span><span id="reloads">0</span> reloads</span>
+      <span id="stamp">watching splash.html</span>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var SOURCE = "/splash.html";
+        var POLL_MS = 500;
+
+        // Each entry is one `boot::BootStatus` value as Rust would emit it.
+        var STATES = [
+          { name: "1 · locating", payload: { phase: "working", step: 1, total: 3, label: "Locating manifest" } },
+          { name: "2 · reading", payload: { phase: "working", step: 2, total: 3, label: "Reading manifest" } },
+          { name: "3 · scanning", payload: { phase: "working", step: 3, total: 3, label: "Scanning checkouts" } },
+          { name: "ready", payload: { phase: "ready" } },
+          {
+            name: "failed",
+            payload: {
+              phase: "failed",
+              message:
+                "No manifest found at C:\\Users\\bjsea\\.helve\\helve.toml \u2014 set HELVE_STACK or clone the stack first.",
+            },
+          },
+        ];
+
+        var frame = document.getElementById("frame");
+        var controls = document.getElementById("controls");
+        var reloadCount = document.getElementById("reloads");
+        var stamp = document.getElementById("stamp");
+
+        var lastHtml = null;
+        var reloads = 0;
+        var selected = 0;
+        var listeners = [];
+
+        function emit(payload) {
+          listeners.forEach(function (cb) {
+            cb({ payload: payload });
+          });
+        }
+
+        function select(index) {
+          selected = index;
+          [].forEach.call(controls.children, function (b, i) {
+            b.setAttribute("aria-pressed", String(i === index));
+          });
+          emit(STATES[index].payload);
+        }
+
+        STATES.forEach(function (state, i) {
+          var b = document.createElement("button");
+          b.textContent = state.name;
+          b.setAttribute("aria-pressed", "false");
+          b.addEventListener("click", function () {
+            select(i);
+          });
+          controls.appendChild(b);
+        });
+
+        function mount(html) {
+          listeners = [];
+          var w = frame.contentWindow;
+
+          // Installed before the document is written, so splash.html's inline
+          // script sees it during parse — the same moment the real Tauri
+          // init script would have put it there.
+          w.__TAURI__ = {
+            core: {
+              invoke: function (cmd) {
+                if (cmd === "boot_status") return Promise.resolve(STATES[selected].payload);
+                // finish_boot would close this window for real; here it is
+                // just noted, so the preview stays on screen.
+                stamp.textContent = "invoked " + cmd + "()";
+                return Promise.resolve(null);
+              },
+            },
+            event: {
+              listen: function (name, cb) {
+                listeners.push(cb);
+                return Promise.resolve(function () {});
+              },
+            },
+          };
+
+          // Vite's client would try to full-reload about:blank on the next
+          // edit, blanking the frame. Polling replaces it.
+          var stripped = html.replace(/<script[^>]*@vite\/client[^>]*><\/script>/g, "");
+
+          w.document.open();
+          w.document.write(stripped);
+          w.document.close();
+
+          // Re-apply the selected state after the fresh document has parsed
+          // and registered its listener.
+          setTimeout(function () {
+            select(selected);
+          }, 60);
+        }
+
+        function poll() {
+          fetch(SOURCE, { cache: "no-store" })
+            .then(function (r) {
+              return r.text();
+            })
+            .then(function (html) {
+              if (html === lastHtml) return;
+              var first = lastHtml === null;
+              lastHtml = html;
+              mount(html);
+              if (!first) {
+                reloads += 1;
+                reloadCount.textContent = String(reloads);
+                stamp.textContent = "reloaded " + new Date().toLocaleTimeString();
+              }
+            })
+            .catch(function () {
+              stamp.textContent = "dev server unreachable";
+            });
+        }
+
+        poll();
+        setInterval(poll, POLL_MS);
+      })();
+    </script>
+  </body>
+</html>

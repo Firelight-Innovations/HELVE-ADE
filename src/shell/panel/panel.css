@@ -1,11 +1,16 @@
 /*
- * The secondary panel: its tab row, terminal body, and collapsed strip.
+ * The secondary panel: its tab row, its dual-slot body, its collapsed strip,
+ * and the close confirmation. Measured against the handoff's SCREEN 01/02
+ * panel crops and the isolated "Panel collapsed" crop
+ * (docs/handoffs/shell-spec.html). This renders into `.frame__panel`, which
+ * already owns the panel's width, background, and the collapse animation
+ * (src/shell/frame/frame.css) — nothing here repeats those, and nothing here
+ * sets a width.
  *
- * Measured against the handoff's SCREEN 01/02 panel crops and the isolated
- * "Panel collapsed" crop (docs/handoffs/shell-spec.html). This renders into
- * `.frame__panel`, which already owns the panel's width, background, and the
- * collapse animation (src/shell/frame/frame.css) — nothing here repeats
- * those, and nothing here sets a width.
+ * This file deliberately does NOT own terminal rendering. `session.lines`
+ * left the contract along with the old flat-text `TerminalOutput` this file
+ * used to style — the emulator that replaced it owns its own area and its
+ * own scrolling, both untouched by anything below.
  */
 
 .panel {
@@ -13,20 +18,80 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* Positioning context for the close-confirmation scrim, which covers only
+     this box, not the window. */
+  position: relative;
 }
 
 /* --- the tab row ------------------------------------------------------------
    The handoff is explicit that this uses the same segment style as the tool
    switcher bar: full height, hairline dividers, an accent rule on the active
    segment. The row's own height never animates — only the rule inside it
-   does. */
+   does.
+
+   Terminals are unbounded and this row is not, so it is not one flat
+   sequence: a strip that scrolls (session tabs + the `+` button) and two
+   pinned groups that never move — the worktree tab and the collapse button.
+   Each pinned group is absolutely positioned over the strip — not laid out
+   beside it — so the strip's own box, and its scrollbar, run the full width
+   of the row and pass *under* both pinned groups rather than stopping short
+   of them. They are two separate elements rather than one shared wrapper on
+   a standing instruction: the worktree control and the collapse control
+   must not share a parent. Positioned edge-to-edge with no gap between
+   them, they still read as one contiguous strip. */
 
 .panel__tabs {
   flex: none;
   height: var(--h-paneltabs);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  /* The combined width of both pinned groups — the 34px worktree tab plus
+     the 30px collapse button. Named once here so the strip's reserved
+     padding below can't quietly drift out of sync with the buttons it's
+     reserving room for. */
+  --panel-endgroup-w: 64px;
+}
+
+.panel__tabs-strip {
+  height: 100%;
+  width: 100%;
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+  /* Room for the last tab to scroll fully clear of the pinned end group,
+     rather than settling permanently half-covered by it. */
+  padding-right: var(--panel-endgroup-w);
+
+  /* A thin, dark-UI scrollbar sized entirely through the WebKit
+     pseudo-elements below. This app only ever renders in WebView2 (Windows)
+     or WebKit (macOS), never Firefox, so there's no standards-track fallback
+     to carry — and there can't be one anyway: Chromium 121+ (and this app's
+     WebView2) makes the standard `scrollbar-width` win over
+     `::-webkit-scrollbar` sizing whenever both are present, ignoring the
+     pseudo-element's `height` entirely and substituting the UA's own fixed
+     "thin" metric instead. Setting `height` here only takes effect because
+     `scrollbar-width`/`scrollbar-color` are absent. Only appears at all when
+     the strip actually overflows; that part is native `overflow-x: auto`
+     behaviour, not anything set here. */
+}
+
+.panel__tabs-strip::-webkit-scrollbar {
+  height: 5px;
+}
+
+.panel__tabs-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel__tabs-strip::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 3px;
+}
+
+.panel__tabs-strip::-webkit-scrollbar-thumb:hover {
+  background: var(--line-3);
 }
 
 .panel__tab {
@@ -57,21 +122,78 @@
   font-weight: 400;
   color: inherit;
   white-space: nowrap;
+  /* A reported title can be a lot longer than "pwsh" — a session name, or an
+     unshortened path Rust's own shortening didn't recognise as one. Clipped
+     rather than left to push the tab (and the fixed-height row it lives in)
+     wider; the tab itself carries the untruncated string in a native
+     `title` attribute, so hovering still reveals it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
 }
 
 .panel__tab--active .panel__tab-label {
   font-weight: 500;
 }
 
-/* The dot means *this agent finished*. Not tool health — it never appears on
-   a tool tab, only here. */
-.panel__tab-dot {
+/* One 5px box, two occupants that are never both visible: the
+   agent-finished dot, or — on hover or keyboard focus — the close button.
+   Fixed at the dot's own footprint so a tab's width never changes between
+   the two states; nothing may shift under the cursor while hovering. */
+.panel__tab-end {
+  position: relative;
   flex: none;
   width: 5px;
   height: 5px;
+}
+
+/* The dot means *this agent finished*. Not tool health — it never appears on
+   a tool tab, only here. */
+.panel__tab-dot {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   background: var(--ok);
   display: block;
+  transition: opacity 0.1s linear;
+}
+
+/* Sized well past its 5px slot — `inset: -5px` gives it a 15px hit target —
+   but absolutely positioned so that reach never grows the box the flex
+   layout actually measures. Hidden until the tab is hovered or something
+   inside it has keyboard focus, and `pointer-events` is toggled off while
+   hidden so a click meant for the tab or the label beside it can't land on
+   an invisible button. */
+.panel__tab-close {
+  position: absolute;
+  inset: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s linear;
+}
+
+.panel__tab-close:hover {
+  color: var(--text);
+}
+
+.panel__tab:hover .panel__tab-close,
+.panel__tab:focus-within .panel__tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.panel__tab:hover .panel__tab-dot,
+.panel__tab:focus-within .panel__tab-dot {
+  opacity: 0;
 }
 
 .panel__newbtn {
@@ -88,17 +210,36 @@
   cursor: pointer;
 }
 
-.panel__spacer {
-  flex: 1;
-  min-width: 8px;
+/* The two pinned groups — the worktree tab and the collapse button — each
+   its own absolutely-positioned sibling of `.panel__tabs-strip`, not two
+   children of one shared wrapper (see the header comment above for why).
+   Positioned to sit flush against each other and against the row's trailing
+   edge — collapse at `right: 0`, worktree just clear of it — so together
+   they still read as one contiguous pinned strip that a tab scrolls *under*,
+   the same as a single wrapper would, without actually being one. Each
+   carries its own opaque background so a tab scrolling past the trailing
+   edge disappears behind whichever group it reaches instead of clipping at
+   a hard edge beside it. */
+
+.panel__worktreegroup {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 30px;
+  width: 34px;
+  display: flex;
+  align-items: stretch;
+  background: var(--surface);
 }
 
 /* The worktree tab is a trailing segment built the same way as a session
    tab — 34px rather than the 30px of the plain icon buttons either side of
-   it, and it can carry the active rule like any other tab. */
+   it, and it can carry the active rule like any other tab. Fills its own
+   pinned group rather than being sized independently within it, since that
+   group now exists solely to hold this one control. */
 .panel__worktreebtn {
-  flex: none;
-  width: 34px;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -116,9 +257,20 @@
   color: var(--text);
 }
 
-.panel__collapsebtn {
-  flex: none;
+.panel__collapsegroup {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
   width: 30px;
+  display: flex;
+  align-items: stretch;
+  background: var(--surface);
+}
+
+.panel__collapsebtn {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -143,51 +295,33 @@
   background: var(--accent);
 }
 
-/* --- the body ----------------------------------------------------------- */
+/* --- the body ------------------------------------------------------------
+   Two slots, both always mounted. The inactive one is hidden with
+   `display: none` rather than removed — an unmounted terminal emulator loses
+   its scrollback and its running process's own rendering state, so switching
+   to the worktree tab and back has to be free. Absolutely positioned so each
+   fills the body exactly, regardless of which is hidden. */
 
-/* The shared scroll container for both the terminal output and the worktree
-   view. Unpadded on purpose: the terminal's padding lives on
-   `.panel__terminal` below rather than here, so a future worktree view isn't
-   forced into a terminal's spacing. */
 .panel__body {
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+.panel__body-slot {
+  position: absolute;
+  inset: 0;
+}
+
+.panel__body-slot--hidden {
+  display: none;
+}
+
+/* The worktree side keeps the scroll container it always had. The terminal
+   side deliberately gets none — the emulator scrolls itself, and a second
+   scroll container around it would fight the first. */
+.panel__body-slot--worktree {
   overflow-y: auto;
-}
-
-.panel__terminal {
-  padding: 13px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-/* `tone` picks the colour, not the content — mapped once, here. */
-.panel__line--prompt {
-  color: var(--text-dim-2);
-}
-
-.panel__line--ok {
-  color: var(--ok);
-}
-
-.panel__line--info {
-  color: var(--text-dim);
-}
-
-.panel__line--muted {
-  color: var(--text-dim-3);
-}
-
-.panel__cursor {
-  display: inline-block;
-  width: 6px;
-  height: 13px;
-  background: var(--text-dim);
-  vertical-align: -2px;
 }
 
 /* --- the collapsed strip -------------------------------------------------
@@ -236,4 +370,75 @@
   align-items: center;
   justify-content: center;
   color: var(--text-dim-2);
+}
+
+/* --- the close confirmation ------------------------------------------------
+   A modal centred over the panel, with a scrim covering only the panel — see
+   CloseConfirm.tsx for why an anchored popover doesn't work here. The
+   dialog's own surface (background, border, radius, shadow) matches every
+   other floating panel in the shell (switcher.css's health popover); only
+   the scrim and the centring are specific to this one. */
+
+.panel__confirm-scrim {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+
+.panel__confirm {
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 16px;
+}
+
+.panel__confirm-text {
+  margin: 0 0 14px;
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.panel__confirm-process {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.panel__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.panel__confirm-cancel {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* The destructive action, in the shell's one error token. */
+.panel__confirm-destroy {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: var(--err);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--bg);
+  cursor: pointer;
 }

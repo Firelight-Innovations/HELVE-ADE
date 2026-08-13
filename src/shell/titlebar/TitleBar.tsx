@@ -1,5 +1,5 @@
 /**
- * The title bar — logo, eight menus (or their hamburger collapse), the
+ * The title bar — logo, six menus (or their hamburger collapse), the
  * centred window title, and the three window controls.
  *
  * Every geometry number below is lifted from `docs/handoffs/shell-spec.html`
@@ -26,6 +26,8 @@ export default function TitleBar({
 }: {
   kind: WindowKind;
   title: string;
+  /** Built by `defaultMenus()`, typically with the Terminal menu's four
+   *  items wired against `WindowRoot`'s own terminal handlers. */
   menus: Menu[];
 }) {
   const narrow = useNarrowTitlebar();
@@ -57,12 +59,30 @@ export default function TitleBar({
   );
 }
 
+/** What the Terminal menu's four items act on. Optional — a caller with
+ *  nothing to wire yet (there is none today) gets the same inert items the
+ *  other five menus still have. */
+export interface TerminalMenuHandlers {
+  onNew: () => void;
+  onSplit: () => void;
+  onKill: () => void;
+  onClear: () => void;
+  /** False when there's no session to act on — the worktree tab is active,
+   *  or (momentarily) every terminal has closed. Split/Kill/Clear disable;
+   *  New Terminal never needs a session, so it stays live regardless. */
+  enabled: boolean;
+}
+
 /**
- * All eight menus, with plausible items. Every `onSelect` is left undefined —
- * the handoff's only requirement is that all eight open and render their
- * tree, not that they do anything yet.
+ * All six menus, with plausible items. Every `onSelect` except the
+ * Terminal menu's is left undefined — the handoff's only requirement for
+ * the other five is that they open and render their tree, not that they do
+ * anything yet. The Terminal menu's four items are the one place that's no
+ * longer true: New Terminal, Split Terminal, Kill Terminal, and Clear are
+ * real controls now, wired against whatever `WindowRoot` passes as
+ * `terminal`.
  */
-export function defaultMenus(): Menu[] {
+export function defaultMenus(terminal?: TerminalMenuHandlers): Menu[] {
   return [
     {
       label: "File",
@@ -89,17 +109,6 @@ export function defaultMenus(): Menu[] {
       ],
     },
     {
-      label: "Selection",
-      items: [
-        { label: "Select All", accelerator: "⌘A" },
-        { label: "Expand Selection", accelerator: "⇧⌥→" },
-        { label: "Shrink Selection", accelerator: "⇧⌥←" },
-        { label: "Add Cursor Above", accelerator: "⌥⌘↑", separatorBefore: true },
-        { label: "Add Cursor Below", accelerator: "⌥⌘↓" },
-        { label: "Select Line", accelerator: "⌘L", separatorBefore: true },
-      ],
-    },
-    {
       label: "View",
       items: [
         { label: "Command Palette…", accelerator: "⇧⌘P" },
@@ -108,16 +117,6 @@ export function defaultMenus(): Menu[] {
         { label: "Toggle Full Screen", accelerator: "⌃⌘F", separatorBefore: true },
         { label: "Zoom In", accelerator: "⌘+" },
         { label: "Zoom Out", accelerator: "⌘-" },
-      ],
-    },
-    {
-      label: "Go",
-      items: [
-        { label: "Go to File…", accelerator: "⌘P" },
-        { label: "Go to Line…", accelerator: "⌃G" },
-        { label: "Back", accelerator: "⌃-", separatorBefore: true },
-        { label: "Forward", accelerator: "⌃⇧-" },
-        { label: "Go to Tool…", separatorBefore: true },
       ],
     },
     {
@@ -131,10 +130,18 @@ export function defaultMenus(): Menu[] {
     {
       label: "Terminal",
       items: [
-        { label: "New Terminal", accelerator: "⌃`" },
-        { label: "Split Terminal", accelerator: "⌘\\" },
-        { label: "Kill Terminal", separatorBefore: true },
-        { label: "Clear", accelerator: "⌘K" },
+        // Accelerators are displayed only — wiring them live is
+        // `useKeyboard.ts`'s job and a separate piece of work; this menu
+        // item firing on click is independent of whether ⌃` also does.
+        { label: "New Terminal", accelerator: "⌃`", onSelect: terminal?.onNew },
+        { label: "Split Terminal", accelerator: "⌘\\", onSelect: terminal?.onSplit, disabled: !terminal?.enabled },
+        {
+          label: "Kill Terminal",
+          separatorBefore: true,
+          onSelect: terminal?.onKill,
+          disabled: !terminal?.enabled,
+        },
+        { label: "Clear", accelerator: "⌘K", onSelect: terminal?.onClear, disabled: !terminal?.enabled },
       ],
     },
     {

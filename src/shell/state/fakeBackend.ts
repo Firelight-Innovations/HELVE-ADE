@@ -19,7 +19,7 @@
  */
 import type { ResolvedTool, StackSnapshot } from "../../bindings";
 import type { GitControl, GitFileChange, GitStatus } from "../contract";
-import type { ShellSnapshot } from "./shellState";
+import type { ShellSnapshot, TerminalSessionState } from "./shellState";
 
 let cached: boolean | null = null;
 
@@ -255,8 +255,29 @@ export const fakeGitControl: GitControl = {
   },
 };
 
-/** The handoff's default screen: three terminals, one agent finished. */
-export function fakeShellState(): ShellSnapshot {
+// --- the fake shell state store ---------------------------------------------
+//
+// The real backend broadcasts `shell:state` on every mutation — `ShellState`'s
+// whole point (`src-tauri/src/shell_state.rs`) is that no window can end up out
+// of step with another. `?fake=1` has no backend to do that broadcasting, so
+// this is a small stand-in: a mutable terminal list plus a subscriber list,
+// mutated by the same fake control functions `state/terminals.ts` calls.
+//
+// It exists because a static snapshot that never changed would make "+", split,
+// and close all invisible to the panel — which is exactly the geometry this
+// fixture is supposed to let the split/clear/kill bar be measured against. See
+// the module doc above for why `?fake=1` exists at all.
+
+let fakeTerminals: TerminalSessionState[] = [
+  { id: "term-1", title: "bash", windowLabel: "main", agentFinished: false, groupId: null },
+  { id: "term-2", title: "bash 2", windowLabel: "main", agentFinished: false, groupId: null },
+  { id: "term-3", title: "forger", windowLabel: "main", agentFinished: true, groupId: null },
+];
+let fakeTerminalSerial = 3;
+
+const fakeShellListeners = new Set<(snapshot: ShellSnapshot) => void>();
+
+function fakeSnapshot(): ShellSnapshot {
   return {
     windows: [
       {
@@ -265,11 +286,82 @@ export function fakeShellState(): ShellSnapshot {
         activeToolId: "forger",
       },
     ],
-    terminals: [
-      { id: "term-1", title: "bash", windowLabel: "main", agentFinished: false },
-      { id: "term-2", title: "bash 2", windowLabel: "main", agentFinished: false },
-      { id: "term-3", title: "forger", windowLabel: "main", agentFinished: true },
-    ],
+    terminals: fakeTerminals,
     engine: "idle",
   };
+}
+
+function publishFakeShellState() {
+  const snapshot = fakeSnapshot();
+  for (const cb of fakeShellListeners) cb(snapshot);
+}
+
+/** The handoff's default screen: three terminals, one agent finished. */
+export function fakeShellState(): ShellSnapshot {
+  return fakeSnapshot();
+}
+
+/**
+ * Subscribe to the fake terminal list. Mirrors the real `useShellState`'s
+ * contract closely enough to stand in for it: called once with the current
+ * snapshot, then again on every mutation below.
+ */
+export function subscribeFakeShellState(cb: (snapshot: ShellSnapshot) => void): () => void {
+  fakeShellListeners.add(cb);
+  cb(fakeSnapshot());
+  return () => {
+    fakeShellListeners.delete(cb);
+  };
+}
+
+/** Mirrors `commands::open_terminal`: a new, ungrouped session. */
+export function fakeAddTerminal(title: string): string {
+  fakeTerminalSerial += 1;
+  const id = `term-fake-${fakeTerminalSerial}`;
+  fakeTerminals = [...fakeTerminals, { id, title, windowLabel: "main", agentFinished: false, groupId: null }];
+  publishFakeShellState();
+  return id;
+}
+
+/** Mirrors `ShellState::group_with` — see its doc comment for the rule this
+ *  follows: reuse `sourceId`'s group if it has one, mint one if it doesn't. */
+export function fakeGroupWith(sourceId: string, id: string): void {
+  const source = fakeTerminals.find((t) => t.id === sourceId);
+  if (!source) return;
+  const groupId = source.groupId ?? `group-${sourceId}`;
+  fakeTerminals = fakeTerminals.map((t) => (t.id === sourceId || t.id === id ? { ...t, groupId } : t));
+  publishFakeShellState();
+}
+
+/**
+ * Mirrors `ShellState::set_terminal_title`'s two guards — an empty report is
+ * dropped, and one identical to what's already stored is dropped too — so a
+ * title reported under `?fake=1` renames a tab the same way a real one does,
+ * rather than needing a separate story for "does this actually work" here
+ * versus against the real backend. It does not replicate Rust's
+ * absolute-path shortening: nothing under `?fake=1` ever reports a real
+ * filesystem path, so there is nothing here that would need shortening.
+ */
+export function fakeSetTitle(id: string, title: string): void {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  const current = fakeTerminals.find((t) => t.id === id);
+  if (!current || current.title === trimmed) return;
+  fakeTerminals = fakeTerminals.map((t) => (t.id === id ? { ...t, title: trimmed } : t));
+  publishFakeShellState();
+}
+
+/** Mirrors `close_terminal_pure` in `shell_state.rs`, including the "a group
+ *  of one stops being a group" cleanup — see that function's doc comment. */
+export function fakeCloseTerminal(id: string): void {
+  const closed = fakeTerminals.find((t) => t.id === id);
+  fakeTerminals = fakeTerminals.filter((t) => t.id !== id);
+
+  if (closed?.groupId) {
+    const survivors = fakeTerminals.filter((t) => t.groupId === closed.groupId);
+    if (survivors.length === 1) {
+      fakeTerminals = fakeTerminals.map((t) => (t.id === survivors[0].id ? { ...t, groupId: null } : t));
+    }
+  }
+  publishFakeShellState();
 }
