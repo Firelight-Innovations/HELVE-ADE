@@ -44,6 +44,13 @@ pub enum AppError {
         source: tauri_plugin_opener::Error,
     },
 
+    // Flattened strings rather than a `#[source]`: what failed is either an
+    // `io::Error` from the spawn or a non-zero exit code with stderr attached,
+    // and neither is worth preserving structurally — the only consumer is a
+    // frontend that prints the message.
+    #[error("git {op} failed: {reason}")]
+    Git { op: String, reason: String },
+
     #[error("could not create window `{label}`: {source}")]
     Window {
         label: String,

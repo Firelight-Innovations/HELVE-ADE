@@ -184,6 +184,64 @@ export interface WorktreeSource {
 }
 
 // ---------------------------------------------------------------------------
+// Source control — real git, one shot at a time
+// ---------------------------------------------------------------------------
+//
+// These replace the `Worktree`/`WorktreeSource` pair above, which was a
+// subscription over a single flat change list and had nowhere to put the half
+// of git that matters: the index. What is here instead is request/reply, because
+// there is no watcher — the panel re-asks after every mutation and when the
+// shown tool changes, and that is the whole update model.
+
+export type GitChangeKind = "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+
+/**
+ * One path, in one of the two lists.
+ *
+ * A path that is staged *and* then modified again appears twice — once in
+ * `staged` and once in `unstaged`, each with its own kind — because those are
+ * two different diffs and the user has to be able to click either one.
+ */
+export interface GitFileChange {
+  /** Repo-relative, forward slashes. The identity: what the commands take. */
+  path: string;
+  /** Basename only — the directory is a separate, dimmer column. */
+  file: string;
+  dir: string;
+  kind: GitChangeKind;
+  staged: boolean;
+  renamedFrom?: string;
+}
+
+export interface GitStatus {
+  branch: string;
+  /**
+   * Commits ahead of and behind the upstream. Both `0` when there is no
+   * tracking ref at all, which is not an error — a fresh branch is a normal
+   * state, and the bar simply omits the arrows.
+   */
+  ahead: number;
+  behind: number;
+  staged: GitFileChange[];
+  unstaged: GitFileChange[];
+}
+
+/** Two blobs, ready for `DiffView`. Never a patch: Monaco diffs whole texts. */
+export interface GitDiff {
+  original: string;
+  modified: string;
+}
+
+export interface GitControl {
+  /** `null` when the tool has no checkout or the checkout is not a repo. */
+  status(toolId: string): Promise<GitStatus | null>;
+  diff(toolId: string, path: string, staged: boolean): Promise<GitDiff>;
+  stage(toolId: string, paths: string[]): Promise<void>;
+  unstage(toolId: string, paths: string[]): Promise<void>;
+  commit(toolId: string, message: string): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
 // Search — stubbed index, real interaction
 // ---------------------------------------------------------------------------
 
