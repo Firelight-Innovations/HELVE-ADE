@@ -33,14 +33,36 @@
 
 /* xterm measures this element's box to compute cols/rows, so it has to
    actually fill the slot rather than size to its own content. `Terminal.open`
-   adds the `xterm` class to the element it's given directly (not to some
-   child) — this is that element, which is why the padding below lands here
-   rather than on a nested selector. */
+   appends its own `.xterm` element as a *child* of this one, and that child is
+   what the padding below is on. */
 .terminal__view {
   width: 100%;
   height: 100%;
-  /* The panel's fake transcript used 13px/14px (`.panel__terminal` in
-     panel.css). Matched here so a real session doesn't visibly jump when it
-     replaces the fake one. */
+}
+
+/* The padding is on `.xterm` rather than on the container, and that is not a
+   style preference — it is the only place `FitAddon` will see it.
+   `proposeDimensions()` reads the *container's* `getComputedStyle().height`
+   and subtracts the padding it finds on `.xterm`. Under this codebase's global
+   `box-sizing: border-box`, a container's computed height *includes* its own
+   padding, so padding here and nothing on `.xterm` means the addon believes it
+   has the full 716px when only 690px of content box exists. It rounds that to
+   one row too many, the pty is told it has 46 rows in a box that fits 45, and
+   a full-screen TUI draws its bottom line — its input box, usually — under the
+   status bar where nobody can see it.
+
+   The panel's fake transcript used 13px/14px (`.panel__terminal` in
+   panel.css). Matched so a real session sits where the fake one did. */
+.terminal__view .xterm {
   padding: 13px 14px;
+}
+
+/* xterm.css paints `.xterm-viewport` solid `#000`. That was invisible while
+   the canvas covered every pixel of the element, and stopped being invisible
+   the moment the padding above inset the canvas — the black showed through as
+   a frame around the terminal. The panel is already painting the right colour
+   underneath, so this gets out of the way rather than naming it a second time
+   and giving the two a chance to disagree. */
+.terminal__view .xterm-viewport {
+  background-color: transparent;
 }
