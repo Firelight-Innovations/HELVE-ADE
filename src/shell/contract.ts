@@ -146,6 +146,51 @@ export interface TerminalSession {
    * health, and it never appears on a tool tab.
    */
   agentFinished: boolean;
+  /**
+   * Sessions sharing a group id render as one tab, laid out side by side in
+   * the deck by `TerminalDeck`. `null` for an ordinary, unsplit session.
+   *
+   * Owned by Rust, like the rest of a session's identity — a terminal can be
+   * dragged into another window, and a group held together by one window's
+   * own state would come apart the moment a member of it moved.
+   */
+  groupId: string | null;
+}
+
+/**
+ * One entry in the tab row: a solo session, or every session that shares a
+ * group id, in the order they first appear in `sessions`.
+ *
+ * `id` is the tab's own identity — a session id for a solo tab, the shared
+ * group id for a split one — and is what `SecondaryPanel`'s `activeTabId`
+ * and `TerminalDeck`'s `activeId` both compare against. Computed fresh from
+ * `sessions` rather than tracked separately, so there is no second place a
+ * tab's membership could drift from what Rust actually reports.
+ */
+export interface TerminalTabGroup {
+  id: string;
+  sessions: TerminalSession[];
+}
+
+export function groupTerminalTabs(sessions: TerminalSession[]): TerminalTabGroup[] {
+  const tabs: TerminalTabGroup[] = [];
+  const byGroupId = new Map<string, TerminalTabGroup>();
+
+  for (const session of sessions) {
+    if (session.groupId) {
+      let tab = byGroupId.get(session.groupId);
+      if (!tab) {
+        tab = { id: session.groupId, sessions: [] };
+        byGroupId.set(session.groupId, tab);
+        tabs.push(tab);
+      }
+      tab.sessions.push(session);
+    } else {
+      tabs.push({ id: session.id, sessions: [session] });
+    }
+  }
+
+  return tabs;
 }
 
 /**
@@ -172,8 +217,30 @@ export interface TerminalBusy {
 export interface TerminalControl {
   /** Resolves once the shell is actually running and the session has an id. */
   create(windowLabel: string, cols: number, rows: number): Promise<string>;
+  /**
+   * Open a second pty and fold it into `sourceId`'s tab — the second half of
+   * "split terminal", the first half being `open_terminal` on the Rust side
+   * (reused, not duplicated; see `commands::split_terminal`). Grouping is
+   * decided in Rust, same as everything else about a session's identity, so
+   * this only ever *asks*; the group a caller should render comes back
+   * around through `shell:state`, same as `setTitle` below.
+   */
+  split(sourceId: string, cols: number, rows: number): Promise<string>;
   close(id: string): void;
   busy(id: string): Promise<TerminalBusy | null>;
+  /**
+   * A session's own program set its title via an OSC escape sequence (`ESC
+   * ] 0 ; title BEL` / `ESC ] 2 ; title ST`), detected by the emulator that
+   * saw it and reported up here.
+   *
+   * Lives on `TerminalControl`, not `TerminalTransport`: a title is identity
+   * — the same thing `TerminalSession.title` already is — not a byte on the
+   * session's stream, and Rust is the owner of record for identity (see the
+   * comment above `TerminalSession`) because a terminal can be dragged into
+   * another window's panel. This call only ever *reports*; the title a
+   * caller should render still comes back around through `shell:state`.
+   */
+  setTitle(id: string, title: string): void;
 }
 
 /**
@@ -279,6 +346,13 @@ export interface MenuItem {
   accelerator?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
+  /**
+   * Renders inert and unclickable — the native `disabled` attribute, not a
+   * dimmed-but-live button. Used by the Terminal menu's Split/Kill/Clear,
+   * which need a session to act on and have none while the worktree tab is
+   * active; New Terminal never needs one and stays live regardless.
+   */
+  disabled?: boolean;
 }
 
 export interface Menu {

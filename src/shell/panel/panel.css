@@ -29,22 +29,26 @@
    segment. The row's own height never animates — only the rule inside it
    does.
 
-   Terminals are unbounded and this row is not, so it is two children rather
-   than one flat sequence: a strip that scrolls (session tabs + the `+`
-   button) and a pinned end group that never moves (the worktree tab + the
-   collapse button). The end group is absolutely positioned over the strip
-   — not laid out beside it — so the strip's own box, and its scrollbar,
-   run the full width of the row and pass *under* the end group rather than
-   stopping short of it. */
+   Terminals are unbounded and this row is not, so it is not one flat
+   sequence: a strip that scrolls (session tabs + the `+` button) and two
+   pinned groups that never move — the worktree tab and the collapse button.
+   Each pinned group is absolutely positioned over the strip — not laid out
+   beside it — so the strip's own box, and its scrollbar, run the full width
+   of the row and pass *under* both pinned groups rather than stopping short
+   of them. They are two separate elements rather than one shared wrapper on
+   a standing instruction: the worktree control and the collapse control
+   must not share a parent. Positioned edge-to-edge with no gap between
+   them, they still read as one contiguous strip. */
 
 .panel__tabs {
   flex: none;
   height: var(--h-paneltabs);
   border-bottom: 1px solid var(--line);
   position: relative;
-  /* The end group's total width — the 34px worktree tab plus the 30px
-     collapse button. Named once here so the strip's reserved padding below
-     can't quietly drift out of sync with the buttons it's leaving room for. */
+  /* The combined width of both pinned groups — the 34px worktree tab plus
+     the 30px collapse button. Named once here so the strip's reserved
+     padding below can't quietly drift out of sync with the buttons it's
+     reserving room for. */
   --panel-endgroup-w: 64px;
 }
 
@@ -60,17 +64,21 @@
      rather than settling permanently half-covered by it. */
   padding-right: var(--panel-endgroup-w);
 
-  /* A thin, dark-UI scrollbar with no light-mode default — Firefox's pair of
-     properties, plus the WebKit pseudo-elements for the WebView2/WebKit
-     webview this ships in. Only appears at all when the strip actually
-     overflows; that part is native `overflow-x: auto` behaviour, not
-     anything set here. */
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-2) transparent;
+  /* A thin, dark-UI scrollbar sized entirely through the WebKit
+     pseudo-elements below. This app only ever renders in WebView2 (Windows)
+     or WebKit (macOS), never Firefox, so there's no standards-track fallback
+     to carry — and there can't be one anyway: Chromium 121+ (and this app's
+     WebView2) makes the standard `scrollbar-width` win over
+     `::-webkit-scrollbar` sizing whenever both are present, ignoring the
+     pseudo-element's `height` entirely and substituting the UA's own fixed
+     "thin" metric instead. Setting `height` here only takes effect because
+     `scrollbar-width`/`scrollbar-color` are absent. Only appears at all when
+     the strip actually overflows; that part is native `overflow-x: auto`
+     behaviour, not anything set here. */
 }
 
 .panel__tabs-strip::-webkit-scrollbar {
-  height: 6px;
+  height: 5px;
 }
 
 .panel__tabs-strip::-webkit-scrollbar-track {
@@ -114,6 +122,14 @@
   font-weight: 400;
   color: inherit;
   white-space: nowrap;
+  /* A reported title can be a lot longer than "pwsh" — a session name, or an
+     unshortened path Rust's own shortening didn't recognise as one. Clipped
+     rather than left to push the tab (and the fixed-height row it lives in)
+     wider; the tab itself carries the untruncated string in a native
+     `title` attribute, so hovering still reveals it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
 }
 
 .panel__tab--active .panel__tab-label {
@@ -194,18 +210,23 @@
   cursor: pointer;
 }
 
-/* The pinned end group: the worktree tab and the collapse button, and
-   nothing wrapping them beyond this. `right: 0` plus a matching height keeps
-   it flush with the row's trailing edge regardless of the strip's scroll
-   position; the opaque background is what makes a tab scrolling past the
-   trailing edge disappear behind these two buttons instead of clipping at a
-   hard edge beside them. */
-.panel__tabs-end {
+/* The two pinned groups — the worktree tab and the collapse button — each
+   its own absolutely-positioned sibling of `.panel__tabs-strip`, not two
+   children of one shared wrapper (see the header comment above for why).
+   Positioned to sit flush against each other and against the row's trailing
+   edge — collapse at `right: 0`, worktree just clear of it — so together
+   they still read as one contiguous pinned strip that a tab scrolls *under*,
+   the same as a single wrapper would, without actually being one. Each
+   carries its own opaque background so a tab scrolling past the trailing
+   edge disappears behind whichever group it reaches instead of clipping at
+   a hard edge beside it. */
+
+.panel__worktreegroup {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 0;
-  width: var(--panel-endgroup-w);
+  right: 30px;
+  width: 34px;
   display: flex;
   align-items: stretch;
   background: var(--surface);
@@ -213,10 +234,12 @@
 
 /* The worktree tab is a trailing segment built the same way as a session
    tab — 34px rather than the 30px of the plain icon buttons either side of
-   it, and it can carry the active rule like any other tab. */
+   it, and it can carry the active rule like any other tab. Fills its own
+   pinned group rather than being sized independently within it, since that
+   group now exists solely to hold this one control. */
 .panel__worktreebtn {
-  flex: none;
-  width: 34px;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -234,9 +257,20 @@
   color: var(--text);
 }
 
-.panel__collapsebtn {
-  flex: none;
+.panel__collapsegroup {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
   width: 30px;
+  display: flex;
+  align-items: stretch;
+  background: var(--surface);
+}
+
+.panel__collapsebtn {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

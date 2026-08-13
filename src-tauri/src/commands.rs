@@ -228,6 +228,41 @@ pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, ptys:
     shell.close_terminal(&app, &id);
 }
 
+/// Split a terminal: open a second pty and fold it into `id`'s tab.
+///
+/// Reuses `open_terminal` for the spawn itself — there is exactly one path
+/// that opens a pty, splitting included. What this adds is the second step:
+/// putting the new session in `id`'s group, minting one if `id` didn't have
+/// one yet. That bookkeeping is `ShellState::group_with`'s, not this
+/// function's, for the same reason grouping lives on `TerminalSession` at
+/// all — see the doc comment there.
+///
+/// The new pty opens in whichever window `id` is currently showing in, read
+/// off `ShellState` rather than taken as an argument — the caller already
+/// told the backend that once, when the session was created or last moved,
+/// and asking it to repeat itself here would just be a second place for the
+/// two to disagree.
+#[tauri::command]
+pub fn split_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    ptys: State<'_, PtySessions>,
+    id: String,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> Result<String> {
+    let label = shell
+        .window_label_of(&id)
+        .ok_or_else(|| AppError::Pty {
+            id: id.clone(),
+            reason: "no such terminal to split".to_string(),
+        })?;
+
+    let new_id = open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))?;
+    shell.group_with(&app, &id, &new_id);
+    Ok(new_id)
+}
+
 /// A keystroke on its way to the shell. High-traffic, so it returns nothing and
 /// reports nothing — a write to a dead pty is not an error worth a round trip,
 /// and `pty:exit` already told the frontend the session ended.
@@ -276,6 +311,17 @@ pub fn move_terminal(
     to_label: String,
 ) {
     shell.move_terminal(&app, &id, &to_label);
+}
+
+/// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
+/// and the emulator that saw it is reporting up.
+///
+/// Just a thin forward to `ShellState::set_terminal_title` — that's where the
+/// empty/no-op guards and the path-shortening live, both explained there.
+/// This command exists purely so the frontend has something to `invoke`.
+#[tauri::command]
+pub fn set_terminal_title(app: tauri::AppHandle, shell: State<'_, ShellState>, id: String, title: String) {
+    shell.set_terminal_title(&app, &id, &title);
 }
 
 /// Where to point a tool's iframe, or why there is nothing to point it at.

@@ -16,14 +16,37 @@
  *
  * The row is no longer one flat sequence, though. Terminals are unbounded and
  * this panel is not, so the row splits into a strip that scrolls (the
- * session tabs and the `+` button) and a pinned end group that never moves
- * (the worktree tab and the collapse button) — see the CSS header in
+ * session tabs and the `+` button) and two pinned groups that never move —
+ * the worktree tab and the collapse button, each its own container rather
+ * than two children of one shared wrapper, on a standing instruction that
+ * those two controls must not share a parent — see the CSS header in
  * panel.css for the geometry.
+ *
+ * Sessions that share a `groupId` (set by Rust when a split happens — see
+ * `TerminalSession` in contract.ts) render as one tab here, via
+ * `groupTerminalTabs`: a split still needs exactly one clickable tab before
+ * `TerminalDeck` has anything to lay out side by side, and that tab has to
+ * come from somewhere the row itself draws. Splitting, clearing, and killing
+ * a terminal are not this bar's job, though — they live on the Terminal menu
+ * in the title bar (`titlebar/TitleBar.tsx`) — so this file owns only that
+ * one tab shows per group, not any control over what happens to it.
+ *
+ * The close confirmation is owned by `WindowRoot` now rather than here — the
+ * Terminal menu's Kill item has to be able to raise the same "still running,
+ * close anyway?" dialog a tab's own × does, and a dialog whose state lived
+ * only in this file could never be reached from there. This component still
+ * *renders* `CloseConfirm`, since the dialog is visually scoped to the panel;
+ * it just no longer decides when to show it.
  */
-import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
-import type { DragHandleProps, TerminalBusy, TerminalSession } from "../contract";
+import {
+  groupTerminalTabs,
+  type DragHandleProps,
+  type TerminalBusy,
+  type TerminalSession,
+  type TerminalTabGroup,
+} from "../contract";
 import { Close, ChevronLeft, ChevronRight, GitBranch, Plus } from "../../ui/Icon";
 import { snap } from "../motion";
 import CloseConfirm from "./CloseConfirm";
@@ -33,7 +56,7 @@ const WORKTREE_TAB = "worktree";
 
 export interface SecondaryPanelProps {
   sessions: TerminalSession[];
-  /** A session id, or the literal `"worktree"`. */
+  /** A session id, a group id, or the literal `"worktree"`. */
   activeTabId: string;
   collapsed: boolean;
   onSelectTab: (id: string) => void;
@@ -45,20 +68,29 @@ export interface SecondaryPanelProps {
    * The terminal emulator deck. Another parcel supplies it. Undefined renders
    * nothing, not a placeholder — matching `worktreeView`.
    *
-   * This is the whole deck, not one session's output: which session is
-   * showing inside it is that parcel's business, not this component's. What
-   * this component owns is only which of the two *slots* — this one, or
-   * `worktreeView`'s — is visible, and making sure neither is ever unmounted
-   * to switch between them.
+   * This is the whole deck, not one session's output: which session (or, for
+   * a split tab, which sessions) are showing inside it is that parcel's
+   * business, not this component's. What this component owns is only which
+   * of the two *slots* — this one, or `worktreeView`'s — is visible, and
+   * making sure neither is ever unmounted to switch between them.
    */
   terminalView?: ReactNode;
   /**
-   * Asked once, at the moment the × is clicked. Resolves to null when the
-   * session is idle — that close needs no dialog. Never polled and never
-   * subscribed to, which is what keeps this cheap.
+   * A tab's own × asks through here, passing the whole tab rather than a
+   * single session — `WindowRoot` is the one that resolves which pane that
+   * means (the focused one, if this is the active tab; the tab's first
+   * session otherwise), through the exact same function the Terminal menu's
+   * Kill item calls. This component stays ignorant of which pane is
+   * focused; it only ever has "the tab that was clicked".
    */
-  checkBusy: (id: string) => Promise<TerminalBusy | null>;
-  onCloseTab: (id: string) => void;
+  onRequestClose: (tab: TerminalTabGroup) => void;
+  /**
+   * The pending "still running, close anyway?" dialog, or null. Owned by
+   * `WindowRoot` — see this file's own doc comment for why.
+   */
+  pendingClose: { id: string; title: string; busy: TerminalBusy } | null;
+  onCancelClose: () => void;
+  onConfirmClose: () => void;
   /**
    * Supplied by the drag layer. Spread onto each terminal tab to make it a
    * drag source; terminals move between windows by being dropped into a
@@ -78,29 +110,18 @@ export default function SecondaryPanel({
   onToggleCollapse,
   worktreeView,
   terminalView,
-  checkBusy,
-  onCloseTab,
+  onRequestClose,
+  pendingClose,
+  onCancelClose,
+  onConfirmClose,
   dragHandleFor,
 }: SecondaryPanelProps) {
-  // The session named here is only ever the one a × was clicked on, kept
-  // long enough to ask `checkBusy` and, if it answers, to name the dialog —
-  // not a general "which tab is selected" concept, that's `activeTabId`.
-  const [pendingClose, setPendingClose] = useState<{ id: string; title: string; busy: TerminalBusy } | null>(null);
-
   if (collapsed) {
     return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
   }
 
-  async function requestClose(session: TerminalSession) {
-    const busy = await checkBusy(session.id);
-    if (busy) {
-      setPendingClose({ id: session.id, title: session.title, busy });
-    } else {
-      onCloseTab(session.id);
-    }
-  }
-
   const onWorktree = activeTabId === WORKTREE_TAB;
+  const tabs = groupTerminalTabs(sessions);
 
   return (
     <div className="panel">
@@ -112,14 +133,14 @@ export default function SecondaryPanel({
           way. */}
       <div className="panel__tabs">
         <div className="panel__tabs-strip">
-          {sessions.map((session) => (
+          {tabs.map((tab) => (
             <SessionTab
-              key={session.id}
-              session={session}
-              active={session.id === activeTabId}
+              key={tab.id}
+              group={tab}
+              active={tab.id === activeTabId}
               onSelect={onSelectTab}
-              onRequestClose={requestClose}
-              dragHandle={dragHandleFor?.(session)}
+              onRequestClose={onRequestClose}
+              dragHandle={dragHandleFor?.(tab.sessions[0])}
             />
           ))}
 
@@ -128,12 +149,17 @@ export default function SecondaryPanel({
           </button>
         </div>
 
-        {/* The pinned end group. Not wrapped in anything beyond itself — its
-            own opaque background is what makes a tab scrolling past the
-            trailing edge disappear behind these two buttons instead of
-            clipping at a hard edge beside them. */}
-        <div className="panel__tabs-end">
+        {/* Two pinned groups, each its own parent — not one wrapper holding
+            both. The worktree tab and the collapse button must not share a
+            parent (a standing instruction), so each gets its own
+            absolutely-positioned box with its own opaque background; see
+            panel.css for how they still read as one contiguous pinned
+            strip despite being two separate elements. */}
+        <div className="panel__worktreegroup">
           <WorktreeTab active={onWorktree} onSelect={onSelectTab} />
+        </div>
+
+        <div className="panel__collapsegroup">
           <button type="button" className="panel__collapsebtn" onClick={onToggleCollapse} aria-label="Collapse panel">
             <ChevronRight />
           </button>
@@ -158,11 +184,8 @@ export default function SecondaryPanel({
           <CloseConfirm
             title={pendingClose.title}
             busy={pendingClose.busy}
-            onCancel={() => setPendingClose(null)}
-            onConfirm={() => {
-              onCloseTab(pendingClose.id);
-              setPendingClose(null);
-            }}
+            onCancel={onCancelClose}
+            onConfirm={onConfirmClose}
           />
         )}
       </AnimatePresence>
@@ -171,20 +194,31 @@ export default function SecondaryPanel({
 }
 
 function SessionTab({
-  session,
+  group,
   active,
   onSelect,
   onRequestClose,
   dragHandle,
 }: {
-  session: TerminalSession;
+  /** One or more sessions sharing this tab — more than one only when this is
+   *  a split. */
+  group: TerminalTabGroup;
   active: boolean;
   onSelect: (id: string) => void;
-  onRequestClose: (session: TerminalSession) => void;
+  onRequestClose: (tab: TerminalTabGroup) => void;
   /** Undefined until the drag layer is wired in — the tab behaves exactly as
    *  before in that case. */
   dragHandle?: DragHandleProps;
 }) {
+  // The label and the native tooltip show the group's first pane's title —
+  // enumerating every pane's name wouldn't fit the row, and which pane is
+  // which once the tab is open is the split's own concern, not this row's.
+  const primary = group.sessions[0];
+  // A group's dot means *some* pane in it finished — either one could be the
+  // agent that just wrapped up, and this tab has only one dot to show it
+  // with.
+  const finished = group.sessions.some((s) => s.agentFinished);
+
   const classes = ["panel__tab"];
   if (active) classes.push("panel__tab--active");
 
@@ -203,33 +237,37 @@ function SessionTab({
       aria-selected={active}
       tabIndex={0}
       className={classes.join(" ")}
-      onClick={() => onSelect(session.id)}
+      // The label itself is clipped with an ellipsis once a reported title
+      // runs long (see `.panel__tab-label` in panel.css) — this is what
+      // makes the full string available anyway, on hover.
+      title={primary.title}
+      onClick={() => onSelect(group.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect(session.id);
+          onSelect(group.id);
         }
       }}
       onPointerDown={dragHandle?.onPointerDown}
       style={dragHandle?.style}
     >
-      <span className="panel__tab-label">{session.title}</span>
+      <span className="panel__tab-label">{primary.title}</span>
 
       {/* One box, two mutually exclusive occupants — the agent-finished dot
           normally, the close button on hover or keyboard focus. Never both,
           and the box's own footprint never changes size between them, which
           is what keeps the tab's width fixed while hovering. */}
       <span className="panel__tab-end">
-        {session.agentFinished && <span className="panel__tab-dot" />}
+        {finished && <span className="panel__tab-dot" />}
         <button
           type="button"
           className="panel__tab-close"
-          aria-label={`Close ${session.title}`}
+          aria-label={`Close ${primary.title}`}
           onClick={(e) => {
             // Otherwise this bubbles to the tab's own onClick and selects a
             // tab that may be a heartbeat away from closing.
             e.stopPropagation();
-            onRequestClose(session);
+            onRequestClose(group);
           }}
           // A pointerdown here must never reach the tab's onPointerDown —
           // that's the drag handle, and a click meant to close a tab must
@@ -273,11 +311,12 @@ function CollapsedStrip({
   activeTabId: string;
   onToggleCollapse: () => void;
 }) {
-  // The strip shows one terminal name. When the worktree tab was the one
-  // active before collapsing, there is no session to name — the handoff
-  // doesn't cover that case, so this falls back to the first session rather
-  // than showing nothing.
-  const activeSession = sessions.find((s) => s.id === activeTabId) ?? sessions[0];
+  // The strip shows one terminal name. `activeTabId` can now name a group
+  // rather than a session directly, so this matches either — and when the
+  // worktree tab was the one active before collapsing, there is no session
+  // to name at all, so it falls back to the first session rather than
+  // showing nothing (the handoff doesn't cover that case).
+  const activeSession = sessions.find((s) => s.id === activeTabId || s.groupId === activeTabId) ?? sessions[0];
 
   return (
     <div className="panel panel__collapsed">

@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import type { StackSnapshot } from "../bindings";
-import Frame, { PANEL_COLLAPSED } from "./frame/Frame";
-import { toolPresentation, type EngineState, type WindowKind } from "./contract";
+import Frame from "./frame/Frame";
+import {
+  toolPresentation,
+  type EngineState,
+  type TerminalBusy,
+  type TerminalSession,
+  type TerminalTabGroup,
+  type WindowKind,
+} from "./contract";
 import { snap } from "./motion";
 import TitleBar, { defaultMenus } from "./titlebar/TitleBar";
 import ToolSwitcherBar from "./switcher/ToolSwitcherBar";
@@ -13,7 +20,7 @@ import SearchSlot from "./search/SearchSlot";
 import { useDrag } from "./drag/useDrag";
 import { useKeyboard } from "./keys/useKeyboard";
 import WorktreeView from "./worktree/WorktreeView";
-import TerminalDeck from "./terminal/TerminalDeck";
+import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { stubWorktreeSource } from "./stubs/worktree";
 import type { Worktree } from "./contract";
 import { idleEngineStatus } from "./stubs/engineStatus";
@@ -53,9 +60,12 @@ export default function WindowRoot({
 
   // View-local, and deliberately never shared with the other windows: two
   // windows are allowed to have differently-sized panels, and routing this
-  // through the backend would make one of them wrong.
+  // through the backend would make one of them wrong. panelMaximized carries
+  // the same reasoning — whether this window's terminal has taken over the
+  // split row is a fact about this window's screen, not about the project.
   const [panelWidth, setPanelWidth] = useState(380);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelMaximized, setPanelMaximized] = useState(false);
 
   // Lifted out of the search slot because two regions need it: the field
   // expands, and the bar around it has to yield the width for that to be
@@ -127,16 +137,50 @@ export default function WindowRoot({
     () =>
       (shell?.terminals ?? [])
         .filter((t) => t.windowLabel === label)
-        .map(({ id, title, agentFinished }) => ({ id, title, agentFinished })),
+        .map(({ id, title, agentFinished, groupId }) => ({ id, title, agentFinished, groupId })),
     [shell?.terminals, label],
   );
 
+  // `activePanelTab` is stored as whatever id was last clicked or created —
+  // a plain session id most of the time. A tab's own identity can move out
+  // from under that value without a click, though: splitting mints a group
+  // id for a session that didn't have one, and closing a pane can collapse
+  // a group back down to a plain session (see `onCloseTab` below). So this
+  // re-derives "which tab is that id part of *right now*" on every render
+  // instead of trusting the stored value verbatim — a session found by
+  // either its own id or its group id resolves to its *current* tab id
+  // (`groupId ?? id`), which is what `SecondaryPanel` and `TerminalDeck`
+  // both key their own tab/pane matching on.
   const [activePanelTab, setActivePanelTab] = useState<string>("");
-  const panelTabId = sessions.some((s) => s.id === activePanelTab)
-    ? activePanelTab
-    : activePanelTab === "worktree"
-      ? "worktree"
-      : (sessions[0]?.id ?? "");
+  const panelTabId = (() => {
+    if (activePanelTab === "worktree") return "worktree";
+    const owner = sessions.find((s) => s.id === activePanelTab || s.groupId === activePanelTab);
+    if (owner) return owner.groupId ?? owner.id;
+    return sessions[0] ? (sessions[0].groupId ?? sessions[0].id) : "";
+  })();
+
+  // The pane split/clear/kill act on: "the terminal you have open" within
+  // whichever tab is active. Defaults to the tab's first session and follows
+  // clicks/focus inside `TerminalDeck` from there (see `onFocusPane` below).
+  // Kept valid by the effect beneath it rather than by every place the tab
+  // or the session list can change — a tab switch, a split, or a close all
+  // funnel through the same one check instead of three separate ones that
+  // could disagree.
+  const [focusedPaneId, setFocusedPaneId] = useState<string>("");
+  const activeTabSessions = useMemo(
+    () => sessions.filter((s) => s.id === panelTabId || s.groupId === panelTabId),
+    [sessions, panelTabId],
+  );
+  useEffect(() => {
+    if (!activeTabSessions.some((s) => s.id === focusedPaneId)) {
+      setFocusedPaneId(activeTabSessions[0]?.id ?? "");
+    }
+  }, [activeTabSessions, focusedPaneId]);
+
+  // The deck mounts every xterm instance; clearing one reaches into a
+  // specific mounted instance from outside the deck's own tree, which is
+  // what the imperative handle is for — see `TerminalDeck`'s doc comment.
+  const deckRef = useRef<TerminalDeckHandle>(null);
 
   const onNewTerminal = useCallback(async () => {
     // 80×24 is a placeholder the emulator overwrites the moment it has measured
@@ -146,22 +190,113 @@ export default function WindowRoot({
     setActivePanelTab(id);
   }, [label]);
 
+  // Open a second pty beside the focused pane, under the same tab — Rust
+  // decides the group (reusing one if the focused session is already split,
+  // minting one otherwise; see `commands::split_terminal`), this just asks
+  // and then moves focus onto the pane that just opened.
+  const onSplit = useCallback(async () => {
+    if (!focusedPaneId) return;
+    const id = await terminalControl.split(focusedPaneId, 80, 24);
+    setFocusedPaneId(id);
+  }, [focusedPaneId]);
+
+  // Clears the focused pane's emulator only — never the pty. A full-screen
+  // TUI draws from its own terminal state, not from anything a shell command
+  // could print, so writing `cls`/`clear` into the stream would do nothing
+  // useful to it (or land as literal keystrokes in whatever prompt it's
+  // showing). `TerminalDeck.clear` calls xterm's own `clear()` on exactly
+  // this pane's instance.
+  const onClear = useCallback(() => {
+    if (focusedPaneId) deckRef.current?.clear(focusedPaneId);
+  }, [focusedPaneId]);
+
   // Closing the tab you were looking at has to leave you somewhere. Rust drops
   // the session from the broadcast, so `panelTabId` above would fall to the
   // first remaining terminal on its own — but only after a round trip, which
   // reads as a flicker. Choosing the neighbour here means the switch happens on
   // the same frame as the click, and the broadcast then agrees with it.
+  //
+  // Splitting means a tab can lose a pane without losing the tab, so this
+  // isn't just "closed the active tab, move on" any more:
+  //   - the tab survives with 2+ panes left: its group id is unaffected,
+  //     `panelTabId`'s own re-derivation above keeps pointing at it, nothing
+  //     to predict here.
+  //   - the tab survives with exactly 1 pane left: `close_terminal_pure` on
+  //     the Rust side ungroups a lone survivor (a group of one is not a
+  //     group), so the tab's id moves from the shared group id to that
+  //     session's own id. Predicted here for the same reason the neighbour
+  //     jump always was — so the switch lands on the same frame as the
+  //     click rather than a tick after `shell:state` catches up.
+  //   - the tab itself is gone (its last/only pane closed): jump to the
+  //     neighbouring *tab*, walking distinct tab ids rather than raw
+  //     session ids, since a split's second pane is not "the tab" a
+  //     neighbour search should land on.
   const onCloseTab = useCallback(
     (id: string) => {
-      if (id === panelTabId) {
-        const i = sessions.findIndex((s) => s.id === id);
-        const next = sessions[i + 1] ?? sessions[i - 1];
-        setActivePanelTab(next?.id ?? "worktree");
+      const closed = sessions.find((s) => s.id === id);
+      const closedTabId = closed ? (closed.groupId ?? closed.id) : null;
+      if (closedTabId !== null && closedTabId === panelTabId) {
+        const remaining = sessions.filter((s) => s.id !== id && (s.groupId ?? s.id) === panelTabId);
+        if (remaining.length === 0) {
+          const tabIds = [...new Set(sessions.map((s) => s.groupId ?? s.id))];
+          const i = tabIds.indexOf(panelTabId);
+          setActivePanelTab(tabIds[i + 1] ?? tabIds[i - 1] ?? "worktree");
+        } else if (remaining.length === 1) {
+          setActivePanelTab(remaining[0].id);
+        }
       }
       terminalControl.close(id);
     },
     [panelTabId, sessions],
   );
+
+  // The one confirmation flow for closing a session with something running
+  // in it — asked once, at the moment of the request, never polled. Lives
+  // here rather than inside the panel because the Terminal menu's Kill item
+  // has to be able to raise the exact same dialog a tab's own × does, and a
+  // dialog whose state lived only in `SecondaryPanel` could never be reached
+  // from the title bar. `SecondaryPanel` still renders `CloseConfirm` — the
+  // dialog is visually scoped to the panel — it just no longer decides when
+  // to show it.
+  const [pendingClose, setPendingClose] = useState<{ id: string; title: string; busy: TerminalBusy } | null>(null);
+  const requestClose = useCallback(
+    async (session: TerminalSession) => {
+      const busy = await terminalControl.busy(session.id);
+      if (busy) {
+        setPendingClose({ id: session.id, title: session.title, busy });
+      } else {
+        onCloseTab(session.id);
+      }
+    },
+    [onCloseTab],
+  );
+
+  // The one place "which pane does closing this tab actually mean" gets
+  // decided — the tab's own × and the Terminal menu's Kill item both route
+  // through this rather than each carrying its own rule. The answer is the
+  // focused pane when `tab` is the tab currently on screen (Kill's only
+  // possible target, since it only ever acts on the active tab) and the
+  // tab's first session otherwise (the × on a tab that isn't active has no
+  // focused pane to speak of — nothing in it is on screen to have been
+  // clicked).
+  const requestCloseTab = useCallback(
+    (tab: TerminalTabGroup) => {
+      const target =
+        tab.id === panelTabId ? (tab.sessions.find((s) => s.id === focusedPaneId) ?? tab.sessions[0]) : tab.sessions[0];
+      void requestClose(target);
+    },
+    [panelTabId, focusedPaneId, requestClose],
+  );
+
+  // The Terminal menu's Kill item acts on the focused pane, same as Split
+  // and Clear — "the terminal you have open" is a property of the pane, not
+  // of the tab it happens to sit in. Built as the active tab's own group so
+  // it goes through `requestCloseTab` exactly like the × does, rather than
+  // duplicating that resolution here.
+  const onKillTerminal = useCallback(() => {
+    if (activeTabSessions.length === 0) return;
+    requestCloseTab({ id: panelTabId, sessions: activeTabSessions });
+  }, [activeTabSessions, panelTabId, requestCloseTab]);
 
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
@@ -207,8 +342,10 @@ export default function WindowRoot({
       <Frame
         kind={kind}
         panelCollapsed={panelCollapsed}
-        panelWidth={panelCollapsed ? PANEL_COLLAPSED : panelWidth}
+        panelWidth={panelWidth}
         onPanelWidthChange={setPanelWidth}
+        panelMaximized={panelMaximized}
+        onPanelMaximizedChange={setPanelMaximized}
         slots={{
           // The spec's title is "HELVE Engine — [tool]": the bar names what the
           // window is currently showing, not the application again.
@@ -216,7 +353,13 @@ export default function WindowRoot({
             <TitleBar
               kind={kind}
               title={tools.find((t) => t.id === shownToolId)?.name ?? ""}
-              menus={defaultMenus()}
+              menus={defaultMenus({
+                onNew: onNewTerminal,
+                onSplit,
+                onKill: onKillTerminal,
+                onClear,
+                enabled: Boolean(focusedPaneId),
+              })}
             />
           ),
           // A detached window holds exactly one tool, so there is nothing to
@@ -251,17 +394,32 @@ export default function WindowRoot({
               onSelectTab={setActivePanelTab}
               onNewTerminal={onNewTerminal}
               onToggleCollapse={() => setPanelCollapsed((c) => !c)}
-              onCloseTab={onCloseTab}
-              checkBusy={(id) => terminalControl.busy(id)}
+              onRequestClose={requestCloseTab}
+              pendingClose={pendingClose}
+              onCancelClose={() => setPendingClose(null)}
+              onConfirmClose={() => {
+                if (pendingClose) onCloseTab(pendingClose.id);
+                setPendingClose(null);
+              }}
               // Every session's emulator, all mounted, one visible. Passed as a
               // slot for the same reason the worktree view is: the panel owns
               // the tab row and the geometry, and has no business knowing that
               // a terminal is xterm rather than anything else.
               terminalView={
                 <TerminalDeck
+                  ref={deckRef}
                   sessions={sessions}
                   activeId={panelTabId === "worktree" ? "" : panelTabId}
+                  focusedId={focusedPaneId || null}
+                  onFocusPane={setFocusedPaneId}
                   transport={terminalTransport}
+                  // The title itself doesn't come back through this
+                  // callback — Rust is the owner of record (a terminal can
+                  // be dragged into another window), so this only reports
+                  // what xterm saw, and the name a tab actually renders
+                  // comes back around through `shell:state` and `sessions`
+                  // above.
+                  onTitle={(id, title) => terminalControl.setTitle(id, title)}
                 />
               }
               worktreeView={<WorktreeView source={stubWorktreeSource} />}

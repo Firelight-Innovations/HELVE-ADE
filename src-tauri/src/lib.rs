@@ -111,11 +111,13 @@ pub fn run() {
             commands::window_at_cursor,
             commands::create_terminal,
             commands::close_terminal,
+            commands::split_terminal,
             commands::terminal_attach,
             commands::terminal_write,
             commands::terminal_resize,
             commands::terminal_busy,
             commands::move_terminal,
+            commands::set_terminal_title,
             commands::set_engine_state,
             commands::tool_frontend,
         ])

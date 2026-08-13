@@ -15,7 +15,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TerminalBusy, TerminalControl, TerminalTransport } from "../contract";
-import { isFake } from "./fakeBackend";
+import { fakeAddTerminal, fakeCloseTerminal, fakeGroupWith, fakeSetTitle, isFake } from "./fakeBackend";
 
 export const terminalControl: TerminalControl = {
   create(windowLabel, cols, rows) {
@@ -23,7 +23,13 @@ export const terminalControl: TerminalControl = {
     return invoke<string>("create_terminal", { label: windowLabel, cols, rows });
   },
 
+  split(sourceId, cols, rows) {
+    if (isFake()) return fakeControl.split(sourceId, cols, rows);
+    return invoke<string>("split_terminal", { id: sourceId, cols, rows });
+  },
+
   close(id) {
+    forgetTitleState(id);
     if (isFake()) return fakeControl.close(id);
     void invoke("close_terminal", { id });
   },
@@ -34,7 +40,67 @@ export const terminalControl: TerminalControl = {
     // mapping needed — `null` already means "idle, close it without asking".
     return invoke<TerminalBusy | null>("terminal_busy", { id });
   },
+
+  setTitle(id, title) {
+    reportTitle(id, title, (id, title) => {
+      if (isFake()) return fakeControl.setTitle(id, title);
+      void invoke("set_terminal_title", { id, title });
+    });
+  },
 };
+
+// --- title coalescing --------------------------------------------------------
+//
+// A shell that redraws its prompt commonly rewrites its title on every line —
+// most set it to the working directory — and every report round-trips to
+// Rust and broadcasts `shell:state` to every window. Left unchecked, a busy
+// prompt would mean a shell-state broadcast on every keystroke of typing at
+// it. So reports are coalesced per session before they ever reach `invoke`:
+// a trailing 150ms debounce collapses a burst of rewrites from one prompt
+// redraw into the single title still current 150ms later, and a title
+// identical to the last one actually sent is dropped rather than re-sent —
+// which also covers the common case of a title that never changes at all,
+// after the first report.
+//
+// Rust re-checks the "identical to what's stored" half of this on its own
+// (`ShellState::set_terminal_title`) — this map only needs to agree with
+// itself, not with Rust, since a wrong guess here costs one redundant
+// `invoke` rather than a wrong tab name.
+const lastSentTitle = new Map<string, string>();
+const titleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const TITLE_DEBOUNCE_MS = 150;
+
+function reportTitle(id: string, title: string, send: (id: string, title: string) => void) {
+  const trimmed = title.trim();
+  if (!trimmed) return; // never blank the shell-name fallback with a report.
+
+  const pending = titleTimers.get(id);
+  if (pending) clearTimeout(pending);
+
+  titleTimers.set(
+    id,
+    setTimeout(() => {
+      titleTimers.delete(id);
+      if (lastSentTitle.get(id) === trimmed) return;
+      lastSentTitle.set(id, trimmed);
+      send(id, trimmed);
+    }, TITLE_DEBOUNCE_MS),
+  );
+}
+
+/** Drop a closed session's coalescing state, so a reused-looking id (there
+ *  isn't one today, but nothing here should assume that) can't inherit a
+ *  stale "already sent" title, and so the maps don't grow for the life of
+ *  the window. */
+function forgetTitleState(id: string) {
+  lastSentTitle.delete(id);
+  const pending = titleTimers.get(id);
+  if (pending) {
+    clearTimeout(pending);
+    titleTimers.delete(id);
+  }
+}
 
 /** Mirrors `pty::Chunk` — one emission on `pty:data:<id>`. */
 interface PtyChunk {
@@ -142,7 +208,6 @@ export const terminalTransport: TerminalTransport = {
 // It is not an emulator and does not try to be. No shipped code path reads it.
 
 const fakeListeners = new Map<string, (chunk: string) => void>();
-let fakeSerial = 1;
 
 function fakeEmit(id: string, chunk: string) {
   fakeListeners.get(id)?.(chunk);
@@ -150,17 +215,33 @@ function fakeEmit(id: string, chunk: string) {
 
 const fakeControl: TerminalControl = {
   create() {
-    fakeSerial += 1;
-    return Promise.resolve(`term-fake-${fakeSerial}`);
+    // Delegates id-minting and list membership to `fakeBackend.ts` — this
+    // used to hand back an id nothing else ever heard of, which made the
+    // panel's own "+" invisible under `?fake=1`. Routing through the same
+    // reactive store `useShellState` subscribes to is what makes a fake
+    // session show up as a real tab instead of nowhere at all.
+    return Promise.resolve(fakeAddTerminal("shell"));
   },
-  close() {
-    /* Nothing to kill. */
+  split(sourceId) {
+    const id = fakeAddTerminal("shell");
+    fakeGroupWith(sourceId, id);
+    return Promise.resolve(id);
+  },
+  close(id) {
+    fakeCloseTerminal(id);
   },
   busy(id) {
     // Every third fake session claims to be busy, so the confirmation dialog
     // and the silent close are both reachable without a real process.
     const busy = id.endsWith("3");
     return Promise.resolve(busy ? { process: "npm" } : null);
+  },
+  setTitle(id, title) {
+    // Routed through the same reactive fake store `fakeAddTerminal` and
+    // friends mutate, so a title reported under `?fake=1` renames the tab
+    // for real — proof this wiring works end to end without a real Tauri
+    // backend, the same way split/close are provable under this flag.
+    fakeSetTitle(id, title);
   },
 };
 

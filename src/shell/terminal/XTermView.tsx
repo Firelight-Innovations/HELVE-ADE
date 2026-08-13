@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -19,9 +19,58 @@ import "./terminal.css";
  * are still listed as effect deps (rather than read from a ref) because the
  * correct behaviour if either ever did change is to re-wire the transport,
  * not to silently keep talking to the old one.
+ *
+ * `onTitle` and `onFocus` do not get the same treatment. `TerminalDeck` binds
+ * both fresh per session on every render — `onTitle` has to, the callback
+ * needs to know which session's title changed, and `onFocus` follows the same
+ * shape for the pane it marks focused — so each has a new identity most of
+ * the times this component re-renders. Listing either as a dep would tear
+ * down and recreate the `Terminal` instance on nearly every render of
+ * whatever's above this in the tree, which is exactly the churn the paragraph
+ * above says must not happen. Both are read from a ref instead: the effect
+ * always calls whatever the latest callback is, without its identity ever
+ * being a reason to re-run the effect.
+ *
+ * `ref` exposes one imperative method, `clear`. Split's "clear the active
+ * pane" is the one action here that has to reach into a *specific* mounted
+ * instance from outside — `SecondaryPanel`'s action bar isn't a parent of
+ * this component, `TerminalDeck` is, so `TerminalDeck` forwards a ref map and
+ * this is what each entry in it points at.
  */
-export default function XTermView({ id, transport }: { id: string; transport: TerminalTransport }) {
+export interface XTermHandle {
+  /** Clears the emulator's own screen. Sends nothing to the pty — see the
+   *  comment on `TerminalDeck`'s `clear` for why that distinction matters. */
+  clear: () => void;
+}
+
+function XTermView(
+  {
+    id,
+    transport,
+    onTitle,
+    onFocus,
+  }: {
+    id: string;
+    transport: TerminalTransport;
+    /** Called with whatever the running program set its title to, via an
+     *  OSC escape sequence. Optional — a caller that has no use for the
+     *  title (there is none today) just omits it. */
+    onTitle?: (title: string) => void;
+    /** Called when this instance's own textarea takes focus — a click, or
+     *  Tab landing on it. Optional; only a split pane's caller needs to
+     *  track which one is focused. */
+    onFocus?: () => void;
+  },
+  ref: React.ForwardedRef<XTermHandle>,
+) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const onTitleRef = useRef(onTitle);
+  onTitleRef.current = onTitle;
+  const onFocusRef = useRef(onFocus);
+  onFocusRef.current = onFocus;
+
+  useImperativeHandle(ref, () => ({ clear: () => termRef.current?.clear() }), []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -63,9 +112,21 @@ export default function XTermView({ id, transport }: { id: string; transport: Te
     }
 
     term.open(container);
+    termRef.current = term;
 
     const detach = transport.attach(id, (chunk) => term.write(chunk));
     const onData = term.onData((data) => transport.write(id, data));
+    // Backed by xterm's own OSC parser — see `ShellState::set_terminal_title`
+    // in the Rust module for why the parsing happens here rather than in the
+    // pty layer: xterm already copes with a title sequence split across two
+    // reads, which a from-scratch Rust parser would have to redo.
+    const onTitleChange = term.onTitleChange((title) => onTitleRef.current?.(title));
+    // xterm has no `onFocus` event of its own — focus lands on the hidden
+    // `<textarea>` it types into (`term.textarea`), which only exists once
+    // `open()` has run, so this is wired here rather than declared up front
+    // with the other `on*` handlers.
+    const onTextareaFocus = () => onFocusRef.current?.();
+    term.textarea?.addEventListener("focus", onTextareaFocus);
 
     // Fits are driven by a `ResizeObserver` on the container, not `window`'s
     // resize event — the panel is resized by a drag handle and by collapse,
@@ -112,13 +173,18 @@ export default function XTermView({ id, transport }: { id: string; transport: Te
       observer.disconnect();
       if (rafHandle !== null) cancelAnimationFrame(rafHandle);
       onData.dispose();
+      onTitleChange.dispose();
+      term.textarea?.removeEventListener("focus", onTextareaFocus);
       detach();
+      termRef.current = null;
       term.dispose();
     };
   }, [id, transport]);
 
   return <div ref={containerRef} className="terminal__view" />;
 }
+
+export default forwardRef(XTermView);
 
 /** Reads a design token's literal value. Canvas-backed renderers (xterm's
  *  default, and WebGL's) need a real colour or font string — `var(--x)`

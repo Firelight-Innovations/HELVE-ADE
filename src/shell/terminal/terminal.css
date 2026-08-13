@@ -31,6 +31,42 @@
   display: block;
 }
 
+/* Split layout: a pane still fills the deck's full height, but claims one
+   horizontal slice of it instead of the whole width. Positioned with the
+   custom properties `TerminalDeck` sets per pane rather than by moving panes
+   into a shared flex wrapper — see that component's doc comment for why
+   every slot has to stay a permanent, unmoving sibling of every other slot. */
+.terminal__slot--split[data-active] {
+  right: auto;
+  left: calc(var(--pane-index) * (100% / var(--pane-count)));
+  width: calc(100% / var(--pane-count));
+}
+
+/* The focused pane's affordance: a quiet inset ring in the accent colour,
+   not a border (which would shift layout by its own width) and not the
+   loud full-strength accent the tab rule uses — this marks *which* pane a
+   split's actions apply to, not that anything changed. Only meaningful
+   inside a split; an unsplit tab has exactly one candidate and needs no
+   marking. */
+.terminal__slot--split[data-focused] {
+  box-shadow: inset 0 0 0 1px var(--accent-wash);
+}
+
+/* One per gap between adjacent panes, positioned at the boundary with the
+   same custom properties the panes themselves use. `pointer-events: none` —
+   a draggable divider is explicitly not in scope for this pass; this is a
+   seam, not a handle. */
+.terminal__divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--pane-index) * (100% / var(--pane-count)));
+  width: 1px;
+  margin-left: -1px;
+  background: var(--line);
+  pointer-events: none;
+}
+
 /* xterm measures this element's box to compute cols/rows, so it has to
    actually fill the slot rather than size to its own content. `Terminal.open`
    appends its own `.xterm` element as a *child* of this one, and that child is
@@ -65,4 +101,23 @@
    and giving the two a chance to disagree. */
 .terminal__view .xterm-viewport {
   background-color: transparent;
+}
+
+/* xterm.css sets `overflow-y: scroll` on `.xterm-viewport`, so the native
+   scrollbar track is always present — even on a fresh terminal with no
+   scrollback, the track shows with a zero-height thumb. That empty strip
+   reads as a second, redundant scrollbar next to the emulator's own wheel
+   / keyboard scrolling, so the native track is hidden here. Scrolling
+   itself is untouched: the viewport stays a scroll container, xterm still
+   drives `scrollTop` through it for wheel/PageUp/PageDown, and a styled
+   overlay scrollbar (search addon / decorations) would still render above
+   this — only the UA's own track and thumb are removed.
+
+   `::-webkit-scrollbar` alone is enough: the app renders only in WebView2
+   (Windows) or WebKit (macOS), never Firefox, and never Chromium with the
+   standard `scrollbar-width` set — see the matching comment in panel.css
+   for why `scrollbar-width` is deliberately *not* added alongside it. */
+.terminal__view .xterm-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
