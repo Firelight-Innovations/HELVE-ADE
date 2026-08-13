@@ -6,10 +6,15 @@
  * responsive states can never drift into showing different trees for the same
  * menu.
  *
- * Items may be inert (`onSelect` undefined, per `contract.ts`). They still
- * render and still close the menu on click — a menu that swallows clicks
- * differently for wired and unwired items would be a worse demo of "all eight
- * open and render their tree" than one that treats them alike.
+ * Items may be inert two different ways, and they're not the same thing.
+ * `onSelect` left undefined (most of the six menus, still) renders and
+ * still closes the menu on click — a menu that swallows clicks differently
+ * for wired and unwired items would be a worse demo of "they all open and
+ * render their tree" than one that treats them alike. `disabled: true` (the
+ * Terminal menu's Split/Kill/Clear with no session to act on) is a real
+ * native `disabled` button instead: it neither fires `onSelect` nor closes
+ * the menu, because a click that lands on a control with nothing to do
+ * should not read as having done something.
  */
 import type { MenuItem } from "../contract";
 
@@ -29,6 +34,7 @@ export default function MenuItemList({
             type="button"
             role="menuitem"
             className="menu-list__item"
+            disabled={item.disabled}
             onClick={() => {
               item.onSelect?.();
               onAfterSelect();

@@ -12,10 +12,12 @@ use crate::boot;
 use crate::discovery::{self, StackSnapshot};
 use crate::error::{AppError, Result};
 use crate::manifest::{self, Manifest};
+use crate::pty::{self, PtySessions};
 use crate::shell_state::{EngineState, ShellSnapshot, ShellState};
 use crate::state::AppState;
 use crate::tool_frontend;
 use crate::windows;
+use std::path::{Path, PathBuf};
 use tauri::State;
 use tauri_plugin_opener::OpenerExt;
 
@@ -153,14 +155,150 @@ pub fn detach_tool(app: tauri::AppHandle, shell: State<'_, ShellState>, tool_id:
     windows::detach(&app, &shell, &tool_id)
 }
 
+/// Open a terminal: a session in the shared state, and a real shell behind it.
+///
+/// Both halves, in that order, because the session id is what names the pty.
+/// If the shell cannot be spawned the session is rolled back rather than left
+/// on screen as a tab with nothing behind it.
+///
+/// `cols`/`rows` are the emulator's first guess. It corrects them the moment it
+/// has measured itself, so being briefly wrong here is harmless — but being
+/// *absent* is not, since a pty must be created with some size and a program
+/// that starts before the first resize would draw to whatever we picked.
 #[tauri::command]
-pub fn create_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, label: String) -> String {
-    shell.create_terminal(&app, &label)
+pub fn create_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    ptys: State<'_, PtySessions>,
+    label: String,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> Result<String> {
+    open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))
+}
+
+/// The one path that opens a terminal, shared by the command above and by the
+/// launch terminal `lib.rs` opens at setup.
+///
+/// The ordering is the point: claim an id, spawn the shell, and only publish the
+/// session once there is something behind it. A spawn that fails leaves nothing
+/// on screen, so there is no state to roll back and no window that briefly saw a
+/// tab that never worked.
+pub fn open_terminal(
+    app: &tauri::AppHandle,
+    shell: &ShellState,
+    ptys: &PtySessions,
+    label: &str,
+    cols: u16,
+    rows: u16,
+) -> Result<String> {
+    let (id, ordinal) = shell.claim_terminal_id();
+    let name = ptys.open(app, &id, &terminal_cwd(app), cols, rows)?;
+
+    // "pwsh", then "pwsh 2", "pwsh 3" — the first of a kind goes unnumbered,
+    // which is what the handoff's panel draws and what every terminal
+    // application does.
+    let title = if ordinal <= 1 {
+        name
+    } else {
+        format!("{name} {ordinal}")
+    };
+
+    shell.add_terminal(app, &id, &title, label);
+    Ok(id)
+}
+
+/// Where a new terminal opens: the stack root, where helve.toml lives.
+///
+/// Not the process's working directory, which `tauri dev` sets to `src-tauri/` —
+/// nobody's idea of where a terminal should start. The fallbacks only matter
+/// when there is no manifest at all, which is a broken install rather than a
+/// state worth failing a terminal over.
+fn terminal_cwd(app: &tauri::AppHandle) -> PathBuf {
+    manifest::locate(app)
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 #[tauri::command]
-pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, id: String) {
+pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, ptys: State<'_, PtySessions>, id: String) {
+    ptys.close(&id);
     shell.close_terminal(&app, &id);
+}
+
+/// Split a terminal: open a second pty and fold it into `id`'s tab.
+///
+/// Reuses `open_terminal` for the spawn itself — there is exactly one path
+/// that opens a pty, splitting included. What this adds is the second step:
+/// putting the new session in `id`'s group, minting one if `id` didn't have
+/// one yet. That bookkeeping is `ShellState::group_with`'s, not this
+/// function's, for the same reason grouping lives on `TerminalSession` at
+/// all — see the doc comment there.
+///
+/// The new pty opens in whichever window `id` is currently showing in, read
+/// off `ShellState` rather than taken as an argument — the caller already
+/// told the backend that once, when the session was created or last moved,
+/// and asking it to repeat itself here would just be a second place for the
+/// two to disagree.
+#[tauri::command]
+pub fn split_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    ptys: State<'_, PtySessions>,
+    id: String,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> Result<String> {
+    let label = shell
+        .window_label_of(&id)
+        .ok_or_else(|| AppError::Pty {
+            id: id.clone(),
+            reason: "no such terminal to split".to_string(),
+        })?;
+
+    let new_id = open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))?;
+    shell.group_with(&app, &id, &new_id);
+    Ok(new_id)
+}
+
+/// A keystroke on its way to the shell. High-traffic, so it returns nothing and
+/// reports nothing — a write to a dead pty is not an error worth a round trip,
+/// and `pty:exit` already told the frontend the session ended.
+#[tauri::command]
+pub fn terminal_write(ptys: State<'_, PtySessions>, id: String, data: String) {
+    ptys.write(&id, &data);
+}
+
+/// An emulator has mounted and is listening. Answers with everything the shell
+/// has said so far and where the live stream picks up.
+///
+/// Called once per emulator, right after its listener is registered, and it is
+/// what makes a terminal work at all rather than an optimisation. A pty starts
+/// talking the instant it is spawned — on Windows, by asking the terminal where
+/// the cursor is and then waiting for the answer before printing anything else
+/// — and Tauri events have no replay. Without this call, the launch terminal's
+/// opening question is emitted into an empty room and the shell waits for a
+/// reply that can never come.
+#[tauri::command]
+pub fn terminal_attach(ptys: State<'_, PtySessions>, id: String) -> Option<pty::Attachment> {
+    ptys.attach(&id)
+}
+
+/// The emulator has measured itself. See `PtySessions::resize` for why this is
+/// not cosmetic.
+#[tauri::command]
+pub fn terminal_resize(ptys: State<'_, PtySessions>, id: String, cols: u16, rows: u16) {
+    ptys.resize(&id, cols, rows);
+}
+
+/// Is this terminal running something? Asked once, when its close button is
+/// clicked. `None` means the shell is at a prompt and the close needs no
+/// confirming.
+#[tauri::command]
+pub fn terminal_busy(ptys: State<'_, PtySessions>, id: String) -> Option<pty::Busy> {
+    pty::busy(&ptys, &id)
 }
 
 /// Drop a terminal into another window's panel. `to_label` is the destination,
@@ -173,6 +311,17 @@ pub fn move_terminal(
     to_label: String,
 ) {
     shell.move_terminal(&app, &id, &to_label);
+}
+
+/// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
+/// and the emulator that saw it is reporting up.
+///
+/// Just a thin forward to `ShellState::set_terminal_title` — that's where the
+/// empty/no-op guards and the path-shortening live, both explained there.
+/// This command exists purely so the frontend has something to `invoke`.
+#[tauri::command]
+pub fn set_terminal_title(app: tauri::AppHandle, shell: State<'_, ShellState>, id: String, title: String) {
+    shell.set_terminal_title(&app, &id, &title);
 }
 
 /// Where to point a tool's iframe, or why there is nothing to point it at.

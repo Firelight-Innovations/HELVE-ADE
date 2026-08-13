@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { EngineState } from "../contract";
-import { isFake, fakeShellState } from "./fakeBackend";
+import { isFake, subscribeFakeShellState } from "./fakeBackend";
 
 /** Mirrors `shell_state::WindowPlacement`. */
 export interface WindowPlacement {
@@ -29,6 +29,7 @@ export interface TerminalSessionState {
   title: string;
   windowLabel: string;
   agentFinished: boolean;
+  groupId: string | null;
 }
 
 /** Mirrors `shell_state::ShellSnapshot`. */
@@ -55,8 +56,11 @@ export function useShellState(): ShellSnapshot | null {
 
   useEffect(() => {
     if (isFake()) {
-      setSnapshot(fakeShellState());
-      return;
+      // A subscription, not a one-shot read — `state/terminals.ts`'s fake
+      // control functions mutate the fake terminal list on create/split/
+      // close, and this is what makes that show up here instead of sitting
+      // invisible until a remount.
+      return subscribeFakeShellState(setSnapshot);
     }
 
     let live = true;

@@ -1,11 +1,11 @@
 /**
- * The eight menus collapsed into one button, <1100px.
+ * The six menus collapsed into one button, <1100px.
  *
- * "Opens the same menu tree" — so this renders the same eight `Menu` objects
+ * "Opens the same menu tree" — so this renders the same six `Menu` objects
  * `MenuBar` does, through the same `MenuItemList`, just reached through one
- * button and an accordion instead of eight inline labels. Only the group
+ * button and an accordion instead of six inline labels. Only the group
  * header a person just clicked is expanded at a time, which keeps a tree of
- * eight menus' worth of items from turning into an unreadable single popover.
+ * six menus' worth of items from turning into an unreadable single popover.
  *
  * The popover opening is the one animated moment (shared `popover` variants,
  * same as `MenuBar`). The accordion rows inside it are a plain conditional

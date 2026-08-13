@@ -5,73 +5,622 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Helve</title>
     <!--
-      This skeleton is inlined on purpose, and it duplicates values from
-      tokens.css and splash/splash.css instead of importing them.
+      This file is deliberately standalone: no imports, no build step, no
+      shared modules, no coupling of any kind to the rest of the application.
 
-      Everything this window normally styles itself with arrives through the
-      script tag below: splash.css is imported by main.tsx, so nothing gets
-      painted until that whole module graph has loaded and React has mounted.
-      In a release build that's fast. Under `tauri dev` Vite serves every
-      module as its own request, and the gap is long enough to show as a blank
-      window at exactly the moment the user is looking for a sign the app
-      started — which is the only job this window has.
+      It used to be a Vite entry that mounted a React tree
+      (src/splash/main.tsx -> Splash.tsx -> splash.css -> tokens.css ->
+      @fontsource, plus framer-motion and src/ui/Icon.tsx). That worked, but
+      it meant the first window of the app could not paint its real content
+      until ~340kB of the main application's JavaScript had been fetched,
+      parsed, and mounted — React, ReactDOM and framer-motion included, all
+      to set three text nodes and one element's width. Worse, every one of
+      those imports was a live coupling: a dependency added anywhere in the
+      shared module graph landed in the splash's critical path too.
 
-      So the markup below is painted from HTML and inline CSS alone: no
-      request, no script, no wait. React clears the container and replaces it
-      on mount, and it's drawn to match the mounted first frame (same text,
-      same empty bar in the same place) so the swap doesn't flicker.
+      So everything it needs is inlined here instead:
+        - the styles, with the token hex values copied literally out of
+          src/tokens.css (this file cannot @import it — that would be a
+          request, and a dependency)
+        - the status-bar spinner, copied from `BootArc` in src/ui/Icon.tsx
+          and recoloured — see `.splash-art` below
+        - the wordmark's typeface, as a base64 woff2 subset (see @font-face)
+        - the boot logic, as a plain non-module <script> at the bottom
 
-      The duplication is the price of having nothing in front of first paint.
-      Keep it in sync with tokens.css and splash.css by hand.
+      One deliberate exception: `.splash__field` loads `/helve-splash-field.svg`
+      from `public/` as a plain image request. That is a request, unlike
+      everything above — but it is a static, standalone asset with no module
+      graph behind it, not a dependency on this application's *code*, which
+      is the coupling the rest of this file exists to avoid. At 230kB inlining
+      it as markup would have more than 10x'd this file for a background image
+      that is never read as text, so it stays external. Regenerate the wordmark
+      subset or touch the field art and nothing else in the app has to know.
+
+      The payoff is that the markup below IS the finished screen rather than
+      a stand-in for it. The old file carried a hand-maintained skeleton that
+      duplicated the React tree so *something* was on screen before the
+      bundle arrived, and the two had to be kept visually identical by hand
+      or the handoff would visibly flicker. There is no handoff now, so
+      there is nothing to keep in sync: the script only ever mutates text,
+      one width, and two `hidden` attributes.
+
+      The cost is that the values here are copies. If a token in
+      src/tokens.css changes, change it here too — nothing will fail loudly.
+      That is the deliberate trade: this window's whole job is to be on
+      screen instantly, and it cannot do that while it depends on the
+      application it is covering for.
     -->
     <style>
+      /*
+       * IBM Plex Sans 600, subset to U+0041-005A (uppercase Latin) — 4.8kB,
+       * ~6.4kB as base64. Inlined rather than linked because a linked font
+       * is a request that resolves *after* first paint, so the wordmark
+       * would paint in the fallback face and then visibly reflow into this
+       * one. Regenerate with:
+       *
+       *   pyftsubset node_modules/@fontsource/ibm-plex-sans/files/\
+       *     ibm-plex-sans-latin-600-normal.woff2 \
+       *     --unicodes="U+0041-005A" --flavor=woff2 --output-file=out.woff2
+       *
+       * Only the wordmark gets a bundled face. The status line and error
+       * text below deliberately use the system stack: their content is
+       * arbitrary (labels from boot.rs, error strings containing file
+       * paths), so they cannot be subset down to anything this small, and
+       * bundling full faces for a line of transient chrome would cost more
+       * than the rest of this file put together.
+       */
+      @font-face {
+        font-family: "Helve Wordmark";
+        font-style: normal;
+        font-weight: 600;
+        src: url(data:font/woff2;base64,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) format("woff2");
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
       html,
       body {
         margin: 0;
-        height: 100%;
-        background: #14161a;
-      }
-      #root {
-        height: 100%;
-      }
-      .boot {
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
+        width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #1b1e24;
-        border: 1px solid #2c313b;
-        color: #e4e7ec;
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        font-size: 14px;
+        background: #14161a;
       }
-      .boot__content {
+
+      /* Not `display: flex` on body. `.splash` already fills the window on
+         its own, so there is nothing to centre — and as a flex row its lone
+         child would shrink to fit its content instead of filling the line,
+         collapsing every percentage width inside it. A block child with no
+         width set simply fills its parent, which is what is wanted. */
+      .splash {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #1b1e24; /* --surface */
+        border: 1px solid #2c313b; /* --line */
+        color: #e4e7ec; /* --text */
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+
+      /* The top 90%: the field art filling it edge to edge, the wordmark
+         over its bottom-left corner, and — once boot fails — the error
+         panel over its centre. Everything in here is positioned, not
+         flexed: with a background image involved there is no single "the
+         content" to centre as a group any more, so each piece places
+         itself instead. `min-height: 0` matters regardless: a flex item
+         (`.splash__content` is one, of `.splash`) defaults to
+         `min-height: auto`, so without it this would refuse to shrink and
+         would push the bar off the bottom edge instead of being clipped. */
+      .splash__content {
+        position: relative;
         flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      /* `object-fit: cover` rather than shipping the art pre-cropped: the
+         source is 1920x1080 (16:9 ≈ 1.78) and this box is roughly 1.73:1 at
+         the window's default size, close enough that cover only trims a
+         sliver off the sides — but window size is the one thing here that
+         is not fixed by this file, so the crop has to be computed, not
+         baked in.
+
+         `height: 120%` + `object-position: top` rather than a plain 100%
+         box: the source art's own linework stops at roughly y=820 of its
+         1080-tall canvas — the bottom ~24% of the file is flat, undrawn
+         background, not a fade (checked by rendering the source with its
+         `floor`/`vig`/`glow` overlay rects stripped out entirely: the dead
+         band is identical, so it is the line geometry itself that ends
+         there, not something an overlay is hiding). A 100%-tall box shows
+         all 1080 rows, which stretches that dead band across the bottom of
+         the content area as a wide strip of nothing before the bar even
+         starts — that strip *is* the "gap" this has repeatedly come back
+         to. Overscaling the box to 120% and anchoring to the top instead
+         crops off source rows ~900-1080 — comfortably past where the last
+         visible line is, into rows already flat background colour — so
+         `.splash__content`'s `overflow: hidden` clips only dead pixels, and
+         what reaches `.splash__field-seam` below is real (if faint) art
+         instead of a pre-emptied canvas. */
+      .splash__field {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 120%;
+        object-fit: cover;
+        object-position: top;
+        display: block;
+      }
+
+      /* The art already fades to near-black on its own — that gradient is
+         baked into the source, not added here — but it fades to `--bg`
+         (#14161a), one step darker than `.splash__bar` sitting right below
+         it (`--surface-2`, #22262e). Against a flat background that gap is
+         invisible; against a busy field of lines it reads as a seam, a
+         visible edge where the art stops rather than a continuation into
+         the bar. This does not touch or replace that fade — it only carries
+         the last stretch of it the rest of the way, into the exact colour
+         the bar already is, so the two meet instead of meeting a step.
+
+         First attempt at this was a flat 28px linear fade, and it traded one
+         visible seam for a fainter but still-visible one: the source's own
+         fade covers roughly the bottom 145px at this box's size and slows
+         down as it goes, so a short *linear* patch grafted onto the end of a
+         long *eased* one is still a kink — a sudden change in fade *rate*
+         right at 28px from the bottom, which the eye catches as a line even
+         though the colours themselves line up exactly at both ends of it
+         (Mach banding). Matching the source's easing, not just its
+         endpoints, is what actually removes it: this stays flat through its
+         first third — doing nothing, on top of a stretch of the source that
+         is already doing very little — and backloads the actual blending
+         into its final third, so the *rate* of darkening changes gradually
+         going in, not at a hard boundary. */
+      .splash__field-seam {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 110px;
+        background: linear-gradient(
+          to bottom,
+          transparent 0%,
+          transparent 35%,
+          rgba(34, 38, 46, 0.25) 65%,
+          rgba(34, 38, 46, 0.65) 85%,
+          #22262e 100% /* --surface-2 */
+        );
+        pointer-events: none;
+      }
+
+      /* Now just the status-bar spinner (see the bottom 10% below) — sized
+         for that context, not for centre stage. */
+      .splash-art {
+        display: flex;
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+
+      .splash-art__ring {
+        width: 100%;
+        height: 100%;
+        animation: splash-spin 0.9s linear infinite;
+      }
+
+      /* Paused rather than stopped, so the ring freezes exactly where it
+         was instead of snapping back to its starting angle. */
+      .splash-art--settled .splash-art__ring {
+        animation-play-state: paused;
+      }
+
+      @keyframes splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .splash__wordmark {
+        position: absolute;
+        left: 20px;
+        bottom: 18px;
+        margin: 0;
+        font-family: "Helve Wordmark", system-ui, sans-serif;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        /* The field art behind this varies in brightness by pixel, unlike
+           the flat surface colour it sat on before — a fixed text colour
+           alone cannot guarantee contrast against every part of it, so this
+           carries its own contrast instead of borrowing the background's. */
+        text-shadow: 0 1px 4px rgba(10, 11, 13, 0.7), 0 0 20px rgba(10, 11, 13, 0.4);
+      }
+
+      /* Centres the panel below over the art rather than over the whole
+         window — this is `.splash__content`-scoped (the top 90%), sized
+         independently from `.splash__bar` underneath it. */
+      .splash__error {
+        position: absolute;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
+        padding: 24px;
       }
-      .boot__label {
+
+      /* A backdrop panel, not just centred text: the message needs to stay
+         legible over the busiest part of the field art it might land on,
+         and `.splash__wordmark`'s text-shadow trick alone would not be
+         enough contrast for a multi-line paragraph the way it is for one
+         short word. */
+      .splash__error-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        max-width: 400px;
+        padding: 20px 26px;
+        border: 1px solid #2c313b; /* --line */
+        border-radius: 8px;
+        background: rgba(20, 22, 26, 0.85);
+      }
+
+      .splash__error-message {
         margin: 0;
-        color: #949cab;
+        text-align: center;
         font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-        font-size: 0.85em;
+        font-size: 12px;
+        color: #d9635f; /* --err */
       }
-      /* Matches .splash__bar: bottom 10%, full width, flush to the frame. */
-      .boot__bar {
+
+      .splash__continue {
+        padding: 5px 14px;
+        border: 1px solid #2c313b;
+        border-radius: 5px;
+        background: #22262e; /* --surface-2 */
+        color: #e4e7ec;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .splash__continue:hover,
+      .splash__continue:focus-visible {
+        border-color: #d98a3f; /* --accent */
+        color: #d98a3f;
+      }
+
+      /* The bottom 10%: one bar doing two jobs — its fill is the progress
+         indicator, and it also carries the current label and step count.
+
+         Kept in the flex flow rather than absolutely positioned: as a flex
+         item in a column, `flex-basis: 10%` resolves against the parent's
+         height, and the content above simply gets the other 90% for free. */
+      .splash__bar {
+        position: relative;
         flex: 0 0 10%;
+        width: 100%;
         background: #22262e;
+        overflow: hidden;
+      }
+
+      /* Translucent rather than a solid fill: solid accent under light text
+         reads fine at 100% width but fights the label at 30-60%, which is
+         most of what a three-step boot actually shows. */
+      .splash__bar-fill {
+        position: absolute;
+        inset: 0;
+        width: 0%;
+        background: rgba(217, 138, 63, 0.7); /* --accent-line-strong */
+        transition: width 180ms ease-out;
+      }
+
+      .splash__bar-row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        height: 100%;
+        padding: 0 16px;
+      }
+
+      /* Groups the spinner and the label as one unit against
+         `.splash__bar-row`'s `space-between`, so the step count is the only
+         thing pushed to the far right — without this, `space-between` would
+         spread all three evenly and put daylight between the spinner and
+         the label it belongs next to. */
+      .splash__bar-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .splash__bar-label {
+        font-size: 12.5px;
+        font-weight: 500;
+      }
+
+      .splash__bar-step {
+        flex: none;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11px;
+        color: #e4e7ec; /* --text */
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .splash-art__ring {
+          animation: none;
+        }
+        .splash__bar-fill {
+          transition: none;
+        }
       }
     </style>
   </head>
   <body>
-    <div id="root">
-      <div class="boot">
-        <div class="boot__content"><p class="boot__label">Starting…</p></div>
-        <div class="boot__bar"></div>
+    <div class="splash">
+      <div class="splash__content">
+        <!-- helve-splash-field.svg, from public/ — see the file-level
+             comment above for why this one asset is external. -->
+        <img class="splash__field" src="/helve-splash-field.svg" alt="" />
+        <div class="splash__field-seam"></div>
+
+        <p class="splash__wordmark">HELVE</p>
+
+        <div class="splash__error" hidden>
+          <div class="splash__error-panel">
+            <p class="splash__error-message"></p>
+            <button type="button" class="splash__continue">Continue anyway</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="splash__bar" role="progressbar" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0">
+        <div class="splash__bar-fill"></div>
+        <div class="splash__bar-row">
+          <div class="splash__bar-status">
+            <!-- `BootArc`, copied from src/ui/Icon.tsx and recoloured: white
+                 for the moving arc, grey for the track. The brand mark that
+                 used to sit in its centre (`BrandGlyph`, four squares) is
+                 gone rather than moved — HELVE is now written out in full
+                 as the wordmark, so the icon no longer needs to carry the
+                 brand on its own too. `aria-hidden`: the label right next
+                 to it already says the same thing as text. -->
+            <span class="splash-art" aria-hidden="true">
+              <svg class="splash-art__ring" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="12" cy="12" r="9" stroke="#949cab" />
+                <path d="M12 3a9 9 0 0 1 9 9" stroke="#e4e7ec" />
+              </svg>
+            </span>
+            <span class="splash__bar-label">Starting…</span>
+          </div>
+          <span class="splash__bar-step"></span>
+        </div>
       </div>
     </div>
-    <script type="module" src="/src/splash/main.tsx"></script>
+
+    <script>
+      /*
+       * A plain <script>, not `type="module"`: a module is deferred and
+       * fetched as a separate resource even when it imports nothing, and
+       * this needs neither. Nothing here is transformed by Vite.
+       *
+       * The Tauri API is reached through `window.__TAURI__`, which requires
+       * `app.withGlobalTauri: true` in tauri.conf.json. That global is
+       * injected by the Tauri runtime as an initialisation script, so it is
+       * already present before this runs and costs no request — unlike
+       * `import { invoke } from "@tauri-apps/api/core"`, which would drag
+       * the bundler back in and put this window's startup behind a module
+       * graph again.
+       */
+      (function () {
+        "use strict";
+
+        /*
+         * Minimum time the splash stays up, no matter how fast boot
+         * finishes. This holds back only the *handoff* — the Rust-side work
+         * in boot.rs runs at full speed either way and is usually done well
+         * before this timer is.
+         *
+         * 5s is deliberately longer than boot ever actually takes. A boot
+         * this app can run (a manifest read and a checkout scan) finishes in
+         * well under a second on any real machine, so without a floor the
+         * splash would read as barely doing anything — which undersells an
+         * app that, once handed off to, is not thin. This is the version of
+         * that impression that a fast boot earns instead.
+         *
+         * Kept well clear of `WATCHDOG_TIMEOUT` in boot.rs (10s): that timer
+         * force-closes the splash if nothing calls `finish_boot` in time, as
+         * a fallback for a frontend that never got the chance to. This timer
+         * is the frontend getting that chance — if the two ever converged,
+         * the watchdog would start racing the normal path instead of only
+         * ever backstopping it.
+         */
+        var MIN_VISIBLE_MS = 5000;
+
+        /*
+         * How long the bar sits at `FINALIZE_PROGRESS` under a "Finalizing"
+         * label before jumping to the real `Ready` state.
+         *
+         * `boot::BootStatus` has no phase for this — the moment boot.rs
+         * reports `Ready`, it is genuinely done, there is no fourth step
+         * running in the background during this hold. It exists for the
+         * same reason `MIN_VISIBLE_MS` does: a bar that snaps straight from
+         * "step 3 of 3" to "Ready" reads as though the last stretch of work
+         * was skipped rather than finished, even though nothing was
+         * actually skipped. This manufactures the beat that a real final
+         * step would have taken.
+         *
+         * It runs *inside* `MIN_VISIBLE_MS`, not on top of it — `handleReady`
+         * only calls `armReadyHandoff` after this hold, so the 5s floor is
+         * simply measured from a slightly later point. The two never stack.
+         * `Ready` itself is not a resting state either (see `render`'s
+         * settle logic below): the spinner keeps turning for however long of
+         * `MIN_VISIBLE_MS` is left after this hold, so that remainder reads
+         * as more of the same loading sequence instead of a second, frozen
+         * stop tacked on after it.
+         */
+        var FINALIZE_HOLD_MS = 450;
+        var FINALIZE_PROGRESS = 0.95;
+
+        var startedAt = performance.now();
+
+        var art = document.querySelector(".splash-art");
+        var wordmark = document.querySelector(".splash__wordmark");
+        var errorBox = document.querySelector(".splash__error");
+        var errorMessage = document.querySelector(".splash__error-message");
+        var continueButton = document.querySelector(".splash__continue");
+        var bar = document.querySelector(".splash__bar");
+        var fill = document.querySelector(".splash__bar-fill");
+        var label = document.querySelector(".splash__bar-label");
+        var step = document.querySelector(".splash__bar-step");
+
+        var tauri = window.__TAURI__;
+
+        /*
+         * Absent when this file is opened directly in a browser, which is
+         * how its layout gets checked without building the app. Bailing
+         * here leaves the static markup above on screen as a preview of the
+         * initial state, rather than throwing on the first property access.
+         */
+        if (!tauri) return;
+
+        var invoke = tauri.core.invoke;
+        var listen = tauri.event.listen;
+
+        /** Mirrors `boot::BootStatus` — see src/bindings.ts for the types. */
+        function render(status) {
+          var working = status.phase === "working";
+          var failed = status.phase === "failed";
+          var progress = working ? status.step / status.total : status.phase === "ready" ? 1 : 0;
+
+          // Settled — spinner stopped — only on `failed`. `ready` keeps it
+          // turning: boot is genuinely done at that point, but the window
+          // is not, since it is still waiting out whatever is left of
+          // `MIN_VISIBLE_MS`. A spinner that stops right as that wait
+          // begins reads as the app having hung, not as it deliberately
+          // taking its time — `failed` is the one phase that is actually at
+          // rest, waiting on the person reading it rather than a timer.
+          art.classList.toggle("splash-art--settled", failed);
+
+          fill.style.width = progress * 100 + "%";
+          bar.setAttribute("aria-valuenow", String(progress));
+
+          label.textContent = working ? status.label : failed ? "Startup failed" : "Ready";
+
+          // `step 0 of 3` is a state boot can genuinely report before it
+          // starts, but it is not a step — so it is blanked here alongside
+          // `ready` and `failed` rather than only those two.
+          step.textContent =
+            working && status.step > 0 ? "step " + status.step + " of " + status.total : "";
+
+          wordmark.hidden = failed;
+          errorBox.hidden = !failed;
+          if (failed) errorMessage.textContent = status.message;
+        }
+
+        function finish() {
+          invoke("finish_boot").catch(function (err) {
+            console.error(String(err));
+          });
+        }
+
+        // Guards the handoff so it is only ever armed once, however status
+        // first reaches `ready` — via the live listener, via the poll, or
+        // both racing each other.
+        var handoffArmed = false;
+
+        function armReadyHandoff() {
+          if (handoffArmed) return;
+          handoffArmed = true;
+          // Hold until MIN_VISIBLE_MS has elapsed, but not a moment longer:
+          // if boot was already slow enough to clear it, this fires now.
+          var remaining = Math.max(0, MIN_VISIBLE_MS - (performance.now() - startedAt));
+          window.setTimeout(finish, remaining);
+        }
+
+        // Separate from `handoffArmed`: that one guards `finish` itself,
+        // this guards *entering* the finalizing hold, and they cannot share
+        // a flag. `armReadyHandoff` sets its guard only once the hold is
+        // already over, so if both the live listener and the poll saw
+        // `ready` and this reused that flag, the second caller would read
+        // it as still unarmed and start a second hold on top of the first.
+        var finalizeStarted = false;
+
+        // The one state transition `render` cannot make on its own: boot.rs
+        // never reports it, so it is driven from here rather than folded
+        // into `render`'s `status.phase` branches.
+        function handleReady() {
+          if (finalizeStarted) return;
+          finalizeStarted = true;
+
+          art.classList.remove("splash-art--settled"); // still visibly working
+          fill.style.width = FINALIZE_PROGRESS * 100 + "%";
+          bar.setAttribute("aria-valuenow", String(FINALIZE_PROGRESS));
+          label.textContent = "Finalizing";
+          step.textContent = "";
+
+          window.setTimeout(function () {
+            render({ phase: "ready" });
+            armReadyHandoff();
+          }, FINALIZE_HOLD_MS);
+        }
+
+        // `failed` is deliberately never auto-finished — the user should
+        // get a chance to read why before being dropped into the main
+        // window, so it waits on this button instead.
+        continueButton.addEventListener("click", finish);
+
+        /*
+         * Tauri events are not replayed: if boot reports `Ready` before the
+         * listener below is registered, that event is simply gone. Polling
+         * `boot_status` closes that gap — but its response can also land
+         * *after* a live event has already moved things forward, and
+         * applying it then would overwrite newer data with older. This flag
+         * is the guard. Status only ever moves forward (working, then
+         * exactly one of ready/failed), so "has a live event arrived at
+         * all" is enough to tell stale from current.
+         */
+        var liveEventReceived = false;
+
+        // The poll is chained off `listen`'s promise rather than fired
+        // alongside it, and that is the point: `listen` is itself an async
+        // IPC call that resolves only once the listener is registered on
+        // the Rust side. Polling before then would leave a window in which
+        // an event could fire and be missed by both paths.
+        listen("boot:status", function (event) {
+          liveEventReceived = true;
+          // `ready` goes through `handleReady`'s finalizing hold instead of
+          // straight to `render` — see that function for why.
+          if (event.payload.phase === "ready") return handleReady();
+          render(event.payload);
+        })
+          .then(function () {
+            return invoke("boot_status");
+          })
+          .then(function (polled) {
+            if (liveEventReceived) return;
+            // Boot may have finished before this window even loaded. Routing
+            // through `handleReady` here too is what stops that case sitting
+            // untouched until the watchdog in boot.rs forces the handoff ten
+            // seconds later — it still gets its finalizing hold either way.
+            if (polled.phase === "ready") return handleReady();
+            render(polled);
+          })
+          .catch(function (err) {
+            console.error(String(err));
+          });
+      })();
+    </script>
   </body>
 </html>

@@ -119,14 +119,24 @@ export interface EngineStatusSource {
 }
 
 // ---------------------------------------------------------------------------
-// Terminals — stubbed sessions, real tabs
+// Terminals — real PTYs, real emulation
 // ---------------------------------------------------------------------------
-
-/** One line of terminal output. `tone` picks the colour, not the content. */
-export interface TerminalLine {
-  text: string;
-  tone: "prompt" | "ok" | "info" | "muted";
-}
+//
+// A session is two separate things, and they are deliberately two interfaces.
+//
+// `TerminalSource` is *identity and lifetime*: which sessions exist, what they
+// are called, which window's panel holds one. That is shared state — a terminal
+// can be dragged between windows and outlives whichever window is showing it —
+// so it is Rust's, and this is a projection of `shell:state`.
+//
+// `TerminalTransport` is *bytes*: one PTY's output going to one emulator, and
+// that emulator's keystrokes going back. It is per-session, high-volume, and
+// nothing outside the terminal view has any business seeing it.
+//
+// Keeping them apart is what makes the interception point in Rust worth having.
+// Every byte in either direction crosses one seam there, so a wrapper around a
+// coding harness — tracking what it did, injecting input, restarting it — is
+// written once in the transport and needs no cooperation from anything here.
 
 export interface TerminalSession {
   id: string;
@@ -136,13 +146,133 @@ export interface TerminalSession {
    * health, and it never appears on a tool tab.
    */
   agentFinished: boolean;
-  lines: TerminalLine[];
+  /**
+   * Sessions sharing a group id render as one tab, laid out side by side in
+   * the deck by `TerminalDeck`. `null` for an ordinary, unsplit session.
+   *
+   * Owned by Rust, like the rest of a session's identity — a terminal can be
+   * dragged into another window, and a group held together by one window's
+   * own state would come apart the moment a member of it moved.
+   */
+  groupId: string | null;
 }
 
-export interface TerminalSource {
-  subscribe(cb: (sessions: TerminalSession[]) => void): () => void;
-  create(): string;
+/**
+ * One entry in the tab row: a solo session, or every session that shares a
+ * group id, in the order they first appear in `sessions`.
+ *
+ * `id` is the tab's own identity — a session id for a solo tab, the shared
+ * group id for a split one — and is what `SecondaryPanel`'s `activeTabId`
+ * and `TerminalDeck`'s `activeId` both compare against. Computed fresh from
+ * `sessions` rather than tracked separately, so there is no second place a
+ * tab's membership could drift from what Rust actually reports.
+ */
+export interface TerminalTabGroup {
+  id: string;
+  sessions: TerminalSession[];
+}
+
+export function groupTerminalTabs(sessions: TerminalSession[]): TerminalTabGroup[] {
+  const tabs: TerminalTabGroup[] = [];
+  const byGroupId = new Map<string, TerminalTabGroup>();
+
+  for (const session of sessions) {
+    if (session.groupId) {
+      let tab = byGroupId.get(session.groupId);
+      if (!tab) {
+        tab = { id: session.groupId, sessions: [] };
+        byGroupId.set(session.groupId, tab);
+        tabs.push(tab);
+      }
+      tab.sessions.push(session);
+    } else {
+      tabs.push({ id: session.id, sessions: [session] });
+    }
+  }
+
+  return tabs;
+}
+
+/**
+ * What a session is running, when it is running anything.
+ *
+ * Only ever asked for at the moment someone clicks the close button, which is
+ * what keeps it cheap: there is no polling and no per-session watcher, just one
+ * question answered once. `null` means the shell is sitting at a prompt with no
+ * child of its own, and that close needs no confirming.
+ */
+export interface TerminalBusy {
+  /** The child process's name, so the dialog can say what it would kill. */
+  process: string;
+}
+
+/**
+ * Opening and closing sessions.
+ *
+ * There is deliberately no `subscribe` here. Which sessions exist is part of
+ * `shell:state` — it has to be, since a terminal can be dragged into another
+ * window — so a second subscription would be a second answer to a question that
+ * already has one, and the two could disagree.
+ */
+export interface TerminalControl {
+  /** Resolves once the shell is actually running and the session has an id. */
+  create(windowLabel: string, cols: number, rows: number): Promise<string>;
+  /**
+   * Open a second pty and fold it into `sourceId`'s tab — the second half of
+   * "split terminal", the first half being `open_terminal` on the Rust side
+   * (reused, not duplicated; see `commands::split_terminal`). Grouping is
+   * decided in Rust, same as everything else about a session's identity, so
+   * this only ever *asks*; the group a caller should render comes back
+   * around through `shell:state`, same as `setTitle` below.
+   */
+  split(sourceId: string, cols: number, rows: number): Promise<string>;
   close(id: string): void;
+  busy(id: string): Promise<TerminalBusy | null>;
+  /**
+   * A session's own program set its title via an OSC escape sequence (`ESC
+   * ] 0 ; title BEL` / `ESC ] 2 ; title ST`), detected by the emulator that
+   * saw it and reported up here.
+   *
+   * Lives on `TerminalControl`, not `TerminalTransport`: a title is identity
+   * — the same thing `TerminalSession.title` already is — not a byte on the
+   * session's stream, and Rust is the owner of record for identity (see the
+   * comment above `TerminalSession`) because a terminal can be dragged into
+   * another window's panel. This call only ever *reports*; the title a
+   * caller should render still comes back around through `shell:state`.
+   */
+  setTitle(id: string, title: string): void;
+}
+
+/**
+ * One session's byte stream, in both directions.
+ *
+ * `attach` returns its own unsubscribe rather than taking an id to detach,
+ * because the emulator that attached is the only thing that should be able to
+ * stop listening — an id-keyed `detach` lets any caller silence someone else's
+ * terminal.
+ */
+export interface TerminalTransport {
+  /**
+   * Start receiving this session's output.
+   *
+   * `onData` is called with everything the shell has already said before it is
+   * called with anything new, so an emulator that mounts late still sees the
+   * whole session. That is not a convenience: a pty starts talking the instant
+   * it is spawned, well before React has mounted anything, and on Windows its
+   * opening line is a question the shell blocks on until an emulator answers.
+   * A transport that only carried live events would leave every terminal
+   * permanently blank. See `src-tauri/src/pty.rs`.
+   */
+  attach(id: string, onData: (chunk: string) => void): () => void;
+  write(id: string, data: string): void;
+  /**
+   * Tell the PTY how big its viewport is, in character cells.
+   *
+   * Not optional and not cosmetic: a TUI asks the pty for its size and draws to
+   * exactly that, so a pty that disagrees with the emulator produces a corrupt
+   * frame rather than a scaled one.
+   */
+  resize(id: string, cols: number, rows: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +346,13 @@ export interface MenuItem {
   accelerator?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
+  /**
+   * Renders inert and unclickable — the native `disabled` attribute, not a
+   * dimmed-but-live button. Used by the Terminal menu's Split/Kill/Clear,
+   * which need a session to act on and have none while the worktree tab is
+   * active; New Terminal never needs one and stays live regardless.
+   */
+  disabled?: boolean;
 }
 
 export interface Menu {
