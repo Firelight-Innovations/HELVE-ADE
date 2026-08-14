@@ -18,6 +18,7 @@
  * and a packaged build has no way to set it.
  */
 import type { AppInfo, ResolvedTool, StackSnapshot } from "../../bindings";
+import type { GitControl, GitFileChange, GitStatus } from "../contract";
 // The error-code table, by relative path for the same reason `ToolWindow`
 // reaches for it that way: the shell must not import the bridge's *client*,
 // which is the tool half of transport B and touches `window.parent` at module
@@ -1308,6 +1309,111 @@ export function fakeToolPage(toolId: string): string {
   fakePages.set(toolId, url);
   return url;
 }
+
+// --- source control ---------------------------------------------------------
+//
+// The one fixture in this file that is *stateful*, and deliberately so. Every
+// other fake here answers the same thing forever, because every other fake
+// stands in for something the shell only reads. The source-control panel is a
+// loop — stage, look, unstage, commit, look again — and a fixture that answered
+// with a frozen list would make the whole loop unmeasurable: the checkbox would
+// tick and nothing else would move, which is indistinguishable from the wiring
+// being broken.
+//
+// So `stage`/`unstage` really move an entry between the two arrays and `commit`
+// really empties the index. Nothing here talks to git; it is a small mutable
+// model of what git would have said.
+
+function fakeChange(path: string, kind: GitFileChange["kind"], staged: boolean): GitFileChange {
+  const cut = path.lastIndexOf("/");
+  return {
+    path,
+    file: cut === -1 ? path : path.slice(cut + 1),
+    dir: cut === -1 ? "" : path.slice(0, cut),
+    kind,
+    staged,
+  };
+}
+
+const fakeGit = {
+  branch: "feature/git-source-control",
+  ahead: 0,
+  behind: 0,
+  staged: [] as GitFileChange[],
+  unstaged: [
+    fakeChange("src/shell/state/git.ts", "modified", false),
+    fakeChange("src/shell/worktree/SourceControlView.tsx", "added", false),
+    fakeChange("docs/handoffs/git-source-control-plan.md", "untracked", false),
+  ],
+};
+
+/**
+ * Staging an untracked file makes it an addition, and unstaging one puts it
+ * back — the same rename git does when a path enters and leaves the index.
+ * Without this the fixture would show `untracked` in the staged list, a
+ * combination git can never produce.
+ */
+function fakeStagedKind(kind: GitFileChange["kind"]): GitFileChange["kind"] {
+  return kind === "untracked" ? "added" : kind;
+}
+
+function fakeMove(from: GitFileChange[], to: GitFileChange[], paths: string[], staged: boolean) {
+  for (const path of paths) {
+    const at = from.findIndex((c) => c.path === path);
+    if (at === -1) continue;
+    const [change] = from.splice(at, 1);
+    to.push({
+      ...change,
+      staged,
+      kind: staged ? fakeStagedKind(change.kind) : change.kind === "added" ? "untracked" : change.kind,
+    });
+  }
+}
+
+export const fakeGitControl: GitControl = {
+  status() {
+    // Fresh arrays every call: the panel re-fetches after every mutation and
+    // renders from what it gets back, so handing out the live arrays would let
+    // a later mutation edit a snapshot React had already been given.
+    const status: GitStatus = {
+      branch: fakeGit.branch,
+      ahead: fakeGit.ahead,
+      behind: fakeGit.behind,
+      staged: fakeGit.staged.map((c) => ({ ...c })),
+      unstaged: fakeGit.unstaged.map((c) => ({ ...c })),
+    };
+    return Promise.resolve(status);
+  },
+
+  diff(_toolId, path, staged) {
+    const untracked = fakeGit.unstaged.some((c) => c.path === path && c.kind === "untracked");
+    return Promise.resolve({
+      original: untracked ? "" : `// ${path}\nexport const helve = {\n  seam: "before",\n};\n`,
+      modified: `// ${path}\nexport const helve = {\n  seam: "${staged ? "staged" : "working tree"}",\n  added: true,\n};\n`,
+    });
+  },
+
+  stage(_toolId, paths) {
+    fakeMove(fakeGit.unstaged, fakeGit.staged, paths, true);
+    return Promise.resolve();
+  },
+
+  unstage(_toolId, paths) {
+    fakeMove(fakeGit.staged, fakeGit.unstaged, paths, false);
+    return Promise.resolve();
+  },
+
+  commit() {
+    // What a commit does to the fixture: the index empties, the branch moves
+    // one ahead of its upstream — which is the only way the status bar's `↑`
+    // becomes reachable under `?fake=1` — and the working tree is left with a
+    // single change, so the list visibly shrinks rather than merely re-sorting.
+    fakeGit.staged = [];
+    fakeGit.unstaged = fakeGit.unstaged.slice(0, 1);
+    fakeGit.ahead += 1;
+    return Promise.resolve();
+  },
+};
 
 // --- the fake shell state store ---------------------------------------------
 //

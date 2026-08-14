@@ -1,14 +1,20 @@
 /**
- * A read-only side-by-side diff, rendered with Monaco's `DiffEditor`.
+ * A read-only diff, rendered with Monaco's `DiffEditor` — two columns by
+ * default, one interleaved column when `renderSideBySide` is false.
  *
- * Not mounted anywhere yet — nothing in the shell imports this file. It exists
- * so the git-diff feature (built separately, later) has a component to drop in.
+ * Mounted by the source-control panel (`worktree/SourceControlView.tsx`),
+ * which imports it lazily: this module pulls in Monaco and its worker chunk on
+ * evaluation, and the panel is mounted for the life of the window whether or
+ * not anyone opens a diff. The `lazy` boundary there is what keeps that cost
+ * on the first click rather than on startup.
  *
- * It does **not** prove the worker wiring. Nothing imports this module, so
- * Rollup never reaches it and `pnpm build` has never built the `?worker` chunk
- * below — `tsc` type-checks this file and that is all the confidence there is
- * in it. An earlier version of this comment claimed otherwise; treat everything
- * here as untested until something mounts it.
+ * Files (`apps/files`) also uses Monaco, wired separately in
+ * `apps/files/ui/src/viewer/monaco.ts`. The two do not collide: an app runs in
+ * its own iframe, so each has its own `self.MonacoEnvironment` and its own
+ * theme registry. They do share chunks — both entries reach the same
+ * `monaco-editor` modules, so Rollup hoists them into one shared dynamic
+ * chunk. That is fine and deliberate: it is dynamic on both sides, so
+ * `index.html` preloads none of it.
  *
  * Imported from `monaco-editor/editor/editor.api`, not `.../editor.main` —
  * `editor.main` registers every bundled language, and the IntelliSense
@@ -83,9 +89,19 @@ export interface DiffViewProps {
    *  `editor.api` imported, this does not yet produce highlighting — it is
    *  accepted now so callers don't have to change when it does. */
   language?: string;
+  /**
+   * Two columns, or one with the removals and additions interleaved.
+   *
+   * Defaults to two because that is what a diff opened in the tool window
+   * wants. The source-control panel passes `false`: it is
+   * `--w-panel-default` (380px) wide, and two columns of code in half of that
+   * wraps every meaningful line — the same reason VS Code's own SCM view
+   * flips to inline when it is docked narrow.
+   */
+  renderSideBySide?: boolean;
 }
 
-export default function DiffView({ original, modified, language }: DiffViewProps) {
+export default function DiffView({ original, modified, language, renderSideBySide = true }: DiffViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Re-created whenever the text changes rather than fed through
@@ -100,7 +116,7 @@ export default function DiffView({ original, modified, language }: DiffViewProps
       theme: "helve-dark",
       readOnly: true,
       automaticLayout: true,
-      renderSideBySide: true,
+      renderSideBySide,
       minimap: { enabled: false },
     });
 
@@ -113,13 +129,20 @@ export default function DiffView({ original, modified, language }: DiffViewProps
     // handed — Monaco assumes a model may be shared or reused elsewhere.
     // These were created fresh above for this instance alone, so they are
     // ours to dispose too, or they leak on every unmount.
+    //
+    // Order matters, and not subtly: the widget listens for its own models
+    // being disposed, and disposing one while it is still attached throws
+    // "TextModel got disposed before DiffEditorWidget model got reset" out of
+    // an event handler on every close. Detaching first makes the disposals
+    // below unobserved, which is what lets them be ours to make.
     return () => {
       const model = diffEditor.getModel();
+      diffEditor.setModel(null);
       model?.original.dispose();
       model?.modified.dispose();
       diffEditor.dispose();
     };
-  }, [original, modified, language]);
+  }, [original, modified, language, renderSideBySide]);
 
   return <div ref={containerRef} className="diff" />;
 }
