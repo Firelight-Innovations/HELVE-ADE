@@ -301,6 +301,23 @@ pub fn window_at_cursor(app: tauri::AppHandle) -> Option<String> {
     windows::at_cursor(&app)
 }
 
+/// File > New Window: an empty window with a cluster of its own.
+///
+/// Distinct from `detach_instance`, which makes a window by *moving* a surface
+/// into it. This takes nothing from the window that asked, which is what the
+/// menu item has always claimed and could not do while a window's label was
+/// derived from the tool inside it — there was no label a second empty window
+/// could have had.
+#[tauri::command]
+pub fn new_window(app: tauri::AppHandle, shell: State<'_, ShellState>) -> Result<()> {
+    let label = shell.claim_window_label();
+    // Bookkeeping first, window second, the same order `detach` uses: a window
+    // on screen with no entry in the shared state would render nothing and have
+    // no way to be given anything.
+    shell.add_window(&app, &label);
+    windows::create(&app, &label, None, true)
+}
+
 /// Drag a tab clear of its window. The gesture that makes a second window.
 #[tauri::command]
 pub fn detach_instance(

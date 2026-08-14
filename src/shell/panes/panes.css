@@ -1,0 +1,272 @@
+/**
+ * The pane layout: splits, dividers, tab strips.
+ *
+ * Nothing here positions a surface. The surfaces are flat siblings of the tool
+ * window, placed from measured rectangles — see `ToolWindow`'s `rects` and the
+ * doc comment on `PaneTree` for why they cannot be children of these panes.
+ * What `.pane__host` provides is the box to measure, and it is deliberately
+ * empty.
+ */
+
+/* --- splits --------------------------------------------------------------- */
+
+.pane-split {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-split[data-dir="row"] {
+  flex-direction: row;
+}
+
+.pane-split[data-dir="column"] {
+  flex-direction: column;
+}
+
+/* `flex-basis` is written inline from the node's `sizes`, and overwritten
+   directly on this element for the duration of a divider drag. `flex-grow: 0`
+   and `flex-shrink: 0` matter: with either of them free, flex would
+   redistribute space on its own terms and the authored weights would stop
+   being what is on screen. */
+.pane-split__child {
+  position: relative;
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The grab band is wider than the hairline it draws, because a 1px target is
+   not a target. It is centred on the seam by a negative offset rather than by
+   shifting the panes, so the line stays exactly on the boundary. */
+.pane-split__divider {
+  position: absolute;
+  z-index: 3;
+}
+
+.pane-split__divider[data-dir="row"] {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+}
+
+.pane-split__divider[data-dir="column"] {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 7px;
+  margin-top: -3px;
+  cursor: row-resize;
+}
+
+.pane-split__divider::after {
+  content: "";
+  position: absolute;
+  background: var(--line);
+}
+
+.pane-split__divider[data-dir="row"]::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+}
+
+.pane-split__divider[data-dir="column"]::after {
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 1px;
+}
+
+.pane-split__divider:hover::after,
+.pane-split__divider:active::after {
+  background: var(--accent);
+}
+
+/* --- panes ---------------------------------------------------------------- */
+
+.pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* Which pane a keystroke or a new surface would land in. An inset shadow
+   rather than a border: a border would take a pixel from the pane's content
+   box and shift every surface inside it by one on focus. */
+.pane[data-focused]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--accent-wash, var(--line));
+}
+
+/* --- tab strips ----------------------------------------------------------- */
+
+/* Scrolls rather than overflowing. The switcher bar's failure to do this is a
+   real bug that only shows up once there are enough tabs; a pane is narrower
+   than the window, so here it shows up immediately. Same 5px treatment the
+   terminal panel's strip uses. */
+.pane__strip {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: var(--h-paneltabs);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  z-index: 2;
+}
+
+.pane__strip::-webkit-scrollbar {
+  height: 5px;
+}
+
+.pane__strip::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.pane__strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pane__tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  border-right: 1px solid var(--line);
+  cursor: default;
+  user-select: none;
+}
+
+.pane__tab--active {
+  background: var(--bg);
+}
+
+.pane__tab-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.pane__tab--active .pane__tab-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Revealed on hover or when focused, so a strip of tabs is not a row of ×s.
+   Sized as a real 15px target around a smaller glyph. */
+.pane__tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-dim-3);
+  opacity: 0;
+  cursor: default;
+}
+
+.pane__tab:hover .pane__tab-close,
+.pane__tab:focus-within .pane__tab-close,
+.pane__tab--active .pane__tab-close {
+  opacity: 1;
+}
+
+.pane__tab-close:hover {
+  color: var(--text);
+}
+
+.pane__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* --- the measured box ----------------------------------------------------- */
+
+.pane__host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* --- drop indicators ------------------------------------------------------ */
+
+/* Above the surface layer, because the surface is a live iframe and an outline
+   drawn under one is invisible exactly when it is needed. */
+.pane__drop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: rgb(217 138 63 / 12%);
+  box-shadow: inset 0 0 0 1.5px rgb(217 138 63 / 60%);
+}
+
+/* Half the pane, on the side the split would open. `data-before` is the
+   leading half — left for a row, top for a column. */
+.pane__drop--edge[data-dir="row"] {
+  right: 50%;
+}
+
+.pane__drop--edge[data-dir="row"]:not([data-before]) {
+  left: 50%;
+  right: 0;
+}
+
+.pane__drop--edge[data-dir="column"] {
+  bottom: 50%;
+}
+
+.pane__drop--edge[data-dir="column"]:not([data-before]) {
+  top: 50%;
+  bottom: 0;
+}
+
+/* Where a tab would be inserted. A full-height bar rather than a hairline, so
+   it reads at a glance in a strip of narrow tabs. */
+.pane__caret {
+  flex: none;
+  width: 2px;
+  align-self: stretch;
+  background: var(--accent);
+}
+
+/* The dot that says an agent finished, on a terminal tab that has been dragged
+   into the layout. Same meaning and same treatment as in the panel. */
+.pane__tab-kind {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}

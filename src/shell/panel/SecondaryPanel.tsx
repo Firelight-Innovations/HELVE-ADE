@@ -47,6 +47,7 @@ import {
   type TerminalSession,
   type TerminalTabGroup,
 } from "../contract";
+import { useDropZone } from "../drag/dropZones";
 import { Close, ChevronLeft, ChevronRight, GitBranch, Plus } from "../../ui/Icon";
 import { snap } from "../motion";
 import CloseConfirm from "./CloseConfirm";
@@ -99,6 +100,14 @@ export interface SecondaryPanelProps {
    * nothing about them is draggable.
    */
   dragHandleFor?: (session: TerminalSession) => DragHandleProps | undefined;
+  /**
+   * A drag is currently over this panel and would land here on release.
+   *
+   * Passed in rather than read from the drag layer, so the panel stays a
+   * component that draws what it is told — the same arrangement the panes use
+   * for their own indicators.
+   */
+  dropActive?: boolean;
 }
 
 export default function SecondaryPanel({
@@ -115,16 +124,22 @@ export default function SecondaryPanel({
   onCancelClose,
   onConfirmClose,
   dragHandleFor,
+  dropActive = false,
 }: SecondaryPanelProps) {
   if (collapsed) {
     return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
   }
 
+  const panelZone = useDropZone({ kind: "panel" });
   const onWorktree = activeTabId === WORKTREE_TAB;
   const tabs = groupTerminalTabs(sessions);
 
   return (
-    <div className="panel">
+    // Registered as a drop zone so a terminal dragged out into the layout can
+    // be dragged back. The drag layer used to find this element by querying
+    // `[data-region="panel"]`; it now has to be told, because there is no query
+    // that can enumerate an arbitrary number of panes as well.
+    <div className="panel" ref={panelZone} data-drop-active={dropActive || undefined}>
       {/* Plain div, fixed height, no `layout` prop — the row itself never
           animates. Only the rule sliding inside it does, and (since this
           split) the strip's own scroll position, which is native and not

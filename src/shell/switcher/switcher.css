@@ -14,26 +14,120 @@
   height: 100%;
 }
 
+/* Scrolls rather than overflowing.
+ *
+ * It did not, and that was a real bug waiting for enough tabs to reach: with no
+ * `overflow-x` here and no `max-width` on the label, a long enough row pushed
+ * the health badge and the search slot off the right edge of the window, where
+ * neither could be clicked or scrolled back to. Clusters are user-created and
+ * user-named, so "enough tabs" is now a normal afternoon rather than a corner
+ * case. Same 5px treatment the terminal panel's strip uses. */
 .switcher__tabs {
   display: flex;
   align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
-/* A tab is a name and nothing else — no version, no status chip, no per-tool
-   colour. The one exception is the dim/inert treatment for a not-installed
-   tool, applied via `.switcher__tab--dim` below. */
+.switcher__tabs::-webkit-scrollbar {
+  height: 5px;
+}
+
+.switcher__tabs::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
+.switcher__tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* A tab is a name and a close button, and nothing else — no version, no status
+   chip, no per-cluster colour. */
 .switcher__tab {
   flex: none;
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  gap: 6px;
+  padding: 0 8px 0 16px;
   border: none;
   border-right: 1px solid var(--line);
   background: transparent;
   font: inherit;
   cursor: pointer;
+  user-select: none;
   /* Positioning context for the accent rule. */
   position: relative;
+}
+
+/* The name, truncated rather than allowed to set the tab's width. A cluster
+   named after a branch can be very long, and one tab is not entitled to the
+   whole bar. */
+.switcher__tab-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editing in place. Sized and coloured to sit exactly where the label was, so
+   renaming does not make the tab jump. */
+.switcher__tab-input {
+  width: 120px;
+  border: none;
+  outline: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+/* Revealed on hover or focus, so a row of clusters is not a row of ×s. */
+.switcher__tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-dim-3);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switcher__tab:hover .switcher__tab-close,
+.switcher__tab:focus-within .switcher__tab-close,
+.switcher__tab--active .switcher__tab-close {
+  opacity: 1;
+}
+
+.switcher__tab-close:hover {
+  color: var(--text);
+}
+
+/* Matches `.panel__newbtn`, so adding a cluster reads as the same kind of
+   action as adding a terminal. */
+.switcher__newbtn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.switcher__newbtn:hover {
+  color: var(--text);
+  background: var(--surface-gap);
 }
 
 .switcher__tab:disabled {

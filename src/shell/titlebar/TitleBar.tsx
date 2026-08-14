@@ -107,6 +107,8 @@ export interface CommandHandlers {
 
 /** What the File menu's items that act on the *shell* do. */
 export interface FileMenuHandlers {
+  /** Open an empty window. `undefined` disables the item. */
+  newWindow?: () => void;
   /** Native folder picker, through Home's `home/open-project`. */
   openProject(): void;
   /**
@@ -156,12 +158,26 @@ export interface TerminalMenuHandlers {
   enabled: boolean;
 }
 
-/** Everything the four wired menus act on. */
+/**
+ * The Apps menu: what this build ships, as things you can open another of.
+ *
+ * `available` comes from the app registry rather than being written out here, so
+ * an app added in `apps::REGISTRY` appears in the menu without a second edit in
+ * a file whose author would have no reason to look.
+ */
+export interface AppsMenuHandlers {
+  available: { id: string; name: string }[];
+  /** Opens a new instance. Always available — there is no "already open". */
+  open: (appId: string) => void;
+}
+
+/** Everything the five wired menus act on. */
 export interface MenuHandlers {
   /** File items that go to the active app frame as a menu command. */
   app: CommandHandlers;
   /** Edit items, which go to the app frame *or* to a focused shell field. */
   edit: CommandHandlers;
+  apps: AppsMenuHandlers;
   file: FileMenuHandlers;
   view: ViewMenuHandlers;
   terminal: TerminalMenuHandlers;
@@ -197,7 +213,7 @@ export interface MenuHandlers {
  * they are out of this work's scope and were to be left exactly as they are.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
-  const { app, edit, file, view, terminal } = handlers;
+  const { app, edit, apps, file, view, terminal } = handlers;
 
   /** One File/Edit row, disabled with an explanation when it cannot act. */
   const command = (
@@ -222,19 +238,18 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
       items: [
         command("New File", app, APP_COMMAND.newFile, { accelerator: "Ctrl+N" }),
         {
-          // Investigated, and there is no new-window path to wire. `detach_tool`
-          // (src-tauri/src/windows.rs) makes a window *for a tool being dragged
-          // out of the bar* — it moves an existing tab rather than opening a
-          // fresh window, and every window this build can create is one of
-          // those. Wiring this to it would open a window by taking a tab out of
-          // the one you are looking at, which is not what the item says.
-          //
-          // Disabled rather than removed: the item is in the spec's File menu,
-          // and an honestly inert row is the handoff's own answer for something
-          // there is no backing for.
+          // This was disabled, with a hint saying the build had no way to open a
+          // second window — true when a window label was derived from the tool
+          // inside it, so a window could only ever be made by taking a tab out
+          // of another one. Labels are opaque now and `windows::create` opens a
+          // window on its own terms, so the item does what it says.
           label: "New Window",
-          disabled: true,
-          hint: "This build has no way to open a second window. Dragging a tab out of the switcher bar is the only thing that makes one.",
+          onSelect: file.newWindow,
+          disabled: file.newWindow === undefined,
+          hint:
+            file.newWindow === undefined
+              ? "This window cannot open another."
+              : undefined,
         },
         { label: "Open…", accelerator: "Ctrl+O", onSelect: file.openProject },
         {
@@ -281,6 +296,20 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         command("Find", edit, APP_COMMAND.find, { accelerator: "Ctrl+F", separatorBefore: true }),
         command("Replace", edit, APP_COMMAND.replace, { accelerator: "Ctrl+H" }),
       ],
+    },
+    {
+      // Apps sits between Edit and View, where a menu about *what is open* reads
+      // more naturally than one buried under File. Every entry opens a new
+      // instance; none of them is ever disabled, because "already open" stopped
+      // being a state an app can be in.
+      //
+      // A flat list, not a submenu. `MenuItem` has none and faking one is out —
+      // the same rule Open Recent obeys two menus up.
+      label: "Apps",
+      items: apps.available.map((entry) => ({
+        label: `New ${entry.name}`,
+        onSelect: () => apps.open(entry.id),
+      })),
     },
     {
       label: "View",

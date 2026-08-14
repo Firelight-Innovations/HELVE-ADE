@@ -3,7 +3,6 @@
  * out with `instantOut`) — nothing here invents a transition, the numbers
  * live in `motion.ts` and this file only composes them into a variant.
  */
-import { useEffect, useState } from "react";
 import type { MotionValue } from "framer-motion";
 import { motion } from "framer-motion";
 import { instant, instantOut } from "../motion";
@@ -31,30 +30,16 @@ export function DetachOutline({ x, y }: { x: MotionValue<number>; y: MotionValue
 }
 
 /**
- * "monitor 2 — drop target lit" (INTERACTION 02). The crop's precise
- * treatment is an insertion slot between two tabs inside the target panel's
- * own tab row — not reachable from here without editing `panel/`, which is
- * out of this parcel's files. This renders the closest thing the overlay
- * can draw on its own: the whole tab row lit the same way the crop's row
- * is (`--surface-gap` fill, `rgba(217,138,63,.55)` bottom rule — again kept
- * literal, no named token matches .55). Flagged in the report as a
- * simplification, not the full per-slot treatment.
+ * "monitor 2 — drop target lit" (INTERACTION 02), for the terminal panel.
+ *
+ * Takes its rectangle rather than querying for one. The old version looked up
+ * `[data-region="panel"]` itself, which worked while the panel was the only
+ * target there could be; a caller that already knows which registered zone is
+ * lit should not have that answer re-derived behind its back, and the pane
+ * indicators are drawn by `panes/PaneTree.tsx` from the same `target` value.
  */
-export function PanelDropOutline() {
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    const measure = () => {
-      const panel = document.querySelector('[data-region="panel"]');
-      setRect(panel ? panel.getBoundingClientRect() : null);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-
+export function ZoneOutline({ rect }: { rect: DOMRect | null }) {
   if (!rect) return null;
-
   return (
     <motion.div
       className="drag-panel-outline"

@@ -1,6 +1,17 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { ToolPresentation } from "../contract";
+import type {
+  DragHandleProps,
+  DropTarget,
+  PaneNode,
+  SurfaceInstance,
+  ToolPresentation,
+} from "../contract";
+import { paneLeaves, paneOfTab, paneTabs } from "../contract";
+import PaneTree from "../panes/PaneTree";
+import XTermView from "../terminal/XTermView";
+import { setInstanceTitle } from "../state/shellState";
+import { terminalControl, terminalTransport } from "../state/terminals";
 // The wire types come from the bridge package's source by relative path rather
 // than from `@helve/bridge` itself. The root package does depend on that
 // package now — the first-party apps under `apps/` import it, and they are
@@ -69,7 +80,14 @@ import "./toolwindow.css";
  */
 export interface ToolWindowHandle {
   /**
-   * Post a menu command to the frame showing `toolId`.
+   * Post a menu command to the frame showing `instanceId`.
+   *
+   * An *instance* id, not an app id, and that is the whole point of this
+   * refactor arriving here. The old version scanned for the first frame whose
+   * id matched and posted to that — which was correct only for as long as one
+   * app could have one frame. With two Files open it would deliver Save to
+   * whichever happened to be earlier in a `Map`, silently and about half the
+   * time.
    *
    * Silent when that frame is not mounted, has not said hello, or never
    * declared the command. The menu is what stops the last of those from
@@ -78,24 +96,54 @@ export interface ToolWindowHandle {
    * dropping it is better than a frame acting on something it said it could not
    * do.
    */
-  send(toolId: string, command: string): void;
+  send(instanceId: string, command: string): void;
 }
 
 const ToolWindow = forwardRef<
   ToolWindowHandle,
   {
-    tools: ToolPresentation[];
-    activeToolId: string | null;
-    onOpenTool: (id: string) => void;
+    /** The active cluster's layout. Every surface's position comes from this. */
+    tree: PaneNode;
+    /** Every live instance in this cluster, resolvable by id. */
+    instances: Map<string, SurfaceInstance>;
+    /** How to present the app an instance is an instance of. */
+    presentationOf: (appId: string) => ToolPresentation | undefined;
+    /** The pane whose strip has focus, for the active-pane treatment. */
+    focusedPaneId: string | null;
+    onFocusPane: (paneId: string) => void;
+    onSelectTab: (instanceId: string) => void;
+    onCloseTab: (instanceId: string) => void;
+    onResize: (splitId: string, sizes: number[]) => void;
+    onOpenApp: (appId: string) => void;
     onRescan: () => void;
+    dragHandleFor?: (instanceId: string) => DragHandleProps | undefined;
+    dropTarget?: DropTarget | null;
     /**
      * A frame's declared command set changed — it said `helve/commands`, or it
-     * went away and its declaration went with it. The owner keeps these so the
-     * menu bar can disable what the active surface cannot do.
+     * went away and its declaration went with it. Keyed by *instance*, because
+     * two instances of one app can have different things to offer: one Files
+     * with a dirty editor can Save and one without cannot.
      */
-    onCommandsChange?: (toolId: string, commands: readonly string[]) => void;
+    onCommandsChange?: (instanceId: string, commands: readonly string[]) => void;
   }
->(function ToolWindow({ tools, activeToolId, onOpenTool, onRescan, onCommandsChange }, ref) {
+>(function ToolWindow(
+  {
+    tree,
+    instances,
+    presentationOf,
+    focusedPaneId,
+    onFocusPane,
+    onSelectTab,
+    onCloseTab,
+    onResize,
+    onOpenApp,
+    onRescan,
+    dragHandleFor,
+    dropTarget,
+    onCommandsChange,
+  },
+  ref,
+) {
   // The only trusted map from a window to a mounted surface. Each `ToolMount`
   // registers its iframe's `contentWindow` here the moment it exists; the
   // listener below never trusts anything in a message's body for identity —
@@ -115,10 +163,83 @@ const ToolWindow = forwardRef<
   // `commands` is the set the frame last declared. Empty until it says
   // `helve/commands`, which is the honest starting point: a frame that has
   // never declared anything can do nothing the menu bar knows how to ask for.
+  //
+  // `id` is the *instance* id and `appId` the type. Both, because they answer
+  // different questions and conflating them is exactly the bug this refactor
+  // removes: a message is addressed by instance, but `callApp` and
+  // `appPainted` name an app — `apps::REGISTRY` has one entry for Files however
+  // many of them are open, and boot's roster waits on Files the app, not on
+  // each Files there happens to be.
   const frames = useRef<
-    Map<Window, { id: string; isApp: boolean; origin: string | null; commands: Set<string> }>
+    Map<
+      Window,
+      { id: string; appId: string; isApp: boolean; origin: string | null; commands: Set<string> }
+    >
   >(new Map());
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
+
+  // Where each pane's content sits, in this container's coordinates.
+  //
+  // Measured rather than used as a portal target, and that is a correctness
+  // requirement rather than a style choice. `createPortal` remounts its
+  // children when the container changes, so portalling a surface into whichever
+  // pane currently owns it would reload the iframe on every split and every
+  // drag — the Files app would lose its open file each time you rearranged
+  // anything. So every surface stays a permanent sibling in one container that
+  // never moves, and is *positioned* over its pane instead.
+  //
+  // This is `TerminalDeck`'s technique (see its doc comment on why a split must
+  // not reparent a mounted `XTermView`), generalized from one row of equal
+  // shares to arbitrary rectangles.
+  const hosts = useRef<Map<string, HTMLDivElement>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [rects, setRects] = useState<Map<string, PaneRect>>(() => new Map());
+
+  // Re-measure every pane host against the container. Called on mount, on any
+  // host arriving or leaving, and from a `ResizeObserver` — a divider drag and
+  // an OS window resize both change these and neither goes through React.
+  const measure = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const base = container.getBoundingClientRect();
+
+    // A container measuring zero means the window is hidden or occluded, and
+    // every rect read in that state is stale. Keeping the last good geometry is
+    // better than collapsing every surface to the top-left corner and then
+    // having to put them back.
+    if (base.width === 0 || base.height === 0) return;
+
+    const next = new Map<string, PaneRect>();
+    for (const [paneId, el] of hosts.current) {
+      const r = el.getBoundingClientRect();
+      next.set(paneId, {
+        left: r.left - base.left,
+        top: r.top - base.top,
+        width: r.width,
+        height: r.height,
+      });
+    }
+    setRects((prev) => (sameRects(prev, next) ? prev : next));
+  }, []);
+
+  const onHostChange = useCallback(
+    (paneId: string, el: HTMLDivElement | null) => {
+      if (el) hosts.current.set(paneId, el);
+      else hosts.current.delete(paneId);
+      measure();
+    },
+    [measure],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    for (const el of hosts.current.values()) observer.observe(el);
+    measure();
+    return () => observer.disconnect();
+  }, [measure, tree]);
 
   // Held in a ref for the same reason `useKeyboard` holds its actions in one:
   // the message listener below is installed once, and a prop that changes
@@ -127,9 +248,18 @@ const ToolWindow = forwardRef<
   const report = useRef(onCommandsChange);
   report.current = onCommandsChange;
 
-  const registerFrame = useCallback((toolId: string, isApp: boolean, win: Window) => {
-    frames.current.set(win, { id: toolId, isApp, origin: null, commands: new Set() });
-  }, []);
+  const registerFrame = useCallback(
+    (instanceId: string, appId: string, isApp: boolean, win: Window) => {
+      frames.current.set(win, {
+        id: instanceId,
+        appId,
+        isApp,
+        origin: null,
+        commands: new Set(),
+      });
+    },
+    [],
+  );
 
   const unregisterFrame = useCallback((win: Window) => {
     const frame = frames.current.get(win);
@@ -144,9 +274,9 @@ const ToolWindow = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      send(toolId, command) {
+      send(instanceId, command) {
         for (const [win, frame] of frames.current) {
-          if (frame.id !== toolId) continue;
+          if (frame.id !== instanceId) continue;
           if (frame.origin === null || !frame.commands.has(command)) return;
           win.postMessage(
             { helve: 1, kind: "command", command } satisfies CommandMessage,
@@ -177,10 +307,17 @@ const ToolWindow = forwardRef<
         // The shell answers; it never announces first (docs/tool-protocol.md
         // §3 — a message posted before the frame's listener exists is simply
         // gone, with no replay).
+        // The *app* id, deliberately, not the instance id — so the protocol is
+        // unchanged and an app that reads this still learns what it needs to.
+        // A frame needs to know what kind of thing it is; it does not need to
+        // know which of several copies it is, because nothing it can send
+        // requires saying so. Identity here is resolved from `event.source`
+        // against the map above, which is the security property, and an
+        // instance id in a payload would be one more claim to have to distrust.
         const reply: ReadyMessage = {
           helve: 1,
           kind: "ready",
-          toolId: frame.id,
+          toolId: frame.appId,
           protocol: 1,
           session: { engineEndpoint: null, projectPath: null },
         };
@@ -206,13 +343,29 @@ const ToolWindow = forwardRef<
       // tell and no splash that would care — both still get their answer, since
       // a frontend that asked and heard nothing back would sit through the
       // bridge's thirty-second timeout for it.
+      // Reported by *app* id, not instance id, because boot's roster is one
+      // entry per app — `apps::roster()` waits on Files, however many Files
+      // there are. A second instance reporting is a duplicate that
+      // `boot::await_apps` already ignores, which is the behaviour we want:
+      // the splash lifts when each kind of app has drawn once.
       if (method === "helve/painted") {
         respond({ id, result: null });
         if (frame.isApp && !isFake()) {
-          void appPainted(frame.id).catch((err: unknown) =>
-            console.error(`helve: could not report ${frame.id} painted:`, err),
+          void appPainted(frame.appId).catch((err: unknown) =>
+            console.error(`helve: could not report ${frame.appId} painted:`, err),
           );
         }
+        return;
+      }
+
+      // A frame naming its own tab — "Files" becoming `client.ts`. Host
+      // business, like the two above: which tab this is, is something only the
+      // shell knows, and it knows it from `event.source` rather than from
+      // anything the frame could assert about itself.
+      if (method === "helve/title") {
+        respond({ id, result: null });
+        const title = declaredTitle(params);
+        if (title) void setInstanceTitle(frame.id, title);
         return;
       }
 
@@ -243,7 +396,12 @@ const ToolWindow = forwardRef<
         return;
       }
 
-      void callApp(frame.id, method, params)
+      // `callApp` names the app, not the instance: `apps::call` dispatches into
+      // a registry keyed by app id, and `apps/files.rs` holds no per-instance
+      // state at all — every method that names a file takes an absolute path.
+      // That is why two Files needed no backend change; all the per-instance
+      // state is the frontend's, and it stays there.
+      void callApp(frame.appId, method, params)
         .then((result) => respond({ id, result }))
         // Both hosts of `callApp` reject with a `{code, message}` envelope, so
         // the common path is to pass it straight through. Anything else that
@@ -315,26 +473,154 @@ const ToolWindow = forwardRef<
     };
   }, []);
 
+  // Which tab each pane is showing, so a surface can be hidden without being
+  // unmounted. Derived from the tree every render rather than tracked, so there
+  // is no second place it could disagree with what Rust says.
+  const activeByPane = new Map(paneLeaves(tree).map((leaf) => [leaf.id, leaf.activeTab]));
+  const tabs = paneTabs(tree);
+  const empty = tabs.length === 0;
+
   return (
-    <div className="toolwindow">
-      {/* Every docked tool renders here, always — including inactive ones.
-          `ToolMount` hides them with `visibility: hidden`, never `display:
-          none` or a remount, so a tool's iframe never reloads just because
-          the user looked away and back. */}
-      {tools.map((tool) => (
-        <ToolMount
-          key={tool.id}
-          tool={tool}
-          active={tool.id === activeToolId}
-          ready={readyIds.has(tool.id)}
-          registerFrame={registerFrame}
-          unregisterFrame={unregisterFrame}
-        />
-      ))}
-      {activeToolId === null && <EmptyState tools={tools} onOpenTool={onOpenTool} onRescan={onRescan} />}
+    <div className="toolwindow" ref={containerRef}>
+      {/* The layout. Draws the panes, the dividers and the tab strips, and
+          reports where each pane's content area ended up — but holds no
+          surfaces itself. See the `rects` comment above for why the two are
+          deliberately separate trees. */}
+      <PaneTree
+        tree={tree}
+        instances={instances}
+        focusedPaneId={focusedPaneId}
+        onFocusPane={onFocusPane}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onResize={onResize}
+        onHostChange={onHostChange}
+        dragHandleFor={dragHandleFor}
+        dropTarget={dropTarget}
+      />
+
+      {/* Every surface in the cluster, always mounted, positioned over the pane
+          that owns it. Flat siblings of a container that never moves: this list
+          is keyed by instance id and its order never changes with the layout,
+          so no amount of splitting, resizing or dragging can make React think
+          one of these unmounted. An iframe that remounts reloads the app inside
+          it, and the whole point of a layout you can rearrange is that
+          rearranging it costs you nothing. */}
+      {tabs.map((instanceId) => {
+        const instance = instances.get(instanceId);
+        if (!instance) return null;
+
+        // A terminal has no iframe and no frontend URL — it is an emulator bound
+        // to a pty by id. It still belongs in this list rather than in the
+        // panel's deck: once dragged into the layout it is a pane's content like
+        // anything else, and mounting it here means it survives a split or a
+        // move for exactly the same reason an app surface does.
+        const isTerminal = instance.kind === "terminal";
+        const presentation = isTerminal ? undefined : presentationOf(instance.appId);
+        if (!isTerminal && !presentation) return null;
+
+        const paneId = paneOfTab(tree, instanceId);
+        const rect = paneId ? rects.get(paneId) : undefined;
+
+        return (
+          <div
+            key={instanceId}
+            className="toolwindow__surface"
+            // Hidden rather than unmounted or `display: none`. `visibility`
+            // keeps the element laid out, which matters for anything inside
+            // measuring itself — the same reason `ToolMount` has always used
+            // it. A pane with no rect yet is hidden too: it has nowhere to be
+            // until the first measure lands, and drawing it at 0,0 first would
+            // be a visible jump.
+            style={
+              rect
+                ? {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height,
+                    visibility:
+                      activeByPane.get(paneId ?? "") === instanceId ? "visible" : "hidden",
+                  }
+                : { visibility: "hidden" }
+            }
+          >
+            {isTerminal ? (
+              <div className="toolwindow__slot">
+                <XTermView
+                  id={instanceId}
+                  transport={terminalTransport}
+                  onTitle={(title) => terminalControl.setTitle(instanceId, title)}
+                />
+              </div>
+            ) : (
+              presentation && (
+                <ToolMount
+                  instanceId={instanceId}
+                  tool={presentation}
+                  title={instance.title}
+                  ready={readyIds.has(instanceId)}
+                  registerFrame={registerFrame}
+                  unregisterFrame={unregisterFrame}
+                />
+              )
+            )}
+          </div>
+        );
+      })}
+
+      {empty && <EmptyState onOpenApp={onOpenApp} onRescan={onRescan} />}
     </div>
   );
 });
+
+/** A pane's content area, in the tool window's own coordinates. */
+interface PaneRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Whether two measurements are the same, so an unchanged one does not re-render
+ * every surface in the window.
+ *
+ * A `ResizeObserver` fires for reasons that change nothing here — a scrollbar
+ * appearing inside a pane, a font loading — and every one of those would
+ * otherwise produce a new `Map`, a new state value, and a full re-render of the
+ * whole cluster.
+ */
+function sameRects(a: Map<string, PaneRect>, b: Map<string, PaneRect>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, rect] of a) {
+    const other = b.get(id);
+    if (!other) return false;
+    if (
+      rect.left !== other.left ||
+      rect.top !== other.top ||
+      rect.width !== other.width ||
+      rect.height !== other.height
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The `title` off a `helve/title` request, or `null` for anything that is not a
+ * non-empty string.
+ *
+ * Validated for the same reason `declaredCommands` below is: this decides what
+ * a tab says, and a frame that sent a number or an object should narrow to "no
+ * title reported" rather than put a non-string where one is expected.
+ */
+function declaredTitle(params: unknown): string | null {
+  if (typeof params !== "object" || params === null) return null;
+  const { title } = params as { title?: unknown };
+  return typeof title === "string" && title.trim() !== "" ? title : null;
+}
 
 export default ToolWindow;
 

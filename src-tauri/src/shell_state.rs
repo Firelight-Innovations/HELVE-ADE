@@ -341,6 +341,25 @@ impl ShellState {
         true
     }
 
+    /// Register a new, empty window — File > New Window's half of the work.
+    ///
+    /// Seeded with a cluster, unlike the window `detach_instance` builds, which
+    /// is handed one holding the surface that was dragged out. A window with no
+    /// cluster has no layout, no panel and no way to make either; there would be
+    /// nothing on screen and nothing to click.
+    pub fn add_window(&self, app: &AppHandle, label: &str) {
+        let seed = {
+            let mut counters = self.counters.write().expect("counter lock poisoned");
+            seed_window(&mut counters, label)
+        };
+        self.mutate(app, |s| {
+            if s.windows.iter().any(|w| w.label == label) {
+                return;
+            }
+            s.windows.push(seed.clone());
+        });
+    }
+
     pub fn set_geometry(&self, label: &str, geometry: WindowGeometry) {
         // Not through `mutate`: a move or resize fires continuously while the
         // user drags, and broadcasting the whole state to every window on every

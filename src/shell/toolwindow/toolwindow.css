@@ -14,19 +14,27 @@
   inset: 0;
 }
 
-/* --- mount slots ------------------------------------------------------- */
+/* --- surfaces ------------------------------------------------------------ */
 
-/* One per docked tool, always rendered. Hidden with `visibility: hidden`
-   rather than `display: none` or unmounting, so an inactive tool's iframe
-   never reloads just because it isn't the one on screen. */
+/* One per live instance in the cluster, always rendered, positioned over
+   whichever pane currently owns it. Every dimension here is written from
+   JavaScript — see `ToolWindow`'s `rects`, and the comment there on why the
+   surfaces are positioned rather than parented into their panes.
+
+   `z-index` puts them under the pane layer's tab strips and dividers, which
+   need to stay clickable, and under the drop indicators, which need to be
+   visible over a mounted iframe. */
+.toolwindow__surface {
+  position: absolute;
+  z-index: 1;
+}
+
+/* Fills whatever box its surface was given. Kept as its own element rather
+   than merged into `__surface` so the boot and unavailable states have
+   something to fill that is not also carrying JS-written geometry. */
 .toolwindow__slot {
   position: absolute;
   inset: 0;
-  visibility: hidden;
-}
-
-.toolwindow__slot[data-active] {
-  visibility: visible;
 }
 
 .toolwindow__iframe {

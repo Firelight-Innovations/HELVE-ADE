@@ -4,8 +4,11 @@ import type { StackSnapshot } from "../bindings";
 import Frame from "./frame/Frame";
 import {
   appPresentation,
+  paneLeaves,
+  paneTabs,
   toolPresentation,
   type EngineState,
+  type PaneNode,
   type TerminalBusy,
   type TerminalSession,
   type TerminalTabGroup,
@@ -14,7 +17,7 @@ import {
 import { snap } from "./motion";
 import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/TitleBar";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
-import ToolSwitcherBar from "./switcher/ToolSwitcherBar";
+import ClusterBar from "./switcher/ClusterBar";
 import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import StatusBar from "./statusbar/StatusBar";
@@ -26,10 +29,33 @@ import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
 import { callApp, useApps } from "./state/apps";
-import { useShellState, windowLabel, setActiveTool, setDockedTools } from "./state/shellState";
+import {
+  activateInstance,
+  addCluster,
+  closeCluster,
+  closeInstance,
+  closeWindow as closeThisWindow,
+  newWindow,
+  openInstance,
+  renameCluster,
+  setActiveCluster,
+  setActiveTerminal,
+  setPaneSizes,
+  useShellState,
+  windowLabel,
+} from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
 import { gitControl } from "./state/git";
-import { closeWindow, isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
+import { isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
+
+/**
+ * What a window draws before the first `shell:state` arrives.
+ *
+ * A tree rather than `null`, so every consumer can assume there is always a
+ * pane. `PaneTree` and `ToolWindow` would both otherwise need a "no layout yet"
+ * branch that exists for one frame and is impossible to see.
+ */
+const EMPTY_TREE: PaneNode = { kind: "leaf", id: "pane-pending", tabs: [], activeTab: null };
 
 /**
  * One HELVE window.
@@ -78,130 +104,157 @@ export default function WindowRoot({
 
   const apps = useApps();
 
-  // The authoring tools, resolved but **not docked**.
+  // The authoring tools, resolved but **not openable**.
   //
   // None of them can mount in this build: a tool's core is a child process and
-  // the broker that would reach it is not written, so every tool tab could only
+  // the broker that would reach it is not written, so a tool surface could only
   // ever open on a state explaining why there is nothing there. They are held
-  // back until that changes rather than shown as six dead tabs.
+  // back until that changes rather than offered as six dead entries.
   //
-  // Still computed, because they are still *reported*: this is what the
-  // switcher's warning badge and its health list read (see `healthOf` below),
-  // and it is the only place in the shell that says Turner needs an update or
-  // Wright is not installed. Not docking a tool and not knowing about it are
-  // different things, and only the first is intended here.
+  // Still computed, because they are still *reported*: this is what the cluster
+  // bar's warning badge and its health list read, and it is the only place in
+  // the shell that says Turner needs an update or Wright is not installed. Not
+  // offering a tool and not knowing about it are different things, and only the
+  // first is intended here.
   const stackTools = useMemo(
     () => (snapshot?.tools ?? []).filter((t) => t.kind === "dev-tool").map(toolPresentation),
     [snapshot],
   );
 
-  // What the switcher actually holds: this build's own apps. The engine is a
-  // runtime with no frontend — the orchestrator supervises it, tools talk to it
-  // over a pipe, and it never gets a tab either.
-  const allTools = useMemo(() => apps.map(appPresentation), [apps]);
+  // How to present the app an instance is an instance of. A lookup by *app* id,
+  // because that is what decides which code to load and what to call it — there
+  // is one presentation of Files however many Files are open.
+  const presentations = useMemo(
+    () => new Map(apps.map((a) => [a.id, appPresentation(a)])),
+    [apps],
+  );
+  const presentationOf = useCallback((appId: string) => presentations.get(appId), [presentations]);
 
   const shell = useShellState();
   const placement = shell?.windows.find((w) => w.label === label) ?? null;
 
-  // Dock everything, once, the first time there is anything to dock.
+  // There is no seeding effect any more, and its absence is the point.
   //
-  // `ShellState::default` starts the main window holding nothing, deliberately:
-  // the backend has no opinion about which surfaces you want open, and says so
-  // in a comment. Until now nothing on this side ever formed that opinion
-  // either, so `placement.toolIds` stayed empty forever and the memo below
-  // resolved to zero tabs — an empty array is not `undefined`, so its `!order`
-  // fallback never caught it. `?fake=1` hid this the whole time by shipping a
-  // hardcoded docked list in its fixture.
-  //
-  // Guarded by a ref rather than by "is the placement empty", because those
-  // stop being the same question after the first run. A window whose last tab
-  // has been dragged out is also empty, and re-seeding that one would put every
-  // tool back into a bar the user just cleared — and the detached one into two
-  // windows at once.
-  const seeded = useRef(false);
+  // What used to be here docked every app into the bar on first run, because
+  // `ShellState::default` deliberately held no opinion about what should be
+  // open. That opinion now lives in one place, in Rust, at the only moment it
+  // can be formed correctly: `lib.rs`'s `seed_first_run` opens Home and nothing
+  // else, and only when there is no saved layout to restore instead. A frontend
+  // effect doing it as well would fight the restore — it would re-open surfaces
+  // into a session that had deliberately closed them, every launch.
+
+  const clusters = placement?.clusters ?? [];
+  const activeCluster =
+    clusters.find((c) => c.id === placement?.activeClusterId) ?? clusters[0] ?? null;
+  const activeClusterId = activeCluster?.id ?? null;
+
+  // Resolvable by id, for the tab strips. Every surface in every cluster, not
+  // just the active one — a drag can name a tab in a cluster that is not on
+  // screen, and a `Map` missing it would draw its raw id.
+  const instances = useMemo(
+    () => new Map((shell?.instances ?? []).map((i) => [i.id, i])),
+    [shell?.instances],
+  );
+
+  // The tree this window draws. An empty leaf covers the moment before the
+  // first `shell:state` lands — there is always a pane, so there is always
+  // somewhere for a surface to go.
+  const tree: PaneNode = activeCluster?.tree ?? EMPTY_TREE;
+
+  // Which pane a new surface lands in and which pane's tabs the menus act on.
+  // Local, because "which pane you were last looking at" is a fact about this
+  // screen; kept valid by the effect below rather than by every place a pane can
+  // appear or vanish.
+  const [activePaneId, setActivePane] = useState<string | null>(null);
+  const paneIds = useMemo(() => paneLeaves(tree).map((l) => l.id), [tree]);
   useEffect(() => {
-    // A detached window is handed its single tool by `detach_tool`; seeding it
-    // would be overwriting that with the whole list.
-    if (seeded.current || kind !== "main") return;
-    // No `shell:state` yet, so there is nothing to be empty *of*.
-    if (!placement) return;
-    // Something is already docked — a reload, or a session that has been used.
-    // Rust's answer stands, and this must never run again.
-    if (placement.toolIds.length > 0) {
-      seeded.current = true;
-      return;
+    if (activePaneId === null || !paneIds.includes(activePaneId)) {
+      setActivePane(paneIds[0] ?? null);
     }
-    // Apps arrive a round-trip before the stack scan finishes, so this can fire
-    // with a partial list. Waiting for the scan is wrong (it can fail, and the
-    // apps would be held hostage to it); docking what exists is right, and a
-    // tool that resolves later is the case `setDockedTools` below already
-    // handles — see the second effect.
-    if (allTools.length === 0) return;
-    seeded.current = true;
-    void setDockedTools(
-      label,
-      allTools.map((t) => t.id),
-    );
-  }, [kind, label, placement, allTools]);
+  }, [paneIds, activePaneId]);
 
-  // A surface that showed up after the seed — a tool whose scan landed second,
-  // or one that appeared on a re-scan — joins the bar rather than being lost
-  // until the next restart. Only ever *adds*, and only in the main window: a
-  // tab the user detached is docked elsewhere, not missing, and re-adding it
-  // here is the duplicate the seed guard above exists to prevent.
-  useEffect(() => {
-    if (!seeded.current || kind !== "main" || !placement) return;
-    const docked = new Set(placement.toolIds);
-    const elsewhere = new Set(
-      (shell?.windows ?? []).filter((w) => w.label !== label).flatMap((w) => w.toolIds),
-    );
-    const added = allTools.filter((t) => !docked.has(t.id) && !elsewhere.has(t.id));
-    if (added.length === 0) return;
-    void setDockedTools(label, [...placement.toolIds, ...added.map((t) => t.id)]);
-  }, [kind, label, placement, allTools, shell?.windows]);
+  // The surface the menus act on: the active tab of the focused pane. Not "the
+  // active tab" — with several panes on screen there is no such thing, and
+  // Save has to mean the editor you were typing in rather than whichever pane
+  // happens to be first in the tree.
+  const activeInstanceId = useMemo(() => {
+    const focused = paneLeaves(tree).find((l) => l.id === activePaneId);
+    return focused?.activeTab ?? paneLeaves(tree)[0]?.activeTab ?? null;
+  }, [tree, activePaneId]);
 
-  // What this window actually holds, in the order Rust says it holds it.
-  //
-  // Both halves matter. The order is what makes dragging a tab sideways mean
-  // anything — the drag layer reorders by calling `set_docked_tools`, and if
-  // this rendered the manifest order instead, that call would land in Rust and
-  // change nothing on screen. The filtering is what makes detaching mean
-  // anything: a detached window holds one tool, and every window rendering
-  // every tool would leave the tab sitting in the bar it was just dragged out
-  // of. Falling back to the manifest list only covers the moment before the
-  // first `shell:state` arrives.
-  const tools = useMemo(() => {
-    const order = placement?.toolIds;
-    if (!order) return allTools;
-    const byId = new Map(allTools.map((t) => [t.id, t]));
-    return order.flatMap((id) => {
-      const tool = byId.get(id);
-      return tool ? [tool] : [];
-    });
-  }, [allTools, placement?.toolIds]);
+  const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
 
-  // Rust owns which tool is active, because a detached window has to be able to
-  // take one away from this bar. But a click must paint on the next frame, not
-  // after a round-trip — so this holds the selection locally and the effect
-  // below defers to Rust whenever Rust says something different. Optimistic in
-  // the ordinary sense: the local value is a prediction of the broadcast that
-  // is already on its way.
-  const [activeToolId, setActive] = useState<string | null>(null);
-  useEffect(() => {
-    if (placement?.activeToolId) setActive(placement.activeToolId);
-  }, [placement?.activeToolId]);
+  const onSelectTab = useCallback((instanceId: string) => {
+    void activateInstance(instanceId);
+  }, []);
 
-  // Nothing has ever been chosen — neither here nor in Rust. Fall to the first
-  // tool the stack scan produced so the window opens on something.
-  const shownToolId = activeToolId ?? tools[0]?.id ?? null;
+  const onCloseInstanceTab = useCallback((instanceId: string) => {
+    void closeInstance(instanceId);
+  }, []);
 
-  const onSelectTool = useCallback(
-    (id: string) => {
-      setActive(id);
-      void setActiveTool(label, id);
+  const onOpenApp = useCallback(
+    (appId: string) => {
+      void openInstance(label, appId, activePaneId ?? undefined);
+    },
+    [label, activePaneId],
+  );
+
+  const onResizePane = useCallback((splitId: string, sizes: number[]) => {
+    void setPaneSizes(splitId, sizes);
+  }, []);
+
+  // --- clusters -------------------------------------------------------------
+
+  const onSelectCluster = useCallback(
+    (clusterId: string) => {
+      void setActiveCluster(label, clusterId);
     },
     [label],
   );
+
+  const onAddCluster = useCallback(() => {
+    // Numbered rather than prompting. A dialog before you can see the thing you
+    // are naming is the wrong order; the tab is renameable in place the moment
+    // it exists.
+    void addCluster(label, `Cluster ${clusters.length + 1}`);
+  }, [label, clusters.length]);
+
+  const onCloseCluster = useCallback((clusterId: string) => {
+    void closeCluster(clusterId);
+  }, []);
+
+  const onRenameCluster = useCallback((clusterId: string, name: string) => {
+    void renameCluster(clusterId, name);
+  }, []);
+
+  /**
+   * Close this window, through the backend rather than through Tauri directly.
+   *
+   * `hostWindow.closeWindow` calls `getCurrentWindow().close()`, which is how
+   * this used to work and is now wrong. `WindowEvent::Destroyed` cannot tell a
+   * deliberate close from the application shutting down, and at shutdown it
+   * fires for every window — so the backend needs the close *announced* before
+   * it happens. Without that, `reclaim` would fold every window into `main` on
+   * the way out and the layout written to disk would be that collapsed one. You
+   * would quit with three windows and reopen with one. See
+   * `ShellState::closing`.
+   */
+  const onCloseWindow = useCallback(() => {
+    void closeThisWindow(label);
+  }, [label]);
+
+  /**
+   * File > New Window: an empty window with a cluster of its own.
+   *
+   * Built by detaching nothing — `newWindow` on the backend creates the window
+   * and seeds it, rather than this reusing `detachInstance` and taking a tab out
+   * of the window you are looking at. That distinction is why the item was
+   * disabled before: the only window-making path used to be "drag a tab out",
+   * and wiring New Window to it would have opened a window by emptying this one.
+   */
+  const onNewWindow = useCallback(() => {
+    void newWindow();
+  }, []);
 
   // --- terminals ------------------------------------------------------------
   //
@@ -210,13 +263,20 @@ export default function WindowRoot({
   // a filter over shared state rather than anything this window owns. Each one
   // has a real pty behind it (src-tauri/src/pty.rs) — the panel is not showing
   // a fixture any more.
-  const sessions = useMemo(
-    () =>
-      (shell?.terminals ?? [])
-        .filter((t) => t.windowLabel === label)
-        .map(({ id, title, agentFinished, groupId }) => ({ id, title, agentFinished, groupId })),
-    [shell?.terminals, label],
-  );
+  // Filtered by *cluster*, not by window. The panel belongs to the cluster, so
+  // switching from `auth` to `billing` swaps the terminals under it — which is
+  // the whole reason a cluster is a useful unit: the shells you had running
+  // against one worktree are still there when you come back to it.
+  //
+  // A terminal that has been dragged into the layout is excluded. It is drawn as
+  // a tab by the pane that now holds it, and drawing it in both places is the
+  // one way the single-home rule can visibly break.
+  const sessions = useMemo(() => {
+    const inTree = new Set(paneTabs(tree));
+    return (shell?.terminals ?? [])
+      .filter((t) => t.clusterId === activeClusterId && !inTree.has(t.id))
+      .map(({ id, title, agentFinished, groupId }) => ({ id, title, agentFinished, groupId }));
+  }, [shell?.terminals, activeClusterId, tree]);
 
   // `activePanelTab` is stored as whatever id was last clicked or created —
   // a plain session id most of the time. A tab's own identity can move out
@@ -258,6 +318,32 @@ export default function WindowRoot({
   // specific mounted instance from outside the deck's own tree, which is
   // what the imperative handle is for — see `TerminalDeck`'s doc comment.
   const deckRef = useRef<TerminalDeckHandle>(null);
+
+  /**
+   * Which panel tab is showing — locally *and* in the cluster that owns it.
+   *
+   * Both, because the two answer different questions. The local value paints on
+   * the same frame as the click; the cluster's is what survives switching away
+   * and back, and what a restart restores. Reporting only locally would mean a
+   * cluster always reopened on its first terminal rather than the one you were
+   * using; reporting only to Rust would make every click wait a round trip.
+   *
+   * `"worktree"` is a panel tab but not a terminal, so it is deliberately not
+   * sent on — the cluster's `activeTerminal` names a session or nothing.
+   */
+  const onSelectPanelTab = useCallback(
+    (id: string) => {
+      setActivePanelTab(id);
+      if (activeClusterId && id !== "worktree") void setActiveTerminal(activeClusterId, id);
+    },
+    [activeClusterId],
+  );
+
+  // What the cluster says was last showing, so switching clusters comes back to
+  // the terminal you were using rather than to whichever is first.
+  useEffect(() => {
+    if (activeCluster?.activeTerminal) setActivePanelTab(activeCluster.activeTerminal);
+  }, [activeCluster?.id, activeCluster?.activeTerminal]);
 
   const onNewTerminal = useCallback(async () => {
     // 80×24 is a placeholder the emulator overwrites the moment it has measured
@@ -388,26 +474,31 @@ export default function WindowRoot({
   //      whether Edit means the app at all.
   //
   // None of the three names an app, a method, or a file type.
+  // Keyed by *instance*, not by app. Two Files can differ in what they can do
+  // right now — one with a dirty editor can Save and one without cannot — so a
+  // single entry per app would grey out the wrong menu about half the time.
   const toolRef = useRef<ToolWindowHandle>(null);
   const [appCommands, setAppCommands] = useState<Record<string, readonly string[]>>({});
-  const onCommandsChange = useCallback((toolId: string, commands: readonly string[]) => {
-    setAppCommands((prev) => (sameSet(prev[toolId], commands) ? prev : { ...prev, [toolId]: commands }));
+  const onCommandsChange = useCallback((instanceId: string, commands: readonly string[]) => {
+    setAppCommands((prev) =>
+      sameSet(prev[instanceId], commands) ? prev : { ...prev, [instanceId]: commands },
+    );
   }, []);
 
-  const shownToolName = tools.find((t) => t.id === shownToolId)?.name ?? "";
+  const activeInstanceName = activeInstance?.title ?? "";
 
-  /** File items that act on the active app. */
+  /** File items that act on the surface in the focused pane. */
   const app: CommandHandlers = {
     run: (command) => {
-      if (shownToolId) toolRef.current?.send(shownToolId, command);
+      if (activeInstanceId) toolRef.current?.send(activeInstanceId, command);
     },
     blocked: (command) => {
-      if (!shownToolId) return "No app is open in this window.";
-      if (appCommands[shownToolId]?.includes(command)) return undefined;
+      if (!activeInstanceId) return "No app is open in this pane.";
+      if (appCommands[activeInstanceId]?.includes(command)) return undefined;
       // Generic on purpose. Why Save is unavailable is the *app's* knowledge —
       // nothing is dirty, no file is open — and a shell that guessed at it
       // would be inventing a reason it has no way to check.
-      return `${shownToolName} cannot do this right now.`;
+      return `${activeInstanceName} cannot do this right now.`;
     },
   };
 
@@ -493,7 +584,16 @@ export default function WindowRoot({
   // surface that has the real list. Naming "home" here is the shell knowing
   // which app owns projects, which it already has to — it is the app the
   // window opens on.
-  const homeDocked = tools.some((t) => t.id === "home");
+  //
+  // It no longer has to check whether Home is docked, because it no longer has
+  // to find one: `onOpenApp` opens a Home instance if the cluster has none, and
+  // brings the existing one forward if it does. An item that used to be disabled
+  // whenever Home happened to be somewhere else is now always live.
+  const onOpenRecent = useCallback(() => {
+    const existing = paneTabs(tree).find((id) => instances.get(id)?.appId === "home");
+    if (existing) void activateInstance(existing);
+    else onOpenApp("home");
+  }, [tree, instances, onOpenApp]);
 
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
@@ -504,22 +604,31 @@ export default function WindowRoot({
   // answer, not a second opinion. It also has to outlive the tab: the panel
   // keeps `worktreeView` mounted but hidden, and a status owned by the view
   // would still be re-fetched on every remount of it.
-  const git = useGitStatus(gitControl, shownToolId);
+  // Keyed on the active surface's *app* id, which is what `gitControl` resolves
+  // a checkout from. Following the cluster's own worktree is the right answer
+  // and is where this goes next — `Cluster.worktree` is already carried for it —
+  // but that field is a stub in this work, and pointing a live git view at an
+  // unpopulated one would report "no repository" for every cluster.
+  const git = useGitStatus(gitControl, activeInstance?.appId ?? null);
 
   // The drag layer is the only thing in the shell that spans regions, so it is
   // the only thing that has to be handed down rather than owned locally. The
   // regions never import it — they take a handle factory and stay ignorant of
   // what a drag is.
-  const drag = useDrag();
+  //
+  // It needs this window's label and active cluster because a drop names a
+  // destination: a tab released over another window has to be moved *there*, and
+  // a pane belongs to a cluster.
+  const drag = useDrag(label, activeClusterId);
 
   useKeyboard({
-    // ⌘1…⌘9 index into what this window is showing, which is why the hook
-    // takes an index and never sees the list: only this component knows that
-    // the bar renders `placement.toolIds`, and a detached window's ⌘1 means
-    // its own one tool.
+    // ⌘1…⌘9 now select a *cluster* rather than a tool. There is no longer one
+    // list of surfaces to index into — a window holds several panes, each with
+    // its own tabs — and the thing a number key can still name unambiguously is
+    // which cluster you are looking at.
     selectToolByIndex: (index) => {
-      const tool = tools[index];
-      if (tool?.interactive) onSelectTool(tool.id);
+      const cluster = clusters[index];
+      if (cluster) onSelectCluster(cluster.id);
     },
     rescan: onRescan,
     // ⌘. is drawn under the boot spinner, but nothing can act on it yet:
@@ -538,7 +647,7 @@ export default function WindowRoot({
     save: () => runIfAllowed(app, APP_COMMAND.save),
     saveAs: () => runIfAllowed(app, APP_COMMAND.saveAs),
     duplicate: () => runIfAllowed(app, APP_COMMAND.duplicate),
-    closeWindow,
+    closeWindow: onCloseWindow,
 
     commandPalette: () => setSearchExpanded(true),
     togglePanel: () => setPanelCollapsed((c) => !c),
@@ -573,14 +682,22 @@ export default function WindowRoot({
           titleBar: (
             <TitleBar
               kind={kind}
-              title={shownToolName}
+              title={activeInstanceName}
               menus={defaultMenus({
                 app,
                 edit,
+                apps: {
+                  // Every app this build ships, as things you can open another
+                  // of. Built from the registry rather than a literal list, so
+                  // an app added in Rust appears here without a second edit.
+                  available: apps.map((a) => ({ id: a.id, name: a.name })),
+                  open: onOpenApp,
+                },
                 file: {
+                  newWindow: onNewWindow,
                   openProject: onOpenProject,
-                  openRecent: homeDocked ? () => onSelectTool("home") : undefined,
-                  closeWindow,
+                  openRecent: onOpenRecent,
+                  closeWindow: onCloseWindow,
                 },
                 view: {
                   commandPalette: () => setSearchExpanded(true),
@@ -605,30 +722,50 @@ export default function WindowRoot({
               })}
             />
           ),
-          // A detached window holds exactly one tool, so there is nothing to
-          // switch between and the bar is omitted rather than emptied.
-          switcherBar:
-            kind === "main" ? (
-              <ToolSwitcherBar
-                tools={tools}
-                healthOf={stackTools}
-                activeToolId={shownToolId}
-                onSelect={onSelectTool}
-                onRescan={onRescan}
-                searchExpanded={searchExpanded}
-                dragHandleFor={(tool) => drag.toolHandle({ kind: "tool", toolId: tool.id, name: tool.name })}
-                searchSlot={
-                  <SearchSlot expanded={searchExpanded} onExpandedChange={setSearchExpanded} />
-                }
-              />
-            ) : undefined,
+          // Present in *every* window now, where it used to be omitted from a
+          // detached one. That omission was right when a detached window held
+          // exactly one tool and so had nothing to switch between; it holds real
+          // clusters that can be added to and switched between, so there is.
+          switcherBar: (
+            <ClusterBar
+              clusters={clusters}
+              activeClusterId={activeClusterId}
+              onSelect={onSelectCluster}
+              onAdd={onAddCluster}
+              onClose={onCloseCluster}
+              onRename={onRenameCluster}
+              healthOf={stackTools}
+              onRescan={onRescan}
+              searchExpanded={searchExpanded}
+              searchSlot={
+                <SearchSlot expanded={searchExpanded} onExpandedChange={setSearchExpanded} />
+              }
+            />
+          ),
           toolWindow: (
             <ToolWindow
               ref={toolRef}
-              tools={tools}
-              activeToolId={shownToolId}
-              onOpenTool={onSelectTool}
+              tree={tree}
+              instances={instances}
+              presentationOf={presentationOf}
+              focusedPaneId={activePaneId}
+              onFocusPane={setActivePane}
+              onSelectTab={onSelectTab}
+              onCloseTab={onCloseInstanceTab}
+              onResize={onResizePane}
+              onOpenApp={onOpenApp}
               onRescan={onRescan}
+              dragHandleFor={(instanceId) => {
+                const instance = instances.get(instanceId);
+                if (!instance) return undefined;
+                return drag.tabHandle({
+                  instanceId,
+                  title: instance.title,
+                  kind: instance.kind,
+                  fromPaneId: activePaneId,
+                });
+              }}
+              dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
             />
           ),
@@ -637,10 +774,11 @@ export default function WindowRoot({
               sessions={sessions}
               activeTabId={panelTabId}
               collapsed={panelCollapsed}
-              onSelectTab={setActivePanelTab}
+              onSelectTab={onSelectPanelTab}
               onNewTerminal={onNewTerminal}
               onToggleCollapse={() => setPanelCollapsed((c) => !c)}
               onRequestClose={requestCloseTab}
+              dropActive={drag.target?.kind === "panel"}
               pendingClose={pendingClose}
               onCancelClose={() => setPendingClose(null)}
               onConfirmClose={() => {
@@ -668,13 +806,24 @@ export default function WindowRoot({
                   onTitle={(id, title) => terminalControl.setTitle(id, title)}
                 />
               }
-              worktreeView={<SourceControlView control={gitControl} toolId={shownToolId} git={git} />}
+              worktreeView={
+                <SourceControlView
+                  control={gitControl}
+                  toolId={activeInstance?.appId ?? null}
+                  git={git}
+                />
+              }
+              // The same handle a pane's tab gets. A terminal and an app surface
+              // drag identically now, which is what lets a terminal be dropped
+              // into the layout at all — the panel is where it starts, not the
+              // only place it can be.
               dragHandleFor={(session) =>
-                drag.terminalHandle({
-                  kind: "terminal",
-                  sessionId: session.id,
+                drag.tabHandle({
+                  instanceId: session.id,
                   title: session.title,
+                  kind: "terminal",
                   agentFinished: session.agentFinished,
+                  fromPaneId: null,
                 })
               }
             />

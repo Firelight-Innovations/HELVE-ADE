@@ -465,26 +465,145 @@ export interface Menu {
 }
 
 // ---------------------------------------------------------------------------
-// Drag — both interactions, one vocabulary
+// Instances, panes, clusters — the layout
+// ---------------------------------------------------------------------------
+//
+// The distinction this whole section draws: an *app id* is a type, an *instance
+// id* is an identity. `files` names some code; `files-1` and `files-2` name two
+// live surfaces with their own open files and their own scroll positions.
+//
+// All of it is owned by Rust and arrives on `shell:state`, for the reason
+// `TerminalSession.groupId` below already gives about terminal groups: anything
+// a tab can be dragged across windows with cannot live in one window's own
+// state, because it would come apart the moment it moved. A client-side pane
+// tree would be the first shell layout state outside that broadcast, and it
+// would be wrong for exactly the same reason.
+
+/** Mirrors `shell_state::SurfaceKind`. */
+export type SurfaceKind = "app" | "tool" | "terminal";
+
+/**
+ * One live surface. Mirrors `shell_state::SurfaceInstance`.
+ *
+ * `appId` survives only as the thing that says which code to load and where to
+ * route an `invoke`. Everything else — which frame a message came from, which
+ * tab to close, which iframe to keep mounted — is keyed on `id`.
+ */
+export interface SurfaceInstance {
+  id: string;
+  appId: string;
+  kind: SurfaceKind;
+  title: string;
+}
+
+/** Mirrors `layout::SplitDir`. */
+export type SplitDir = "row" | "column";
+
+/**
+ * One node of a cluster's layout. Mirrors `layout::PaneNode`.
+ *
+ * Discriminated on `kind` rather than on which keys are present, matching
+ * `ToolStatus` and `BootStatus`.
+ *
+ * `sizes` are fractions of the parent, one per child, summing to 1 — not
+ * pixels. The window is resizable, so a layout stored in pixels would have to
+ * be recomputed on every resize and would restore wrongly onto a different
+ * monitor.
+ */
+export type PaneNode =
+  | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
+  | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
+
+/** Mirrors `shell_state::WorktreeRef`. A stub — nothing reads it yet. */
+export interface WorktreeRef {
+  path: string;
+  branch: string | null;
+}
+
+/**
+ * One tab in the switcher bar: a layout, its terminals, and its worktree.
+ *
+ * A cluster is one thing being worked on. Switching cluster tabs swaps the
+ * whole pane tree *and* the panel beneath it, which is why the terminals belong
+ * here rather than to the window — a terminal opened against the `auth`
+ * worktree should still be there when you come back from `billing`.
+ *
+ * The set of terminals is not a field. It is derived by filtering
+ * `ShellSnapshot.terminals` on `clusterId`, so there is exactly one answer to
+ * where a terminal lives and no second field that could contradict it.
+ */
+export interface Cluster {
+  id: string;
+  name: string;
+  tree: PaneNode;
+  activeTerminal: string | null;
+  worktree: WorktreeRef | null;
+}
+
+/** Every tab in a tree, in layout order. */
+export function paneTabs(node: PaneNode): string[] {
+  return node.kind === "leaf" ? node.tabs : node.children.flatMap(paneTabs);
+}
+
+/** Which pane holds a tab, or `null` if this tree does not have it. */
+export function paneOfTab(node: PaneNode, instanceId: string): string | null {
+  if (node.kind === "leaf") return node.tabs.includes(instanceId) ? node.id : null;
+  for (const child of node.children) {
+    const found = paneOfTab(child, instanceId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Every leaf in a tree, in layout order. */
+export function paneLeaves(node: PaneNode): Extract<PaneNode, { kind: "leaf" }>[] {
+  return node.kind === "leaf" ? [node] : node.children.flatMap(paneLeaves);
+}
+
+// ---------------------------------------------------------------------------
+// Drag — every interaction, one vocabulary
 // ---------------------------------------------------------------------------
 
 /**
  * What is currently in the air.
  *
- * A tool dragged clear of the switcher bar becomes a window. A terminal can be
- * dropped into any HELVE window's panel. Nothing else is draggable.
+ * One kind, where there used to be two. A tab is a tab: an app surface and a
+ * terminal drag identically, drop in the same places, and split a pane the same
+ * way. `kind` is carried for the ghost's benefit — a terminal's ghost shows its
+ * agent-finished dot — and for nothing else.
  */
-export type DragPayload =
-  | { kind: "tool"; toolId: string; name: string }
-  | { kind: "terminal"; sessionId: string; title: string; agentFinished: boolean };
+export interface DragPayload {
+  instanceId: string;
+  title: string;
+  kind: SurfaceKind;
+  /** Only ever true for a terminal. Drives the dot on the ghost. */
+  agentFinished?: boolean;
+  /** Where it came from, so a drop that lands nowhere can be a no-op. */
+  fromPaneId: string | null;
+}
+
+/**
+ * Where a drag would land if it were released now.
+ *
+ * `pane` with an `edge` splits that pane on that side; `pane` with no edge
+ * appends to its tab strip. `strip` is a drop between two tabs, with `index`
+ * naming the insertion point. `panel` is the terminal panel — the one place a
+ * terminal can go that is not the tree. `detach` is clear of every drop target,
+ * and releasing there makes a window.
+ */
+export type DropTarget =
+  | { kind: "pane"; paneId: string; edge: SplitDir | null; before: boolean }
+  | { kind: "strip"; paneId: string; index: number }
+  | { kind: "panel" }
+  | { kind: "detach" };
 
 export interface DragState {
   payload: DragPayload;
   /** Viewport coordinates of the pointer, for the ghost. */
   x: number;
   y: number;
-  /** True once the pointer has left its source bar — the detach threshold. */
-  clearOfSource: boolean;
+  /** Where a release right now would put it. */
+  target: DropTarget;
 }
 
 /** What a region spreads onto an element to make it a drag source. */
@@ -500,9 +619,9 @@ export interface DragHandleProps {
 /**
  * Which window this is.
  *
- * A detached window holds exactly one tool, so it has no switcher bar — there
- * is nothing to switch between. Everything else about it is identical to the
- * main window, including the title bar and the panel.
+ * Only the title bar's traffic-light treatment still turns on this. Both kinds
+ * now have a switcher bar and a panel: a detached window holds real clusters
+ * that can be added to and switched between, so there is something to switch.
  */
 export type WindowKind = "main" | "detached";
 

@@ -157,6 +157,7 @@ pub fn run() {
             commands::set_active_cluster,
             commands::rename_cluster,
             commands::close_cluster,
+            commands::new_window,
             commands::detach_instance,
             commands::window_at_cursor,
             commands::set_window_geometry,

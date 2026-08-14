@@ -18,13 +18,21 @@
  * and a packaged build has no way to set it.
  */
 import type { AppInfo, ResolvedTool, StackSnapshot } from "../../bindings";
-import type { GitControl, GitFileChange, GitStatus } from "../contract";
+import type {
+  Cluster,
+  GitControl,
+  GitFileChange,
+  GitStatus,
+  PaneNode,
+  SplitDir,
+  SurfaceInstance,
+} from "../contract";
 // The error-code table, by relative path for the same reason `ToolWindow`
 // reaches for it that way: the shell must not import the bridge's *client*,
 // which is the tool half of transport B and touches `window.parent` at module
 // load. A table of numbers has no such side effect.
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
-import type { ShellSnapshot, TerminalSessionState } from "./shellState";
+import type { ShellSnapshot, TerminalSessionState, WindowPlacement } from "./shellState";
 
 let cached: boolean | null = null;
 
@@ -1885,49 +1893,101 @@ export const fakeGitControl: GitControl = {
 // the module doc above for why `?fake=1` exists at all.
 
 let fakeTerminals: TerminalSessionState[] = [
-  { id: "term-1", title: "bash", windowLabel: "main", agentFinished: false, groupId: null },
-  { id: "term-2", title: "bash 2", windowLabel: "main", agentFinished: false, groupId: null },
-  { id: "term-3", title: "forger", windowLabel: "main", agentFinished: true, groupId: null },
+  { id: "term-1", title: "bash", clusterId: "cluster-1", agentFinished: false, groupId: null },
+  { id: "term-2", title: "bash 2", clusterId: "cluster-1", agentFinished: false, groupId: null },
+  { id: "term-3", title: "forger", clusterId: "cluster-1", agentFinished: true, groupId: null },
 ];
 let fakeTerminalSerial = 3;
+
+/**
+ * The layout, as a real mutable model.
+ *
+ * Every function in `fakeLayout` below actually changes this and republishes,
+ * because the alternative was tried and it does not work. This file's own
+ * history is the argument: a hardcoded dock list that *looked* right hid a real
+ * empty-switcher-bar bug for as long as the fixture existed, because
+ * `ShellState::default` docked nothing and the fixture claimed otherwise. A
+ * fixture that disagrees with the backend in the direction of looking healthier
+ * is worse than no fixture at all.
+ *
+ * It matters more here than it did there. Browser verification has been
+ * unreachable in this environment, so `?fake=1` is the only way any of the
+ * layout work — splitting, dragging a tab between panes, switching clusters —
+ * can be exercised by anyone. A no-op fake would make all of it unverifiable
+ * while still rendering something.
+ *
+ * The seed is chosen to make that exercisable on sight: two clusters, so
+ * switching is visible, and a row split in the first, so dividers and
+ * cross-pane drags have somewhere to go.
+ */
+let fakeInstances: SurfaceInstance[] = [
+  { id: "home-1", appId: "home", kind: "app", title: "Home" },
+  { id: "files-1", appId: "files", kind: "app", title: "Files" },
+  { id: "files-2", appId: "files", kind: "app", title: "Files" },
+];
+
+let fakeWindows: WindowPlacement[] = [
+  {
+    label: "main",
+    clusters: [
+      {
+        id: "cluster-1",
+        name: "orchestrator",
+        tree: {
+          kind: "split",
+          id: "split-1",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            { kind: "leaf", id: "pane-1", tabs: ["home-1"], activeTab: "home-1" },
+            { kind: "leaf", id: "pane-2", tabs: ["files-1"], activeTab: "files-1" },
+          ],
+        },
+        activeTerminal: "term-1",
+        worktree: null,
+      },
+      {
+        id: "cluster-2",
+        name: "auth",
+        tree: { kind: "leaf", id: "pane-3", tabs: ["files-2"], activeTab: "files-2" },
+        activeTerminal: null,
+        worktree: null,
+      },
+    ],
+    activeClusterId: "cluster-1",
+    geometry: null,
+  },
+];
+
+/** Per-app ordinals, so a second Files becomes `files-3` and not a duplicate. */
+const fakeInstanceSerials = new Map<string, number>([
+  ["home", 1],
+  ["files", 2],
+]);
+let fakePaneSerial = 3;
+let fakeSplitSerial = 1;
+let fakeClusterSerial = 2;
 
 const fakeShellListeners = new Set<(snapshot: ShellSnapshot) => void>();
 
 function fakeSnapshot(): ShellSnapshot {
   return {
-    windows: [
-      {
-        label: "main",
-        // The apps, and only the apps — what `WindowRoot`'s seeding effect
-        // docks against the real backend now that the tools are held back
-        // until the broker exists.
-        //
-        // This list being hardcoded is what hid a real bug for as long as it
-        // existed: `ShellState::default` docks *nothing*, and nothing on the
-        // frontend ever docked anything either, so the packaged app opened with
-        // an empty switcher bar while `?fake=1` showed a full one. A fixture
-        // that disagrees with the backend in the direction of looking healthier
-        // is worse than no fixture. It stays hardcoded — a fake of a broadcast
-        // has to say something — but it now says what the real path produces.
-        //
-        // The six tools stay in `fakeStack()` regardless, two of them unhealthy:
-        // they are what the warning badge reports on, and dropping them here
-        // would leave that fixture's whole reason for existing untestable.
-        toolIds: ["home", "files"],
-        activeToolId: "home",
-      },
-    ],
+    windows: fakeWindows,
+    instances: fakeInstances,
     terminals: fakeTerminals,
     engine: "idle",
   };
 }
 
 function publishFakeShellState() {
+  // A fresh array identity per publish, so React sees a change. The nested
+  // objects are replaced rather than mutated in place by every mutator below,
+  // for the same reason.
+  fakeWindows = [...fakeWindows];
   const snapshot = fakeSnapshot();
   for (const cb of fakeShellListeners) cb(snapshot);
 }
 
-/** The handoff's default screen: three terminals, one agent finished. */
 export function fakeShellState(): ShellSnapshot {
   return fakeSnapshot();
 }
@@ -1949,7 +2009,7 @@ export function subscribeFakeShellState(cb: (snapshot: ShellSnapshot) => void): 
 export function fakeAddTerminal(title: string): string {
   fakeTerminalSerial += 1;
   const id = `term-fake-${fakeTerminalSerial}`;
-  fakeTerminals = [...fakeTerminals, { id, title, windowLabel: "main", agentFinished: false, groupId: null }];
+  fakeTerminals = [...fakeTerminals, { id, title, clusterId: activeClusterId() ?? "cluster-1", agentFinished: false, groupId: null }];
   publishFakeShellState();
   return id;
 }
@@ -1994,5 +2054,365 @@ export function fakeCloseTerminal(id: string): void {
       fakeTerminals = fakeTerminals.map((t) => (t.id === survivors[0].id ? { ...t, groupId: null } : t));
     }
   }
+  // A terminal dragged into the layout is a tab as well as a session.
+  eachCluster((cluster) => ({ ...cluster, tree: removeTab(cluster.tree, id) }));
   publishFakeShellState();
+}
+
+// --- the layout, faked ------------------------------------------------------
+//
+// These are ports of the pure functions in `src-tauri/src/layout.rs`, and they
+// have to stay ports. The point of the fake is that an interaction behaves the
+// same way with and without a backend; a tree operation that differed here
+// would make `?fake=1` worse than useless, since it would teach the wrong
+// behaviour confidently. Where a rule is subtle the Rust file is cited rather
+// than the reasoning repeated, so the two cannot drift in explanation either.
+
+function activeClusterId(): string | null {
+  return fakeWindows[0]?.activeClusterId ?? null;
+}
+
+/** Rewrite every cluster in every window through `f`. */
+function eachCluster(f: (cluster: Cluster) => Cluster): void {
+  fakeWindows = fakeWindows.map((w) => ({ ...w, clusters: w.clusters.map(f) }));
+}
+
+function findCluster(clusterId: string): Cluster | undefined {
+  for (const w of fakeWindows) {
+    const found = w.clusters.find((c) => c.id === clusterId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * Clamp to a 5% floor and scale to sum 1 — the port of `layout::normalize`.
+ *
+ * The order is the subtlety, and it is explained in full there: clamping first
+ * and scaling after divides a just-clamped weight straight back under the
+ * floor, so the clamp happens in normalized space and is paid for out of the
+ * panes that have slack.
+ */
+function normalize(sizes: number[]): number[] {
+  const n = sizes.length;
+  if (n === 0) return sizes;
+  const even = 1 / n;
+  if (MIN_PANE * n >= 1) return sizes.map(() => even);
+
+  const cleaned = sizes.map((s) => (Number.isFinite(s) && s > 0 ? s : 0));
+  const total = cleaned.reduce((a, b) => a + b, 0);
+  if (total <= 0) return cleaned.map(() => even);
+
+  const scaled = cleaned.map((s) => s / total);
+  const deficit = scaled.reduce((a, s) => a + Math.max(MIN_PANE - s, 0), 0);
+  if (deficit <= 0) return scaled;
+  const slack = scaled.reduce((a, s) => a + Math.max(s - MIN_PANE, 0), 0);
+
+  return scaled.map((s) =>
+    s < MIN_PANE ? MIN_PANE : slack > 0 ? s - deficit * ((s - MIN_PANE) / slack) : s,
+  );
+}
+
+const MIN_PANE = 0.05;
+
+function isEmptyLeaf(node: PaneNode): boolean {
+  return node.kind === "leaf" && node.tabs.length === 0;
+}
+
+/** Port of `layout::PaneNode::prune`. Both invariants, both reasons in Rust. */
+function prune(node: PaneNode): PaneNode {
+  if (node.kind === "leaf") return node;
+
+  const children: PaneNode[] = [];
+  const sizes: number[] = [];
+
+  node.children.forEach((raw, i) => {
+    const child = prune(raw);
+    const size = node.sizes[i] ?? 1 / node.children.length;
+    if (isEmptyLeaf(child)) return;
+
+    if (child.kind === "split" && child.dir === node.dir) {
+      // Same-direction nesting is a distinction without a difference on screen.
+      child.children.forEach((grandchild, j) => {
+        children.push(grandchild);
+        sizes.push(size * (child.sizes[j] ?? 1 / child.children.length));
+      });
+      return;
+    }
+    children.push(child);
+    sizes.push(size);
+  });
+
+  if (children.length === 1) return children[0];
+  if (children.length === 0) return { kind: "leaf", id: node.id, tabs: [], activeTab: null };
+  return { ...node, children, sizes: normalize(sizes) };
+}
+
+/** Port of `insert_tab`: remove first, so a same-pane reorder cannot clone. */
+function insertTab(
+  node: PaneNode,
+  paneId: string,
+  instanceId: string,
+  index: number | null,
+): PaneNode {
+  if (node.kind === "split") {
+    return { ...node, children: node.children.map((c) => insertTab(c, paneId, instanceId, index)) };
+  }
+  if (node.id !== paneId) return node;
+
+  const tabs = node.tabs.filter((t) => t !== instanceId);
+  const at = Math.min(index ?? tabs.length, tabs.length);
+  tabs.splice(at, 0, instanceId);
+  return { ...node, tabs, activeTab: instanceId };
+}
+
+/** Port of `remove_tab`, including its neighbour-focus rule, then `prune`. */
+function removeTab(node: PaneNode, instanceId: string): PaneNode {
+  return prune(removeTabInner(node, instanceId));
+}
+
+function removeTabInner(node: PaneNode, instanceId: string): PaneNode {
+  if (node.kind === "split") {
+    return { ...node, children: node.children.map((c) => removeTabInner(c, instanceId)) };
+  }
+  const i = node.tabs.indexOf(instanceId);
+  if (i === -1) return node;
+
+  const tabs = node.tabs.filter((t) => t !== instanceId);
+  const activeTab =
+    node.activeTab === instanceId ? (tabs[i] ?? tabs[tabs.length - 1] ?? null) : node.activeTab;
+  return { ...node, tabs, activeTab };
+}
+
+function activateTab(node: PaneNode, instanceId: string): PaneNode {
+  if (node.kind === "split") {
+    return { ...node, children: node.children.map((c) => activateTab(c, instanceId)) };
+  }
+  return node.tabs.includes(instanceId) ? { ...node, activeTab: instanceId } : node;
+}
+
+function splitPaneNode(
+  node: PaneNode,
+  paneId: string,
+  dir: SplitDir,
+  splitId: string,
+  newPaneId: string,
+  instanceId: string,
+  before: boolean,
+): PaneNode {
+  if (node.kind === "split") {
+    return {
+      ...node,
+      children: node.children.map((c) =>
+        splitPaneNode(c, paneId, dir, splitId, newPaneId, instanceId, before),
+      ),
+    };
+  }
+  if (node.id !== paneId) return node;
+
+  const fresh: PaneNode = {
+    kind: "leaf",
+    id: newPaneId,
+    tabs: [instanceId],
+    activeTab: instanceId,
+  };
+  return {
+    kind: "split",
+    id: splitId,
+    dir,
+    sizes: [0.5, 0.5],
+    children: before ? [fresh, node] : [node, fresh],
+  };
+}
+
+function setSizesNode(node: PaneNode, splitId: string, sizes: number[]): PaneNode {
+  if (node.kind === "leaf") return node;
+  if (node.id === splitId) {
+    // A count that disagrees with the children means the caller measured a tree
+    // that has since changed; guessing would rearrange the layout silently.
+    if (sizes.length !== node.children.length) return node;
+    return { ...node, sizes: normalize(sizes) };
+  }
+  return { ...node, children: node.children.map((c) => setSizesNode(c, splitId, sizes)) };
+}
+
+/** The no-backend stand-in for every layout mutation in `shellState.ts`. */
+export const fakeLayout = {
+  openInstance(_label: string, appId: string, paneId?: string): Promise<string> {
+    const ordinal = (fakeInstanceSerials.get(appId) ?? 0) + 1;
+    fakeInstanceSerials.set(appId, ordinal);
+    const id = `${appId}-${ordinal}`;
+    const title = fakeApps().find((a) => a.id === appId)?.name ?? appId;
+
+    fakeInstances = [...fakeInstances, { id, appId, kind: "app", title }];
+    const active = activeClusterId();
+    eachCluster((cluster) => {
+      if (cluster.id !== active) return cluster;
+      const target = paneId ?? firstPaneId(cluster.tree);
+      return { ...cluster, tree: insertTab(cluster.tree, target, id, null) };
+    });
+    publishFakeShellState();
+    return Promise.resolve(id);
+  },
+
+  closeInstance(instanceId: string): Promise<void> {
+    eachCluster((cluster) => ({ ...cluster, tree: removeTab(cluster.tree, instanceId) }));
+    fakeInstances = fakeInstances.filter((i) => i.id !== instanceId);
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  activateInstance(instanceId: string): Promise<void> {
+    fakeWindows = fakeWindows.map((w) => {
+      const owner = w.clusters.find((c) => paneOfTabIn(c.tree, instanceId));
+      return {
+        ...w,
+        activeClusterId: owner ? owner.id : w.activeClusterId,
+        clusters: w.clusters.map((c) => ({ ...c, tree: activateTab(c.tree, instanceId) })),
+      };
+    });
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  moveInstance(
+    instanceId: string,
+    clusterId: string,
+    paneId: string,
+    index: number | null,
+  ): Promise<void> {
+    // Out of everywhere else before in anywhere, so a cross-pane move cannot
+    // leave a copy behind. Mirrors `ShellState::move_instance`.
+    eachCluster((cluster) =>
+      cluster.id === clusterId ? cluster : { ...cluster, tree: removeTab(cluster.tree, instanceId) },
+    );
+    eachCluster((cluster) =>
+      cluster.id === clusterId
+        ? { ...cluster, tree: prune(insertTab(cluster.tree, paneId, instanceId, index)) }
+        : cluster,
+    );
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  splitPane(paneId: string, dir: SplitDir, instanceId: string, before: boolean): Promise<void> {
+    fakeSplitSerial += 1;
+    fakePaneSerial += 1;
+    const splitId = `split-${fakeSplitSerial}`;
+    const newPaneId = `pane-${fakePaneSerial}`;
+
+    eachCluster((cluster) => ({ ...cluster, tree: removeTabInner(cluster.tree, instanceId) }));
+    eachCluster((cluster) => ({
+      ...cluster,
+      tree: prune(
+        splitPaneNode(cluster.tree, paneId, dir, splitId, newPaneId, instanceId, before),
+      ),
+    }));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  setPaneSizes(splitId: string, sizes: number[]): Promise<void> {
+    eachCluster((cluster) => ({ ...cluster, tree: setSizesNode(cluster.tree, splitId, sizes) }));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  addCluster(label: string, name: string): Promise<string | null> {
+    fakeClusterSerial += 1;
+    fakePaneSerial += 1;
+    const id = `cluster-${fakeClusterSerial}`;
+    fakeWindows = fakeWindows.map((w) =>
+      w.label === label
+        ? {
+            ...w,
+            clusters: [
+              ...w.clusters,
+              {
+                id,
+                name,
+                tree: { kind: "leaf", id: `pane-${fakePaneSerial}`, tabs: [], activeTab: null },
+                activeTerminal: null,
+                worktree: null,
+              },
+            ],
+            activeClusterId: id,
+          }
+        : w,
+    );
+    publishFakeShellState();
+    return Promise.resolve(id);
+  },
+
+  setActiveCluster(label: string, clusterId: string | null): Promise<void> {
+    fakeWindows = fakeWindows.map((w) =>
+      w.label === label ? { ...w, activeClusterId: clusterId } : w,
+    );
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  renameCluster(clusterId: string, name: string): Promise<void> {
+    eachCluster((cluster) => (cluster.id === clusterId ? { ...cluster, name } : cluster));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  closeCluster(clusterId: string): Promise<void> {
+    const gone = findCluster(clusterId);
+    const held = gone ? paneTabsOf(gone.tree) : [];
+
+    fakeWindows = fakeWindows.map((w) => {
+      const i = w.clusters.findIndex((c) => c.id === clusterId);
+      if (i === -1) return w;
+      const clusters = w.clusters.filter((c) => c.id !== clusterId);
+      return {
+        ...w,
+        clusters,
+        activeClusterId:
+          w.activeClusterId === clusterId
+            ? // The neighbour rule tabs use: whatever slid into the vacated
+              // position, or the last one.
+              (clusters[i]?.id ?? clusters[clusters.length - 1]?.id ?? null)
+            : w.activeClusterId,
+      };
+    });
+
+    fakeTerminals = fakeTerminals.filter((t) => t.clusterId !== clusterId);
+    fakeInstances = fakeInstances.filter((i) => !held.includes(i.id));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
+    eachCluster((cluster) =>
+      cluster.id === clusterId ? { ...cluster, activeTerminal: id } : cluster,
+    );
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  setInstanceTitle(instanceId: string, title: string): Promise<void> {
+    const trimmed = title.trim();
+    if (!trimmed) return Promise.resolve();
+    const current = fakeInstances.find((i) => i.id === instanceId);
+    if (!current || current.title === trimmed) return Promise.resolve();
+    fakeInstances = fakeInstances.map((i) => (i.id === instanceId ? { ...i, title: trimmed } : i));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+};
+
+function firstPaneId(node: PaneNode): string {
+  return node.kind === "leaf" ? node.id : firstPaneId(node.children[0] ?? node);
+}
+
+function paneTabsOf(node: PaneNode): string[] {
+  return node.kind === "leaf" ? node.tabs : node.children.flatMap(paneTabsOf);
+}
+
+function paneOfTabIn(node: PaneNode, instanceId: string): boolean {
+  return node.kind === "leaf"
+    ? node.tabs.includes(instanceId)
+    : node.children.some((c) => paneOfTabIn(c, instanceId));
 }
