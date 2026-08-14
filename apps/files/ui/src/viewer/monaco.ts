@@ -113,6 +113,8 @@ import "monaco-editor/languages/definitions/ini/register";
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
+import { TOML_CONFIGURATION, TOML_LANGUAGE } from "./toml";
+
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
 
@@ -153,6 +155,23 @@ self.MonacoEnvironment = {
  * only remote schema resolution is off.
  */
 jsonDefaults.setDiagnosticsOptions({ ...jsonDefaults.diagnosticsOptions, enableSchemaRequest: false });
+
+/**
+ * TOML, which Monaco does not ship and this app cannot do without.
+ *
+ * The grammar is `./toml.ts`; that file argues for its own existence and lists
+ * what the `ini` stand-in it replaced got wrong. Registered here rather than
+ * there so that the rule at the top of this file still holds — one module
+ * touches `monaco-editor`, and a grammar is data.
+ *
+ * Both extensions are declared on the language itself as well as in
+ * `LANGUAGE_BY_EXTENSION` below. The table is what this app resolves through;
+ * the declaration here is what Monaco's own machinery reads, and a model
+ * created by URI without a language would otherwise find nothing.
+ */
+monaco.languages.register({ id: "toml", extensions: [".toml", ".helve"], aliases: ["TOML"] });
+monaco.languages.setLanguageConfiguration("toml", TOML_CONFIGURATION);
+monaco.languages.setMonarchTokensProvider("toml", TOML_LANGUAGE);
 
 /**
  * The editor theme, defined once at module scope.
@@ -234,6 +253,19 @@ monaco.editor.defineTheme(THEME, {
     "scrollbarSlider.background": "#2c313b80", // --line @ 0.50
     "scrollbarSlider.hoverBackground": "#3a404bb3", // --line-2 @ 0.70
     "scrollbarSlider.activeBackground": "#3a404b", // --line-2
+
+    // --- minimap ----------------------------------------------------------
+    // The minimap is page, not chrome, so it takes `--bg` and disappears into
+    // the editor beside it — vs-dark's default would draw a lighter column
+    // along the right edge and read as a second pane.
+    //
+    // Its slider is the scrollbar's, one step quieter at rest: the minimap
+    // *is* a scrollbar, and two different sliders on one edge would look like
+    // two different controls.
+    "minimap.background": "#14161a", // --bg
+    "minimapSlider.background": "#2c313b4d", // --line @ 0.30
+    "minimapSlider.hoverBackground": "#2c313b80", // --line @ 0.50
+    "minimapSlider.activeBackground": "#3a404bb3", // --line-2 @ 0.70
 
     // --- the widgets the feature barrel brings with it ---------------------
     // Find, hover, suggest and the context menu all float above the page, so
@@ -325,20 +357,25 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   cfg: "ini",
 
   /**
-   * TOML has no Monaco language, and `ini` is a stand-in — not a synonym.
+   * TOML, and HELVE's own two files with it.
    *
-   * It gets comments, `key = value` and `[section]` headers right, and gets
-   * arrays, inline tables, `[[array of tables]]`, multi-line strings and
-   * datetimes wrong. Kept because `helve.toml` and `Cargo.toml` are the two
-   * files anyone working in this repository opens most, and stale-looking
-   * colour beats no colour at all for those.
+   * These used to point at `ini` as an admitted stand-in. They now point at a
+   * real grammar — `./toml.ts` — which is the follow-up the old note here asked
+   * for by name.
    *
-   * The honest follow-up is a ~30-line Monarch tokenizer registered next to
-   * this table under a real `toml` id. It is not here because it is a grammar,
-   * and a half-written grammar is the failure mode this line is already
-   * admitting to.
+   * `helve` is in this table rather than being left to the plaintext fallback
+   * because a `<project>.helve` marker *is* TOML: `project/marker.rs` reads one
+   * with `raw.parse::<toml::Table>()`, and `create` writes one with `[helve]`
+   * and `[project]` tables in it. The extension is HELVE's; the format is not,
+   * and pretending otherwise would mean a second grammar to keep in step with
+   * this one.
+   *
+   * This is also the pairing that makes the icon work land: `.helve` gets the
+   * HELVE glyph from `icons/materialIcons.ts` *and* the colour of the format it
+   * actually is.
    */
-  toml: "ini",
+  toml: "toml",
+  helve: "toml",
 };
 
 /** The Monaco language id for a file, or `undefined` for plain text. */
@@ -374,6 +411,28 @@ export function createModel(text: string, path: string, extension: string): Text
 }
 
 /**
+ * Point an existing model's language at a different extension.
+ *
+ * Exists for renames. `documents.rekey` moves a live buffer to a new path
+ * without disposing it — which is what makes a rename keep unsaved changes and
+ * undo history — but the model was given its language when it was created, so
+ * renaming `notes.txt` to `notes.md` leaves Markdown being tokenized as plain
+ * text until the tab is closed and opened again.
+ *
+ * Falls back to `plaintext` rather than leaving the old language in place: an
+ * extension this app has no grammar for should look like text, and keeping the
+ * previous file type's colouring would be actively misleading — the same
+ * argument `LANGUAGE_BY_EXTENSION` makes for a wrong grammar being worse than
+ * none.
+ *
+ * The model's *URI* still says the old path, and there is no API to change it.
+ * See `rekey` for why that is survivable today.
+ */
+export function retargetModel(model: TextModel, extension: string): void {
+  monaco.editor.setModelLanguage(model, languageFor(extension) ?? "plaintext");
+}
+
+/**
  * Mount an editor over an existing model.
  *
  * The model is passed in rather than created from `value`, which is what makes
@@ -381,10 +440,30 @@ export function createModel(text: string, path: string, extension: string): Text
  * disposes only the model it created itself, so `dispose()` here leaves the
  * caller's model alone.
  *
- * `minimap: false` and `automaticLayout: true` match `DiffView`'s posture —
- * the pane is already narrow beside the tree, and its size is decided by a
- * flexbox and a draggable splitter rather than by anything that could call
- * `layout()` at the right moment.
+ * `automaticLayout: true` matches `DiffView`'s posture: the pane's size is
+ * decided by a flexbox and a draggable splitter rather than by anything that
+ * could call `layout()` at the right moment. It is also what keeps the minimap
+ * honest — the map's width is a function of the editor's, and a splitter drag
+ * that did not re-layout would leave it drawn at the old width.
+ *
+ * The minimap is on, with three settings that are about *this* pane rather
+ * than about minimaps:
+ *
+ * - `renderCharacters: false`. The character-accurate map is a canvas of real
+ *   glyphs at sub-pixel size; the block rendering says the same thing about
+ *   shape and indentation, reads better next to a 12px editor, and is much
+ *   cheaper to repaint on every keystroke.
+ * - `maxColumn: 80`. Uncapped, the map is as wide as the longest line in the
+ *   file, and a minified line would eat a third of a pane that is already
+ *   sharing its width with the tree.
+ * - `showSlider: "mouseover"`. At rest the map is a picture of the file; the
+ *   viewport box appears when the pointer arrives, which is when it is a
+ *   control.
+ *
+ * Not `size: "fill"` or `"proportional"`: the default `"actual"` draws one map
+ * line per file line and stops, so a short file gets a short map instead of one
+ * stretched to the pane's height, and the map's vertical position agrees with
+ * the scrollbar beside it.
  */
 export function mountEditor(container: HTMLElement, model: TextModel, readOnly: boolean): CodeEditor {
   return monaco.editor.create(container, {
@@ -395,7 +474,12 @@ export function mountEditor(container: HTMLElement, model: TextModel, readOnly: 
     // reads as "type here" for a pane that will refuse every keystroke.
     domReadOnly: readOnly,
     automaticLayout: true,
-    minimap: { enabled: false },
+    minimap: {
+      enabled: true,
+      renderCharacters: false,
+      maxColumn: 80,
+      showSlider: "mouseover",
+    },
     scrollBeyondLastLine: false,
     // Read from the token rather than restated, so the editor cannot drift
     // from the rest of the product's monospace. Falls back to the generic

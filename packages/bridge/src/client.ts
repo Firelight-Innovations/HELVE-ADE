@@ -202,6 +202,12 @@ export function createClient(opts: ClientOptions): Client {
     // docs/tool-protocol.md §2.
     if (method === "helve/hello") return { protocol: 1 } as unknown as T;
     if (method === "helve/shutdown") return null as unknown as T;
+    // Nothing is waiting on this one here. Under the orchestrator it tells the
+    // shell a frame has drawn its first meaningful content, which is what the
+    // splash window holds for; a tool's own Tauri app has no splash and no
+    // second window to reveal, so it acknowledges and does nothing, like
+    // `helve/shutdown` above.
+    if (method === "helve/painted") return null as unknown as T;
     if (method.startsWith("helve/")) {
       throw new HelveRpcError(HelveErrorCode.MethodNotFound, `no such method: ${method}`);
     }

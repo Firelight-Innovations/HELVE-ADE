@@ -73,6 +73,13 @@
   color: var(--text);
 }
 
+/* The trash toggle, while it is the view you are in. Same treatment as hover
+   so the button reads as held down rather than as a different control. */
+.explorer__refresh[data-on] {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
 .explorer__refresh:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
@@ -208,6 +215,49 @@
   line-height: 1;
 }
 
+/* --- the row a new entry is named in --------------------------------------
+   A tree row in every respect that has to line up — height, gutter, indent,
+   the chevron placeholder, the icon box — with a field where the name goes.
+   `DraftRow.tsx` says why the question is asked here rather than in a dialog. */
+
+.explorer__row--draft {
+  /* Nothing to click and nothing to select: the field owns both. */
+  cursor: default;
+  background: var(--surface-2);
+}
+
+.explorer__draft {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--text);
+  /* The name's own type, so what is typed is the width and weight it will be
+     once it is a row. `.explorer__name` sets the same two. */
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1;
+  /* Just short of the row, so the accent border sits inside it rather than
+     touching the rows above and below. */
+  height: calc(var(--explorer-row) - 4px);
+}
+
+.explorer__draft::placeholder {
+  color: var(--text-dim-3);
+}
+
+.explorer__draft:focus {
+  outline: none;
+}
+
+/* A create in flight. Still readable, and visibly not taking input. */
+.explorer__draft:disabled {
+  color: var(--text-dim);
+  border-color: var(--line-2);
+}
+
 /* A directory that would not list. The row still exists and can still be
    pointed at — it just says why it shows nothing. */
 .explorer__tag {
@@ -220,52 +270,7 @@
   color: var(--err);
 }
 
-/* --- the right-click menu -------------------------------------------------
-   The shell's popover surface, matched deliberately: `--surface` on `--line`,
-   6px radius, the same drop shadow every menu in this product casts. A
-   first-party app's menu that looked like its own idea would read as a
-   different application. */
-
-.explorer__menu {
-  position: fixed;
-  z-index: 20;
-  min-width: 200px;
-  padding: 6px 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
-}
-
-.explorer__menu-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 6px 12px;
-  appearance: none;
-  border: none;
-  background: none;
-  font: 400 12px/1 var(--sans);
-  color: var(--text);
-  text-align: left;
-  cursor: default;
-}
-
-.explorer__menu-item:hover,
-.explorer__menu-item:focus-visible {
-  background: var(--surface-2);
-  outline: none;
-}
-
-.explorer__menu-rule {
-  height: 1px;
-  margin: 6px 0;
-  background: var(--line);
-}
-
-/* A failed item keeps the menu open and says why. It is the only error surface
-   the menu has; see the note in `ContextMenu.tsx`. */
-.explorer__menu-error {
-  margin: 6px 6px 0;
-  max-width: 320px;
-}
+/* The right-click menu is no longer here. It is opened from the tab strip as
+   well as from the tree, so both the component and its sheet moved up to
+   `src/ContextMenu.tsx` and `src/contextMenu.css`, and its class prefix went
+   from `explorer__menu` to plain `menu`. */

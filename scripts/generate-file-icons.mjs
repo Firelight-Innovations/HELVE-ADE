@@ -10,6 +10,16 @@
  * Both are gitignored. The npm package is the source of truth; nothing here is
  * vendored into the tree.
  *
+ * ## `public/icons/material/` is emptied on every run
+ *
+ * The `rmSync` further down is a full recursive delete of that directory, so it
+ * holds nothing but what this script puts there — and since it is gitignored,
+ * anything else dropped in is gone at the next `pnpm build` with no copy to
+ * restore. That is why HELVE's own hand-drawn icons live in the sibling
+ * `public/icons/helve/`, which is tracked and which nothing deletes. See the
+ * header of `apps/files/ui/src/icons/materialIcons.ts`, which resolves the two
+ * sets in that order.
+ *
  * ## Why `public/` rather than the module graph
  *
  * `build.assetsInlineLimit` defaults to 4096 bytes, and essentially every icon

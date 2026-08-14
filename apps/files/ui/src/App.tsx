@@ -13,9 +13,11 @@
  * wrong place.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { on } from "@helve/bridge";
+import { on, reportPainted } from "@helve/bridge";
 import { useMotionValue } from "framer-motion";
 import Explorer from "./explorer/Explorer";
+import NoticeBar from "./NoticeBar";
+import { useDelete } from "./useDelete";
 import Splitter from "./Splitter";
 import TabStrip from "./tabs/TabStrip";
 import { useOpenFiles } from "./tabs/useOpenFiles";
@@ -59,6 +61,23 @@ export default function App() {
   useEffect(loadRoot, [loadRoot]);
 
   /**
+   * The splash window waits for this pane before the main window is shown —
+   * see `reportPainted` in `@helve/bridge`, and `boot::await_apps` for what is
+   * waiting and for how long.
+   *
+   * "First meaningful frame" here is *the tree having rows*, not the layout
+   * having appeared, which is why the explorer reports it rather than this
+   * effect: `files/root` coming back leaves a pane with an empty tree in it,
+   * and a window revealed at that moment would still visibly fill in. The one
+   * case the explorer cannot report is the root call itself failing, since it
+   * never gets a root to list — that is this effect, and it counts, because an
+   * error is a finished screen too.
+   */
+  useEffect(() => {
+    if (error !== null) reportPainted();
+  }, [error]);
+
+  /**
    * The project changed under us — a different folder is open.
    *
    * The event arrives over the same bridge every call goes out on; the shell
@@ -93,6 +112,24 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [files]);
 
+  /**
+   * The delete confirmation, owned here rather than by either region.
+   *
+   * Both the tree and the tab strip can start a delete, and only one question
+   * should ever be on screen — two bars asking about two files would be a
+   * choice about which one Escape answers. This file is also the only place
+   * that can see both the tree and the open buffers, which is what the
+   * confirmation has to weigh: what is on disk, and what is unsaved.
+   */
+  const del = useDelete({
+    unsavedUnder: files.unsavedUnder,
+    dropUnder: files.dropUnder,
+    // The tree is re-read wholesale. A delete is rare, and unlike a create it
+    // can remove a whole subtree — so there is no single directory to re-list
+    // and no cheaper honest answer.
+    onDeleted: () => setTreeNonce((n) => n + 1),
+  });
+
   const active = files.tabs.find((tab) => tab.path === files.activePath) ?? null;
 
   return (
@@ -105,8 +142,15 @@ export default function App() {
           width={explorerWidth}
           reloadNonce={treeNonce}
           selectedPath={files.activePath}
+          onFirstListing={reportPainted}
           onRefresh={() => setTreeNonce((n) => n + 1)}
           onOpenFile={files.open}
+          // The tree has already re-listed the folder it renamed in, so this
+          // only has to move the tabs. Bumping `treeNonce` here as well would
+          // drop the whole cache to show a change one directory already knows
+          // about.
+          onRenamed={files.rename}
+          onDelete={del.ask}
         />
 
         <Splitter
@@ -121,9 +165,26 @@ export default function App() {
             tabs={files.tabs}
             activePath={files.activePath}
             dirty={files.dirty}
+            rootPath={root?.path ?? null}
             onActivate={files.activate}
             onClose={files.close}
+            // Unlike the tree's, a rename started from a tab has no idea which
+            // folder it happened in — so the tree is told to re-read whatever
+            // it has open. Heavier than the tree's own `relist` of one
+            // directory, and the right trade for a path this app takes rarely:
+            // the alternative is teaching this file to work out a parent
+            // directory, which is the one thing the frontend must not do.
+            onRenamed={(from, to) => {
+              files.rename(from, to);
+              setTreeNonce((n) => n + 1);
+            }}
+            onDelete={del.ask}
           />
+
+          {/* The delete confirmation, under the strip where every other
+              question in this app appears. Escape answers it the same way
+              Cancel does — see `NoticeBar`. */}
+          {del.notice && <NoticeBar notice={del.notice} onEscape={del.cancel} />}
 
           {active ? (
             <Viewer

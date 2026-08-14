@@ -1,0 +1,143 @@
+/*
+ * The Recycle Bin view, in the explorer pane.
+ *
+ * Deliberately the explorer's language rather than its own: `--surface` behind
+ * it, the same 16px icon column, the same `--surface-2` hover, the same quiet
+ * `--text-dim` at rest going to `--text` when pointed at. It is a list of files
+ * in the same pane as the other list of files, and a second look would read as a
+ * second application.
+ *
+ * Where it departs, and why: a row here is **two lines**, not one. A tree row
+ * needs only a name, because its position says where it is; a trashed item has
+ * lost its position, so where it came from and when it went are the two facts
+ * that make it identifiable at all. That is worth a taller row — and this list
+ * is tens of items rather than the tree's thirty thousand, so the density
+ * argument that governs `explorer.css` does not apply here.
+ *
+ * Every colour is `src/tokens.css`. There is not a hex in this file.
+ */
+
+.trash {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.trash__note {
+  flex: 0 0 auto;
+  margin: 10px;
+}
+
+.trash__list {
+  flex: 0 0 auto;
+}
+
+.trash__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  color: var(--text-dim);
+}
+
+.trash__row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.trash__icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.trash__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trash__name {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where it came from, how big it was, how long ago — one quiet line. Quieter
+   than the name on purpose: it is what you read second, once the name has told
+   you whether this is the row you were looking for. */
+.trash__where {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--text-dim-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The actions stay put rather than appearing on hover. A destructive control
+   that materialises under the pointer is one you can hit by accident on the way
+   somewhere else, and this list has two of them per row. */
+.trash__actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+
+.trash__action {
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.trash__action:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.trash__action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.trash__action:disabled {
+  color: var(--text-dim-3);
+  border-color: var(--line);
+  cursor: default;
+}
+
+/* Permanent deletion. `--err` is the palette's "this is a loss" colour, and this
+   is the one action in the app that cannot be taken back. */
+.trash__action--danger {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.trash__action--danger:hover {
+  background: var(--err);
+  color: var(--bg);
+}
+
+/* When the list was read. Small and last — a caveat about the rows above, not a
+   heading over them. */
+.trash__stamp {
+  flex: 0 0 auto;
+  margin: 8px 10px;
+  font-size: 10.5px;
+  color: var(--text-dim-3);
+}

@@ -22,10 +22,15 @@ import type { Row } from "./useTree";
 import { fileIconUrl, folderIconUrl } from "../icons/materialIcons";
 
 /** Pixels of indent per level. Small: the chevron and icon already read as
- *  structure, and VS Code's tree earns its density by not over-stepping. */
-const INDENT = 8;
+ *  structure, and VS Code's tree earns its density by not over-stepping.
+ *
+ *  Exported for `DraftRow`, which is a row in every visual respect and must
+ *  line up with its siblings to the pixel — a second copy of these two numbers
+ *  is a second thing to keep in step, and the failure is a row that sits
+ *  visibly wrong. */
+export const INDENT = 8;
 /** Where depth 0 starts, leaving the selection rule at the pane's edge room. */
-const GUTTER = 6;
+export const GUTTER = 6;
 
 export default function TreeRow({
   row,
@@ -33,6 +38,7 @@ export default function TreeRow({
   cursor,
   open,
   onActivate,
+  onKeep,
   onContextMenu,
 }: {
   row: Row;
@@ -43,6 +49,12 @@ export default function TreeRow({
   /** This row's file is the one showing in the viewer. */
   open: boolean;
   onActivate: (row: Row) => void;
+  /**
+   * The user double-clicked a file: it stops being a preview and stays. Not
+   * offered for a directory — the two clicks underneath have already expanded
+   * and collapsed it, and there is nothing sensible left to add.
+   */
+  onKeep: (row: Row) => void;
   onContextMenu: (row: Row, event: React.MouseEvent) => void;
 }) {
   const isDir = row.entry.kind === "dir";
@@ -60,6 +72,9 @@ export default function TreeRow({
       data-open={open || undefined}
       style={{ paddingLeft: GUTTER + row.depth * INDENT }}
       onClick={() => onActivate(row)}
+      onDoubleClick={() => {
+        if (row.entry.kind === "file") onKeep(row);
+      }}
       onContextMenu={(event) => onContextMenu(row, event)}
       // The pane is narrow and names ellipsize; the full path is the thing
       // worth having on hover, and the failure displaces it when there is one.

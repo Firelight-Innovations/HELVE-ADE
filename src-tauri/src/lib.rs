@@ -120,6 +120,7 @@ pub fn run() {
             commands::reveal_tool,
             commands::finish_boot,
             commands::boot_status,
+            commands::app_painted,
             commands::shell_state,
             commands::set_docked_tools,
             commands::set_active_tool,

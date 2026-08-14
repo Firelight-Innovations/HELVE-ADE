@@ -22,20 +22,58 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, type MotionStyle, type MotionValue } from "framer-motion";
-import ContextMenu, { type MenuTarget } from "./ContextMenu";
-import TreeRow from "./TreeRow";
+import ContextMenu, { type DraftKind, type MenuTarget } from "../ContextMenu";
+import DraftRow from "./DraftRow";
+import TreeRow, { GUTTER, INDENT } from "./TreeRow";
 import { useTree, type Row } from "./useTree";
 import { ROW_HEIGHT, scrollRowIntoView, useVirtualRows } from "./useVirtualRows";
-import type { Root } from "../rpc";
+import { createDir, createFile, describe, rename, type Root } from "../rpc";
+import type { DeleteTarget } from "../useDelete";
+import TrashView from "../trash/TrashView";
 import "./explorer.css";
+
+/**
+ * One line in the scrollport: a tree row, or the field a new entry is being
+ * named in.
+ *
+ * The draft is spliced into this list rather than rendered beside it, and that
+ * is the whole reason the windowing arithmetic keeps working while it is open:
+ * `useVirtualRows` is handed a count and returns indices, so a list one longer
+ * scrolls, pads and windows correctly with no special case anywhere. Appending
+ * the field outside the list would have made every index below it disagree with
+ * its own pixel position.
+ *
+ * It is not a `Row`, and deliberately not: a `Row` has an `Entry`, an `Entry`
+ * has a path, and a thing being named does not have one yet. Inventing a
+ * placeholder path so it could travel as a row would put a fake filesystem
+ * entry into the structure the whole tree is derived from.
+ */
+type Line = { kind: "row"; row: Row } | { kind: "draft"; depth: number };
+
+/** What is being named, and where it will go. */
+interface Draft {
+  /** Naming something new, or re-naming something that exists. */
+  mode: "create" | "rename";
+  kind: DraftKind;
+  /** The folder involved: where a create lands, or where a rename already is.
+   *  It is what gets re-listed when the call succeeds. */
+  parent: string;
+  /** The entry being renamed. `null` for a create — it has no path yet. */
+  path: string | null;
+  /** What the field starts with. `""` for a create. */
+  initialName: string;
+}
 
 export default function Explorer({
   root,
   width,
   reloadNonce,
   selectedPath,
+  onFirstListing,
   onRefresh,
   onOpenFile,
+  onRenamed,
+  onDelete,
 }: {
   root: Root | null;
   /** Written directly by `Splitter`; never React state. See `Splitter.tsx`. */
@@ -44,8 +82,31 @@ export default function Explorer({
   reloadNonce: number;
   /** The file showing in the viewer, which may have been opened from a tab. */
   selectedPath: string | null;
+  /**
+   * The root has been listed, or has failed to be — the point at which this
+   * pane is showing rows rather than the space where rows will go. `App.tsx`
+   * takes it as Files' first meaningful frame; nothing else reads it, and it
+   * fires once per root.
+   */
+  onFirstListing: () => void;
   onRefresh: () => void;
-  onOpenFile: (path: string) => void;
+  /**
+   * Show a file. `preview` is the peek a single click asks for; see `open` in
+   * `tabs/useOpenFiles.ts` for what the tab model does with it. The tree still
+   * does not know what a tab is — it only says how deliberate the gesture was.
+   */
+  onOpenFile: (path: string, preview: boolean) => void;
+  /**
+   * A rename landed on disk. The tab model needs this to move any tab that was
+   * pointing at the old path — including tabs *inside* a renamed folder.
+   */
+  onRenamed: (from: string, to: string) => void;
+  /**
+   * Ask whether to delete this entry. The tree does not own the question: one
+   * confirmation at a time for the whole app, and it is `App.tsx` that knows
+   * about open buffers and therefore about what a delete would cost.
+   */
+  onDelete: (target: DeleteTarget) => void;
 }) {
   const [filter, setFilter] = useState("");
   /**
@@ -55,11 +116,82 @@ export default function Explorer({
    */
   const [cursor, setCursor] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  /**
+   * Which list this pane is showing.
+   *
+   * Two views rather than two panes, because they answer the same question
+   * about the same project — what is here, and what used to be — and a second
+   * pane would mean deciding how wide it is and what happens to the splitter.
+   */
+  const [view, setView] = useState<"files" | "trash">("files");
+  /** Bumped to re-read the Recycle Bin. The trash view's `reloadNonce`. */
+  const [trashNonce, setTrashNonce] = useState(0);
+  /** The entry being named, or `null` when nothing is. At most one at a time. */
+  const [draft, setDraft] = useState<Draft | null>(null);
+  /** Why the last create was refused. Keeps the field up so the name can be fixed. */
+  const [draftError, setDraftError] = useState<string | null>(null);
+  /** A create is in flight. Freezes the field rather than closing it. */
+  const [creating, setCreating] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const tree = useTree(root, reloadNonce, filter);
-  const { rows, expand, collapse } = tree;
-  const port = useVirtualRows(scrollRef, rows.length);
+  const { rows, expand, collapse, relist } = tree;
+
+  /**
+   * The rows, with the draft field spliced in where its entry will land.
+   *
+   * First child of its folder, rather than in the position the finished name
+   * would sort to — which cannot be known while it is still being typed, and
+   * would move the field under the cursor with every keystroke if it were
+   * recomputed. The listing that follows a successful create puts the real row
+   * in its real place.
+   */
+  const lines = useMemo<Line[]>(() => {
+    const out: Line[] = rows.map((row) => ({ kind: "row", row }));
+    if (!draft || !root) return out;
+
+    // A rename takes the row's place rather than joining the list beside it.
+    if (draft.mode === "rename") {
+      const at = rows.findIndex((row) => row.entry.path === draft.path);
+      if (at === -1) return out;
+      out[at] = { kind: "draft", depth: rows[at].depth };
+      return out;
+    }
+
+    // The root has no row of its own, so its first child slot is the top.
+    if (draft.parent === root.path) {
+      out.unshift({ kind: "draft", depth: 0 });
+      return out;
+    }
+
+    const at = rows.findIndex((row) => row.entry.path === draft.parent);
+    // The folder went off screen while the field was open. Rather than put the
+    // field somewhere arbitrary, leave it out — the effect below cancels the
+    // draft, which is the honest end for a question whose subject has gone.
+    if (at === -1) return out;
+    out.splice(at + 1, 0, { kind: "draft", depth: rows[at].depth + 1 });
+    return out;
+  }, [rows, draft, root]);
+
+  const port = useVirtualRows(scrollRef, lines.length);
+
+  /** The `Row` at a line index, or `null` when that line is the draft. */
+  const rowAt = useCallback(
+    (index: number): Row | null => {
+      const line = lines[index];
+      return line && line.kind === "row" ? line.row : null;
+    },
+    [lines],
+  );
+
+  // Told once the root's own listing has come back, or has failed to. Both
+  // count: a root that cannot be listed draws its error, and that is as
+  // finished as this pane is going to get. `tree.ready` only ever goes from
+  // false to true for a given root, and `onFirstListing` is a no-op after the
+  // first call, so a re-list does not re-report.
+  useEffect(() => {
+    if (tree.ready || tree.rootError !== null) onFirstListing();
+  }, [tree.ready, tree.rootError, onFirstListing]);
 
   // Opening a file anywhere — a tab, a jump — brings the cursor with it, so
   // ↓ continues from what is on screen rather than from wherever it last was.
@@ -75,21 +207,36 @@ export default function Explorer({
   }, [filter]);
 
   const cursorIndex = useMemo(
-    () => (cursor === null ? -1 : rows.findIndex((row) => row.entry.path === cursor)),
-    [rows, cursor],
+    () =>
+      cursor === null
+        ? -1
+        : lines.findIndex((line) => line.kind === "row" && line.row.entry.path === cursor),
+    [lines, cursor],
   );
 
   const moveTo = useCallback(
     (index: number) => {
-      const row = rows[index];
+      const row = rowAt(index);
+      // A move onto the draft line does nothing rather than skipping over it.
+      // The keyboard is in the field while a draft is open — `DraftRow` stops
+      // its keys reaching the tree — so this is only ever reached by a stray
+      // event, and stepping *past* a row the user cannot see the cursor on is
+      // worse than not moving.
       if (!row) return;
       setCursor(row.entry.path);
       scrollRowIntoView(scrollRef.current, index);
     },
-    [rows],
+    [rowAt],
   );
 
-  /** Click, and Enter: a directory opens or closes, a file opens. */
+  /**
+   * Click, and Enter: a directory opens or closes, a file is peeked at.
+   *
+   * Enter goes the same way as a single click rather than counting as the
+   * deliberate open, because it is the keyboard's equivalent of one — walking a
+   * folder with ↓ and Enter is the same browsing gesture as clicking down it,
+   * and it should leave the same one tab behind.
+   */
   const activate = useCallback(
     (row: Row) => {
       setCursor(row.entry.path);
@@ -99,7 +246,7 @@ export default function Explorer({
         if (row.expanded) collapse(row.entry.path);
         else expand(row.entry.path);
       } else if (row.entry.kind === "file") {
-        onOpenFile(row.entry.path);
+        onOpenFile(row.entry.path, true);
       }
       // A pipe or a socket is listed and can be pointed at, but there is
       // nothing to show, so it does nothing here.
@@ -107,17 +254,162 @@ export default function Explorer({
     [collapse, expand, onOpenFile],
   );
 
+  /** A double-clicked file, which is the user saying they mean to stay. */
+  const keep = useCallback(
+    (row: Row) => {
+      setCursor(row.entry.path);
+      onOpenFile(row.entry.path, false);
+    },
+    [onOpenFile],
+  );
+
   const closeMenu = useCallback(() => {
     setMenu(null);
     // The menu took focus when it opened; without this, Escape would leave the
     // keyboard on the document and the next arrow key would scroll nothing.
+    // Skipped while a draft is open: the field takes focus on mount, and this
+    // would pull it straight back out again.
+    if (!draft) scrollRef.current?.focus({ preventScroll: true });
+  }, [draft]);
+
+  /** Put an empty field in the tree and let the user name what goes in it. */
+  const beginDraft = useCallback(
+    (parent: string, kind: DraftKind) => {
+      setDraftError(null);
+      setCreating(false);
+      setDraft({ mode: "create", kind, parent, path: null, initialName: "" });
+      // A closed folder cannot show the field that is going inside it. Opening
+      // it is also what the user would have done next anyway.
+      if (root && parent !== root.path) expand(parent);
+    },
+    [expand, root],
+  );
+
+  /**
+   * Turn a row into a field holding its own name.
+   *
+   * Only reachable for a row that is on screen, which is what makes `parent`
+   * and `kind` findable — the tree already knows both, and taking them from the
+   * row rather than from the caller keeps this from being a second place that
+   * decides what a path's parent is. A rename asked for from the tab strip does
+   * not come here at all; it edits the chip, because the file it names may not
+   * be anywhere in this tree.
+   */
+  const beginRename = useCallback(
+    (path: string, name: string) => {
+      const row = rows.find((entry) => entry.entry.path === path);
+      if (!row) return;
+      setDraftError(null);
+      setCreating(false);
+      setDraft({
+        mode: "rename",
+        kind: row.entry.kind === "dir" ? "dir" : "file",
+        parent: row.parent,
+        path,
+        initialName: name,
+      });
+    },
+    [rows],
+  );
+
+  const cancelDraft = useCallback(() => {
+    setDraft(null);
+    setDraftError(null);
+    setCreating(false);
     scrollRef.current?.focus({ preventScroll: true });
   }, []);
+
+  /**
+   * Send the name, and deal with both answers.
+   *
+   * A refusal — the name is taken, it has a character Windows will not store,
+   * the folder is not writable — leaves the field exactly where it is with what
+   * was typed still in it, and puts the backend's own sentence above the tree.
+   * That is the whole reason `creating` exists rather than the field simply
+   * closing on Enter: the common failure here is a fixable typo, and closing
+   * the field would make fixing it mean starting over.
+   *
+   * On success only the one directory is re-read, not the tree — see `relist`.
+   * A new file then opens for real rather than as a preview: someone who just
+   * named a file means to work in it.
+   */
+  const commitDraft = useCallback(
+    (name: string) => {
+      if (!draft) return;
+      const { mode, parent, kind, path } = draft;
+
+      const method =
+        mode === "rename"
+          ? "files/rename"
+          : kind === "dir"
+            ? "files/create-dir"
+            : "files/create-file";
+
+      setCreating(true);
+      setDraftError(null);
+
+      const call =
+        mode === "rename" && path !== null
+          ? rename(path, name)
+          : (kind === "dir" ? createDir : createFile)(parent, name);
+
+      void call
+        .then((entry) => {
+          setDraft(null);
+          setCreating(false);
+          relist(parent);
+          setCursor(entry.path);
+
+          if (mode === "rename" && path !== null) {
+            // The tab model has to hear about this before anything re-reads:
+            // a tab still pointing at the old path would poll, find nothing,
+            // and mark itself missing — a phantom tab for a file that is fine.
+            onRenamed(path, entry.path);
+          } else if (entry.kind === "dir") {
+            expand(entry.path);
+          } else {
+            // Someone who just named a file means to work in it, so this is a
+            // real open rather than a preview.
+            onOpenFile(entry.path, false);
+          }
+
+          scrollRef.current?.focus({ preventScroll: true });
+        })
+        .catch((err: unknown) => {
+          setCreating(false);
+          setDraftError(describe(method, err));
+        });
+    },
+    [draft, expand, onOpenFile, onRenamed, relist],
+  );
+
+  /**
+   * Abandon a draft whose folder is no longer on screen.
+   *
+   * Reachable by filtering, and by the tree being re-listed out from under the
+   * field. Leaving the state set would strand a `draft` with no row rendering
+   * it, and the field would reappear — empty, having been unmounted — whenever
+   * the folder came back.
+   */
+  const orphaned = draft !== null && !lines.some((line) => line.kind === "draft");
+  useEffect(() => {
+    if (orphaned) cancelDraft();
+  }, [orphaned, cancelDraft]);
+
+  /** Bring a newly opened field into view; it may be well below the fold. */
+  useEffect(() => {
+    if (!draft) return;
+    const at = lines.findIndex((line) => line.kind === "draft");
+    if (at >= 0) scrollRowIntoView(scrollRef.current, at);
+    // Deliberately not on `lines`: this must fire when a draft opens, not
+    // every time a folder finishes listing underneath one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = cursorIndex;
-    const row = index >= 0 ? rows[index] : null;
+    const row = index >= 0 ? rowAt(index) : null;
 
     switch (event.key) {
       case "ArrowDown":
@@ -131,7 +423,7 @@ export default function Explorer({
         moveTo(0);
         break;
       case "End":
-        moveTo(rows.length - 1);
+        moveTo(lines.length - 1);
         break;
       case "ArrowRight":
         // A closed directory opens; an open one descends into its first child,
@@ -149,7 +441,9 @@ export default function Explorer({
         } else if (row) {
           // Ascend. A depth-0 row's parent is the root, which has no row of
           // its own, so this finds nothing and the cursor stays put.
-          const parent = rows.findIndex((other) => other.entry.path === row.parent);
+          const parent = lines.findIndex(
+            (other) => other.kind === "row" && other.row.entry.path === row.parent,
+          );
           if (parent >= 0) moveTo(parent);
         }
         break;
@@ -166,7 +460,21 @@ export default function Explorer({
     event.preventDefault();
   };
 
-  const note = emptyNote(tree.rootError, tree.ready, rows.length, filter);
+  /**
+   * The one line above the tree, and what gets to use it.
+   *
+   * A refused create outranks everything: it is the answer to something the
+   * user just did, and it is the only place the reason can go — the field it
+   * belongs to lives inside a `role="tree"`, which may hold nothing but tree
+   * items. While a draft is open and nothing has failed, the empty-folder note
+   * is suppressed rather than shown beside the field: "This folder is empty" is
+   * about to stop being true, and it is the folder the field is in.
+   */
+  const note = draftError
+    ? { className: "app__error", text: draftError }
+    : draft
+      ? null
+      : emptyNote(tree.rootError, tree.ready, rows.length, filter);
 
   return (
     <motion.div
@@ -176,18 +484,60 @@ export default function Explorer({
       style={{ width, "--explorer-row": `${ROW_HEIGHT}px` } as MotionStyle}
     >
       <div className="explorer__head">
-        <span className="app__label explorer__root">{root ? root.name : "No project"}</span>
+        <span className="app__label explorer__root">
+          {view === "trash" ? "Deleted" : root ? root.name : "No project"}
+        </span>
         <button
           type="button"
           className="explorer__refresh"
-          onClick={onRefresh}
-          title="Re-read the folders that are open"
-          aria-label="Refresh the file tree"
+          data-on={view === "trash" || undefined}
+          onClick={() => setView(view === "trash" ? "files" : "trash")}
+          title={
+            view === "trash"
+              ? "Back to the file tree"
+              : "Show what this project has deleted"
+          }
+          aria-label={view === "trash" ? "Show the file tree" : "Show deleted files"}
+          aria-pressed={view === "trash"}
+        >
+          <Bin />
+        </button>
+        <button
+          type="button"
+          className="explorer__refresh"
+          // In the trash view this re-reads the Recycle Bin instead of the
+          // folders, which is the same promise — "show me what is there now" —
+          // about whichever list is on screen.
+          onClick={() => (view === "trash" ? setTrashNonce((n) => n + 1) : onRefresh())}
+          title={
+            view === "trash"
+              ? "Re-read the Recycle Bin"
+              : "Re-read the folders that are open"
+          }
+          aria-label={view === "trash" ? "Refresh the deleted list" : "Refresh the file tree"}
         >
           <Refresh />
         </button>
       </div>
 
+      {view === "trash" && (
+        <TrashView
+          root={root}
+          reloadNonce={trashNonce}
+          // A restored file is back in the tree, which is behind this view and
+          // now out of date. Refreshing it here means switching back shows the
+          // file rather than the gap it left.
+          onRestored={onRefresh}
+        />
+      )}
+
+      {/* The tree and everything that belongs to it. Unmounted in the trash
+          view rather than hidden: a `role="tree"` sitting in the accessibility
+          tree with no way to reach it is worse than one that is not there, and
+          the windowing effects have nothing to measure against a pane they do
+          not occupy. */}
+      {view === "files" && (
+        <>
       <input
         className="explorer__filter"
         type="search"
@@ -218,31 +568,107 @@ export default function Explorer({
         // move scrolls the row it names back into view.
         aria-activedescendant={cursorIndex >= 0 ? rowId(cursorIndex) : undefined}
         onKeyDown={onKeyDown}
+        // The blank space below the last row. A row's own handler stops the
+        // event before it gets here, so this only ever fires for a click that
+        // hit no row — which is the click that means "the project itself".
+        onContextMenu={(event) => {
+          if (!root) return;
+          event.preventDefault();
+          setMenu({
+            path: null,
+            createIn: root.path,
+            // The project root is not this app's to rename or delete — it is
+            // the folder the whole tree is anchored on, and `files/root` is the
+            // only thing that decides where that is.
+            name: null,
+            kind: null,
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }}
       >
         {/* Two spacers standing in for the rows that are not mounted. Plain
             height, so the scrollbar is the size it would have been. */}
         <div style={{ height: port.padTop }} />
 
-        {rows.slice(port.start, port.end).map((row, offset) => (
-          <TreeRow
-            key={row.entry.path}
-            row={row}
-            id={rowId(port.start + offset)}
-            cursor={row.entry.path === cursor}
-            open={row.entry.path === selectedPath}
-            onActivate={activate}
-            onContextMenu={(target, event) => {
-              event.preventDefault();
-              setCursor(target.entry.path);
-              setMenu({ path: target.entry.path, x: event.clientX, y: event.clientY });
-            }}
-          />
-        ))}
+        {lines.slice(port.start, port.end).map((line, offset) => {
+          const index = port.start + offset;
+
+          if (line.kind === "draft") {
+            // Unreachable: the line only exists because `draft` does. Narrowing
+            // rather than asserting, so a future change that breaks the pairing
+            // renders nothing instead of throwing inside the tree.
+            if (!draft) return null;
+            return (
+              <DraftRow
+                // Keyed on everything that decides what the field is asking,
+                // so choosing New File and then New Folder in the same place —
+                // or renaming one row and then another — gets a fresh field
+                // rather than one still holding the abandoned answer.
+                key={`draft:${draft.mode}:${draft.path ?? draft.parent}:${draft.kind}`}
+                kind={draft.kind}
+                mode={draft.mode}
+                initialName={draft.initialName}
+                depth={line.depth}
+                id={rowId(index)}
+                indent={INDENT}
+                gutter={GUTTER}
+                busy={creating}
+                onCommit={commitDraft}
+                onCancel={cancelDraft}
+              />
+            );
+          }
+
+          const { row } = line;
+          return (
+            <TreeRow
+              key={row.entry.path}
+              row={row}
+              id={rowId(index)}
+              cursor={row.entry.path === cursor}
+              open={row.entry.path === selectedPath}
+              onActivate={activate}
+              onKeep={keep}
+              onContextMenu={(target, event) => {
+                event.preventDefault();
+                // Or the scrollport's own handler runs too and replaces this
+                // with the blank-space menu aimed at the root.
+                event.stopPropagation();
+                setCursor(target.entry.path);
+                setMenu({
+                  path: target.entry.path,
+                  // A folder holds new entries; a file's folder does. That
+                  // second case is why this is computed here rather than in
+                  // the menu — `row.parent` is the tree's fact, not a path
+                  // this app is entitled to work out for itself.
+                  createIn:
+                    target.entry.kind === "dir" ? target.entry.path : target.parent,
+                  name: target.entry.name,
+                  kind: target.entry.kind,
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              }}
+            />
+          );
+        })}
 
         <div style={{ height: port.padBottom }} />
       </div>
+        </>
+      )}
 
-      {menu && root && <ContextMenu target={menu} rootPath={root.path} onClose={closeMenu} />}
+      {menu && root && view === "files" && (
+        <ContextMenu
+          target={menu}
+          rootPath={root.path}
+          onCreate={beginDraft}
+          onRename={beginRename}
+          onDelete={onDelete}
+          onClose={closeMenu}
+        />
+      )}
     </motion.div>
   );
 }
@@ -281,6 +707,33 @@ function emptyNote(
  * than imported for the reason given on `TreeRow.tsx`'s chevron: an app does
  * not reach into `src/`.
  */
+/**
+ * Toggle to the deleted list.
+ *
+ * Tabler's outline "trash" at 2px in a 24×24 box, authored here for the same
+ * reason as the chevron and the refresh arrows: `src/ui/Icon.tsx` is the
+ * shell's, and an app may not reach into `src/`.
+ */
+function Bin() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M4 7h16M10 11v6M14 11v6" />
+      <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+    </svg>
+  );
+}
+
 function Refresh() {
   return (
     <svg

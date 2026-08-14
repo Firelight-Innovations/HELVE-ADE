@@ -79,6 +79,13 @@ export interface WriteResult {
   mtime: number | null;
 }
 
+/** What `files/create-file` and `files/create-dir` report making. */
+export interface Created {
+  path: string;
+  name: string;
+  kind: EntryKind;
+}
+
 // --- the calls ----------------------------------------------------------------
 
 /** Where the tree roots: the open project, else the manifest's directory. */
@@ -107,6 +114,126 @@ export const readBytes = (path: string) => invoke<FileBytes>("files/read-bytes",
  */
 export const write = (path: string, text: string, baseMtime: number | null) =>
   invoke<WriteResult>("files/write", { path, text, baseMtime });
+
+/**
+ * Create an empty file, or a folder, directly inside `parent`.
+ *
+ * `name` is one path component, and the backend refuses anything else — a
+ * separator, `..`, a character Windows cannot store, a trailing dot it would
+ * silently drop, a name already taken. All of those come back as rejections
+ * with a message worth showing; none of them is checked here, for the reason
+ * this file's header gives about path semantics living on one side.
+ */
+export const createFile = (parent: string, name: string) =>
+  invoke<Created>("files/create-file", { parent, name });
+
+export const createDir = (parent: string, name: string) =>
+  invoke<Created>("files/create-dir", { parent, name });
+
+/**
+ * Give the entry at `path` a new name, in the folder it is already in.
+ *
+ * Files and folders alike. `name` is validated exactly as a create's is, so
+ * this cannot move anything out of its folder — a rename changes what something
+ * is called, and moving it is a different call that does not exist yet.
+ *
+ * Refuses rather than overwriting when the name is taken. That refusal is
+ * hand-written in the backend rather than free, because `std::fs::rename`
+ * replaces its destination silently; see `rename_at` in `files.rs`.
+ */
+export const rename = (path: string, name: string) =>
+  invoke<Created>("files/rename", { path, name });
+
+/** What `files/delete` reports removing. `trashed` says which it was. */
+export interface Deleted {
+  path: string;
+  kind: EntryKind;
+  /** The entry went to the Recycle Bin rather than being unlinked. */
+  trashed: boolean;
+}
+
+/**
+ * Move an entry to the Recycle Bin. Files and folders alike; a folder takes
+ * everything under it.
+ *
+ * Recoverable, and the backend refuses rather than falling back to a permanent
+ * unlink when the volume has no Recycle Bin — so `trashed` is always true today
+ * and the caller is expected to read it rather than assume. See `delete_at` in
+ * `files.rs` for why a silent fallback would be the one outcome a confirmation
+ * exists to prevent.
+ */
+export const remove = (path: string) => invoke<Deleted>("files/delete", { path });
+
+/** How much a recursive delete would take with it. */
+export interface TreeSize {
+  path: string;
+  files: number;
+  dirs: number;
+  /** The backend stopped counting. `files + dirs` is a floor, not a total. */
+  truncated: boolean;
+}
+
+/**
+ * Count what is inside a folder, for the sentence a delete confirmation owes
+ * the user. Capped in the backend, which is what `truncated` reports.
+ */
+export const treeSize = (path: string) => invoke<TreeSize>("files/tree-size", { path });
+
+// --- the Recycle Bin ----------------------------------------------------------
+//
+// The other half of `files/delete`. Every one of these is **scoped to the open
+// project** by the backend: `trash/list` returns only items whose original
+// location was inside the project root, and restore and purge look their id up
+// in that same scoped set. The system Recycle Bin holds everything the user has
+// ever deleted anywhere, and none of it but this project's is reachable from
+// here — see `src-tauri/src/apps/trash.rs` for why that ordering matters.
+
+/** One item sitting in the Recycle Bin that came from this project. */
+export interface TrashItem {
+  /** Opaque, and only meaningful to the backend. Pass it back unchanged. */
+  id: string;
+  name: string;
+  /** Where it was when it was deleted, and where a restore puts it back. */
+  originalPath: string;
+  originalParent: string;
+  /** Milliseconds since the Unix epoch. */
+  deletedUnixMs: number;
+  /** Bytes, for a file. `null` for a directory, which has no one size. */
+  size: number | null;
+  /** Immediate children, for a directory. `null` for a file. */
+  entries: number | null;
+}
+
+export interface TrashListing {
+  /** The project the list is scoped to, so the view can say what it is showing. */
+  root: string;
+  /** Newest deletion first. Ordered by the backend; do not re-sort. */
+  items: TrashItem[];
+}
+
+/** Everything this project has deleted that is still recoverable. */
+export const trashList = () => invoke<TrashListing>("trash/list");
+
+/**
+ * Put one item back where it came from.
+ *
+ * Refuses rather than overwriting when something already occupies the original
+ * path, and refuses when the folder it came from no longer exists — the second
+ * one asks the user to recreate the folder rather than inventing directories on
+ * their behalf. Both come back as rejections worth showing verbatim.
+ */
+export const trashRestore = (id: string) =>
+  invoke<{ path: string; name: string }>("trash/restore", { id });
+
+/**
+ * Destroy one item permanently.
+ *
+ * The only call in this app with no recovery path at all — `files/delete` is
+ * undone by `trashRestore`, and this is undone by nothing. Everything that calls
+ * it owes the user a confirmation that says so.
+ */
+export const trashPurge = (id: string) =>
+  invoke<{ name: string; originalPath: string }>("trash/purge", { id });
 
 /** Select the item in the OS file manager. */
 export const reveal = (path: string) => invoke<null>("files/reveal", { path });

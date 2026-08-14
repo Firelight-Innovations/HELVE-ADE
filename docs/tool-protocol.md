@@ -122,6 +122,11 @@ pending table of the side that sent the request.
 Every tool core must implement these. The `helve/` prefix is reserved; tools
 must not define their own methods under it.
 
+> The methods a *first-party app* answers are not part of this protocol and are
+> not listed here — this document is the transport. The Files app's surface,
+> which is the one an agent is most likely to drive, is
+> [`docs/files-app-methods.md`](files-app-methods.md).
+
 | Method | Params | Result |
 |---|---|---|
 | `helve/hello` | `{"protocol":1,"session":Session}` | `{"id":string,"version":string,"protocol":1}` |
@@ -184,6 +189,31 @@ papering over it with a poll.
 The bridge queues any `invoke` made before `ready` arrives and flushes the queue
 on handshake, so tool code never has to think about this.
 
+### Reserved methods
+
+The `helve/` prefix is reserved on this transport too, and for the same reason:
+the shell answers these itself and never forwards them to a core.
+
+| Method | Params | Result | Meaning |
+|---|---|---|---|
+| `helve/painted` | none | `null` | This frontend has drawn its first meaningful content. |
+
+`helve/painted` is a report, not a request. The orchestrator holds its splash
+window up until every first-party app has sent one, so that the window it hands
+off to is finished rather than still filling in — see `src-tauri/src/boot.rs`.
+A host with nothing waiting on it acknowledges and does nothing, which is what
+a tool's own standalone Tauri app does.
+
+Two rules make it worth trusting. It is sent *after* the content is committed
+to the DOM, not when the call that fetched it resolved — a frontend that
+reported on the promise would be claiming a screen that does not exist yet. And
+it identifies the frontend the same way every other message here does: the shell
+resolves the id from `event.source`, so a frame can only ever report about
+itself.
+
+The host may stop waiting. It does not wait forever, and a report that arrives
+after it gave up is discarded rather than being an error.
+
 ### Origins
 
 - The bridge posts `hello` with `targetOrigin: "*"` — it doesn't know the shell's
@@ -218,13 +248,20 @@ name per session and publishes it here. Both fields are null today.
 tool code, either host.
 
 ```ts
-import { invoke, on, session, host } from "@helve/bridge";
+import { invoke, on, session, host, reportPainted } from "@helve/bridge";
 
 const reply = await invoke<{ text: string }>("echo", { text: "hi" });
 const off   = on("file/changed", (p) => console.log(p));
 const s     = await session();   // resolves after handshake
 host();                          // "helve" | "tauri"
+reportPainted();                 // "there is something on screen now"
 ```
+
+`reportPainted` sends `helve/painted` once, from a `requestAnimationFrame` so
+the browser has laid the content out first — with a short timer racing it,
+because a webview in a window that is still hidden stops firing animation
+frames entirely, and that is exactly the case this signal exists for. Every
+call after the first is a no-op, so it is safe from an effect that runs twice.
 
 ### Host detection
 
@@ -243,7 +280,7 @@ timing guess — there is no probe, no timeout, and no ambiguous middle state.
   the method name passed through unchanged.
 - `helve/*` methods are handled **inside the bridge** and never reach Tauri —
   they aren't valid Tauri command names anyway (`/` is not allowed). `helve/hello`
-  resolves locally; `helve/shutdown` resolves to null.
+  resolves locally; `helve/shutdown` and `helve/painted` resolve to null.
 - `session()` resolves immediately to `{engineEndpoint: null, projectPath: null}`.
 - `@tauri-apps/api` is imported dynamically, so a tool built for the orchestrator
   alone doesn't have to ship it.

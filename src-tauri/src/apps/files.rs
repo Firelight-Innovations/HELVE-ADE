@@ -70,6 +70,17 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
             read_bytes_within(&required_path(params.as_ref())?, MAX_READ_BYTES_BINARY)
         }
         "files/write" => write(params.as_ref()),
+        "files/create-file" => create(params.as_ref(), NewEntry::File),
+        "files/create-dir" => create(params.as_ref(), NewEntry::Dir),
+        "files/rename" => rename(params.as_ref()),
+        "files/delete" => delete_at(&required_path(params.as_ref())?),
+        "files/tree-size" => Ok(tree_size_at(&required_path(params.as_ref())?)),
+        // The Recycle Bin half of `files/delete`, in its own module because the
+        // scoping rule it enforces is the whole of its design and deserves to be
+        // read on its own. Dispatched from here because it is the Files app's
+        // surface — one app, one `call`.
+        method if method.starts_with("trash/") => super::trash::call(app, method, params),
+
         "files/reveal" => reveal(app, params.as_ref()),
         "files/open-external" => open_external(app, params.as_ref()),
 
@@ -403,6 +414,420 @@ fn temp_sibling(path: &Path) -> Result<PathBuf, RpcError> {
     Ok(path.with_file_name(name))
 }
 
+/// What `files/create-file` and `files/create-dir` make.
+///
+/// `Copy` so it can be handed down through three calls without any of them
+/// taking it away from the caller; a fieldless enum is a byte, and passing it by
+/// value is both cheaper and less noisy than passing a reference to one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NewEntry {
+    File,
+    Dir,
+}
+
+impl NewEntry {
+    /// The `EntryKind` the frontend switches on — the same closed set `list`
+    /// and `stat` report, so a created entry can be described the same way a
+    /// listed one is.
+    fn kind(self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Dir => "dir",
+        }
+    }
+
+    /// What to call it in a sentence aimed at a person. Not `kind()`: "could not
+    /// create a dir" is the protocol's word in a place where "folder" is the
+    /// user's.
+    fn noun(self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Dir => "folder",
+        }
+    }
+}
+
+/// Create one entry named `name` directly inside `parent`.
+///
+/// `name` is a *name* and not a path — see [`validate_component`], which is what
+/// makes `parent.join(name)` unable to land anywhere but immediately inside
+/// `parent`. That is not the sandbox this module's header argues against having:
+/// it is the difference between a field labelled "name" meaning what it says and
+/// meaning "name, or a path, or `..\..\..`, depending". A caller that genuinely
+/// wants to create somewhere else passes a different `parent`, in the open.
+///
+/// Refuses rather than overwrites when something is already there. For a file
+/// that refusal is `create_new(true)`, which asks the OS to fail if the path
+/// exists — one syscall that both checks and creates, where an `exists()` test
+/// followed by a create has a gap in the middle that another process can walk
+/// through. `create_dir` (not `create_dir_all`) has the same property for free:
+/// it declines an existing directory and will not invent missing parents.
+fn create_at(parent: &Path, name: &str, what: NewEntry) -> Result<Value, RpcError> {
+    validate_component(name)?;
+
+    // Checked before the create only so the failure can say *this*. Without it,
+    // a `parent` that is a file or is not there at all comes back as the same
+    // generic OS error as a dozen unrelated problems.
+    if !parent.is_dir() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!(
+                "{} is not a folder, so there is nothing to create a {} in",
+                parent.display(),
+                what.noun()
+            ),
+        ));
+    }
+
+    let path = parent.join(name);
+
+    let made = match what {
+        NewEntry::File => std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            // The handle is dropped immediately: this creates an empty file, and
+            // whatever writes to it next goes through `files/write` like every
+            // other write in this module.
+            .map(|_| ()),
+        NewEntry::Dir => std::fs::create_dir(&path),
+    };
+
+    made.map_err(|e| match e.kind() {
+        // The one failure the user can fix by typing something else, so it is
+        // their mistake rather than the machine's.
+        std::io::ErrorKind::AlreadyExists => RpcError::new(
+            INVALID_PARAMS,
+            format!("{name} already exists in {}", parent.display()),
+        ),
+        std::io::ErrorKind::PermissionDenied => RpcError::new(
+            INTERNAL_ERROR,
+            format!(
+                "no permission to create a {} in {}",
+                what.noun(),
+                parent.display()
+            ),
+        ),
+        _ => RpcError::new(
+            INTERNAL_ERROR,
+            format!("could not create {}: {e}", path.display()),
+        ),
+    })?;
+
+    Ok(json!({
+        "path": path.display().to_string(),
+        "name": name,
+        "kind": what.kind(),
+    }))
+}
+
+/// Give the entry at `path` a new name, in the folder it is already in.
+///
+/// A rename and not a move: `name` goes through the same [`validate_component`]
+/// as a create, so it cannot contain a separator and the result is always a
+/// sibling of the original. Moving a file somewhere else is a different act with
+/// a different set of ways to go wrong, and giving this one method both jobs
+/// would mean a `name` parameter that is sometimes a path.
+///
+/// Works on directories as well as files. `std::fs::rename` makes no distinction
+/// and neither does the caller — renaming a folder is the same gesture, and
+/// refusing it would be inventing a limit the filesystem does not have.
+///
+/// ## The overwrite this has to prevent by hand
+///
+/// **`std::fs::rename` replaces an existing destination without asking**, on
+/// Windows and POSIX alike. That is the opposite of what `create_at` gets for
+/// free from `create_new(true)`, and it is the one genuinely dangerous edge in
+/// this module: renaming `notes.md` onto an existing `todo.md` would destroy
+/// `todo.md` with no error anywhere. So the check is explicit, and it is why
+/// this function is longer than it looks like it should be.
+///
+/// That check is not atomic, and saying so is better than implying otherwise:
+/// another process could create the destination between the test and the
+/// rename. Closing that gap means `MoveFileExW` *without*
+/// `MOVEFILE_REPLACE_EXISTING`, which fails at the syscall the way
+/// `create_new` does — a Windows-only FFI dependency this module does not
+/// otherwise need. The race is a few microseconds wide and needs a second
+/// writer in the same folder; the common case this does catch is the user
+/// typing a name that is already taken.
+fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
+    validate_component(name)?;
+
+    let parent = path.parent().ok_or_else(|| {
+        RpcError::new(
+            INVALID_PARAMS,
+            format!("{} is a root, and a root has no name to change", path.display()),
+        )
+    })?;
+
+    // Renaming something that is not there is a different error from every
+    // other failure below, and the frontend can only say so if this does.
+    if !path.exists() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{} is no longer there to rename", path.display()),
+        ));
+    }
+
+    let target = parent.join(name);
+
+    // Renaming a thing to what it is already called. Reported as success rather
+    // than refused: nothing is wrong, and the caller asked for a state the disk
+    // is already in.
+    if target == path {
+        return Ok(renamed(&target, name));
+    }
+
+    if target.exists() && !is_same_entry(path, &target) {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{name} already exists in {}", parent.display()),
+        ));
+    }
+
+    std::fs::rename(path, &target).map_err(|e| match e.kind() {
+        std::io::ErrorKind::PermissionDenied => RpcError::new(
+            INTERNAL_ERROR,
+            format!(
+                "no permission to rename {}, or it is open in another program",
+                path.display()
+            ),
+        ),
+        _ => RpcError::new(
+            INTERNAL_ERROR,
+            format!("could not rename {} to {name}: {e}", path.display()),
+        ),
+    })?;
+
+    Ok(renamed(&target, name))
+}
+
+/// Move an entry to the Recycle Bin. Files and folders alike.
+///
+/// ## Why the `trash` crate and not `std::fs::remove_*`
+///
+/// `remove_file` and `remove_dir_all` unlink. There is no undo, no undelete, and
+/// nothing in this app that could offer one — the bytes are gone the moment the
+/// call returns. For a tool people point at a game project, that is the wrong
+/// default by a wide margin: the recoverable option exists on every desktop
+/// this runs on and it is what a Windows user already expects from Delete.
+///
+/// The alternative that adds no dependency is `SHFileOperationW` with
+/// `FOF_ALLOWUNDO` through the `windows-sys` already in the tree. Rejected
+/// deliberately: its central detail is a **double-null-terminated** wide path
+/// buffer, and a subtly wrong buffer in the one function whose job is to destroy
+/// things is not a bug this codebase should be able to have. `trash` is a small
+/// crate that does exactly this and is tested against exactly that footgun.
+///
+/// ## It refuses rather than falling back
+///
+/// A volume with no Recycle Bin — most network shares, some removable drives —
+/// makes this fail, and it is left failing. Quietly unlinking instead would mean
+/// the confirmation said "Recycle Bin" and the disk did something permanent,
+/// which is the one outcome a confirmation exists to prevent. The user can still
+/// delete such a file from the OS file manager, having been told what that
+/// means.
+fn delete_at(path: &Path) -> Result<Value, RpcError> {
+    // Read the kind *before* the delete: afterwards there is nothing to stat,
+    // and the caller needs to know whether it just lost a file or a folder.
+    let metadata = std::fs::metadata(path).ok();
+    if metadata.is_none() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{} is no longer there to delete", path.display()),
+        ));
+    }
+    let kind = kind_of(metadata.as_ref());
+
+    trash::delete(path).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            // The crate's own message carries the OS reason, which on Windows is
+            // usually the one that matters: the file is open in another program,
+            // or this volume has no Recycle Bin. Passing it through verbatim is
+            // the difference between a user who can act and one who cannot.
+            format!("could not move {} to the Recycle Bin: {e}", path.display()),
+        )
+    })?;
+
+    Ok(json!({
+        "path": path.display().to_string(),
+        "kind": kind,
+        // Stated rather than assumed by the frontend, so the copy in the
+        // confirmation and what actually happened can never disagree — if this
+        // ever gains a permanent-delete path, the dialog reads this.
+        "trashed": true,
+    }))
+}
+
+/// How many entries a recursive delete would take with it.
+///
+/// Exists for one sentence in the confirmation: deleting a folder is deleting
+/// everything under it, and a dialog that does not say how much is asking the
+/// user to approve an amount they cannot see.
+///
+/// Capped, and the cap is reported rather than hidden. Counting `node_modules`
+/// exactly would mean walking tens of thousands of entries while someone waits
+/// on a dialog, and "more than 10,000 items" is the same warning as an exact
+/// number — arguably a louder one.
+const TREE_SIZE_CAP: usize = 10_000;
+
+fn tree_size_at(path: &Path) -> Value {
+    let mut files = 0usize;
+    let mut dirs = 0usize;
+    let mut truncated = false;
+
+    // An explicit stack rather than recursion: this walks user-supplied trees,
+    // and a deep one should cost memory rather than blow the call stack.
+    let mut stack = vec![path.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        if files + dirs >= TREE_SIZE_CAP {
+            truncated = true;
+            break;
+        }
+
+        // A directory that cannot be read contributes nothing rather than
+        // failing the count. The number is for a warning, and a warning that
+        // refused to appear because one subfolder was locked would be worse
+        // than one that is slightly low.
+        let Ok(reader) = std::fs::read_dir(&dir) else { continue };
+
+        for entry in reader.flatten() {
+            if files + dirs >= TREE_SIZE_CAP {
+                truncated = true;
+                break;
+            }
+            // `file_type` does not follow symlinks, so a link to a directory is
+            // counted once as an entry and not descended into — which matches
+            // what the delete does to it.
+            match entry.file_type() {
+                Ok(t) if t.is_dir() => {
+                    dirs += 1;
+                    stack.push(entry.path());
+                }
+                _ => files += 1,
+            }
+        }
+    }
+
+    json!({
+        "path": path.display().to_string(),
+        "files": files,
+        "dirs": dirs,
+        "truncated": truncated,
+    })
+}
+
+/// Whether two paths are the same entry on disk, rather than merely different.
+///
+/// This exists for one case, and it is a case that would otherwise be a bug on
+/// the platform HELVE runs on: **changing only the capitalisation of a name**.
+/// Windows filesystems are case-insensitive, so `Notes.md` and `notes.md` are
+/// the same file — `target.exists()` is therefore `true` when renaming one to
+/// the other, and a plain existence check would refuse a rename that is both
+/// legal and common.
+///
+/// `canonicalize` resolves each path to what the filesystem actually holds, so
+/// the two come back identical exactly when they are one entry. Both failing to
+/// resolve is *not* treated as a match: that means neither is there, which is a
+/// question this function was not asked.
+fn is_same_entry(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// The answer shape shared by `create_at` and `rename_at`, so a caller can
+/// treat "here is an entry that now exists at this path" as one thing.
+fn renamed(path: &Path, name: &str) -> Value {
+    json!({
+        "path": path.display().to_string(),
+        "name": name,
+        "kind": kind_of(std::fs::metadata(path).ok().as_ref()),
+    })
+}
+
+/// Characters Windows will not put in a file name. `/` and `\` are handled
+/// separately, because they are refused for a different reason.
+const RESERVED_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
+
+/// The DOS device names, still reserved by Win32 forty years on. Reserved with
+/// *any* extension too, so `con.txt` is as unusable as `con`.
+const RESERVED_STEMS: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Whether `name` is one path component that Windows will store as written.
+///
+/// Every rule here refuses something the OS would otherwise accept and then
+/// quietly change, or accept and then make unopenable. That is the bar: this is
+/// not a taste check on names, and it does not stop anyone creating `.hidden` or
+/// `weird name with spaces`. What it stops is the gap between what was typed and
+/// what ends up on disk — a trailing dot is silently dropped by Win32, so
+/// `notes.` becomes `notes`, and the tree would come back showing a file the
+/// user did not ask for with no error anywhere.
+///
+/// Written for Windows because that is what HELVE runs on, and applied
+/// everywhere rather than behind a `cfg`: the rules are a strict superset of
+/// what POSIX refuses, and a project that syncs between the two is better served
+/// by names that work in both than by names that work here.
+fn validate_component(name: &str) -> Result<(), RpcError> {
+    let refuse = |why: String| RpcError::new(INVALID_PARAMS, why);
+
+    if name.is_empty() {
+        return Err(refuse("a name is required".into()));
+    }
+
+    if name.contains('/') || name.contains('\\') {
+        return Err(refuse(format!(
+            "{name:?} contains a path separator — this creates one entry inside the folder you \
+             chose, so the name may not be a path"
+        )));
+    }
+
+    if name == "." || name == ".." {
+        return Err(refuse(format!(
+            "{name:?} is how a path refers to a folder that already exists, not a name"
+        )));
+    }
+
+    if let Some(bad) = name
+        .chars()
+        .find(|c| RESERVED_CHARS.contains(c) || c.is_control())
+    {
+        // Control characters print as nothing, so they are named by their code
+        // point rather than shown — a message reading `'' is not allowed` would
+        // be indistinguishable from a bug in the message.
+        let shown = if bad.is_control() {
+            format!("U+{:04X}", bad as u32)
+        } else {
+            format!("{bad:?}")
+        };
+        return Err(refuse(format!("{shown} is not allowed in a Windows file name")));
+    }
+
+    if name.ends_with(' ') || name.ends_with('.') {
+        return Err(refuse(format!(
+            "Windows silently drops a trailing space or dot, so {name:?} would not be the name on \
+             disk"
+        )));
+    }
+
+    // The stem is everything before the *first* dot, which is what Win32 looks
+    // at: `con.txt.bak` is still the console device.
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_lowercase();
+    if RESERVED_STEMS.contains(&stem.as_str()) {
+        return Err(refuse(format!(
+            "{stem:?} is a reserved device name on Windows, so {name:?} cannot be created"
+        )));
+    }
+
+    Ok(())
+}
+
 /// `"dir"`, `"file"`, or `"other"`, from metadata that may not have been read.
 ///
 /// `None` is the broken-symlink and permission-denied case — `std::fs::metadata`
@@ -490,6 +915,47 @@ fn write(params: Option<&Value>) -> Result<Value, RpcError> {
     write_at(&path, text, base_mtime)
 }
 
+/// Create an empty file, or a folder, inside `parent`. See [`create_at`].
+///
+/// Two params rather than one whole path, and that is the point of the method
+/// rather than an accident of its signature: a single `path` would put the
+/// splitting of "where" from "what to call it" on the frontend, which is the one
+/// place in this app that is not allowed to have an opinion about path semantics
+/// (see the note in `rpc.ts`). Handing over a folder and a name lets the check
+/// that the name *is* a name live next to the code that joins them.
+fn create(params: Option<&Value>, what: NewEntry) -> Result<Value, RpcError> {
+    let parent = PathBuf::from(required_string(params, "parent")?);
+    let name = required_string(params, "name")?;
+    create_at(&parent, &name, what)
+}
+
+/// Rename the entry at `path` to `name`. See [`rename_at`].
+fn rename(params: Option<&Value>) -> Result<Value, RpcError> {
+    let path = required_path(params)?;
+    let name = required_string(params, "name")?;
+    rename_at(&path, &name)
+}
+
+/// One required string param, by name.
+///
+/// [`required_path`] is the same shape for the one param almost every method
+/// here takes; this is for the two that `files/create-*` adds. Kept separate
+/// rather than generalised, because `required_path` returns a `PathBuf` and a
+/// name is deliberately not one.
+fn required_string(params: Option<&Value>, key: &str) -> Result<String, RpcError> {
+    match params.and_then(|p| p.get(key)) {
+        Some(Value::String(raw)) => Ok(raw.clone()),
+        Some(other) => Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{key} must be a string, got {other}"),
+        )),
+        None => Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{key} is required"),
+        )),
+    }
+}
+
 /// Select the item in the OS file manager.
 ///
 /// Called through the plugin's Rust API rather than by letting the frontend
@@ -563,7 +1029,7 @@ fn resolve_path(app: &AppHandle, params: Option<&Value>) -> Result<PathBuf, RpcE
 /// Not the process's working directory in either case, which is `src-tauri/`
 /// under `tauri dev` and the install directory in a release build — neither is
 /// anywhere the user would recognise.
-fn default_root(app: &AppHandle) -> Result<PathBuf, RpcError> {
+pub(super) fn default_root(app: &AppHandle) -> Result<PathBuf, RpcError> {
     if let Some(project) = crate::project::open_path(app) {
         return Ok(project);
     }
@@ -765,6 +1231,315 @@ mod tests {
     fn base_name_of_a_drive_root_falls_back_to_the_path() {
         assert_eq!(base_name(Path::new(r"C:\")), r"C:\");
         assert!(!base_name(Path::new("/")).is_empty());
+    }
+
+    #[test]
+    fn creating_makes_an_empty_file_and_reports_where() {
+        let dir = TempDir::new("new-file");
+
+        let value = create_at(&dir.0, "notes.md", NewEntry::File).expect("create");
+
+        let path = dir.0.join("notes.md");
+        assert_eq!(value["path"], path.display().to_string());
+        assert_eq!(value["kind"], "file");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "",
+            "a new file is empty, not a template"
+        );
+    }
+
+    #[test]
+    fn creating_makes_a_folder() {
+        let dir = TempDir::new("new-dir");
+
+        let value = create_at(&dir.0, "assets", NewEntry::Dir).expect("create");
+
+        assert_eq!(value["kind"], "dir");
+        assert!(dir.0.join("assets").is_dir());
+    }
+
+    /// The whole reason `create_new(true)` is used instead of a plain write: a
+    /// name that is already taken must not quietly empty the file that has it.
+    #[test]
+    fn creating_over_an_existing_name_refuses_and_leaves_it_alone() {
+        let dir = TempDir::new("collide");
+        let path = dir.file("notes.md", "work in progress");
+
+        let err = create_at(&dir.0, "notes.md", NewEntry::File)
+            .expect_err("a name that is taken must refuse");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(
+            err.message.contains("already exists"),
+            "the message must say why: {}",
+            err.message
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "work in progress");
+    }
+
+    /// A folder colliding with a *file* of the same name is the same refusal —
+    /// the namespace is shared, and `create_dir` reports it the same way.
+    #[test]
+    fn a_folder_cannot_take_a_name_a_file_already_has() {
+        let dir = TempDir::new("collide-kind");
+        dir.file("build", "not a folder");
+
+        let err = create_at(&dir.0, "build", NewEntry::Dir).expect_err("taken");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    /// `name` is one component. Nothing here is a sandbox — see `create_at`'s
+    /// doc — but a separator in a *name* is a mistake in every case, and the
+    /// side effect is that a create can only ever land inside the folder the
+    /// caller named.
+    #[test]
+    fn a_name_may_not_be_a_path() {
+        let dir = TempDir::new("traversal");
+
+        for name in ["../escaped.txt", r"..\escaped.txt", "sub/nested.txt", "..", "."] {
+            let err = match create_at(&dir.0, name, NewEntry::File) {
+                Ok(_) => panic!("{name} must be refused"),
+                Err(err) => err,
+            };
+            assert_eq!(err.code, INVALID_PARAMS, "{name}");
+        }
+    }
+
+    #[test]
+    fn windows_reserved_characters_and_device_names_are_refused() {
+        let dir = TempDir::new("reserved");
+
+        for name in ["what?.txt", "a:b", "pipe|d", "con", "CON.txt", "lpt9.log"] {
+            let err = create_at(&dir.0, name, NewEntry::File)
+                .expect_err("a name Windows cannot store must be refused before it is tried");
+            assert_eq!(err.code, INVALID_PARAMS, "{name}");
+        }
+    }
+
+    /// The subtle one. Win32 drops these itself, so accepting the name would
+    /// create a file with a *different* name and report success.
+    #[test]
+    fn a_trailing_space_or_dot_is_refused_rather_than_silently_dropped() {
+        let dir = TempDir::new("trailing");
+
+        for name in ["notes.", "notes ", "folder."] {
+            let err = create_at(&dir.0, name, NewEntry::File).expect_err("must refuse");
+            assert_eq!(err.code, INVALID_PARAMS, "{name}");
+            assert!(
+                !dir.0.join("notes").exists(),
+                "nothing may be created under a name the user did not type"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dotfile_is_a_perfectly_good_name() {
+        let dir = TempDir::new("dotfile");
+
+        create_at(&dir.0, ".gitignore", NewEntry::File).expect("a leading dot is a name");
+        create_at(&dir.0, ".helve", NewEntry::Dir).expect("and so is HELVE's own folder");
+
+        assert!(dir.0.join(".gitignore").is_file());
+        assert!(dir.0.join(".helve").is_dir());
+    }
+
+    #[test]
+    fn creating_inside_something_that_is_not_a_folder_says_so() {
+        let dir = TempDir::new("not-a-dir");
+        let file = dir.file("notes.md", "text");
+
+        let err = create_at(&file, "child.txt", NewEntry::File).expect_err("a file has no inside");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("not a folder"), "{}", err.message);
+    }
+
+    #[test]
+    fn renaming_moves_the_contents_to_the_new_name() {
+        let dir = TempDir::new("rename");
+        let path = dir.file("notes.md", "the text");
+
+        let value = rename_at(&path, "journal.md").expect("rename");
+
+        assert_eq!(value["name"], "journal.md");
+        assert_eq!(value["kind"], "file");
+        assert!(!path.exists(), "the old name is gone");
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("journal.md")).unwrap(),
+            "the text",
+            "a rename moves the bytes, it does not copy or truncate them"
+        );
+    }
+
+    /// The dangerous one. `std::fs::rename` silently replaces its destination,
+    /// so without the explicit check this would destroy `todo.md`.
+    #[test]
+    fn renaming_onto_an_existing_name_refuses_and_destroys_nothing() {
+        let dir = TempDir::new("clobber");
+        let source = dir.file("notes.md", "source");
+        let victim = dir.file("todo.md", "MUST SURVIVE");
+
+        let err = rename_at(&source, "todo.md").expect_err("renaming onto a live file must refuse");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("already exists"), "{}", err.message);
+        assert_eq!(
+            std::fs::read_to_string(&victim).unwrap(),
+            "MUST SURVIVE",
+            "the file that was already there is untouched"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&source).unwrap(),
+            "source",
+            "and so is the one that was being renamed"
+        );
+    }
+
+    /// The Windows one. `Notes.md` and `notes.md` are the same file on a
+    /// case-insensitive filesystem, so a plain `exists()` check would refuse a
+    /// legal rename — see `is_same_entry`.
+    #[test]
+    fn changing_only_the_capitalisation_is_allowed() {
+        let dir = TempDir::new("case");
+        let path = dir.file("Notes.md", "the text");
+
+        let value = rename_at(&path, "notes.md").expect("a case-only rename is a real rename");
+
+        assert_eq!(value["name"], "notes.md");
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("notes.md")).unwrap(),
+            "the text"
+        );
+    }
+
+    #[test]
+    fn renaming_to_the_same_name_succeeds_and_changes_nothing() {
+        let dir = TempDir::new("noop");
+        let path = dir.file("notes.md", "the text");
+
+        let value = rename_at(&path, "notes.md").expect("a no-op rename is not an error");
+
+        assert_eq!(value["name"], "notes.md");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the text");
+    }
+
+    #[test]
+    fn a_folder_can_be_renamed_with_its_contents() {
+        let dir = TempDir::new("renamedir");
+        let folder = dir.0.join("assets");
+        std::fs::create_dir(&folder).expect("mkdir");
+        std::fs::write(folder.join("logo.png"), "bytes").expect("write");
+
+        let value = rename_at(&folder, "art").expect("a folder renames like anything else");
+
+        assert_eq!(value["kind"], "dir");
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("art").join("logo.png")).unwrap(),
+            "bytes",
+            "the children come with it"
+        );
+    }
+
+    /// A rename takes a *name*, so the same rule as create: no separators, and
+    /// therefore no way to move an entry out of its folder through this method.
+    #[test]
+    fn a_rename_target_may_not_be_a_path_or_an_unstorable_name() {
+        let dir = TempDir::new("renamebad");
+        let path = dir.file("notes.md", "the text");
+
+        for name in ["../escaped.md", r"..\escaped.md", "sub/nested.md", "what?.md", "con", "notes."]
+        {
+            let err = match rename_at(&path, name) {
+                Ok(_) => panic!("{name} must be refused"),
+                Err(err) => err,
+            };
+            assert_eq!(err.code, INVALID_PARAMS, "{name}");
+        }
+
+        assert!(path.exists(), "every refusal left the original alone");
+    }
+
+    #[test]
+    fn renaming_something_that_is_gone_says_so() {
+        let dir = TempDir::new("renamegone");
+        let path = dir.0.join("never-existed.md");
+
+        let err = rename_at(&path, "whatever.md").expect_err("nothing to rename");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("no longer there"), "{}", err.message);
+    }
+
+    /// Deleting really does remove the entry from its folder. Deliberately not
+    /// asserting *where* it went: this test would then depend on the machine
+    /// having a Recycle Bin, and the promise the app makes is only that the
+    /// file leaves the project — recovering it is the OS's business.
+    #[test]
+    fn deleting_removes_the_entry_and_reports_what_it_was() {
+        let dir = TempDir::new("delete");
+        let path = dir.file("notes.md", "the text");
+
+        let value = delete_at(&path).expect("delete");
+
+        assert_eq!(value["kind"], "file");
+        assert_eq!(value["trashed"], true);
+        assert!(!path.exists(), "the entry is gone from the folder");
+    }
+
+    #[test]
+    fn deleting_something_that_is_gone_says_so() {
+        let dir = TempDir::new("deletegone");
+        let path = dir.0.join("never-existed.md");
+
+        let err = delete_at(&path).expect_err("nothing to delete");
+
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(err.message.contains("no longer there"), "{}", err.message);
+    }
+
+    #[test]
+    fn deleting_a_folder_takes_its_contents_and_says_it_was_a_folder() {
+        let dir = TempDir::new("deletedir");
+        let folder = dir.0.join("assets");
+        std::fs::create_dir(&folder).expect("mkdir");
+        std::fs::write(folder.join("logo.png"), "bytes").expect("write");
+
+        let value = delete_at(&folder).expect("delete");
+
+        assert_eq!(value["kind"], "dir", "the caller has to know it lost a tree");
+        assert!(!folder.exists());
+    }
+
+    /// The number the confirmation puts in front of the user before a recursive
+    /// delete. Counts everything underneath, not just the direct children.
+    #[test]
+    fn tree_size_counts_the_whole_subtree() {
+        let dir = TempDir::new("treesize");
+        let root = dir.0.join("src");
+        std::fs::create_dir_all(root.join("engine").join("render")).expect("mkdir");
+        std::fs::write(root.join("main.rs"), "").expect("write");
+        std::fs::write(root.join("engine").join("scene.rs"), "").expect("write");
+        std::fs::write(root.join("engine").join("render").join("pass.rs"), "").expect("write");
+
+        let value = tree_size_at(&root);
+
+        assert_eq!(value["files"], 3, "every file, however deep");
+        assert_eq!(value["dirs"], 2, "engine and engine/render");
+        assert_eq!(value["truncated"], false);
+    }
+
+    #[test]
+    fn tree_size_of_an_empty_folder_is_zero_rather_than_an_error() {
+        let dir = TempDir::new("treeempty");
+        let empty = dir.0.join("empty");
+        std::fs::create_dir(&empty).expect("mkdir");
+
+        let value = tree_size_at(&empty);
+
+        assert_eq!(value["files"], 0);
+        assert_eq!(value["dirs"], 0);
     }
 
     #[test]
