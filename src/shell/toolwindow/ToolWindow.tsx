@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { ToolPresentation } from "../contract";
 // The wire types come from the bridge package's source by relative path rather
@@ -8,6 +8,7 @@ import type { ToolPresentation } from "../contract";
 // which is the tool half of transport B and reaches for `window.parent` at
 // module load. Types and the error-code table have no such side effect.
 import type {
+  CommandMessage,
   EventMessage,
   HelloMessage,
   ReadyMessage,
@@ -48,22 +49,53 @@ import "./toolwindow.css";
  * and only the shell can say *which* frame is claiming it — and what waits on
  * the answer is the splash window, which stays up until every app has reported.
  *
- * Traffic runs the other way too: a Tauri event the backend broadcasts is
- * forwarded into app frames as a transport-B `event` message. That is the only
- * way anything reaches a frame unprompted — every other message here answers
- * one the frame sent first.
+ * Traffic runs the other way too, and there are now two kinds of it. A Tauri
+ * event the backend broadcasts is forwarded into app frames as a transport-B
+ * `event` message. And a **menu command** — the title bar's File/Edit/View
+ * items — is posted to the *active* frame alone as a transport-B `command`
+ * message, through the handle below. Those two are the only ways anything
+ * reaches a frame unprompted; every other message here answers one the frame
+ * sent first.
+ *
+ * A command never travels through Rust. Both ends are already in this browser,
+ * and a round trip through the backend would buy nothing but a chance for the
+ * two to disagree about which frame is active.
+ *
+ * The shell does not know what any command *means*, and must not: it holds a
+ * set of strings per frame, sends one when a menu item is chosen, and greys out
+ * everything the active frame has not declared. `helve/commands` is how a frame
+ * declares — which is what keeps a list of one app's capabilities out of the
+ * shell, so the next app to arrive does not break the menu.
  */
-export default function ToolWindow({
-  tools,
-  activeToolId,
-  onOpenTool,
-  onRescan,
-}: {
-  tools: ToolPresentation[];
-  activeToolId: string | null;
-  onOpenTool: (id: string) => void;
-  onRescan: () => void;
-}) {
+export interface ToolWindowHandle {
+  /**
+   * Post a menu command to the frame showing `toolId`.
+   *
+   * Silent when that frame is not mounted, has not said hello, or never
+   * declared the command. The menu is what stops the last of those from
+   * happening — an item the active app has not declared is disabled — so
+   * reaching here with an undeclared command means the two disagreed, and
+   * dropping it is better than a frame acting on something it said it could not
+   * do.
+   */
+  send(toolId: string, command: string): void;
+}
+
+const ToolWindow = forwardRef<
+  ToolWindowHandle,
+  {
+    tools: ToolPresentation[];
+    activeToolId: string | null;
+    onOpenTool: (id: string) => void;
+    onRescan: () => void;
+    /**
+     * A frame's declared command set changed — it said `helve/commands`, or it
+     * went away and its declaration went with it. The owner keeps these so the
+     * menu bar can disable what the active surface cannot do.
+     */
+    onCommandsChange?: (toolId: string, commands: readonly string[]) => void;
+  }
+>(function ToolWindow({ tools, activeToolId, onOpenTool, onRescan, onCommandsChange }, ref) {
   // The only trusted map from a window to a mounted surface. Each `ToolMount`
   // registers its iframe's `contentWindow` here the moment it exists; the
   // listener below never trusts anything in a message's body for identity —
@@ -79,18 +111,53 @@ export default function ToolWindow({
   // announced itself from is remembered instead. Nothing is posted to a frame
   // still holding `null` — a frame that has not said hello has no listener yet,
   // and there is no origin to aim at that wouldn't be a guess.
-  const frames = useRef<Map<Window, { id: string; isApp: boolean; origin: string | null }>>(
-    new Map(),
-  );
+  //
+  // `commands` is the set the frame last declared. Empty until it says
+  // `helve/commands`, which is the honest starting point: a frame that has
+  // never declared anything can do nothing the menu bar knows how to ask for.
+  const frames = useRef<
+    Map<Window, { id: string; isApp: boolean; origin: string | null; commands: Set<string> }>
+  >(new Map());
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
 
+  // Held in a ref for the same reason `useKeyboard` holds its actions in one:
+  // the message listener below is installed once, and a prop that changes
+  // identity every render would otherwise tear it down and re-add it — with a
+  // window in between where a frame's `hello` would land on nothing.
+  const report = useRef(onCommandsChange);
+  report.current = onCommandsChange;
+
   const registerFrame = useCallback((toolId: string, isApp: boolean, win: Window) => {
-    frames.current.set(win, { id: toolId, isApp, origin: null });
+    frames.current.set(win, { id: toolId, isApp, origin: null, commands: new Set() });
   }, []);
 
   const unregisterFrame = useCallback((win: Window) => {
+    const frame = frames.current.get(win);
     frames.current.delete(win);
+    // A frame that has gone declares nothing. Said out loud rather than left
+    // implicit, because the owner's copy of the set outlives this map — a menu
+    // still offering Save for a surface that has unmounted would be offering to
+    // post into a window that no longer exists.
+    if (frame) report.current?.(frame.id, []);
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      send(toolId, command) {
+        for (const [win, frame] of frames.current) {
+          if (frame.id !== toolId) continue;
+          if (frame.origin === null || !frame.commands.has(command)) return;
+          win.postMessage(
+            { helve: 1, kind: "command", command } satisfies CommandMessage,
+            frame.origin,
+          );
+          return;
+        }
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -146,6 +213,22 @@ export default function ToolWindow({
             console.error(`helve: could not report ${frame.id} painted:`, err),
           );
         }
+        return;
+      }
+
+      // The other `helve/*` the shell answers itself: a frame saying which menu
+      // commands it can carry out right now. Host business, not an app's Rust
+      // half's — the menu being greyed out is a fact about this window's title
+      // bar, and the backend has no part in it.
+      //
+      // A tool may declare too. Its *requests* cannot be served (the broker is
+      // not built), but a declaration asks nothing of a core: it is the frame
+      // making a claim about itself, exactly as `helve/painted` is, so it is
+      // answered above the `isApp` refusal rather than below it.
+      if (method === "helve/commands") {
+        frame.commands = new Set(declaredCommands(params));
+        respond({ id, result: null });
+        report.current?.(frame.id, [...frame.commands]);
         return;
       }
 
@@ -251,6 +334,25 @@ export default function ToolWindow({
       {activeToolId === null && <EmptyState tools={tools} onOpenTool={onOpenTool} onRescan={onRescan} />}
     </div>
   );
+});
+
+export default ToolWindow;
+
+/**
+ * The `commands` array off a `helve/commands` request, with anything that is
+ * not a string dropped.
+ *
+ * Validated rather than trusted even though every app in this build is
+ * first-party: a declaration decides which menu items become clickable, and a
+ * malformed one must narrow the menu rather than put a non-string into a `Set`
+ * that is later compared against command ids. Absent or wrong-shaped params
+ * declare nothing, which disables everything — the safe direction.
+ */
+function declaredCommands(params: unknown): string[] {
+  if (typeof params !== "object" || params === null) return [];
+  const list = (params as { commands?: unknown }).commands;
+  if (!Array.isArray(list)) return [];
+  return list.filter((entry): entry is string => typeof entry === "string");
 }
 
 /**

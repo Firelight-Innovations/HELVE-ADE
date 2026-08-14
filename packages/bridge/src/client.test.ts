@@ -230,6 +230,116 @@ describe("events", () => {
   });
 });
 
+describe("menu commands", () => {
+  it("delivers a command to onCommand and stops once unsubscribed", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const received: string[] = [];
+    const off = client.onCommand((command) => received.push(command));
+
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "command", command: "file/save" },
+    });
+    expect(received).toEqual(["file/save"]);
+
+    off();
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "command", command: "edit/undo" },
+    });
+    expect(received).toEqual(["file/save"]);
+  });
+
+  /** A command is not an event, and a frontend that registered for one must
+   *  not be handed the other — the two make opposite claims about whether the
+   *  frame is expected to act. */
+  it("does not deliver a command to on(), or an event to onCommand()", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const events: unknown[] = [];
+    const commands: string[] = [];
+    client.on("file/save", (p) => events.push(p));
+    client.onCommand((c) => commands.push(c));
+
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "command", command: "file/save" },
+    });
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "event", event: "file/save", payload: 1 },
+    });
+
+    expect(commands).toEqual(["file/save"]);
+    expect(events).toEqual([1]);
+  });
+
+  it("sends a declaration as a helve/commands request", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    client.declareCommands(["file/save", "edit/undo"]);
+
+    expect(parent.postMessage).toHaveBeenLastCalledWith(
+      {
+        helve: 1,
+        kind: "request",
+        id: 1,
+        method: "helve/commands",
+        params: { commands: ["file/save", "edit/undo"] },
+      },
+      SHELL_ORIGIN,
+    );
+  });
+
+  /** The natural place to call this is an effect that runs on every render,
+   *  so the repeat is the common case rather than a corner one. */
+  it("does not re-send an unchanged set, whatever order it arrives in", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    client.declareCommands(["file/save", "edit/undo"]);
+    const after = (parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    client.declareCommands(["file/save", "edit/undo"]);
+    client.declareCommands(["edit/undo", "file/save"]);
+    expect((parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(after);
+
+    // A real change still goes out.
+    client.declareCommands(["file/save"]);
+    expect((parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(after + 1);
+  });
+
+  /** `index.ts` exports every client method unbound (`export const invoke =
+   *  client.invoke`), so anything reaching for `this` would break for every
+   *  caller of the shorthand. */
+  it("works when its methods are pulled off the client", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const { declareCommands, onCommand } = client;
+    expect(() => declareCommands(["file/save"])).not.toThrow();
+    expect(() => onCommand(() => {})()).not.toThrow();
+  });
+});
+
 describe("tauri host", () => {
   function fakeTauri() {
     const invoke = vi.fn().mockResolvedValue("tauri-result");
@@ -261,6 +371,11 @@ describe("tauri host", () => {
     // `/` is not a legal Tauri command name, so a reserved method that reached
     // `invoke` would be a guaranteed runtime error rather than a wrong answer.
     await expect(client.invoke("helve/painted")).resolves.toBeNull();
+    // A tool's own Tauri app draws its own chrome, so there is no menu bar to
+    // grey out — the declaration is accepted and dropped rather than refused,
+    // so a frontend that supports menu commands does not log an error on a host
+    // where the feature simply does not apply.
+    await expect(client.invoke("helve/commands", { commands: [] })).resolves.toBeNull();
     expect(invoke).not.toHaveBeenCalled();
   });
 

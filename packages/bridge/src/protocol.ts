@@ -67,7 +67,29 @@ export interface EventMessage {
   payload: unknown;
 }
 
-export type IncomingMessage = ReadyMessage | ResponseMessage | EventMessage;
+/**
+ * A menu command, aimed at whichever frame the shell considers active.
+ *
+ * Distinct from `event` rather than an event with a reserved name, because the
+ * two make opposite claims. An event is news — the shell relaying something
+ * that happened, which a frame may ignore. A command is an *instruction* the
+ * user just gave through the shell's own chrome, and the shell only sends one
+ * the frame has said it can carry out (see `helve/commands`). Keeping them
+ * apart is what lets a frontend register a handler for one without having to
+ * filter the other out of the same stream.
+ *
+ * Fire-and-forget: there is no id and no reply. What the menu needed to know —
+ * whether this command is possible at all — was answered before the item was
+ * ever clickable, and a result arriving afterwards would have nowhere to go,
+ * since the menu has closed by then.
+ */
+export interface CommandMessage {
+  helve: 1;
+  kind: "command";
+  command: string;
+}
+
+export type IncomingMessage = ReadyMessage | ResponseMessage | EventMessage | CommandMessage;
 
 /**
  * The one check every inbound `message` event must pass before anything
@@ -95,4 +117,8 @@ export function isResponseMessage(msg: IncomingMessage): msg is ResponseMessage 
 
 export function isEventMessage(msg: IncomingMessage): msg is EventMessage {
   return msg.kind === "event";
+}
+
+export function isCommandMessage(msg: IncomingMessage): msg is CommandMessage {
+  return msg.kind === "command" && typeof (msg as CommandMessage).command === "string";
 }

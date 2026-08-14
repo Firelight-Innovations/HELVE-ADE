@@ -420,21 +420,43 @@ export interface SearchIndex {
 }
 
 // ---------------------------------------------------------------------------
-// Menus — all eight open, items may be inert
+// Menus — every menu opens, and an item that cannot act says so
 // ---------------------------------------------------------------------------
 
 export interface MenuItem {
   label: string;
+  /**
+   * Shown at the trailing edge of the row, and **bound** — an accelerator on
+   * display is a promise that the keystroke does this. Either `useKeyboard.ts`
+   * binds it, or the platform already does (the Edit menu's, which the focused
+   * text surface handles natively). Nothing here is decorative; see the
+   * accelerator note in `titlebar/TitleBar.tsx`.
+   */
   accelerator?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
   /**
    * Renders inert and unclickable — the native `disabled` attribute, not a
-   * dimmed-but-live button. Used by the Terminal menu's Split/Kill/Clear,
-   * which need a session to act on and have none while the worktree tab is
-   * active; New Terminal never needs one and stays live regardless.
+   * dimmed-but-live button. This is the only way an item is allowed to be
+   * unable to act: an item that renders live and silently does nothing teaches
+   * the user that the menu lies.
    */
   disabled?: boolean;
+  /**
+   * A sentence about this row, shown as its `title`.
+   *
+   * Almost always **why it is disabled**, which is the case it exists for: an
+   * item the user cannot click owes them a reason, and "no dead items" is only
+   * half an answer without one. It is also allowed on a live item whose effect
+   * is not obvious from its label — File > Open Recent, which shows the Home
+   * app rather than a submenu.
+   *
+   * Rendered on the wrapping `<li>` rather than the button, because a
+   * `disabled` button receives no pointer events and so never shows a tooltip
+   * of its own — which would leave the explanation reachable on exactly the
+   * items that do not need one.
+   */
+  hint?: string;
 }
 
 export interface Menu {

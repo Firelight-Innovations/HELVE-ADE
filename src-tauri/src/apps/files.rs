@@ -73,6 +73,8 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
         "files/create-file" => create(params.as_ref(), NewEntry::File),
         "files/create-dir" => create(params.as_ref(), NewEntry::Dir),
         "files/rename" => rename(params.as_ref()),
+        "files/duplicate" => duplicate_at(&required_path(params.as_ref())?),
+        "files/save-as" => save_as(app, params.as_ref()),
         "files/delete" => delete_at(&required_path(params.as_ref())?),
         "files/tree-size" => Ok(tree_size_at(&required_path(params.as_ref())?)),
         // The Recycle Bin half of `files/delete`, in its own module because the
@@ -600,6 +602,240 @@ fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
     })?;
 
     Ok(renamed(&target, name))
+}
+
+/// Copy the entry at `path` to a free name beside it. Files and folders alike.
+///
+/// ## The collision discipline is the same one `create_at` has, not a weaker one
+///
+/// A duplicate must never overwrite. `std::fs::copy` *does* overwrite, silently,
+/// exactly as `std::fs::rename` does — so the free name is found first and then
+/// the destination is **reserved with `create_new(true)`** before a byte is
+/// written, which is the same one-syscall check-and-create that makes
+/// `create_at` safe. `create_dir` gives a directory the same property for free.
+/// Picking a name that does not exist and then calling `copy` would have a gap
+/// in the middle wide enough for the very collision this exists to prevent.
+///
+/// The name is `notes copy.txt`, then `notes copy 2.txt` — see [`copy_name`] for
+/// why not Explorer's `notes - Copy.txt`.
+///
+/// ## A folder is copied recursively, and a failure leaves nothing behind
+///
+/// There is no atomic directory copy on any platform this runs on, so a failure
+/// part-way through would otherwise leave a half-copy sitting next to the
+/// original with a name that says it is a duplicate. [`copy_tree`] removes what
+/// it made when it fails, so the only two outcomes are the whole thing and
+/// nothing.
+fn duplicate_at(path: &Path) -> Result<Value, RpcError> {
+    let parent = path.parent().ok_or_else(|| {
+        RpcError::new(
+            INVALID_PARAMS,
+            format!("{} is a root, and a root cannot be duplicated", path.display()),
+        )
+    })?;
+
+    // `symlink_metadata` would report the link rather than what it points at,
+    // and duplicating a shortcut to a folder should produce a folder. Follows,
+    // for the same reason `kind_of` does.
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        RpcError::new(
+            INVALID_PARAMS,
+            format!("{} could not be read to duplicate it: {e}", path.display()),
+        )
+    })?;
+
+    let name = base_name(path);
+    let (target, target_name) = free_copy_path(parent, &name)?;
+
+    let made = if metadata.is_dir() {
+        copy_tree(path, &target)
+    } else if metadata.is_file() {
+        copy_file_new(path, &target)
+    } else {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!(
+                "{} is not a file or a folder, so there is nothing to duplicate",
+                path.display()
+            ),
+        ));
+    };
+
+    made.map_err(|e| match e.kind() {
+        std::io::ErrorKind::PermissionDenied => RpcError::new(
+            INTERNAL_ERROR,
+            format!("no permission to write into {}", parent.display()),
+        ),
+        _ => RpcError::new(
+            INTERNAL_ERROR,
+            format!("could not duplicate {}: {e}", path.display()),
+        ),
+    })?;
+
+    Ok(renamed(&target, &target_name))
+}
+
+/// How many `name copy N` attempts before giving up.
+///
+/// A bound rather than a `loop`, because the loop's exit depends on the
+/// filesystem answering `exists()` honestly — a path that always reports taken
+/// (a permission failure on the parent reads that way) would spin forever
+/// inside a blocking worker with no way for the caller to cancel it.
+const MAX_COPY_ATTEMPTS: u32 = 1000;
+
+/// The first `name copy N` in `parent` that nothing occupies, and that name.
+fn free_copy_path(parent: &Path, name: &str) -> Result<(PathBuf, String), RpcError> {
+    for n in 1..=MAX_COPY_ATTEMPTS {
+        let candidate = copy_name(name, n);
+        let path = parent.join(&candidate);
+        if !path.exists() {
+            // Validated for the same reason a typed name is: the suffix cannot
+            // make a legal name illegal, but the *original* may already be one
+            // Windows would mangle, and a duplicate is not the place to find
+            // that out by writing a file with a different name than reported.
+            validate_component(&candidate)?;
+            return Ok((path, candidate));
+        }
+    }
+
+    Err(RpcError::new(
+        INTERNAL_ERROR,
+        format!("{name} has already been duplicated {MAX_COPY_ATTEMPTS} times in {}", parent.display()),
+    ))
+}
+
+/// `notes.txt` → `notes copy.txt`, `notes copy 2.txt`, …
+///
+/// The suffix goes before the extension, which is the whole reason this is not
+/// `format!("{name} copy")`: `notes.txt copy` would lose the file's type, its
+/// icon and its editor grammar in one step.
+///
+/// A **leading** dot begins a name rather than an extension, so `.gitignore`
+/// duplicates to `.gitignore copy` and not `. copy gitignore`. That is the same
+/// rule `extensionOf` in `apps/files/ui/src/rpc.ts` applies, and the two have to
+/// agree or the tree would show the copy with the wrong icon.
+///
+/// Not Explorer's `notes - Copy.txt`. This is a code editor: the name it
+/// produces ends up in imports, in a terminal, and in git, and ` - ` needs
+/// quoting in more places than a single space does. `copy` lowercase for the
+/// same reason — it matches the rest of the tree rather than a shell convention.
+fn copy_name(name: &str, n: u32) -> String {
+    let suffix = if n == 1 {
+        " copy".to_string()
+    } else {
+        format!(" copy {n}")
+    };
+
+    match name.rfind('.') {
+        Some(dot) if dot > 0 => format!("{}{suffix}{}", &name[..dot], &name[dot..]),
+        _ => format!("{name}{suffix}"),
+    }
+}
+
+/// Copy one file, refusing rather than overwriting if `to` appeared meanwhile.
+fn copy_file_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut source = std::fs::File::open(from)?;
+    let mut destination = std::fs::OpenOptions::new().write(true).create_new(true).open(to)?;
+    std::io::copy(&mut source, &mut destination)?;
+    Ok(())
+}
+
+/// Copy a directory and everything under it, or leave nothing behind.
+///
+/// The cleanup on failure is the point. Without it a copy that ran out of disk
+/// half way through would leave a folder called `assets copy` holding some
+/// unknowable fraction of `assets` — which looks exactly like a folder that
+/// copied fine, and is the sort of thing someone finds out about a week later.
+/// `remove_dir_all` rather than the Recycle Bin: this folder existed for a few
+/// milliseconds and never held anything the user made.
+///
+/// Entries that are neither a file nor a directory *after following links* — a
+/// broken shortcut, a named pipe — are skipped rather than failing the copy.
+/// There is nothing to duplicate about a pipe, and refusing the whole folder
+/// because of one would make the feature unusable in any tree that has one.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(to)?;
+    match copy_children(from, to) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(to);
+            Err(e)
+        }
+    }
+}
+
+fn copy_children(from: &Path, to: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let destination = to.join(entry.file_name());
+
+        // `entry.file_type()` does not follow links, so a shortcut to a folder
+        // reports as neither. `metadata` follows, which is what "duplicate this"
+        // means — the copy holds the contents, not a second pointer at them.
+        let Ok(metadata) = std::fs::metadata(&source) else {
+            continue;
+        };
+
+        if metadata.is_dir() {
+            copy_tree(&source, &destination)?;
+        } else if metadata.is_file() {
+            copy_file_new(&source, &destination)?;
+        }
+    }
+    Ok(())
+}
+
+/// Write a buffer to a file the user chooses, through the OS save dialog.
+///
+/// The one method in this module that opens a dialog, and it is here rather than
+/// in the frontend for the reason `home.rs` gives about its folder picker: a
+/// native dialog is an OS resource with an owner window, and the webview has
+/// neither. Everything else about it follows that file too — it must not run on
+/// the main thread (`commands::app_call` moves every app call to a blocking
+/// worker, which is what makes this safe), and it sets a parent so the dialog is
+/// modal to HELVE instead of a second top-level window that can fall behind it.
+///
+/// **Cancelling is not an error.** It returns `null`, the same way Home's
+/// pickers return the unchanged snapshot — a JSON-RPC error would make the
+/// frontend draw a failure for something the user did on purpose.
+///
+/// No `baseMtime` conflict check, unlike [`write_at`]. There is nothing to
+/// conflict with: the user has just been shown the folder's contents and, if
+/// they picked an existing file, the system dialog has already asked them
+/// whether to replace it. Asking again with an mtime comparison would be
+/// second-guessing an answer they gave in the OS's own words.
+fn save_as(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
+    let name = required_string(params, "name")?;
+    let text = required_string(params, "text")?;
+
+    let mut dialog = rfd::FileDialog::new()
+        .set_title("Save a copy")
+        .set_file_name(&name);
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+
+    let Some(path) = dialog.save_file() else {
+        return Ok(Value::Null);
+    };
+
+    std::fs::write(&path, text).map_err(|e| match e.kind() {
+        std::io::ErrorKind::PermissionDenied => RpcError::new(
+            INTERNAL_ERROR,
+            format!("no permission to write {}", path.display()),
+        ),
+        _ => RpcError::new(
+            INTERNAL_ERROR,
+            format!("could not write {}: {e}", path.display()),
+        ),
+    })?;
+
+    Ok(json!({
+        "path": path.display().to_string(),
+        "name": base_name(&path),
+        "mtime": mtime_at(&path),
+    }))
 }
 
 /// Move an entry to the Recycle Bin. Files and folders alike.
@@ -1216,6 +1452,88 @@ mod tests {
         assert_eq!(value["exists"], true);
         assert_eq!(value["kind"], "dir");
         assert_eq!(value["size"], Value::Null, "a directory has no one size");
+    }
+
+    /// The suffix goes before the extension, or a duplicate would lose the
+    /// file's type — and with it its icon and its editor grammar.
+    #[test]
+    fn copy_name_keeps_the_extension() {
+        assert_eq!(copy_name("notes.txt", 1), "notes copy.txt");
+        assert_eq!(copy_name("notes.txt", 2), "notes copy 2.txt");
+        assert_eq!(copy_name("archive.tar.gz", 1), "archive.tar copy.gz");
+    }
+
+    /// A leading dot begins a *name*, not an extension — the same rule
+    /// `extensionOf` in `apps/files/ui/src/rpc.ts` applies. The two have to
+    /// agree or the tree would show the copy with the wrong icon.
+    #[test]
+    fn copy_name_treats_a_leading_dot_as_part_of_the_name() {
+        assert_eq!(copy_name(".gitignore", 1), ".gitignore copy");
+        assert_eq!(copy_name("Makefile", 1), "Makefile copy");
+        assert_eq!(copy_name("src", 3), "src copy 3");
+    }
+
+    #[test]
+    fn duplicating_a_file_copies_its_contents_beside_it() {
+        let dir = TempDir::new("dup-file");
+        let path = dir.file("notes.txt", "hello");
+
+        let value = duplicate_at(&path).expect("duplicate");
+
+        assert_eq!(value["name"], "notes copy.txt");
+        assert_eq!(value["kind"], "file");
+        let copied = dir.0.join("notes copy.txt");
+        assert_eq!(std::fs::read_to_string(&copied).expect("read"), "hello");
+        assert!(path.exists(), "the original is not moved");
+    }
+
+    /// The collision rule `create_at` has, applied here: a second duplicate
+    /// takes the next free name rather than overwriting the first.
+    #[test]
+    fn duplicating_twice_numbers_the_second_copy() {
+        let dir = TempDir::new("dup-twice");
+        let path = dir.file("notes.txt", "hello");
+
+        duplicate_at(&path).expect("first");
+        let value = duplicate_at(&path).expect("second");
+
+        assert_eq!(value["name"], "notes copy 2.txt");
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("notes copy.txt")).expect("read"),
+            "hello",
+            "the first copy is untouched"
+        );
+    }
+
+    #[test]
+    fn duplicating_a_folder_takes_everything_under_it() {
+        let dir = TempDir::new("dup-tree");
+        let src = dir.0.join("src");
+        std::fs::create_dir(&src).expect("mkdir");
+        std::fs::create_dir(src.join("nested")).expect("mkdir");
+        std::fs::write(src.join("a.rs"), "fn a() {}").expect("write");
+        std::fs::write(src.join("nested/b.rs"), "fn b() {}").expect("write");
+
+        let value = duplicate_at(&src).expect("duplicate");
+
+        assert_eq!(value["name"], "src copy");
+        assert_eq!(value["kind"], "dir");
+        let copied = dir.0.join("src copy");
+        assert_eq!(
+            std::fs::read_to_string(copied.join("a.rs")).expect("read"),
+            "fn a() {}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(copied.join("nested/b.rs")).expect("read"),
+            "fn b() {}"
+        );
+    }
+
+    #[test]
+    fn duplicating_something_that_is_not_there_says_so() {
+        let dir = TempDir::new("dup-gone");
+        let err = duplicate_at(&dir.0.join("nope.txt")).expect_err("refused");
+        assert_eq!(err.code, INVALID_PARAMS);
     }
 
     #[test]

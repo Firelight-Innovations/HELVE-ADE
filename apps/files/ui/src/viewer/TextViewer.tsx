@@ -24,6 +24,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { pick, type ViewerProps } from "./registry";
+import { clearActiveEditor, setActiveEditor } from "./activeEditor";
 import { bindSave, createModel, mountEditor, retargetModel } from "./monaco";
 import { documents, requestReload, saveDocument, type TabDocument } from "../tabs/useOpenFiles";
 import { describe, formatSize, isNotText, readText, staleWrite } from "../rpc";
@@ -128,6 +129,12 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
     if (doc.viewState) editor.restoreViewState(doc.viewState);
     editor.focus();
 
+    // The Edit menu in the shell's title bar acts on this editor, and nothing
+    // in the shell can reach it — a menu command arrives as a window message
+    // and is handled in `App.tsx`, which has no route into this component's
+    // tree. See `./activeEditor` for the whole of that seam.
+    setActiveEditor(editor);
+
     // Dirty is a version comparison, not a flag, so undoing back to the saved
     // text clears the dot instead of leaving it stuck on.
     const report = () =>
@@ -162,6 +169,7 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
     return () => {
       // Before the editor goes, or the caret and scroll go with it.
       doc.viewState = editor.saveViewState();
+      clearActiveEditor(editor);
       changes.dispose();
       latest.current.registerSave(null);
       editor.setModel(null);

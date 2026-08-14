@@ -10,7 +10,10 @@ The implementation is `src-tauri/src/apps/files.rs` and
 `src-tauri/src/apps/trash.rs`. The frontend's own wrappers are
 `apps/files/ui/src/rpc.ts`, which is the only file in the app that spells a
 method name. `src/shell/state/fakeBackend.ts` answers all of these under
-`?fake=1`, deliberately including their refusals.
+`?fake=1`, deliberately including their refusals. The one exception is
+`files/save-as`, which opens a native dialog: there is no OS there to open one,
+so it refuses with that as the reason rather than inventing a path — the same
+posture the fixture takes towards Home's folder pickers.
 
 Times are **milliseconds since the Unix epoch** throughout. Paths are absolute
 and in whatever form the host OS produced.
@@ -45,6 +48,8 @@ above its cap rather than truncating — half a PNG is not a smaller PNG.
 | `files/create-file` | `{parent, name}` | `{path, name, kind}` |
 | `files/create-dir` | `{parent, name}` | `{path, name, kind}` |
 | `files/rename` | `{path, name}` | `{path, name, kind}` |
+| `files/duplicate` | `{path}` | `{path, name, kind}` |
+| `files/save-as` | `{name, text}` | `{path, name, mtime}` or `null` |
 | `files/delete` | `{path}` | `{path, kind, trashed}` |
 | `files/tree-size` | `{path}` | `{path, files, dirs, truncated}` |
 
@@ -59,6 +64,25 @@ would silently drop, or a reserved device name (`con`, `lpt1`, and with any
 extension) are all refused. A create refuses a name that is taken; a rename
 refuses to move onto an existing entry, and allows a change of capitalisation
 only.
+
+`files/duplicate` copies an entry to a free name beside it: `notes.txt` becomes
+`notes copy.txt`, then `notes copy 2.txt`. The suffix goes **before** the
+extension, and a leading dot counts as part of the name — `.gitignore` becomes
+`.gitignore copy`. Folders go recursively, and a copy that fails part-way
+removes what it made rather than leaving a half-filled folder behind. It never
+overwrites: the destination is reserved with the same one-syscall
+check-and-create the create methods use, so there is no window in which a name
+that looked free stops being one. Entries that are neither a file nor a
+directory after following links — a broken shortcut, a named pipe — are skipped.
+
+`files/save-as` opens the **OS save dialog** and writes `text` to whatever the
+user chooses; `name` is only the dialog's suggestion. It resolves `null` when
+they cancel, which is not an error and must not be drawn as one. There is no
+`baseMtime` here and that is deliberate — the user has just seen the folder's
+contents, and if they picked an existing file the system dialog already asked
+them about replacing it. Being a dialog, it can sit open for as long as a person
+takes, so callers must pass a timeout well past `invoke`'s default thirty
+seconds.
 
 `files/delete` moves the entry to the **Recycle Bin** — it does not unlink — and
 `trashed` reports that. It refuses rather than falling back to a permanent

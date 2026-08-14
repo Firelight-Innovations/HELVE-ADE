@@ -12,9 +12,10 @@ import {
   type WindowKind,
 } from "./contract";
 import { snap } from "./motion";
-import TitleBar, { defaultMenus } from "./titlebar/TitleBar";
+import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/TitleBar";
+import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ToolSwitcherBar from "./switcher/ToolSwitcherBar";
-import ToolWindow from "./toolwindow/ToolWindow";
+import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import StatusBar from "./statusbar/StatusBar";
 import SearchSlot from "./search/SearchSlot";
@@ -24,10 +25,11 @@ import SourceControlView from "./worktree/SourceControlView";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
-import { useApps } from "./state/apps";
+import { callApp, useApps } from "./state/apps";
 import { useShellState, windowLabel, setActiveTool, setDockedTools } from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
 import { gitControl } from "./state/git";
+import { closeWindow, isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
 
 /**
  * One HELVE window.
@@ -373,6 +375,126 @@ export default function WindowRoot({
     requestCloseTab({ id: panelTabId, sessions: activeTabSessions });
   }, [activeTabSessions, panelTabId, requestCloseTab]);
 
+  // --- the menu bar ---------------------------------------------------------
+  //
+  // File, Edit and View operate the window and the app showing in it. Three
+  // facts make that possible without the shell knowing anything about Files:
+  //
+  //   1. `toolRef` posts a menu command into the active frame (transport B, a
+  //      `command` message — see `ToolWindow`'s header).
+  //   2. `appCommands` is what each frame has said it can do *right now*, which
+  //      is the only thing that decides whether an item is clickable.
+  //   3. `editTarget` is where focus was before the menu opened, which decides
+  //      whether Edit means the app at all.
+  //
+  // None of the three names an app, a method, or a file type.
+  const toolRef = useRef<ToolWindowHandle>(null);
+  const [appCommands, setAppCommands] = useState<Record<string, readonly string[]>>({});
+  const onCommandsChange = useCallback((toolId: string, commands: readonly string[]) => {
+    setAppCommands((prev) => (sameSet(prev[toolId], commands) ? prev : { ...prev, [toolId]: commands }));
+  }, []);
+
+  const shownToolName = tools.find((t) => t.id === shownToolId)?.name ?? "";
+
+  /** File items that act on the active app. */
+  const app: CommandHandlers = {
+    run: (command) => {
+      if (shownToolId) toolRef.current?.send(shownToolId, command);
+    },
+    blocked: (command) => {
+      if (!shownToolId) return "No app is open in this window.";
+      if (appCommands[shownToolId]?.includes(command)) return undefined;
+      // Generic on purpose. Why Save is unavailable is the *app's* knowledge —
+      // nothing is dirty, no file is open — and a shell that guessed at it
+      // would be inventing a reason it has no way to check.
+      return `${shownToolName} cannot do this right now.`;
+    },
+  };
+
+  const editTarget = useEditTarget();
+  const edit = editHandlers(editTarget, app);
+
+  /** Run a menu command only if the same check that greys the item out allows it. */
+  const runIfAllowed = useCallback((handlers: CommandHandlers, command: string) => {
+    if (handlers.blocked(command) === undefined) handlers.run(command);
+  }, []);
+
+  // A window's zoom, and whether it is full screen. Both are properties of the
+  // OS window rather than of anything in React, so they are read back once on
+  // mount rather than assumed — a window restored full screen would otherwise
+  // have a menu item offering to enter a state it is already in.
+  const [fullscreen, setFullscreenState] = useState(false);
+  useEffect(() => {
+    void isFullscreen()
+      .then(setFullscreenState)
+      .catch(() => {
+        /* No window to ask. The menu item still toggles; it just starts by
+           claiming the window is not full screen, which under `?fake=1` it
+           is not. */
+      });
+  }, []);
+
+  const onToggleFullscreen = useCallback(() => {
+    setFullscreenState((was) => {
+      const next = !was;
+      // Optimistic, and rolled back if the window refuses — same shape as
+      // `activeToolId` above, and for the same reason: a menu item that
+      // repainted a round trip later would read as a click that missed.
+      void setFullscreen(next).catch(() => setFullscreenState(was));
+      return next;
+    });
+  }, []);
+
+  const [zoom, setZoomState] = useState(1);
+  const onZoom = useCallback((direction: 1 | -1) => {
+    setZoomState((current) => {
+      const next = nextZoom(current, direction);
+      if (next === current) return current;
+      void setZoom(next).catch(() => setZoomState(current));
+      return next;
+    });
+  }, []);
+
+  // "The terminal is showing" is the panel being open *and* on a terminal tab —
+  // the worktree lives in the same panel, so an open panel is not evidence of a
+  // terminal. `panelTabId` is empty when there are no sessions at all.
+  const terminalShowing = !panelCollapsed && panelTabId !== "worktree" && panelTabId !== "";
+
+  const onToggleTerminal = useCallback(() => {
+    if (terminalShowing) {
+      setPanelCollapsed(true);
+      return;
+    }
+    setPanelCollapsed(false);
+    // Open, but on the worktree tab or with nothing in it. "Show Terminal" has
+    // to end with a terminal on screen, so this finishes the job rather than
+    // revealing a panel that is showing something else.
+    if (sessions.length === 0) {
+      void onNewTerminal();
+      return;
+    }
+    if (panelTabId === "worktree" || panelTabId === "") {
+      setActivePanelTab(sessions[0].groupId ?? sessions[0].id);
+    }
+  }, [terminalShowing, sessions, panelTabId, onNewTerminal]);
+
+  // Home is where a project is opened, so File > Open… is Home's
+  // `home/open-project` — the same native folder picker its own button raises,
+  // rather than a second path to the same dialog. Called through `callApp`, so
+  // `?fake=1` refuses it the way it refuses every other picker instead of
+  // pretending a folder was chosen.
+  const onOpenProject = useCallback(() => {
+    void callApp("home", "home/open-project").catch((err: unknown) =>
+      console.error("helve: File > Open… failed:", err),
+    );
+  }, []);
+
+  // `MenuItem` has no submenu and faking one is out, so Open Recent shows the
+  // surface that has the real list. Naming "home" here is the shell knowing
+  // which app owns projects, which it already has to — it is the app the
+  // window opens on.
+  const homeDocked = tools.some((t) => t.id === "home");
+
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
 
@@ -406,6 +528,29 @@ export default function WindowRoot({
     // than left unbound, so the day a cancel exists this is where it goes and
     // the accelerator does not have to be rediscovered.
     cancelBoot: () => {},
+
+    // Every menu accelerator, routed through the same `blocked()` the menu item
+    // reads. That is what makes Ctrl+S with nothing dirty do exactly what
+    // clicking a greyed-out Save does — nothing — rather than posting a command
+    // the app has said it cannot carry out.
+    newFile: () => runIfAllowed(app, APP_COMMAND.newFile),
+    openProject: onOpenProject,
+    save: () => runIfAllowed(app, APP_COMMAND.save),
+    saveAs: () => runIfAllowed(app, APP_COMMAND.saveAs),
+    duplicate: () => runIfAllowed(app, APP_COMMAND.duplicate),
+    closeWindow,
+
+    commandPalette: () => setSearchExpanded(true),
+    togglePanel: () => setPanelCollapsed((c) => !c),
+    toggleTerminal: onToggleTerminal,
+    toggleFullscreen: onToggleFullscreen,
+    zoomIn: () => onZoom(1),
+    zoomOut: () => onZoom(-1),
+
+    newTerminal: () => void onNewTerminal(),
+    splitTerminal: () => {
+      if (focusedPaneId) void onSplit();
+    },
   });
 
   // A scan in flight has nowhere to show yet — the health popover renders the
@@ -428,13 +573,35 @@ export default function WindowRoot({
           titleBar: (
             <TitleBar
               kind={kind}
-              title={tools.find((t) => t.id === shownToolId)?.name ?? ""}
+              title={shownToolName}
               menus={defaultMenus({
-                onNew: onNewTerminal,
-                onSplit,
-                onKill: onKillTerminal,
-                onClear,
-                enabled: Boolean(focusedPaneId),
+                app,
+                edit,
+                file: {
+                  openProject: onOpenProject,
+                  openRecent: homeDocked ? () => onSelectTool("home") : undefined,
+                  closeWindow,
+                },
+                view: {
+                  commandPalette: () => setSearchExpanded(true),
+                  panelCollapsed,
+                  togglePanel: () => setPanelCollapsed((c) => !c),
+                  terminalShowing,
+                  toggleTerminal: onToggleTerminal,
+                  fullscreen,
+                  toggleFullscreen: onToggleFullscreen,
+                  zoomIn: () => onZoom(1),
+                  zoomOut: () => onZoom(-1),
+                  zoomInBlocked: zoomBlocked(zoom, 1),
+                  zoomOutBlocked: zoomBlocked(zoom, -1),
+                },
+                terminal: {
+                  onNew: onNewTerminal,
+                  onSplit,
+                  onKill: onKillTerminal,
+                  onClear,
+                  enabled: Boolean(focusedPaneId),
+                },
               })}
             />
           ),
@@ -457,10 +624,12 @@ export default function WindowRoot({
             ) : undefined,
           toolWindow: (
             <ToolWindow
+              ref={toolRef}
               tools={tools}
               activeToolId={shownToolId}
               onOpenTool={onSelectTool}
               onRescan={onRescan}
+              onCommandsChange={onCommandsChange}
             />
           ),
           secondaryPanel: (
@@ -522,4 +691,40 @@ export default function WindowRoot({
       />
     </MotionConfig>
   );
+}
+
+/**
+ * Why Zoom In or Zoom Out cannot go any further, or `undefined`.
+ *
+ * Two reasons, and they are different kinds of thing: there is no webview to
+ * scale at all (a browser under `?fake=1`), or the ladder has run out in that
+ * direction. The second is what keeps the item honest at the ends — clicking
+ * Zoom In at 250% would otherwise look like a click that did nothing.
+ */
+function zoomBlocked(zoom: number, direction: 1 | -1): string | undefined {
+  if (!isTauri()) {
+    return "Zoom scales the desktop app's webview. There is no webview to scale in a browser.";
+  }
+  if (nextZoom(zoom, direction) !== zoom) return undefined;
+  const at = `${Math.round(zoom * 100)}%`;
+  return direction === 1 ? `Already at the largest size (${at}).` : `Already at the smallest size (${at}).`;
+}
+
+/**
+ * Whether a frame's declaration says the same thing it said last time.
+ *
+ * A frontend re-declares from an effect, so the same set arrives again on every
+ * render that changed anything else. Without this, each one would be a new
+ * object in `appCommands` and a re-render of the whole window — for a menu that
+ * is closed, describing a state that has not moved.
+ *
+ * Order-insensitive, because the set is assembled from conditionals on the
+ * other side and the order they fall in is not a change. `undefined` (nothing
+ * declared yet) is only equal to an empty list, which is the same claim.
+ */
+function sameSet(a: readonly string[] | undefined, b: readonly string[]): boolean {
+  if (a === undefined) return b.length === 0;
+  if (a.length !== b.length) return false;
+  const have = new Set(a);
+  return b.every((entry) => have.has(entry));
 }

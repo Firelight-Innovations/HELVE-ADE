@@ -173,6 +173,7 @@ Shell → frontend:
 {"helve":1,"kind":"response","id":1,"result":{"text":"hi"}}
 {"helve":1,"kind":"response","id":1,"error":{"code":-32601,"message":"..."}}
 {"helve":1,"kind":"event","event":"file/changed","payload":{"path":"a.txt"}}
+{"helve":1,"kind":"command","command":"file/save"}
 ```
 
 ### The handshake is client-initiated, and that is load-bearing
@@ -197,6 +198,7 @@ the shell answers these itself and never forwards them to a core.
 | Method | Params | Result | Meaning |
 |---|---|---|---|
 | `helve/painted` | none | `null` | This frontend has drawn its first meaningful content. |
+| `helve/commands` | `{"commands":string[]}` | `null` | These are the menu commands this frontend can carry out **right now**. |
 
 `helve/painted` is a report, not a request. The orchestrator holds its splash
 window up until every first-party app has sent one, so that the window it hands
@@ -213,6 +215,56 @@ itself.
 
 The host may stop waiting. It does not wait forever, and a report that arrives
 after it gave up is discarded rather than being an error.
+
+### Menu commands
+
+The orchestrator's title bar has a menu bar, and its File, Edit and View menus
+have to operate whatever is showing. The shell cannot reach into a frame to do
+that — a frame is a separate document, and for a tool a separate origin — so a
+menu item becomes a `command` message aimed at the **active** frame.
+
+```jsonc
+{"helve":1,"kind":"command","command":"file/save"}
+```
+
+It is fire-and-forget. There is no `id` and no reply, because the only thing the
+menu needed to know was answered before the item was ever clickable, and the
+menu has closed by the time anything could come back.
+
+A `command` is deliberately **not** an `event`. The two make opposite claims: an
+event is news the frame may ignore, a command is an instruction the user just
+gave. A frontend registers for one without having to filter out the other.
+
+#### The frontend declares; the shell never assumes
+
+`helve/commands` is the other half, and it is the half that makes this design
+work. A menu offering Save when nothing is dirty is a menu that lies — and the
+shell cannot know when that is, because whether there is anything to save is a
+fact about the frontend's own state.
+
+So the direction is reversed. The frontend sends `helve/commands` with the set
+it can carry out at this moment, and the shell **disables every item not in that
+set**. The last declaration replaces the previous one; it does not add to it.
+A frame that has never declared anything can do nothing, which is the honest
+starting point rather than an awkward default.
+
+The consequence worth naming: **the shell holds no list of any app's
+capabilities.** It knows a set of command id strings and nothing about what they
+mean. That is what keeps the next surface to arrive from breaking the menu — it
+declares nothing, so its menu is honestly inert, and no code in the title bar
+had to be told it exists.
+
+The shell drops a command the target has not declared, rather than sending it
+anyway. Reaching that point means the two disagreed, and a frame acting on
+something it said it could not do is the worse outcome.
+
+Command ids are the host's vocabulary, not the protocol's — this document does
+not enumerate them, the same way it does not enumerate an app's methods. The
+orchestrator's are in `src/shell/titlebar/TitleBar.tsx` (`APP_COMMAND`).
+
+`@helve/bridge` exposes both halves as `onCommand` and `declareCommands`. The
+declaration is de-duplicated against the last one actually sent, because the
+natural place to call it is an effect that runs on every render.
 
 ### Origins
 
@@ -248,13 +300,20 @@ name per session and publishes it here. Both fields are null today.
 tool code, either host.
 
 ```ts
-import { invoke, on, session, host, reportPainted } from "@helve/bridge";
+import {
+  invoke, on, onCommand, declareCommands, session, host, reportPainted,
+} from "@helve/bridge";
 
 const reply = await invoke<{ text: string }>("echo", { text: "hi" });
 const off   = on("file/changed", (p) => console.log(p));
 const s     = await session();   // resolves after handshake
 host();                          // "helve" | "tauri"
 reportPainted();                 // "there is something on screen now"
+
+// The menu bar. `declareCommands` is what makes the items clickable; call it
+// again whenever the answer changes, and pass the whole set each time.
+declareCommands(dirty ? ["file/save", "edit/undo"] : ["edit/undo"]);
+const stop = onCommand((command) => run(command));
 ```
 
 `reportPainted` sends `helve/painted` once, from a `requestAnimationFrame` so
@@ -280,7 +339,12 @@ timing guess — there is no probe, no timeout, and no ambiguous middle state.
   the method name passed through unchanged.
 - `helve/*` methods are handled **inside the bridge** and never reach Tauri —
   they aren't valid Tauri command names anyway (`/` is not allowed). `helve/hello`
-  resolves locally; `helve/shutdown` and `helve/painted` resolve to null.
+  resolves locally; `helve/shutdown`, `helve/painted` and `helve/commands` all
+  resolve to null. A tool's own app draws its own chrome, so there is no menu bar
+  for a declaration to grey out — it is accepted and dropped rather than refused,
+  so a frontend that supports menu commands does not log an error on a host where
+  the feature does not apply. `onCommand` registers a handler nothing will ever
+  call there, and its unsubscribe is real either way.
 - `session()` resolves immediately to `{engineEndpoint: null, projectPath: null}`.
 - `@tauri-apps/api` is imported dynamically, so a tool built for the orchestrator
   alone doesn't have to ship it.

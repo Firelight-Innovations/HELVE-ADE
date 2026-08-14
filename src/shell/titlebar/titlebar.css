@@ -119,7 +119,13 @@
   top: calc(100% + 6px);
   left: 0;
   z-index: 40;
-  width: 224px;
+  /* Fixed rather than `max-content`, so expanding a different group does not
+     resize the popover under the pointer. Raised from 224px when the
+     accelerators became Windows text: `Ctrl+Shift+P` is three times the width
+     of `⇧⌘P`, and a row is `label ... accelerator` with a 24px gap and no
+     shrinking (both ends are `white-space: nowrap`). At 224px the widest row —
+     Command Palette… — had nothing left to sit in. */
+  width: 260px;
   max-height: calc(100vh - 60px);
   overflow-y: auto;
   background: var(--surface);
@@ -190,11 +196,12 @@
   background: var(--surface-2);
 }
 
-/* The Terminal menu's Split/Kill/Clear while there's no session to act on
-   (the worktree tab is active). Dimmed and inert rather than removed, so
-   the menu's shape never changes depending on what tab happens to be
-   showing — a menu whose item count moves under you is harder to learn than
-   one whose items grey out. */
+/* Any item that cannot act right now: Save with nothing dirty, Delete with no
+   file open, Split with no session. Dimmed and inert rather than removed, so
+   the menu's shape never changes depending on what happens to be showing — a
+   menu whose item count moves under you is harder to learn than one whose
+   items grey out. The reason sits on the row's `title`, because a disabled
+   button takes no pointer events and could never show one of its own. */
 .menu-list__item:disabled {
   color: var(--text-dim-3);
   cursor: default;

@@ -567,6 +567,22 @@ function filesCall(method: string, params?: unknown): unknown | undefined {
     case "files/rename":
       return renameAt(p);
 
+    case "files/duplicate":
+      return duplicateAt(requiredPath(p.path));
+
+    // A native save dialog, and there is no OS here to open one. Refused with
+    // the reason rather than answered with an invented path, for exactly the
+    // reason `apps.ts`'s header gives about the three actions that raise a
+    // folder picker: a fixture that looked healthier than the backend is what
+    // once hid an empty switcher bar. Not left to the `MethodNotFound` at the
+    // bottom either — the method exists, and saying it does not would send
+    // anyone reading the console looking for a dispatch bug.
+    case "files/save-as":
+      throw rpcError(
+        HelveErrorCode.InternalError,
+        "files/save-as opens a native save dialog, and there is no OS here to open one (?fake=1)",
+      );
+
     case "files/delete":
       return deleteAt(requiredPath(p.path));
 
@@ -968,6 +984,76 @@ function renameAt(p: { path?: unknown; name?: unknown }): unknown {
   }
 
   return { path: target, name, kind: node.kind };
+}
+
+/**
+ * `files/duplicate`, against the `Map`. Mirrors `duplicate_at` in `files.rs`.
+ *
+ * The naming rule is the part that has to match, and it is the part a fixture
+ * can actually get wrong: `notes.txt` becomes `notes copy.txt` and then
+ * `notes copy 2.txt`, with the suffix *before* the extension, and a leading dot
+ * counting as part of the name rather than as an extension. A fixture that
+ * appended the suffix at the end would show the copy with the wrong icon in the
+ * tree and nowhere else, which is the sort of disagreement `?fake=1` exists to
+ * make visible rather than to hide.
+ *
+ * A folder takes its descendants, which in a flat map means copying by prefix.
+ */
+function duplicateAt(path: string): unknown {
+  const nodes = fileTree();
+  const node = nodes.get(path);
+  if (node === undefined) {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${path} could not be read to duplicate it: no such file or directory`,
+    );
+  }
+
+  const parent = parentOf(path);
+  if (parent === null) {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${path} is a root, and a root cannot be duplicated`,
+    );
+  }
+
+  const name = baseNameOf(path);
+  let target = "";
+  let targetName = "";
+  for (let n = 1; n <= 1000; n += 1) {
+    targetName = fakeCopyName(name, n);
+    target = joinPath(parent, targetName);
+    if (!nodes.has(target)) break;
+    target = "";
+  }
+  if (!target) {
+    throw rpcError(
+      HelveErrorCode.InternalError,
+      `${name} has already been duplicated 1000 times in ${parent}`,
+    );
+  }
+
+  const prefix = `${path}\\`;
+  const now = Date.now();
+  for (const [key, value] of [...nodes]) {
+    if (key === path) {
+      nodes.set(target, { ...value, mtime: now });
+    } else if (key.startsWith(prefix)) {
+      nodes.set(target + key.slice(path.length), { ...value, mtime: now });
+    }
+  }
+
+  return { path: target, name: targetName, kind: node.kind };
+}
+
+/** `notes.txt` → `notes copy.txt`, `notes copy 2.txt`. See `copy_name` in `files.rs`. */
+function fakeCopyName(name: string, n: number): string {
+  const suffix = n === 1 ? " copy" : ` copy ${n}`;
+  const dot = name.lastIndexOf(".");
+  // A leading dot begins a name, not an extension — `.gitignore` duplicates
+  // whole. Same rule as `extensionOf` in the Files app's `rpc.ts`.
+  if (dot <= 0) return `${name}${suffix}`;
+  return `${name.slice(0, dot)}${suffix}${name.slice(dot)}`;
 }
 
 /**

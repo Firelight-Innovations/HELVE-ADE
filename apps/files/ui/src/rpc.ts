@@ -144,6 +144,45 @@ export const createDir = (parent: string, name: string) =>
 export const rename = (path: string, name: string) =>
   invoke<Created>("files/rename", { path, name });
 
+/**
+ * Copy an entry to a free name beside it — `notes.txt` becomes `notes copy.txt`,
+ * then `notes copy 2.txt`.
+ *
+ * Files and folders alike; a folder takes everything under it, and a copy that
+ * fails part-way leaves nothing behind rather than a half-filled folder with a
+ * name that says it is a duplicate. Never overwrites: the backend reserves the
+ * destination with the same one-syscall check-and-create that `files/create-file`
+ * uses, so there is no window in which a name that looked free stops being one.
+ */
+export const duplicate = (path: string) => invoke<Created>("files/duplicate", { path });
+
+/** What `files/save-as` reports writing, or `null` when the dialog was cancelled. */
+export interface SavedAs {
+  path: string;
+  name: string;
+  mtime: number | null;
+}
+
+/**
+ * Write `text` to a file the user picks in the OS save dialog.
+ *
+ * `name` is only the dialog's suggestion — the user renames it there, and where
+ * it lands is entirely theirs. Resolves `null` when they cancel, which is not a
+ * failure and must not be drawn as one.
+ *
+ * No `baseMtime`, unlike {@link write}: there is nothing to conflict with. The
+ * user has just seen the folder's contents, and if they chose an existing file
+ * the system dialog already asked them about replacing it.
+ *
+ * The default timeout does not apply. A native dialog sits open for as long as
+ * the person in front of it takes, and `invoke`'s thirty seconds would reject a
+ * call that is going to succeed — leaving a write in flight that nothing is
+ * waiting for. `0` is not an option (the bridge would fire immediately), so this
+ * passes an hour, which is past any real decision and still bounded.
+ */
+export const saveAs = (name: string, text: string) =>
+  invoke<SavedAs | null>("files/save-as", { name, text }, 60 * 60 * 1000);
+
 /** What `files/delete` reports removing. `trashed` says which it was. */
 export interface Deleted {
   path: string;
