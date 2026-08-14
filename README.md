@@ -10,9 +10,11 @@ Its own Tauri app is one host for that pair; this orchestrator is a second.
 
 This is a development tool; it does not ship with games built on Helve.
 
-Status: pre-alpha. The shell frame runs and reports the stack; the tool surface
-is blank and the tools themselves are not yet integrated. Projects don't exist
-yet either — the picker comes before the tools do.
+Status: pre-alpha. The shell frame runs and reports the stack, and its two
+first-party apps (Home and Files) mount in it and are answered by Rust. Projects
+exist: Home opens one, remembers it, and reopens it on the next launch. The tools
+themselves are not yet integrated — a tool's core is a child process and the
+broker that would reach it is not built.
 
 ## Tech stack
 
@@ -139,6 +141,10 @@ packages/             npm packages shipped to the tool repos
   bridge/               @helve/bridge — one tool frontend, either host
 examples/
   echo-tool/            reference tool: manifest + core + frontend
+apps/                 first-party surfaces — see apps/README.md
+  shared/app.css        the chrome every app draws inside
+  home/ui/              Home: the stack at a glance
+  files/ui/             Files: browse and read the checkout
 index.html            Vite entry point (main window)
 splash.html           Vite entry point (splash window)
 src/                  React frontend
@@ -163,11 +169,45 @@ src-tauri/            Rust backend
     manifest.rs         locating and parsing helve.toml
     tool.rs             tool types: declared spec vs. resolved status
     discovery.rs        joins the manifest against the filesystem
+    apps/               the first-party apps' Rust halves
+      mod.rs              the registry, and `invoke` routing
+      home.rs             home/state, and the folder pickers
+      files.rs            files/list, files/read
+    project/            what a project is, and which one is open
+      mod.rs              open / create / initialize / close / forget
+      marker.rs           the <name>.helve manifest
+      store.rs            the recents file, and what survives a restart
     error.rs            one error type, serializable across the IPC boundary
     state.rs            shared app state
   capabilities/       Tauri permissions, scoped per window label
   tauri.conf.json     window, bundle and build configuration
 ```
+
+## Projects
+
+A project is **a folder**. It becomes a *HELVE* project when it holds a
+`<name>.helve` manifest — small, hand-editable TOML, meant for version control —
+with a `.helve/` directory beside it for everything HELVE generates about it:
+agent traces, designs, docs, the history of how the game got built. The two
+cannot share one name, which is why the manifest takes the project's own name and
+an extension, the way `.uproject` and `.sln` do.
+
+A folder with no manifest still opens. That is deliberate: HELVE can be pointed at
+a game that already exists, and the answer to "what happens when the `.helve`
+format changes" is never "it stops opening". Home marks such a folder *not set
+up* and offers to write one.
+
+Which project is open, and the last twenty opened before it, live in
+`projects.json` in the OS config directory — the only orchestrator state that
+survives the process. Everything else is re-derived at boot. Opening a project
+sets where the Files app starts, where a new terminal opens, and the OS window
+title; the next launch restores it.
+
+`src-tauri/src/project/` is the whole of it, and it owns no user interface: it
+takes paths. Choosing a folder by pointing at one is Home's job
+(`src-tauri/src/apps/home.rs`), which keeps "open this project" something a
+command-line flag or a double-clicked `.helve` file could do later without a
+human at the keyboard.
 
 ### Startup
 
@@ -191,9 +231,22 @@ Two things there are load-bearing and easy to break:
 a status bar. The rail is generated from the manifest, so adding a `[[tool]]`
 entry puts it in the UI with no shell code change.
 
-The tool surface is **intentionally blank**. Each tool is separate software in
-its own repo and none are integrated yet, and there is no project to open them
-against.
+The switcher holds this build's own apps and nothing else. The tools are
+resolved and still reported — the warning badge and its health list read the
+full stack — but none of them are docked: a tool's core is a child process, the
+broker that would reach it is not written, and there is no project to open one
+against, so a tool tab today could only open on a state explaining why it is
+empty. They come back when the broker does.
+
+### Apps
+
+`apps/` holds the surfaces the orchestrator ships itself: Home and Files today.
+They mount in the same tool window a tool would, speak the same transport to the
+shell, and import the same `@helve/bridge` — but their frontends are entry points
+of *this* repo's Vite build and their Rust halves are modules in
+`src-tauri/src/apps/`, reached in-process rather than over a pipe. A tool is code
+the orchestrator finds; an app is code the orchestrator is. `apps/README.md` has
+the full comparison and the reasoning.
 
 How they will mount is settled: `company/docs/design/helve-tool-integration.md`
 has the reasoning, `docs/tool-protocol.md` has the wire format. In short, a tool

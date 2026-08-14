@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:agent": "vite --mode agent",
-    "build": "tsc && vite build",
+    "build": "pnpm run build:bridge && tsc && vite build",
+    "build:bridge": "pnpm --filter @helve/bridge build",
     "preview": "vite preview",
     "tauri": "tauri",
     "app": "tauri dev",
@@ -15,6 +16,7 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@helve/bridge": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.11.0",

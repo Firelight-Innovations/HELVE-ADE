@@ -37,6 +37,18 @@ pub enum AppError {
     #[error("no tool with id `{0}` in the manifest")]
     UnknownTool(String),
 
+    /// A project is a folder (see `project`), so the only way to fail to open
+    /// one is for the path not to be a folder — deleted, moved, or a file that
+    /// got dragged onto the window.
+    #[error("{0} is not a folder, so it cannot be opened as a project")]
+    NotAProject(String),
+
+    /// Refused rather than overwritten. A manifest carries the project's stable
+    /// id, and writing a second one over it would silently make it a different
+    /// project as far as anything holding that id is concerned.
+    #[error("{0} already exists — open the project instead of creating it")]
+    AlreadyAProject(String),
+
     #[error("could not open the checkout for `{id}`: {source}")]
     Reveal {
         id: String,

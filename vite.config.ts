@@ -40,9 +40,26 @@ export default defineConfig(async ({ mode }) => ({
       // through verbatim. That is deliberate — see the comment at the top of
       // `splash.html` for why the splash window is kept free of any
       // dependency on this application's code.
+      //
+      // The two first-party apps are entries for a different reason. Each is a
+      // separate document mounted in an iframe (`src-tauri/src/apps/`), so each
+      // needs its own HTML and its own module graph — but they are built *here*,
+      // by the shell's own config, rather than by a Vite project of their own.
+      //
+      // That is what makes `apps::entry_url` able to hand back a root-relative
+      // path and be right under both hosts. An entry's HTML lands in `dist/` at
+      // the path it occupies in the source tree, so `apps/home/ui/index.html`
+      // is reachable at `/apps/home/ui/index.html` from Vite in development and
+      // from Tauri's asset host in a release build — one URL, no per-app dev
+      // server to remember to start, and nothing to add to `bundle.resources`.
+      //
+      // A tool gets none of this. It is another repository with its own build,
+      // served from its own origin; see `src-tauri/src/tool_frontend.rs`.
       input: {
         main: resolve(__dirname, "index.html"),
         splash: resolve(__dirname, "splash.html"),
+        home: resolve(__dirname, "apps/home/ui/index.html"),
+        files: resolve(__dirname, "apps/files/ui/index.html"),
       },
     },
   },

@@ -1,0 +1,464 @@
+/*
+ * Home's own layout.
+ *
+ * Separate from `apps/shared/app.css`, which describes how a Helve *app* looks
+ * in general — a header strip, a scrolling body, rows and labels. Home is not
+ * that shape. It is a landing page: one wide centred column, no pane header (the
+ * switcher tab above already said "Home", and the brand lockup says it again in
+ * the only way worth spending the space on), and two columns of content beneath
+ * it.
+ *
+ * Colours and type come from `src/tokens.css`, imported ahead of this by the
+ * entry point. Nothing here introduces a hex — an app inventing its own palette
+ * would be visibly not part of the same product the moment it sat beside Files.
+ */
+
+.home {
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  /* Generous top padding: this is the first thing seen at launch, and the
+     lockup needs room above it to read as a title rather than a toolbar. */
+  padding: 52px 44px 64px;
+}
+
+.home__inner {
+  width: 100%;
+  /* Past this the two columns drift apart into unrelated halves of a screen
+     rather than reading as one page. Centred, so a maximised window puts the
+     content where the eye already is instead of pinned to the left edge. */
+  max-width: 920px;
+}
+
+/* --- the hero ------------------------------------------------------------- */
+
+.home__hero {
+  /* The mark's height, and with it every other measurement in the lockup below
+     — see that comment. Declared on the hero rather than on the lockup itself
+     because the tagline needs it too, to keep off the mark's clear space. */
+  --mark: 52px;
+
+  margin: 0 0 34px;
+}
+
+/*
+ * The lockup, from section 03 of the brand packet.
+ *
+ * "HELVE set in IBM Plex Sans SemiBold, all caps. Horizontal: wordmark size is
+ * 0.62× the mark's height, letterspaced 0.30em, with a gap of 0.45× the mark
+ * height." Every measurement is a ratio of one number, so that number is the
+ * only literal here and the ratios are written as the multiplications the
+ * packet states rather than as the pixels they happen to come to — a lockup
+ * rescaled by editing `--mark` cannot drift out of proportion.
+ *
+ * 52px is Home's choice of scale, and the only value on this page that is a
+ * choice rather than a quotation: the packet floors the bare mark at 16px and
+ * otherwise leaves the size to the surface. Section 02's clear space — one stem
+ * width, 4.5 of 24 units, 0.1875× the mark — is cleared with room to spare by a
+ * gap of 0.45×, so nothing crosses the mark.
+ */
+.home__lockup {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--mark) * 0.45);
+  margin: 0;
+  color: var(--text);
+}
+
+.home__lockup-mark {
+  flex: 0 0 auto;
+  /* `Mark` writes width and height attributes; a presentation attribute loses
+     to any rule in a stylesheet, so the mark's size is set here with the ratios
+     that are derived from it rather than being passed in as a prop and going
+     stale the first time this number moves. */
+  width: var(--mark);
+  height: var(--mark);
+}
+
+.home__lockup-word {
+  font-size: calc(var(--mark) * 0.62);
+  /* SemiBold and 0.30em, both from the packet. Section 08 names setting it
+     tighter than 0.28em as a misuse: below that the letterforms close up and
+     stop reading as a wordmark. */
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  /* Line-height 1, as the packet sets it, so the mark centres against the
+     letters themselves rather than against the font's leading. */
+  line-height: 1;
+}
+
+/* The packet sanctions exactly two arrangements — "No other arrangement" — so a
+   pane too narrow for the horizontal one takes the stacked one rather than a
+   shrunken version of the first. The horizontal lockup is about 225px across
+   and the page spends 88px on side padding, so it starts crowding the edge a
+   little over 300px; stacking at 400 leaves that estimate room to be wrong.
+   Stacked opens the letterspacing to 0.34em and closes the gap to 0.35×; the
+   packet changes nothing else, so the wordmark stays 0.62× the mark. Left
+   aligned rather than centred, because the tagline, both headings and every row
+   beneath start at this edge. */
+@media (max-width: 400px) {
+  .home__lockup {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(var(--mark) * 0.35);
+  }
+
+  .home__lockup-word {
+    letter-spacing: 0.34em;
+  }
+}
+
+.home__tagline {
+  /* One clear space below the lockup, not an eyeballed few pixels: section 02
+     puts that at one stem width, 4.5 of the mark's 24 units, and says nothing
+     may cross it. Measured from the mark's box, which already carries three of
+     those units as empty beneath the ink. */
+  margin: calc(var(--mark) * 0.1875) 0 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* --- the open project ----------------------------------------------------- */
+
+.home__open {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 3px;
+  min-width: 0;
+}
+
+.home__open-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.home__open-name {
+  flex: 0 0 auto;
+  font-weight: 500;
+}
+
+.home__open-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The path reads right-to-left when it matters — the tail is the folder,
+     the head is boilerplate — so it truncates from the *left*. */
+  direction: rtl;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.home__ghost {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.home__ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.home__ghost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* --- the two columns ------------------------------------------------------ */
+
+.home__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px 56px;
+}
+
+/* A tool window can be dragged narrow, or detached into a small one. Below this
+   the two columns are each too tight for a path to survive, so they stack. */
+@media (max-width: 760px) {
+  .home__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.home__column {
+  min-width: 0;
+}
+
+.home__heading {
+  margin: 0 0 14px;
+  font-size: 21px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.home__heading--spaced {
+  margin-top: 34px;
+}
+
+/* --- Start ---------------------------------------------------------------- */
+
+.home__actions,
+.home__recents,
+.home__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home__action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home__action:hover:not(:disabled) {
+  /* Underline rather than a background: these are links in a list, not buttons
+     in a bar, and a hover fill would make the column read as a menu. */
+  text-decoration: underline;
+}
+
+.home__action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.home__action:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.home__action-icon {
+  flex: 0 0 auto;
+}
+
+.home__waiting,
+.home__soon {
+  font-size: 11px;
+  color: var(--text-dim-2);
+}
+
+.home__soon {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim-3);
+}
+
+/* --- Recent --------------------------------------------------------------- */
+
+.home__recent {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home__recent-open {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  margin-left: -6px;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home__recent-open:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.home__recent-open:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.home__recent-open:disabled {
+  cursor: default;
+}
+
+.home__recent-name {
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
+  font-size: 13.5px;
+}
+
+.home__recent-open:disabled .home__recent-name {
+  color: var(--text-dim-3);
+}
+
+.home__recent-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim-2);
+}
+
+.home__recent-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-dim-3);
+}
+
+/* A project whose folder is gone still draws — see the comment on `exists` in
+   the Rust `ProjectInfo`. Dimmed and inert, with Forget still live, because
+   removing it from the list is the only thing left that can be done to it. */
+.home__recent--gone .home__recent-path,
+.home__recent--gone .home__recent-meta {
+  color: var(--err);
+  opacity: 0.75;
+}
+
+.home__forget {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  color: var(--text-dim-3);
+  cursor: pointer;
+  /* Hidden until the row is approached. A destructive-looking control on every
+     row at rest turns a history list into a wall of X's. */
+  opacity: 0;
+}
+
+.home__recent:hover .home__forget,
+.home__forget:focus-visible {
+  opacity: 1;
+}
+
+.home__forget:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.home__forget:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* --- Tutorials ------------------------------------------------------------ */
+
+.home__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  /* Inert on purpose: no pointer, no hover. Nothing here goes anywhere yet,
+     and a card that invited a click would be lying about it. */
+  opacity: 0.72;
+}
+
+.home__card-mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text-dim-2);
+}
+
+.home__card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home__card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.home__card-blurb {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim-3);
+}
+
+/* --- notes ---------------------------------------------------------------- */
+
+.home__empty {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-dim-3);
+}
+
+.home__error {
+  margin: 0 0 22px;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--err);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+}

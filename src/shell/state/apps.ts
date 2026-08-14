@@ -1,0 +1,72 @@
+/**
+ * The first-party apps this build ships.
+ *
+ * Mirrors `src-tauri/src/apps/mod.rs`. Asked for once and never again: the
+ * registry is compiled in, so unlike the stack snapshot there is nothing on
+ * disk that could change the answer while the shell is running, and no
+ * "re-scan apps" to offer.
+ *
+ * Starts as an empty array rather than `null`. The distinction the stack
+ * snapshot needs — "not loaded yet" as against "loaded and empty" — buys
+ * nothing here, because no state in the interface is reachable only when apps
+ * are still resolving; the switcher simply gains its app tabs a frame later.
+ */
+import { useEffect, useState } from "react";
+import { appCall, listApps, type AppInfo } from "../../bindings";
+import { HelveErrorCode } from "../../../packages/bridge/src/errors";
+import { isFake, fakeAppCall, fakeApps } from "./fakeBackend";
+
+export function useApps(): AppInfo[] {
+  const [apps, setApps] = useState<AppInfo[]>([]);
+
+  useEffect(() => {
+    if (isFake()) {
+      setApps(fakeApps());
+      return;
+    }
+
+    let live = true;
+    void listApps()
+      .then((result) => live && setApps(result))
+      // An app list that fails to load leaves the switcher showing tools only.
+      // Reported rather than swallowed: every other path here is infallible, so
+      // if this ever fires, whatever went wrong is worth seeing in the console
+      // instead of being read as "this build ships no apps".
+      .catch((err: unknown) => console.error("helve: could not list apps:", err));
+
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return apps;
+}
+
+/**
+ * Relay one app frame's `invoke` to its Rust half.
+ *
+ * Rejects with a `{ code, message }` envelope in both directions — the same
+ * shape `app_call` fails with on the Rust side, so the caller (`ToolWindow`)
+ * has one thing to put in a `response` message rather than two error
+ * vocabularies to tell apart.
+ *
+ * Under `?fake=1` an app's frontend still mounts and still completes its
+ * handshake, because both of those are the shell's own work. What it cannot do
+ * is reach Rust — so a small set of methods is answered from a fixture instead
+ * (see `fakeAppCall` for which, and for why the rest deliberately are not), and
+ * everything else is refused with the same code a method that failed inside its
+ * handler would use. Both paths are worth having: the first makes a pane's
+ * layout measurable in a browser, the second makes its failure path reachable.
+ */
+export function callApp(id: string, method: string, params?: unknown): Promise<unknown> {
+  if (isFake()) {
+    const fixture = fakeAppCall(method, params);
+    if (fixture !== undefined) return Promise.resolve(fixture);
+
+    return Promise.reject({
+      code: HelveErrorCode.InternalError,
+      message: `${method}: no backend (browser mode)`,
+    });
+  }
+  return appCall(id, method, params);
+}

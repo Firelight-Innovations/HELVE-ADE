@@ -5,12 +5,14 @@
 //! against the pinned versions. The web frontend is a pure view over the
 //! `StackSnapshot` this produces.
 
+mod apps;
 mod boot;
 mod commands;
 mod discovery;
 mod error;
 mod git;
 mod manifest;
+mod project;
 mod pty;
 mod shell_state;
 mod state;
@@ -18,6 +20,7 @@ mod tool;
 mod tool_frontend;
 mod windows;
 
+use project::ProjectState;
 use pty::PtySessions;
 use shell_state::ShellState;
 use state::AppState;
@@ -54,6 +57,11 @@ pub fn run() {
         // this holds OS handles and reader threads that must never be cloned or
         // sent anywhere near the frontend.
         .manage(PtySessions::default())
+        // Which project is open, and the ones opened before it. The only state
+        // in the orchestrator that outlives the process — see `project::store`
+        // for where it is written and why that is the first thing here to touch
+        // the disk at all.
+        .manage(ProjectState::default())
         // A detached window closing must not strand the tool inside it. This
         // fires before the window is gone, and hands its tools and terminals
         // back to the main window — so closing a detached Journeyman puts its
@@ -72,6 +80,13 @@ pub fn run() {
         // its own thread. `AppHandle` is cheap to clone by design — it's a
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
+            // Before anything else that wants to know where the user is. The
+            // launch terminal below opens *inside* the restored project, and the
+            // Files app takes it as its default directory — so a restore that
+            // ran after either of those would leave them pointing at the stack
+            // root for the rest of the session.
+            project::restore(app.handle());
+
             boot::start(app.handle().clone());
 
             // The launch terminal. Opened here rather than baked into
@@ -121,6 +136,8 @@ pub fn run() {
             commands::set_terminal_title,
             commands::set_engine_state,
             commands::tool_frontend,
+            commands::list_apps,
+            commands::app_call,
             git::git_status,
             git::git_diff,
             git::git_stage,

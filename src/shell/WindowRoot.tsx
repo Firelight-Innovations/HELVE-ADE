@@ -3,6 +3,7 @@ import { MotionConfig } from "framer-motion";
 import type { StackSnapshot } from "../bindings";
 import Frame from "./frame/Frame";
 import {
+  appPresentation,
   toolPresentation,
   type EngineState,
   type TerminalBusy,
@@ -23,7 +24,8 @@ import SourceControlView from "./worktree/SourceControlView";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
-import { useShellState, windowLabel, setActiveTool } from "./state/shellState";
+import { useApps } from "./state/apps";
+import { useShellState, windowLabel, setActiveTool, setDockedTools } from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
 import { gitControl } from "./state/git";
 
@@ -72,16 +74,89 @@ export default function WindowRoot({
   // possible. Neither owns the other, so the flag sits above both.
   const [searchExpanded, setSearchExpanded] = useState(false);
 
-  // The switcher lists authoring tools. The engine is a runtime with no
-  // frontend — the orchestrator supervises it, tools talk to it over a pipe,
-  // and it never gets a tab.
-  const allTools = useMemo(
+  const apps = useApps();
+
+  // The authoring tools, resolved but **not docked**.
+  //
+  // None of them can mount in this build: a tool's core is a child process and
+  // the broker that would reach it is not written, so every tool tab could only
+  // ever open on a state explaining why there is nothing there. They are held
+  // back until that changes rather than shown as six dead tabs.
+  //
+  // Still computed, because they are still *reported*: this is what the
+  // switcher's warning badge and its health list read (see `healthOf` below),
+  // and it is the only place in the shell that says Turner needs an update or
+  // Wright is not installed. Not docking a tool and not knowing about it are
+  // different things, and only the first is intended here.
+  const stackTools = useMemo(
     () => (snapshot?.tools ?? []).filter((t) => t.kind === "dev-tool").map(toolPresentation),
     [snapshot],
   );
 
+  // What the switcher actually holds: this build's own apps. The engine is a
+  // runtime with no frontend — the orchestrator supervises it, tools talk to it
+  // over a pipe, and it never gets a tab either.
+  const allTools = useMemo(() => apps.map(appPresentation), [apps]);
+
   const shell = useShellState();
   const placement = shell?.windows.find((w) => w.label === label) ?? null;
+
+  // Dock everything, once, the first time there is anything to dock.
+  //
+  // `ShellState::default` starts the main window holding nothing, deliberately:
+  // the backend has no opinion about which surfaces you want open, and says so
+  // in a comment. Until now nothing on this side ever formed that opinion
+  // either, so `placement.toolIds` stayed empty forever and the memo below
+  // resolved to zero tabs — an empty array is not `undefined`, so its `!order`
+  // fallback never caught it. `?fake=1` hid this the whole time by shipping a
+  // hardcoded docked list in its fixture.
+  //
+  // Guarded by a ref rather than by "is the placement empty", because those
+  // stop being the same question after the first run. A window whose last tab
+  // has been dragged out is also empty, and re-seeding that one would put every
+  // tool back into a bar the user just cleared — and the detached one into two
+  // windows at once.
+  const seeded = useRef(false);
+  useEffect(() => {
+    // A detached window is handed its single tool by `detach_tool`; seeding it
+    // would be overwriting that with the whole list.
+    if (seeded.current || kind !== "main") return;
+    // No `shell:state` yet, so there is nothing to be empty *of*.
+    if (!placement) return;
+    // Something is already docked — a reload, or a session that has been used.
+    // Rust's answer stands, and this must never run again.
+    if (placement.toolIds.length > 0) {
+      seeded.current = true;
+      return;
+    }
+    // Apps arrive a round-trip before the stack scan finishes, so this can fire
+    // with a partial list. Waiting for the scan is wrong (it can fail, and the
+    // apps would be held hostage to it); docking what exists is right, and a
+    // tool that resolves later is the case `setDockedTools` below already
+    // handles — see the second effect.
+    if (allTools.length === 0) return;
+    seeded.current = true;
+    void setDockedTools(
+      label,
+      allTools.map((t) => t.id),
+    );
+  }, [kind, label, placement, allTools]);
+
+  // A surface that showed up after the seed — a tool whose scan landed second,
+  // or one that appeared on a re-scan — joins the bar rather than being lost
+  // until the next restart. Only ever *adds*, and only in the main window: a
+  // tab the user detached is docked elsewhere, not missing, and re-adding it
+  // here is the duplicate the seed guard above exists to prevent.
+  useEffect(() => {
+    if (!seeded.current || kind !== "main" || !placement) return;
+    const docked = new Set(placement.toolIds);
+    const elsewhere = new Set(
+      (shell?.windows ?? []).filter((w) => w.label !== label).flatMap((w) => w.toolIds),
+    );
+    const added = allTools.filter((t) => !docked.has(t.id) && !elsewhere.has(t.id));
+    if (added.length === 0) return;
+    void setDockedTools(label, [...placement.toolIds, ...added.map((t) => t.id)]);
+  }, [kind, label, placement, allTools, shell?.windows]);
 
   // What this window actually holds, in the order Rust says it holds it.
   //
@@ -369,6 +444,7 @@ export default function WindowRoot({
             kind === "main" ? (
               <ToolSwitcherBar
                 tools={tools}
+                healthOf={stackTools}
                 activeToolId={shownToolId}
                 onSelect={onSelectTool}
                 onRescan={onRescan}

@@ -49,6 +49,16 @@ pub enum ToolFrontend {
 
 /// Resolve one tool's frontend.
 pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
+    // A first-party app resolves before the stack is consulted, and cannot fail.
+    // It ships in this binary rather than in a checkout, so none of the states
+    // below can apply to one: there is nothing to clone, nothing to build, and
+    // no manifest of its own to be malformed. See `apps::entry_url`.
+    if crate::apps::is_app(id) {
+        return Ok(ToolFrontend::Mountable {
+            url: crate::apps::entry_url(id),
+        });
+    }
+
     let state = app.state::<AppState>();
     let Some(snapshot) = state.get() else {
         return Ok(ToolFrontend::Unavailable {

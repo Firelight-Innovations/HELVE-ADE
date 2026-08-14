@@ -20,7 +20,7 @@
  *     update", "not tracked", "not installed". The mapping happens once, below.
  */
 import type { ReactNode } from "react";
-import type { ResolvedTool, ToolStatus } from "../bindings";
+import type { AppInfo, ResolvedTool, ToolStatus } from "../bindings";
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -64,6 +64,18 @@ export interface ToolPresentation {
   health: ToolHealth;
   /** `not-installed` tools render dim and cannot be selected. */
   interactive: boolean;
+  /**
+   * A first-party app rather than a tool checkout.
+   *
+   * One bit, and it earns its place by being the routing decision the tool
+   * window cannot make any other way: an app's `invoke` is answered in-process
+   * by `app_call`, a tool's would go to its core over the broker. Everything
+   * else about the two is identical here on purpose — an app gets no special
+   * tab, no badge, and no separate section in the bar, because to the person
+   * using it the difference is an implementation detail of where the code
+   * happens to live.
+   */
+  isApp: boolean;
 }
 
 /** The one door between the backend's tool type and the interface's. */
@@ -75,6 +87,26 @@ export function toolPresentation(tool: ResolvedTool): ToolPresentation {
     description: tool.description,
     health,
     interactive: health !== "not-installed",
+    isApp: false,
+  };
+}
+
+/**
+ * The same door for a first-party app.
+ *
+ * An app has no health to map. It ships inside the binary that is asking about
+ * it, so `missing` is not a state it can be in and `mismatch` has no pinned
+ * version to disagree with — `ok` is not an optimistic default here, it is the
+ * only answer the type can carry.
+ */
+export function appPresentation(app: AppInfo): ToolPresentation {
+  return {
+    id: app.id,
+    name: app.name,
+    description: app.description,
+    health: "ok",
+    interactive: true,
+    isApp: true,
   };
 }
 

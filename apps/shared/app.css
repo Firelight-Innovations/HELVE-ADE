@@ -1,0 +1,264 @@
+/*
+ * The chrome every first-party app draws inside.
+ *
+ * An app renders in an iframe filling the tool window, with the shell's title
+ * bar, switcher and status bar already around it — so this styles a *pane*, not
+ * a page. No window furniture, no second header bar, nothing that would read as
+ * a duplicate of what the frame outside is already showing.
+ *
+ * Colours come from `src/tokens.css`, imported ahead of this file by each app's
+ * entry point. Nothing here may introduce a hex value: the palette is the
+ * handoff's, and an app inventing its own would be visibly not part of the same
+ * product the moment the two sat side by side.
+ *
+ * Shared by both apps rather than copied into each, because the thing being
+ * described is "how a Helve app looks", which is one answer. An app that needs
+ * something of its own adds a second stylesheet next to its entry point.
+ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.55 var(--sans);
+  /* The frame outside scrolls nothing; a pane scrolls itself. */
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* --- the pane's own header ------------------------------------------------
+   One line: what this app is, and the state of its connection to the host.
+   Deliberately quiet — the switcher tab above it has already said the name. */
+
+.app__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.app__sub {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.app__host {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim-2);
+}
+
+.app__body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 14px 18px 18px;
+}
+
+/* --- blocks --------------------------------------------------------------- */
+
+.app__section {
+  margin: 0 0 18px;
+}
+
+.app__section:last-child {
+  margin-bottom: 0;
+}
+
+.app__label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.app__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.app__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 11px;
+  background: var(--surface);
+  border: 0;
+  border-top: 1px solid var(--line);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.app__row:first-child {
+  border-top: 0;
+}
+
+/* A row that does something is a button; one that only reports is not. Only
+   the first kind gets a pointer and a hover, so "clickable" stays a real
+   signal rather than decoration applied to every row alike. */
+button.app__row {
+  cursor: pointer;
+}
+
+button.app__row:hover {
+  background: var(--surface-2);
+}
+
+button.app__row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.app__row[aria-current="true"] {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.app__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app__meta {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* The dot carries health; the text beside it says the same thing in words.
+   Colour alone is not a report — see the health list in the shell. */
+.app__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dot-off);
+}
+
+.app__path {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.app__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.app__error {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--err);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+/* --- the file viewer ------------------------------------------------------ */
+
+.app__split {
+  display: grid;
+  grid-template-columns: minmax(200px, 300px) 1fr;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+
+.app__pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.app__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.app__code {
+  margin: 0;
+  padding: 11px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text);
+  /* A viewer wraps nothing: a source file's own line breaks are information,
+     and re-flowing them would misreport what the file says. */
+  white-space: pre;
+  overflow: auto;
+}
+
+.app__crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  min-width: 0;
+}
+
+.app__up {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.app__up:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.app__up:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
