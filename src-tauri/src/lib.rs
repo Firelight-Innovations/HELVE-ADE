@@ -11,10 +11,12 @@ mod commands;
 mod discovery;
 mod error;
 mod git;
+mod layout;
 mod manifest;
 mod project;
 mod pty;
 mod shell_state;
+mod shell_store;
 mod state;
 mod tool;
 mod tool_frontend;
@@ -62,14 +64,28 @@ pub fn run() {
         // for where it is written and why that is the first thing here to touch
         // the disk at all.
         .manage(ProjectState::default())
-        // A detached window closing must not strand the tool inside it. This
-        // fires before the window is gone, and hands its tools and terminals
-        // back to the main window — so closing a detached Journeyman puts its
-        // tab back in the switcher bar rather than losing it.
         .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::Destroyed) {
-                let app = window.app_handle();
-                windows::reclaim(app, &app.state::<ShellState>(), window.label());
+            let app = window.app_handle();
+            match event {
+                // Where a window is, so it can be put back there next launch.
+                // Recorded without broadcasting or writing — these fire on
+                // every frame of a drag. `close_window` and the next real
+                // mutation are what commit them; see `ShellState::set_geometry`.
+                WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                    if let Some(geometry) = windows::geometry_of(window) {
+                        app.state::<ShellState>().set_geometry(window.label(), geometry);
+                    }
+                }
+                // A window closing on purpose must not strand what was inside
+                // it, so its clusters go back to the main window. This does
+                // nothing unless the close came through `close_window` — at
+                // shutdown `Destroyed` fires for every window, and reclaiming
+                // then would collapse the whole session and save the wreckage
+                // as the layout to restore. See `ShellState::closing`.
+                WindowEvent::Destroyed => {
+                    windows::reclaim(app, &app.state::<ShellState>(), window.label());
+                }
+                _ => {}
             }
         })
         // `.setup` runs once, after every window declared in tauri.conf.json
@@ -87,6 +103,9 @@ pub fn run() {
             // root for the rest of the session.
             project::restore(app.handle());
 
+            let handle = app.handle().clone();
+            restore_session(&handle);
+
             boot::start(app.handle().clone());
 
             // The launch terminal. Opened here rather than baked into
@@ -100,16 +119,21 @@ pub fn run() {
             // step in a terminal's life that can fail for reasons no amount of
             // reading the code will reveal, and a silently empty panel gives
             // whoever hits it nothing to go on.
-            let handle = app.handle().clone();
-            if let Err(e) = commands::open_terminal(
-                &handle,
-                &handle.state::<ShellState>(),
-                &handle.state::<PtySessions>(),
-                "main",
-                80,
-                24,
-            ) {
-                eprintln!("helve: could not open the launch terminal: {e}");
+            //
+            // Skipped entirely when a session was restored: that session
+            // brought its own terminals back, and adding one more on every
+            // launch would grow the panel by a tab a day.
+            if handle.state::<ShellState>().snapshot().terminals.is_empty() {
+                if let Err(e) = commands::open_terminal(
+                    &handle,
+                    &handle.state::<ShellState>(),
+                    &handle.state::<PtySessions>(),
+                    "main",
+                    80,
+                    24,
+                ) {
+                    eprintln!("helve: could not open the launch terminal: {e}");
+                }
             }
 
             Ok(())
@@ -122,10 +146,21 @@ pub fn run() {
             commands::boot_status,
             commands::app_painted,
             commands::shell_state,
-            commands::set_docked_tools,
-            commands::set_active_tool,
-            commands::detach_tool,
+            commands::open_instance,
+            commands::close_instance,
+            commands::activate_instance,
+            commands::set_instance_title,
+            commands::move_instance,
+            commands::split_pane,
+            commands::set_pane_sizes,
+            commands::add_cluster,
+            commands::set_active_cluster,
+            commands::rename_cluster,
+            commands::close_cluster,
+            commands::detach_instance,
             commands::window_at_cursor,
+            commands::set_window_geometry,
+            commands::close_window,
             commands::create_terminal,
             commands::close_terminal,
             commands::split_terminal,
@@ -134,6 +169,7 @@ pub fn run() {
             commands::terminal_resize,
             commands::terminal_busy,
             commands::move_terminal,
+            commands::set_active_terminal,
             commands::set_terminal_title,
             commands::set_engine_state,
             commands::tool_frontend,
@@ -147,4 +183,106 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Put the shell back the way it was left.
+///
+/// Runs after `project::restore`, because the cluster a first launch seeds is
+/// named after the open project and there is no name to use before that.
+///
+/// Two things deliberately do *not* come back. A pty dies with the process, so
+/// a restored terminal tab gets a fresh shell rather than a dead one — a tab
+/// that looks alive and silently eats keystrokes is the exact failure
+/// `open_terminal`'s ordering exists to prevent, and it would be strange to
+/// reintroduce it here. And a window whose monitor is no longer attached is
+/// re-centred rather than restored to coordinates that now name nowhere; see
+/// `shell_store::place_within`.
+fn restore_session(app: &tauri::AppHandle) {
+    let stored = shell_store::load(app);
+    let shell = app.state::<ShellState>();
+
+    if stored.windows.is_empty() {
+        seed_first_run(app, &shell);
+        return;
+    }
+
+    shell.restore(shell_state::ShellSnapshot {
+        windows: stored.windows,
+        instances: stored.instances,
+        terminals: stored.terminals,
+        // Not restored: a stale "building" would be a claim about a process
+        // that is not running. See `shell_store::Stored`.
+        engine: shell_state::EngineState::Idle,
+    });
+
+    // Geometry first, windows second. `main` already exists — it is declared in
+    // tauri.conf.json — so it is moved rather than built; everything else is
+    // built at the position it should already be in, because creating a window
+    // and then moving it is a visible jump on screen.
+    let snapshot = shell.snapshot();
+    for placement in &snapshot.windows {
+        let geometry = placement
+            .geometry
+            .and_then(|g| shell_store::clamp_to_visible(app, g));
+
+        if placement.label == "main" {
+            if let (Some(window), Some(g)) = (app.get_webview_window("main"), geometry) {
+                let _ = window.set_position(tauri::PhysicalPosition::new(g.x, g.y));
+                let _ = window.set_size(tauri::PhysicalSize::new(g.width, g.height));
+            }
+            continue;
+        }
+
+        if let Err(e) = windows::create(app, &placement.label, geometry, false) {
+            eprintln!("helve: could not restore window {}: {e}", placement.label);
+        }
+    }
+
+    respawn_terminals(app, &shell);
+}
+
+/// Give every restored terminal tab a live shell.
+///
+/// A tab whose shell will not start is closed rather than left on screen. The
+/// alternative is a tab that draws, accepts focus, and swallows every keystroke
+/// with nothing to send them to — which looks like HELVE being broken rather
+/// than like one shell being unavailable.
+fn respawn_terminals(app: &tauri::AppHandle, shell: &ShellState) {
+    let ptys = app.state::<PtySessions>();
+    let cwd = project::open_path(app).unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    for terminal in shell.snapshot().terminals {
+        if let Err(e) = ptys.open(app, &terminal.id, &cwd, 80, 24) {
+            eprintln!(
+                "helve: could not restore the shell behind {}: {e}",
+                terminal.id
+            );
+            shell.close_terminal(app, &terminal.id);
+        }
+    }
+}
+
+/// The very first launch, or one after the layout file was lost.
+///
+/// Home, and nothing else. Not every app: opening a surface the user did not
+/// ask for is the thing this whole feature exists to stop doing, and Home is
+/// the one place a session with no project has anywhere to go from.
+fn seed_first_run(app: &tauri::AppHandle, shell: &ShellState) {
+    if let Some(name) = project::open_path(app)
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+    {
+        let snapshot = shell.snapshot();
+        if let Some(cluster) = snapshot.windows.first().and_then(|w| w.clusters.first()) {
+            shell.rename_cluster(app, &cluster.id, &name);
+        }
+    }
+
+    shell.open_instance(
+        app,
+        "main",
+        "home",
+        shell_state::SurfaceKind::App,
+        "Home",
+        None,
+    );
 }

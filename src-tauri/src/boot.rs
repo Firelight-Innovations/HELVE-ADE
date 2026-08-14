@@ -379,19 +379,27 @@ fn emit(app: &AppHandle, status: BootStatus) {
     let _ = app.emit_to("splash", "boot:status", status);
 }
 
-/// Show `main` and close `splash`. Called from the `finish_boot` command
-/// (the frontend's normal path) and from the watchdog below (the fallback
-/// path) — both can fire, so this has to tolerate running twice.
+/// Show every real window and close `splash`. Called from the `finish_boot`
+/// command (the frontend's normal path) and from the watchdog below (the
+/// fallback path) — both can fire, so this has to tolerate running twice.
+///
+/// Every window, not just `main`: a restored session can have several, and they
+/// are all created hidden so that none of them appears half-drawn while the
+/// splash is still up. Showing only `main` would leave the rest invisible with
+/// no way to summon them.
 ///
 /// `get_webview_window` hands back an `Option` rather than a `Result` because
 /// "no window with this label" isn't really an error, it's just a fact about
 /// what currently exists. That makes the idempotency free: the second call
-/// finds `main` already shown (showing it again is harmless) and finds
-/// `splash` already gone (so the `if let Some` for it simply doesn't run),
-/// rather than needing an explicit "have I already run?" flag.
+/// finds the windows already shown (showing one again is harmless) and finds
+/// `splash` already gone, rather than needing an explicit "have I already run?"
+/// flag.
 pub fn finish(app: &AppHandle) {
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.show();
+    for (label, window) in app.webview_windows() {
+        if label == "splash" {
+            continue;
+        }
+        let _ = window.show();
     }
     if let Some(splash) = app.get_webview_window("splash") {
         let _ = splash.close();
