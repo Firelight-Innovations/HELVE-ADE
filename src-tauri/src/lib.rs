@@ -106,7 +106,9 @@ pub fn run() {
             let handle = app.handle().clone();
             restore_session(&handle);
 
-            boot::start(app.handle().clone());
+            // After `restore_session`, because what boot waits for is whichever
+            // apps that restore actually put on screen. See `boot::EXPECTED`.
+            boot::start(app.handle().clone(), apps_on_screen(&handle));
 
             // The launch terminal. Opened here rather than baked into
             // `ShellState::default` because a session must not exist before the
@@ -184,6 +186,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Which apps have at least one instance in the layout, with their names.
+///
+/// What boot waits to hear `helve/painted` from. Every app in the registry used
+/// to be docked at startup, so the registry and "what is on screen" were the
+/// same list; a restored session makes them different, and waiting on an app
+/// with no frame mounted would hold the splash for the full timeout on every
+/// launch that did not happen to have it open.
+fn apps_on_screen(app: &tauri::AppHandle) -> Vec<(String, String)> {
+    let snapshot = app.state::<ShellState>().snapshot();
+    let open: std::collections::HashSet<String> =
+        snapshot.instances.iter().map(|i| i.app_id.clone()).collect();
+
+    apps::roster()
+        .into_iter()
+        .filter(|(id, _)| open.contains(*id))
+        .map(|(id, name)| (id.to_string(), name.to_string()))
+        .collect()
 }
 
 /// Put the shell back the way it was left.

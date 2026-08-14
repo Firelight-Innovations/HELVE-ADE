@@ -1,5 +1,11 @@
 # Handoff: instances, panes, clusters, and a session that comes back
 
+> **Status: built.** This landed on `feat/multi-instance-layout` in two commits.
+> The document is kept as the design record and the map of what to read; the
+> sections below are still accurate about *why* things are shaped as they are.
+> Three things are deliberately not done, and they are listed under **What is
+> not built** at the bottom.
+
 Today HELVE can show exactly one of each app. There is one Files, one Home, and
 the switcher bar is a row of *the* tools with one of them visible. This is the
 work that replaces that with a VSCode-shaped model: many instances of any app,
@@ -340,6 +346,51 @@ Manual test plan for Braden, on `pnpm app`:
 8. Close HELVE. Reopen. Both windows, both monitors, both clusters, same trees.
 9. Unplug the second monitor and reopen. The window must appear on the remaining
    display, not off-screen.
+
+## What is not built
+
+Three gaps, all deliberate, all flagged rather than hidden.
+
+**Cross-window drops land in a new window, not in the target window's pane.**
+`window_at_cursor` returns a label and nothing else — it hit-tests window
+rectangles, so it cannot say *where inside* another window the cursor was.
+Dropping a tab over another HELVE window therefore detaches it into its own
+window rather than guessing a pane. Making this work properly needs a richer
+Rust hit-test that returns window-local coordinates, or the target window
+reporting its own pane rects. The reasoning is repeated at the call site in
+`drag/useDrag.tsx`.
+
+**The git view follows the active surface's app, not the cluster's worktree.**
+`Cluster.worktree` exists, serializes, and restores — it is the stub this work
+promised — but nothing reads it, so `useGitStatus` is still keyed on an app id
+as it was before. Pointing a live git view at an unpopulated field would report
+"no repository" for every cluster, which is worse than leaving it as it was.
+This is the seam Braden's git work plugs into.
+
+**A restored terminal gets a fresh shell in the project root, not its old cwd.**
+`shell_store` remembers the tab; `PtySessions` dies with the process, so there is
+nothing to reattach to. The cwd a session had is not recorded, so respawning uses
+the project root. Recording it is a small addition to `TerminalSession` whenever
+it is wanted.
+
+## Verification actually run
+
+- `pnpm build` (which runs `tsc`) — clean.
+- `cargo check --manifest-path src-tauri/Cargo.toml` — clean, no warnings.
+- `cargo test` — **113 passing**, up from 76. The new ones cover the pane tree
+  (insert, remove, split, the collapse and flatten rules, the size-weight
+  invariant), the id counters a restore rebuilds, and the layout file's round
+  trip and forward compatibility.
+- `packages/bridge` — 20 passing.
+
+One thing worth knowing about that list: `cargo check` does **not** build tests,
+and it passed on a change that broke three of them. `cargo test` is the gate that
+matters, not `cargo check`.
+
+**Not run: the app.** Chrome cannot reach the dev server in this environment and
+`pnpm app` is Braden's alone, so nothing here has been seen running. Every claim
+above is about compilation and unit tests. The manual test plan is the real
+check, and it has not been performed.
 
 ## Constraints
 

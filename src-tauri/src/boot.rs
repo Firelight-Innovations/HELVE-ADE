@@ -111,7 +111,33 @@ const SCAN_STEPS: u8 = 3;
 /// the same "nothing reported yet" fallback shape this module would have
 /// produced for step 1 anyway.
 pub(crate) fn total_steps() -> u8 {
-    SCAN_STEPS + apps::roster().len() as u8
+    SCAN_STEPS + expected().len() as u8
+}
+
+/// Which apps this launch is actually waiting on.
+///
+/// Not the whole registry, which is what it used to be, and the difference is
+/// four seconds on most launches. Boot waits for every app it expects to report
+/// `helve/painted` and gives up after `APP_BOOT_TIMEOUT` on any that do not — so
+/// while every app was docked at startup, waiting on the roster was the same
+/// thing as waiting on what was on screen. It no longer is: a session restores
+/// the surfaces it had open, and a first run opens Home alone. Waiting on the
+/// roster would mean holding the splash for the full timeout on every launch
+/// where Files happens not to be open, for a frame that was never going to
+/// report because it was never mounted.
+///
+/// Set once by [`start`], from the layout that has already been restored by the
+/// time it is called. The fallback is the full roster, which is only reached if
+/// something asks before boot has begun.
+static EXPECTED: OnceLock<Vec<(String, String)>> = OnceLock::new();
+
+fn expected() -> Vec<(String, String)> {
+    EXPECTED.get().cloned().unwrap_or_else(|| {
+        apps::roster()
+            .into_iter()
+            .map(|(id, name)| (id.to_string(), name.to_string()))
+            .collect()
+    })
 }
 
 /// Where `painted` puts a report for the boot thread to pick up.
@@ -149,7 +175,12 @@ static PAINTED: OnceLock<Mutex<Sender<String>>> = OnceLock::new();
 /// on a channel waiting for the apps to report in (`await_apps`), which is
 /// several seconds of doing nothing in the worst case. On a shared async worker
 /// that would be several seconds of starving everything queued behind it.
-pub fn start(app: AppHandle) {
+/// `waiting_for` is the apps that will actually mount this launch — see
+/// [`EXPECTED`]. `lib.rs` reads it off the layout it has just restored, which is
+/// why `restore_session` has to run before this does.
+pub fn start(app: AppHandle, waiting_for: Vec<(String, String)>) {
+    let _ = EXPECTED.set(waiting_for);
+
     // Created here, on the caller's thread, rather than inside the closure
     // below: the channel has to exist before anything can report into it, and
     // `start` is called from `setup` while the windows that could report are
@@ -245,7 +276,7 @@ pub fn painted(id: &str) {
 /// reported and left behind rather than followed. A splash window with no exit
 /// is the one failure here the user cannot do anything about.
 fn await_apps(app: &AppHandle, reports: Receiver<String>, total: u8) {
-    let mut pending = apps::roster();
+    let mut pending = expected();
     if pending.is_empty() {
         return;
     }
@@ -292,7 +323,7 @@ fn await_apps(app: &AppHandle, reports: Receiver<String>, total: u8) {
 /// cannot disagree with `total`: with two apps outstanding of two, this is step
 /// 4 of 5 — the step *in progress* — matching how the three scan steps above
 /// report themselves as they begin.
-fn waiting_on(pending: &[(&str, &str)], total: u8) -> BootStatus {
+fn waiting_on(pending: &[(String, String)], total: u8) -> BootStatus {
     BootStatus::Working {
         step: total - pending.len() as u8 + 1,
         total,
@@ -305,8 +336,8 @@ fn waiting_on(pending: &[(&str, &str)], total: u8) -> BootStatus {
 /// Named rather than counted because the names are the informative part — a
 /// splash stuck on one of them says which app is the slow one, where "starting
 /// apps" for four seconds says only that something is wrong.
-fn starting_label(pending: &[(&str, &str)]) -> String {
-    let names: Vec<&str> = pending.iter().map(|(_, name)| *name).collect();
+fn starting_label(pending: &[(String, String)]) -> String {
+    let names: Vec<&str> = pending.iter().map(|(_, name)| name.as_str()).collect();
     // `split_last` hands back the final element and everything before it, which
     // is exactly the shape an "a, b and c" list needs. `None` is unreachable —
     // `await_apps` returns early on an empty roster — and answers with something
@@ -321,8 +352,8 @@ fn starting_label(pending: &[(&str, &str)]) -> String {
 
 /// Stop waiting and say so. The splash goes on to `Ready` either way; this is
 /// the only trace left that an app never answered, so it names which.
-fn give_up(pending: &[(&str, &str)]) {
-    let names: Vec<&str> = pending.iter().map(|(_, name)| *name).collect();
+fn give_up(pending: &[(String, String)]) {
+    let names: Vec<&str> = pending.iter().map(|(_, name)| name.as_str()).collect();
     eprintln!(
         "helve: {} did not report a painted frame within {}s — showing the window anyway",
         names.join(", "),
@@ -427,19 +458,29 @@ fn arm_watchdog(app: AppHandle) {
 mod tests {
     use super::*;
 
+    /// The helpers take owned pairs, because what boot waits on is now derived
+    /// from the restored layout rather than borrowed from the `&'static`
+    /// registry. Tests still read better written as string literals, so they
+    /// are converted here rather than at every call.
+    fn pairs(from: &[(&str, &str)]) -> Vec<(String, String)> {
+        from.iter()
+            .map(|(id, name)| ((*id).to_string(), (*name).to_string()))
+            .collect()
+    }
+
     /// The label is the only thing on the splash that reads as a sentence, and
     /// it is built from a list whose length is whatever `apps::REGISTRY` says.
     /// Both list forms are worth pinning: today's registry produces the second
     /// one and a third app would silently produce the third.
     #[test]
     fn the_label_names_what_is_left() {
-        assert_eq!(starting_label(&[("home", "Home")]), "Starting Home");
+        assert_eq!(starting_label(&pairs(&[("home", "Home")])), "Starting Home");
         assert_eq!(
-            starting_label(&[("home", "Home"), ("files", "Files")]),
+            starting_label(&pairs(&[("home", "Home"), ("files", "Files")])),
             "Starting Home and Files"
         );
         assert_eq!(
-            starting_label(&[("a", "A"), ("b", "B"), ("c", "C")]),
+            starting_label(&pairs(&[("a", "A"), ("b", "B"), ("c", "C")])),
             "Starting A, B and C"
         );
     }
@@ -449,7 +490,7 @@ mod tests {
     /// three scans are done and the fourth is under way.
     #[test]
     fn the_step_counts_the_apps_already_heard_from() {
-        let both = [("home", "Home"), ("files", "Files")];
+        let both = pairs(&[("home", "Home"), ("files", "Files")]);
         let BootStatus::Working { step, total, .. } = waiting_on(&both, 5) else {
             panic!("waiting on an app is a Working status");
         };
