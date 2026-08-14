@@ -14,16 +14,32 @@
 //! never "it stops opening". [`ProjectInfo::initialized`] is how the frontend
 //! tells the two apart, so it can offer to set one up rather than refusing it.
 //!
-//! ## Why there is no broadcast
+//! ## The broadcast
 //!
-//! `ShellState` emits `shell:state` on every mutation because several windows
-//! render it. Nothing here does that, and the omission is deliberate. The one
-//! surface that draws this is Home, which lives in an iframe and reaches Rust
-//! over transport B — a path that carries request/response and has no event
-//! channel until the broker exists. So every mutator below returns the *whole*
-//! new [`ProjectSnapshot`] and Home renders the answer it got back. A broadcast
-//! today would be a mechanism with no subscriber, and the shape of the one it
-//! eventually needs is a question for when there is something to receive it.
+//! Every mutator below returns the *whole* new [`ProjectSnapshot`], and Home
+//! renders the answer it got back — Home reaches Rust over transport B, which
+//! carries request/response, and a surface that asked the question can just
+//! read the reply.
+//!
+//! Home is no longer the only surface that draws this, though, and the second
+//! one cannot work that way. Files renders a tree rooted at the open project
+//! and has to redraw when that changes, with no request of its own to hang the
+//! answer off — nothing asked it anything. So [`open`] and [`close`] also emit
+//! [`PROJECT_CHANGED_EVENT`], exactly the way `ShellState` emits `shell:state`.
+//! The shell window listens for it and forwards it into every first-party app
+//! frame as a transport-B `event` message (`src/shell/toolwindow/
+//! ToolWindow.tsx`); that forwarding *is* the event channel this section used
+//! to say did not exist.
+//!
+//! The payload is the whole snapshot rather than a delta, for `shell:state`'s
+//! reasons: it is small, it changes only on deliberate user action, and a
+//! subscriber can never apply half of it. A delta would additionally oblige an
+//! app that mounted late to have heard every earlier one, which nothing here
+//! can promise — Tauri events have no replay.
+//!
+//! What this is not is a filesystem watcher. It fires when *which project is
+//! open* changes, and never because something inside one did. An app that needs
+//! to notice a file appearing still has to ask again.
 
 mod marker;
 mod store;
@@ -32,7 +48,11 @@ use crate::error::{AppError, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// The event a project switch broadcasts on, carrying a whole
+/// [`ProjectSnapshot`] — see the module doc.
+pub const PROJECT_CHANGED_EVENT: &str = "project:changed";
 
 /// One project, as a frontend needs to see it.
 ///
@@ -171,7 +191,12 @@ pub fn open(app: &AppHandle, path: &Path) -> Result<ProjectSnapshot> {
     }
 
     retitle(app);
-    Ok(snapshot(app))
+
+    // The emit lives here rather than in each mutator, because `create` and
+    // `initialize` both finish by calling this: one user-visible change, one
+    // event. Emitting in all four would fire twice for a create, and a
+    // subscriber cannot tell that from two real switches.
+    Ok(changed(app))
 }
 
 /// Make `dir` a HELVE project and open it.
@@ -215,11 +240,17 @@ pub fn close(app: &AppHandle) -> ProjectSnapshot {
     }
 
     retitle(app);
-    snapshot(app)
+    changed(app)
 }
 
 /// Drop one entry from the Recent list. Deletes nothing on disk — this is the
 /// history forgetting a project, not HELVE removing one.
+///
+/// The only mutator that does not broadcast, and provably safely: `Stored::
+/// forget` touches `recents` and never `open`, so nothing a subscriber to
+/// `project:changed` acts on can differ afterwards. Home draws the Recent list
+/// and gets the new one as this call's return value. Firing here would wake
+/// every app frame to tell it the thing it watches did not change.
 pub fn forget(app: &AppHandle, path: &Path) -> ProjectSnapshot {
     {
         let state = app.state::<ProjectState>();
@@ -232,6 +263,23 @@ pub fn forget(app: &AppHandle, path: &Path) -> ProjectSnapshot {
 }
 
 // --- helpers -----------------------------------------------------------------
+
+/// Take the new snapshot, broadcast it, and hand it back to the caller who is
+/// also going to return it.
+///
+/// Same posture as `ShellState::mutate`, deliberately: `app.emit` with the
+/// result dropped. A failed emit means there is no webview left to hear it,
+/// which is not a condition a mutator can act on or a caller can fix — and
+/// turning it into an error would fail an `open` that had already succeeded.
+/// Every caller has dropped the store's write lock before reaching here, for
+/// the reason `mutate` documents: `emit` goes into Tauri's event machinery, and
+/// holding a lock across a call that may want to read the same state is how a
+/// deadlock gets written.
+fn changed(app: &AppHandle) -> ProjectSnapshot {
+    let snapshot = snapshot(app);
+    let _ = app.emit(PROJECT_CHANGED_EVENT, &snapshot);
+    snapshot
+}
 
 /// Build a [`ProjectInfo`] by asking the filesystem what is true right now.
 ///

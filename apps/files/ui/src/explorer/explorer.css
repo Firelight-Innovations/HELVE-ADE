@@ -1,0 +1,271 @@
+/*
+ * The tree: its header, its filter, its rows, and its right-click menu.
+ *
+ * The pane it sits in is `apps/files/ui/src/files.css` — that file owns the
+ * split, the divider and the viewer host, and nothing here repeats them. The
+ * divider's own styling lives there too; `Splitter.tsx` writes the behaviour
+ * against classes this file never sees.
+ *
+ * Every colour is `src/tokens.css`. There is not a hex in this file and there
+ * may not be: an app inventing its own palette is visibly not the same product
+ * the moment it sits beside the shell. The one carve-out anywhere in Files is
+ * the Material file icons, argued for in `icons/materialIcons.ts` — and those
+ * arrive as `<img>`, so they never touch this sheet either.
+ *
+ * No transition and no animation below, on anything. A tree row is one of up
+ * to thirty thousand, and `src/shell/worktree/WorktreeView.tsx` states the rule
+ * the whole list inherits: native scroll speed, nothing moving that the user
+ * did not move.
+ */
+
+.explorer {
+  /* The width is a motion value written by the splitter, so the flex algorithm
+     must keep its hands off it in both directions. */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+}
+
+/* --- header ---------------------------------------------------------------
+   The project's name and one control. No title: the switcher tab above this
+   frame has already said what app this is, and VS Code's explorer earns its
+   density by spending no vertical space repeating itself. */
+
+.explorer__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px 6px 10px;
+}
+
+/* `.app__label` carries the type: uppercase, tracked out, quiet. Only the box
+   changes, and the selector is deliberately specific enough to win against it
+   whichever order the two sheets land in. */
+.explorer__head .explorer__root {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer__refresh {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.explorer__refresh:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.explorer__refresh:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* --- filter ---------------------------------------------------------------
+   Narrows the rows already loaded. It is drawn as an ordinary field rather
+   than as search chrome precisely because it is not a search — see the empty
+   state in `Explorer.tsx`. */
+
+.explorer__filter {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0 10px 7px;
+  padding: 3px 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text);
+  font: 400 11.5px/1.5 var(--sans);
+}
+
+.explorer__filter::placeholder {
+  color: var(--text-dim-3);
+}
+
+.explorer__filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* The webkit clear button draws its own grey X that answers to nothing in the
+   palette. `type="search"` is kept for what it means, not for what it draws. */
+.explorer__filter::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.explorer__note {
+  flex: 0 0 auto;
+  margin: 2px 10px 8px;
+}
+
+/* --- the list -------------------------------------------------------------
+   One scrollport, one tab stop, and two spacer divs standing in for the rows
+   that are not mounted. `--explorer-row` is set inline on `.explorer` from
+   `ROW_HEIGHT` in useVirtualRows.ts — the arithmetic that decides which rows
+   exist and the rule that decides how tall they are must be the same number,
+   and there is no fallback here on purpose: two sources that merely disagree
+   would scroll to the wrong place with everything still compiling. */
+
+.explorer__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* The focus ring belongs on the cursor row, not on the scrollport around it
+     — see `.explorer__row[data-cursor]` below. */
+  outline: none;
+}
+
+.explorer__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--explorer-row);
+  padding-right: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.explorer__row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Where the keyboard is. */
+.explorer__row[data-cursor] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Only while the tree actually holds focus, and `:focus` rather than
+   `:focus-visible`: the container is focused by clicking a row inside it, which
+   does not satisfy the heuristic, and the ring would then never appear for
+   someone who clicked once and used the arrows after. */
+.explorer__scroll:focus .explorer__row[data-cursor] {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* The file showing in the viewer, which is not the same fact as the cursor and
+   so is not the same mark. The rule at the leading edge is the idiom
+   `apps/shared/app.css` already uses for a current row. */
+.explorer__row[data-open] {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--text);
+}
+
+.explorer__chevron {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim-2);
+}
+
+/* One drawing, turned. Pointing right and pointing down are the same triangle;
+   a second path would be a second thing to keep at the same stroke weight. */
+.explorer__row[aria-expanded="true"] .explorer__chevron {
+  transform: rotate(90deg);
+}
+
+/* A file's placeholder. Present, invisible, and exactly as wide as the glyph it
+   stands in for, so a folder of files lines up with its sibling directories
+   instead of ragging one column to the left. */
+.explorer__chevron--none {
+  visibility: hidden;
+}
+
+.explorer__icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.explorer__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+/* A directory that would not list. The row still exists and can still be
+   pointed at — it just says why it shows nothing. */
+.explorer__tag {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--err);
+}
+
+/* --- the right-click menu -------------------------------------------------
+   The shell's popover surface, matched deliberately: `--surface` on `--line`,
+   6px radius, the same drop shadow every menu in this product casts. A
+   first-party app's menu that looked like its own idea would read as a
+   different application. */
+
+.explorer__menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 200px;
+  padding: 6px 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+
+.explorer__menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  appearance: none;
+  border: none;
+  background: none;
+  font: 400 12px/1 var(--sans);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.explorer__menu-item:hover,
+.explorer__menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.explorer__menu-rule {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--line);
+}
+
+/* A failed item keeps the menu open and says why. It is the only error surface
+   the menu has; see the note in `ContextMenu.tsx`. */
+.explorer__menu-error {
+  margin: 6px 6px 0;
+  max-width: 320px;
+}

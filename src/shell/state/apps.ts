@@ -52,21 +52,28 @@ export function useApps(): AppInfo[] {
  *
  * Under `?fake=1` an app's frontend still mounts and still completes its
  * handshake, because both of those are the shell's own work. What it cannot do
- * is reach Rust — so a small set of methods is answered from a fixture instead
- * (see `fakeAppCall` for which, and for why the rest deliberately are not), and
- * everything else is refused with the same code a method that failed inside its
- * handler would use. Both paths are worth having: the first makes a pane's
- * layout measurable in a browser, the second makes its failure path reachable.
+ * is reach Rust, so the call goes to `fakeAppCall` instead. That answers Home's
+ * reads and the whole of `files/*` from fixtures, refuses what the backend
+ * would refuse, and returns `undefined` for everything left — which is refused
+ * here, with the same code a method that failed inside its handler would use.
+ *
+ * All three outcomes are load-bearing. The answers are what make a pane's
+ * layout, its tree, and its viewers measurable in a browser; the fixture's own
+ * refusals are what keep an app's error paths reachable; and the last one keeps
+ * this from claiming a health it does not have — the three actions that open a
+ * *native folder picker* have no answer here that would not be an invention,
+ * and a fixture that looked healthier than the backend is the exact failure
+ * that once hid an empty switcher bar.
  */
-export function callApp(id: string, method: string, params?: unknown): Promise<unknown> {
+export async function callApp(id: string, method: string, params?: unknown): Promise<unknown> {
   if (isFake()) {
-    const fixture = fakeAppCall(method, params);
-    if (fixture !== undefined) return Promise.resolve(fixture);
+    const fixture = await fakeAppCall(method, params);
+    if (fixture !== undefined) return fixture;
 
-    return Promise.reject({
+    throw {
       code: HelveErrorCode.InternalError,
       message: `${method}: no backend (browser mode)`,
-    });
+    };
   }
   return appCall(id, method, params);
 }

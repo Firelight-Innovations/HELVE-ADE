@@ -8,14 +8,28 @@
  * not anyone opens a diff. The `lazy` boundary there is what keeps that cost
  * on the first click rather than on startup.
  *
- * Imported from `monaco-editor/esm/vs/editor/editor.api`, not `.../editor.main`
- * — `editor.main` registers every bundled language, and the IntelliSense
+ * Files (`apps/files`) also uses Monaco, wired separately in
+ * `apps/files/ui/src/viewer/monaco.ts`. The two do not collide: an app runs in
+ * its own iframe, so each has its own `self.MonacoEnvironment` and its own
+ * theme registry. They do share chunks — both entries reach the same
+ * `monaco-editor` modules, so Rollup hoists them into one shared dynamic
+ * chunk. That is fine and deliberate: it is dynamic on both sides, so
+ * `index.html` preloads none of it.
+ *
+ * Imported from `monaco-editor/editor/editor.api`, not `.../editor.main` —
+ * `editor.main` registers every bundled language, and the IntelliSense
  * infrastructure behind them, as a side effect of import. None of that is
  * needed to show a read-only diff. The cost of that choice: with only
  * `editor.api` pulled in, Monaco has no tokenizer for any language, so
  * `language` below does not yet produce syntax highlighting. It is still
  * accepted as a prop so a caller doesn't have to change when highlighting is
  * wired in later.
+ *
+ * (The short specifier is not a shorthand for the long one: monaco-editor
+ * 0.56's `exports` map is `"./*": "./esm/vs/*.js"`, so
+ * `monaco-editor/esm/vs/editor/editor.api` would resolve to
+ * `esm/vs/esm/vs/editor/editor.api.js` and fail. The code below has always been
+ * right; this comment used to name a path that does not exist.)
  */
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor/editor/editor.api";
@@ -45,6 +59,15 @@ self.MonacoEnvironment = {
 // background, matching the --accent-wash convention already in tokens.css,
 // and a stronger alpha for the character-level highlight within a changed
 // line.
+//
+// The four diff colours are 8-digit hex rather than `rgba(...)`, and that is
+// not a style preference. Monaco parses a theme colour with `Color.fromHex`,
+// which is `parseHex(hex) || Color.red` (base/common/color.js:182), and
+// `parseHex` accepts only `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA`. A
+// perfectly valid CSS `rgba()` string is not rejected loudly — it silently
+// becomes **opaque red**. These four were written that way and did render red;
+// nothing mounts this component, so nobody had seen it. The alpha byte is
+// round(alpha * 255): 0.08 is 0x14, 0.25 is 0x40.
 monaco.editor.defineTheme("helve-dark", {
   base: "vs-dark",
   inherit: true,
@@ -52,10 +75,10 @@ monaco.editor.defineTheme("helve-dark", {
   colors: {
     "editor.background": "#14161a", // --bg
     "editor.foreground": "#e4e7ec", // --text
-    "diffEditor.insertedLineBackground": "rgba(95, 179, 122, 0.08)", // --ok, wash alpha
-    "diffEditor.insertedTextBackground": "rgba(95, 179, 122, 0.25)", // --ok
-    "diffEditor.removedLineBackground": "rgba(217, 99, 95, 0.08)", // --err, wash alpha
-    "diffEditor.removedTextBackground": "rgba(217, 99, 95, 0.25)", // --err
+    "diffEditor.insertedLineBackground": "#5fb37a14", // --ok, wash alpha
+    "diffEditor.insertedTextBackground": "#5fb37a40", // --ok
+    "diffEditor.removedLineBackground": "#d9635f14", // --err, wash alpha
+    "diffEditor.removedTextBackground": "#d9635f40", // --err
   },
 });
 

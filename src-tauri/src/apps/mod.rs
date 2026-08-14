@@ -85,7 +85,7 @@ const REGISTRY: &[Registered] = &[
     Registered {
         id: "files",
         name: "Files",
-        description: "Browse and read the files of the open checkout.",
+        description: "Browse the open project, and read or edit what is in it.",
         call: files::call,
     },
 ];

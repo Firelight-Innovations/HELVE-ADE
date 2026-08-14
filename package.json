@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "dev:agent": "vite --mode agent",
-    "build": "pnpm run build:bridge && tsc && vite build",
+    "build": "pnpm run build:bridge && pnpm run generate:icons && tsc && vite build",
     "build:bridge": "pnpm --filter @helve/bridge build",
+    "generate:icons": "node scripts/generate-file-icons.mjs",
+    "postinstall": "pnpm run generate:icons",
     "preview": "vite preview",
     "tauri": "tauri",
     "app": "tauri dev",
@@ -23,7 +25,10 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "framer-motion": "^13.1.0",
+    "material-icon-theme": "^5.37.0",
+    "mermaid": "^11.16.1",
     "monaco-editor": "^0.56.0",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

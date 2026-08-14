@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { ToolPresentation } from "../contract";
 // The wire types come from the bridge package's source by relative path rather
 // than from `@helve/bridge` itself. The root package does depend on that
@@ -7,6 +8,7 @@ import type { ToolPresentation } from "../contract";
 // which is the tool half of transport B and reaches for `window.parent` at
 // module load. Types and the error-code table have no such side effect.
 import type {
+  EventMessage,
   HelloMessage,
   ReadyMessage,
   RequestMessage,
@@ -14,6 +16,7 @@ import type {
 } from "../../../packages/bridge/src/protocol";
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
 import { callApp } from "../state/apps";
+import { isFake } from "../state/fakeBackend";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
 import "./toolwindow.css";
@@ -37,6 +40,11 @@ import "./toolwindow.css";
  * Silence is the worse answer: the bridge times a pending call out after thirty
  * seconds, so a tool asking a question this build cannot answer would hang for
  * half a minute before finding out.
+ *
+ * Traffic runs the other way too: a Tauri event the backend broadcasts is
+ * forwarded into app frames as a transport-B `event` message. That is the only
+ * way anything reaches a frame unprompted — every other message here answers
+ * one the frame sent first.
  */
 export default function ToolWindow({
   tools,
@@ -57,11 +65,20 @@ export default function ToolWindow({
   // `isApp` is carried here rather than looked up in `tools` when a message
   // arrives, so routing is decided by the same registration that established
   // identity. A second lookup would be a second chance to disagree.
-  const frames = useRef<Map<Window, { id: string; isApp: boolean }>>(new Map());
+  //
+  // `origin` is filled in when the frame says `hello`, and is `null` until it
+  // does. A reply always has the message it is replying to on hand and can read
+  // the origin off that; an event has no such message, so the one the frame
+  // announced itself from is remembered instead. Nothing is posted to a frame
+  // still holding `null` — a frame that has not said hello has no listener yet,
+  // and there is no origin to aim at that wouldn't be a guess.
+  const frames = useRef<Map<Window, { id: string; isApp: boolean; origin: string | null }>>(
+    new Map(),
+  );
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
 
   const registerFrame = useCallback((toolId: string, isApp: boolean, win: Window) => {
-    frames.current.set(win, { id: toolId, isApp });
+    frames.current.set(win, { id: toolId, isApp, origin: null });
   }, []);
 
   const unregisterFrame = useCallback((win: Window) => {
@@ -94,6 +111,7 @@ export default function ToolWindow({
           session: { engineEndpoint: null, projectPath: null },
         };
         source.postMessage(reply, origin);
+        frame.origin = origin;
         setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
         return;
       }
@@ -134,6 +152,55 @@ export default function ToolWindow({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  // The third direction: Rust -> shell -> app frame. `project:changed` is the
+  // first thing to travel it, and everything below is deliberately generic
+  // about the payload — the shell relays, it does not interpret.
+  //
+  // Apps only. A tool frame is a separate repository's code whose core this
+  // build cannot reach at all (see the `isApp` branch above, which answers its
+  // requests with an error saying so). Telling it the project changed would be
+  // handing it news it has no way to act on, on a channel whose whole value is
+  // that everything arriving on it means something.
+  useEffect(() => {
+    // No Tauri event system in a plain browser: an unguarded `listen` rejects
+    // on mount under `?fake=1` and takes the fake-backend run with it. Same
+    // guard, same reason, as `state/terminals.ts`. Nothing emits `project:
+    // changed` in fake mode, so there is nothing to stand in for here either.
+    if (isFake()) return;
+
+    // `listen` is async and an effect's cleanup must be returned synchronously,
+    // so the subscription is set up in the background and `live` covers the gap
+    // — an unmount before Tauri registers the listener must still end up with
+    // nothing listening.
+    let live = true;
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      const stop = await listen<unknown>("project:changed", (e) => {
+        if (!live) return;
+        for (const [win, frame] of frames.current) {
+          if (!frame.isApp || frame.origin === null) continue;
+          win.postMessage(
+            {
+              helve: 1,
+              kind: "event",
+              event: "project:changed",
+              payload: e.payload,
+            } satisfies EventMessage,
+            frame.origin,
+          );
+        }
+      });
+      if (!live) return stop();
+      unlisten = stop;
+    })();
+
+    return () => {
+      live = false;
+      unlisten?.();
+    };
   }, []);
 
   return (

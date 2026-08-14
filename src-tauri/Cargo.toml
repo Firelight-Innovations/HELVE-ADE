@@ -53,6 +53,11 @@ helve-tool-manifest = { path = "../crates/helve-tool-manifest" }
 # the drift this crate exists to prevent.
 helve-rpc = { path = "../crates/helve-rpc" }
 
+# `files/read-bytes` has to hand bytes to the frontend through a JSON value,
+# which has no byte variant — see the doc on that method for why the answer is
+# base64 today and an asset protocol later.
+base64 = "0.22"
+
 # Serialization. `derive` is the feature that enables `#[derive(Serialize)]`.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
