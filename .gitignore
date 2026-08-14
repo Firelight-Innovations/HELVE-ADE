@@ -20,3 +20,10 @@ pnpm-debug.log*
 # The build directory is at the workspace root now, not under src-tauri/.
 # (src-tauri/ still has its own .gitignore for the schemas Tauri generates.)
 /target/
+
+# Generated file icons
+# Built from the `material-icon-theme` dependency by
+# `scripts/generate-file-icons.mjs`. Checking in 1115 SVGs and a 400 KB lookup
+# table would be vendoring a package the manifest already declares.
+/public/icons/material/
+/apps/files/ui/src/icons/manifest.generated.ts

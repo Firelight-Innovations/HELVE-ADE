@@ -1,0 +1,163 @@
+/**
+ * How a file becomes a pane. The one file to edit when adding a format.
+ *
+ * A viewer is a descriptor — a predicate and a dynamic `import()` — and the
+ * list below is ordered, most specific first, terminated by two fallbacks that
+ * always match. Nothing else in the app knows this list exists: the explorer
+ * opens a path, `Viewer.tsx` asks here what to mount, and that is the whole
+ * coupling.
+ *
+ * **`load` must stay a dynamic `import()`.** It is not a style choice. `apps/`
+ * is not a pnpm workspace member, so Monaco, pdf.js and mermaid all sit in the
+ * repository root's dependencies with nothing scoping them to this app — the
+ * only thing keeping them out of the Files entry chunk, and out of the shell's,
+ * is that the sole path to each is behind one of these thunks. A static
+ * `import` at the top of this file would put all three in every bundle that
+ * touches the explorer.
+ *
+ * What this deliberately does not do: pick a viewer from the file's *contents*.
+ * Rust never sniffs a MIME type and neither does this. Extension and filename
+ * are the whole input, with one exception the type system cannot express — the
+ * text viewer is the fallback because "is this UTF-8" is not knowable from a
+ * name, so it tries the read and hands off to `unsupported` when the backend
+ * says no. See `isNotText` in `../rpc`.
+ */
+import type { ComponentType } from "react";
+import type { Stat } from "../rpc";
+
+/** A file, as a viewer receives it. A `Stat` that is known to be a file. */
+export interface OpenFile {
+  path: string;
+  name: string;
+  /** Lowercased, no dot, `""` when the name has none. See `extensionOf`. */
+  ext: string;
+  size: number | null;
+  mtime: number | null;
+}
+
+export interface ViewerProps {
+  file: OpenFile;
+
+  /**
+   * Report whether this viewer is holding unsaved edits.
+   *
+   * A read-only viewer never calls it. Called on change, not on every render —
+   * the tab strip draws a dot from this and nothing else.
+   */
+  onDirty(dirty: boolean): void;
+
+  /**
+   * Hand the app a way to save from outside the viewer, or `null` to withdraw
+   * it on unmount.
+   *
+   * Needed because Ctrl+S has to work when focus is in the tab strip, and
+   * because closing a dirty tab offers to save — neither of which can reach
+   * into a Monaco instance that lives behind a dynamic import. A read-only
+   * viewer never calls this either.
+   */
+  registerSave(save: (() => Promise<void>) | null): void;
+
+  /**
+   * Show this same file under a different viewer, by id.
+   *
+   * Two callers, and they are the reason this exists rather than a bare
+   * fallback: the text viewer calls it with `"unsupported"` when the read comes
+   * back not-UTF-8, and the SVG viewer uses it to toggle between the rendered
+   * image and its source — an SVG being genuinely both.
+   */
+  reopenWith(viewerId: string): void;
+}
+
+export interface ViewerDescriptor {
+  /** Stable across releases: `reopenWith` and any future "Open with…" name it. */
+  id: string;
+  /** Human-readable, for a future "Open with…" menu. Not drawn anywhere yet. */
+  label: string;
+  /** Whether this viewer can produce unsaved edits. Drives the close prompt. */
+  editable: boolean;
+  match(file: OpenFile): boolean;
+  load(): Promise<{ default: ComponentType<ViewerProps> }>;
+}
+
+/** Set membership reads better than a chain of `||` and is the same cost. */
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "ico",
+  "avif",
+]);
+
+export const VIEWERS: ViewerDescriptor[] = [
+  {
+    id: "image",
+    label: "Image",
+    editable: false,
+    match: (file) => IMAGE_EXTENSIONS.has(file.ext),
+    load: () => import("./ImageViewer"),
+  },
+  {
+    // Above `image` in intent but below it in effect — the sets are disjoint,
+    // so the order between these two never decides anything. It is listed
+    // separately because an SVG is a document as well as a picture, and the
+    // viewer that knows that is not the one that draws a PNG.
+    id: "svg",
+    label: "SVG",
+    editable: false,
+    match: (file) => file.ext === "svg",
+    load: () => import("./SvgViewer"),
+  },
+  {
+    id: "pdf",
+    label: "PDF",
+    editable: false,
+    match: (file) => file.ext === "pdf",
+    load: () => import("./PdfViewer"),
+  },
+  {
+    id: "mermaid",
+    label: "Mermaid diagram",
+    editable: false,
+    match: (file) => file.ext === "mmd" || file.ext === "mermaid",
+    load: () => import("./MermaidViewer"),
+  },
+  {
+    // The fallback, not an extension list. Anything that is not one of the
+    // above is *tried* as text, because a name cannot say whether bytes decode.
+    id: "text",
+    label: "Text",
+    editable: true,
+    match: () => true,
+    load: () => import("./TextViewer"),
+  },
+  {
+    // Never reached by `pick` — `text` matches everything above it. Reachable
+    // only through `reopenWith("unsupported")`, which is exactly what the text
+    // viewer does when the read fails as not-UTF-8. Listed here so it has an
+    // id and a label like any other viewer rather than being a special case
+    // hidden inside `Viewer.tsx`.
+    id: "unsupported",
+    label: "Unsupported",
+    editable: false,
+    match: () => true,
+    load: () => import("./UnsupportedViewer"),
+  },
+];
+
+/** The first viewer that claims this file. Never `undefined` — `text` matches all. */
+export function pick(file: OpenFile): ViewerDescriptor {
+  return VIEWERS.find((viewer) => viewer.match(file)) ?? VIEWERS[VIEWERS.length - 1];
+}
+
+/** A viewer by id, for `reopenWith`. `undefined` if the id is not registered. */
+export function byId(id: string): ViewerDescriptor | undefined {
+  return VIEWERS.find((viewer) => viewer.id === id);
+}
+
+/** A `Stat` narrowed to what a viewer needs, with the extension worked out. */
+export function toOpenFile(stat: Stat, ext: string): OpenFile {
+  return { path: stat.path, name: stat.name, ext, size: stat.size, mtime: stat.mtime };
+}

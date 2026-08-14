@@ -1,0 +1,249 @@
+/**
+ * A file, editable, in Monaco.
+ *
+ * This is also the registry's catch-all. `registry.ts` sends every file here
+ * that no other viewer claimed, because whether bytes decode as UTF-8 is not
+ * knowable from a name — so the read is the test, and a `not a UTF-8 text file`
+ * rejection is handed on with `reopenWith("unsupported")`. Any other failure is
+ * shown as itself.
+ *
+ * What this deliberately does not own:
+ *
+ * - **Monaco.** Every import of it is in `./monaco`, so this file is a React
+ *   component and a state machine and nothing else.
+ * - **The buffer.** The model, its saved version, its base mtime and its view
+ *   state live in `documents` (`../tabs/useOpenFiles`), keyed by path and
+ *   outliving this component. That is the whole reason undo history, cursor and
+ *   scroll survive a tab switch: switching tabs unmounts this, and if the model
+ *   were a `useRef` here it would go with it.
+ * - **Writing.** `saveDocument` is the one implementation; this file decides
+ *   what to draw when it fails, not what to send.
+ * - **Which viewer a file belongs to.** The one exception is the way *back*
+ *   from a source toggle; see `rendered` below, which asks `pick` rather than
+ *   knowing anything about SVG or Mermaid.
+ */
+import { useEffect, useRef, useState } from "react";
+import { pick, type ViewerProps } from "./registry";
+import { bindSave, createModel, mountEditor } from "./monaco";
+import { documents, requestReload, saveDocument, type TabDocument } from "../tabs/useOpenFiles";
+import { describe, formatSize, isNotText, readText, staleWrite } from "../rpc";
+import "./text.css";
+
+export default function TextViewer({ file, onDirty, registerSave, reopenWith }: ViewerProps) {
+  const [doc, setDoc] = useState<TabDocument | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /** Set when a write lost a race, carrying the mtime it lost to. */
+  const [conflict, setConflict] = useState<{ mtime: number | null } | null>(null);
+
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * The three callback props, held in a ref and refreshed on every render.
+   *
+   * `App.tsx` builds all three inline — `onDirty={(d) => files.setDirty(...)}`
+   * — so their identity changes every render. An effect that listed them as
+   * dependencies would tear down and rebuild the editor on each keystroke,
+   * losing the caret every time. Assigned during render rather than in an
+   * effect so that a `readText` promise resolving between commits still calls
+   * the current one.
+   */
+  const latest = useRef({ onDirty, registerSave, reopenWith });
+  latest.current = { onDirty, registerSave, reopenWith };
+
+  /**
+   * Get the buffer for this path: the one already open, or a fresh read.
+   *
+   * Keyed on the path alone. A reload is a *remount* — `App.tsx` puts the tab's
+   * nonce in this component's key — and the store is emptied before the nonce
+   * bumps, so arriving here with a cached document always means a tab switch,
+   * never a stale reload.
+   */
+  useEffect(() => {
+    const open = documents.get(file.path);
+    if (open) {
+      setDoc(open);
+      return;
+    }
+
+    let cancelled = false;
+    setDoc(null);
+    setError(null);
+    setConflict(null);
+
+    void readText(file.path)
+      .then((result) => {
+        if (cancelled) return;
+        const model = createModel(result.text, file.path, file.ext);
+        const next: TabDocument = {
+          model,
+          savedVersionId: model.getAlternativeVersionId(),
+          baseMtime: result.mtime,
+          truncatedAt: result.truncated ? result.limit : null,
+          viewState: null,
+        };
+        documents.put(file.path, next);
+        setDoc(next);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        // The one error that is not an error: this file is not text, and the
+        // registry's fallback ordering meant we were always going to find that
+        // out by trying. Hand it to the viewer that says so.
+        if (isNotText(err)) {
+          latest.current.reopenWith("unsupported");
+          return;
+        }
+        setError(describe("files/read", err));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file.path, file.ext]);
+
+  /**
+   * Mount an editor over the buffer, and take it down again on unmount.
+   *
+   * The model is not disposed here — `documents` owns it, and disposing it on a
+   * tab switch is exactly the leak-in-reverse that would throw away undo
+   * history. A standalone editor only disposes a model it created itself, and
+   * this one was handed one, so `editor.dispose()` leaves it alone.
+   */
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!doc || !host) return;
+
+    const readOnly = doc.truncatedAt !== null;
+    const editor = mountEditor(host, doc.model, readOnly);
+    if (doc.viewState) editor.restoreViewState(doc.viewState);
+    editor.focus();
+
+    // Dirty is a version comparison, not a flag, so undoing back to the saved
+    // text clears the dot instead of leaving it stuck on.
+    const report = () =>
+      latest.current.onDirty(doc.model.getAlternativeVersionId() !== doc.savedVersionId);
+    report();
+    const changes = doc.model.onDidChangeContent(report);
+
+    /**
+     * Resolves on a stale conflict rather than rejecting, because the banner
+     * below *is* the report and it is in the pane the user is looking at —
+     * rejecting as well would put the same news in `App.tsx`'s error line at
+     * the same moment. Every other failure is re-thrown so it lands there.
+     *
+     * The close-a-dirty-tab prompt does not come through here; it calls
+     * `saveDocument` directly, so a stale conflict still stops it closing.
+     */
+    const save = async () => {
+      try {
+        await saveDocument(file.path);
+        setConflict(null);
+        report();
+      } catch (err: unknown) {
+        const stale = staleWrite(err);
+        if (!stale) throw err;
+        setConflict(stale);
+      }
+    };
+
+    latest.current.registerSave(save);
+    bindSave(editor, () => void save());
+
+    return () => {
+      // Before the editor goes, or the caret and scroll go with it.
+      doc.viewState = editor.saveViewState();
+      changes.dispose();
+      latest.current.registerSave(null);
+      editor.setModel(null);
+      editor.dispose();
+    };
+  }, [doc, file.path]);
+
+  if (error) {
+    return <p className="app__error text__failed">{error}</p>;
+  }
+
+  const truncatedAt = doc?.truncatedAt ?? null;
+
+  /**
+   * The way back out of a source toggle.
+   *
+   * `SvgViewer` and `MermaidViewer` each offer "view source", which calls
+   * `reopenWith("text")` and lands here — but the override lives in
+   * `Viewer.tsx` and neither of them can draw the control that undoes it. So
+   * this viewer draws it, and without knowing they exist: whenever the file's
+   * extension would normally have resolved to some *other* viewer, that
+   * descriptor is the one to offer, and its label is the button. A viewer added
+   * later gets the return trip for nothing.
+   *
+   * `pick` and not an extension list, and not `VIEWERS.find` either — `pick`
+   * stops at `text`, which matches everything, so it can never hand back
+   * `unsupported`. A `.ts` file resolves to `text` and shows no control at all.
+   *
+   * Round-tripping loses no edits. `reopenWith` swaps the viewer inside the
+   * same tab; the model stays in `documents`, keyed by path, and comes back
+   * with its undo history and its dirty state intact.
+   */
+  const rendered = pick(file);
+
+  return (
+    <div className="text">
+      {rendered.id !== "text" && (
+        <p className="text__banner text__banner--source">
+          <span className="text__banner-text">Showing the source of {file.name}.</span>
+          <button
+            type="button"
+            className="text__banner-action"
+            onClick={() => reopenWith(rendered.id)}
+          >
+            View as {rendered.label}
+          </button>
+        </p>
+      )}
+
+      {truncatedAt !== null && (
+        <p className="text__banner text__banner--note">
+          Showing the first {formatSize(truncatedAt)} of this file. It is read-only here — saving
+          would delete everything past that point.
+        </p>
+      )}
+
+      {conflict && (
+        <div className="text__banner text__banner--conflict">
+          <span className="text__banner-text">
+            {file.name} changed on disk after you opened it. Saving now would overwrite whatever
+            changed it.
+          </span>
+          <button
+            type="button"
+            className="text__banner-action"
+            onClick={() => requestReload(file.path)}
+          >
+            Reload from disk
+          </button>
+          <button
+            type="button"
+            className="text__banner-action"
+            onClick={() => {
+              // Adopt the mtime the backend reported as the file's current one,
+              // so the retry is a write against *that* version rather than the
+              // one we lost to. Written straight onto the document because the
+              // document is the mutable record of "what this text is based on".
+              const current = documents.get(file.path);
+              if (!current) return;
+              current.baseMtime = conflict.mtime;
+              void saveDocument(file.path)
+                .then(() => setConflict(null))
+                .catch((err: unknown) => setError(describe("files/write", err)));
+            }}
+          >
+            Overwrite
+          </button>
+        </div>
+      )}
+
+      {/* Always rendered, so the ref is set before the mount effect runs. */}
+      <div className="text__editor" ref={hostRef} />
+    </div>
+  );
+}

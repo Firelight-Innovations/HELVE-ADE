@@ -1483,6 +1483,7 @@ dependencies = [
 name = "helve-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "helve-rpc",
  "helve-tool-manifest",
  "portable-pty",

@@ -18,6 +18,11 @@
  * and a packaged build has no way to set it.
  */
 import type { AppInfo, ResolvedTool, StackSnapshot } from "../../bindings";
+// The error-code table, by relative path for the same reason `ToolWindow`
+// reaches for it that way: the shell must not import the bridge's *client*,
+// which is the tool half of transport B and touches `window.parent` at module
+// load. A table of numbers has no such side effect.
+import { HelveErrorCode } from "../../../packages/bridge/src/errors";
 import type { ShellSnapshot, TerminalSessionState } from "./shellState";
 
 let cached: boolean | null = null;
@@ -127,15 +132,18 @@ export function fakeApps(): AppInfo[] {
 
 // --- the fake project store --------------------------------------------------
 //
-// Home is the one app worth answering under `?fake=1`. It is what the shell
+// Home is the first app worth answering under `?fake=1`. It is what the shell
 // opens on, its layout is the thing most worth measuring in a browser, and every
 // state it can be in — a project open, none open, a recent whose folder has gone
 // — is a *layout*, which is exactly what this fixture exists to make reachable.
 //
-// Files is deliberately left rejecting. Answering it would mean faking a
-// filesystem, and a fake directory tree is a much larger lie than a fake list of
-// four projects: it would have to invent file sizes, nesting, and read errors,
-// none of which the pane's geometry actually depends on.
+// Files used to be left rejecting, on the argument that a fake filesystem is a
+// much larger lie than a fake list of four projects — it would have to invent
+// sizes, nesting and read errors, none of which the pane's geometry depended on.
+// That was true until the pane grew a tree, a splitter, tabs, a filter, an icon
+// resolver and five viewers, every one of them frontend and none of them
+// reachable without a filesystem to point at. It is answered now, from the
+// section further down; that section's own note says what the lie still is.
 //
 // The three actions that open a *native folder picker* are not faked either.
 // There is no picker in a browser, and inventing a folder the user did not
@@ -206,12 +214,48 @@ function fakeProjectState() {
 }
 
 /**
- * Answer one app `invoke` from a fixture, or `undefined` to let the caller
- * refuse it as it always has. See the note above for what is answered and why
- * the rest is not.
+ * How long a fixture takes to answer.
+ *
+ * Non-zero on purpose, and applied to every answer here rather than to the
+ * newer ones only. `Promise.resolve(fixture)` settles in a microtask, which is
+ * before the browser paints: a spinner would be code that cannot run under
+ * `?fake=1`, and no call would ever still be in flight when the thing that
+ * asked for it went away — so a viewer that sets state after unmounting, or a
+ * tree that answers with the previous directory's children, would both look
+ * correct here and be wrong against Rust. Thirty milliseconds is long enough
+ * for a frame to be drawn in and short enough that clicking through a tree
+ * does not feel like waiting on anything.
  */
-export function fakeAppCall(method: string, params?: unknown): unknown | undefined {
+const FAKE_LATENCY_MS = 30;
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, FAKE_LATENCY_MS));
+
+/**
+ * A refusal in the shape both hosts refuse with.
+ *
+ * A plain object rather than an `Error` subclass, and that is forced rather
+ * than chosen: the rejection travels to the app frame through `postMessage`,
+ * which structured-clones it, and a cloned `Error` arrives with its own
+ * properties gone — `code` and `data` among them. `ToolWindow`'s
+ * `isErrorPayload` is checking for exactly this shape.
+ */
+function rpcError(code: number, message: string, data?: unknown) {
+  return { code, message, data };
+}
+
+/**
+ * Answer one app `invoke` from a fixture, or `undefined` to let the caller
+ * refuse it as it always has. Throws an `rpcError` envelope for a call the
+ * backend would refuse — a fixture that could only succeed would leave every
+ * error path in an app unreachable, and those are the paths nobody exercises.
+ *
+ * See the note above for what Home answers and why its pickers do not, and the
+ * file-tree section below for the same about `files/*`.
+ */
+export async function fakeAppCall(method: string, params?: unknown): Promise<unknown | undefined> {
   const path = (params as { path?: string } | undefined)?.path;
+
+  await settle();
 
   switch (method) {
     case "home/state":
@@ -234,9 +278,980 @@ export function fakeAppCall(method: string, params?: unknown): unknown | undefin
       return fakeProjectState();
 
     default:
-      return undefined;
+      return filesCall(method, params);
   }
 }
+
+// --- the fake file tree ------------------------------------------------------
+//
+// The Files app, answered. Everything from here to `__helveFakeFiles` serves
+// `files/*` out of one `Map` of path to node, and it is the longest thing in
+// this file on purpose: the explorer, the splitter, the tab strip, the filter,
+// the Material icon resolver and all five viewers are frontend, all of them are
+// drivable in Chrome, and none of them are reachable at all without a
+// filesystem to point at. Port 1420 is the human's, so `?fake=1` is the only
+// browser an agent gets.
+//
+// What this is a lie about, said plainly: there is no disk. Nothing here is
+// slow the way a network share is, no directory is unreadable, and no file
+// changes under an open tab unless `__helveFakeFiles` at the bottom of this
+// section changes it.
+//
+// What it is deliberately *not* a lie about is the contract. Sort order, the
+// truncation cap, `exists: false` for a missing stat, the not-UTF-8 refusal and
+// the stale-write conflict are implemented the way `src-tauri/src/apps/files.rs`
+// implements them, down to the wording of the two messages the frontend matches
+// on. A fixture that answered more agreeably than the backend would hide the
+// exact bugs it exists to surface — the same failure as the switcher bar that
+// was full here and empty in the packaged app.
+//
+// The tree claims to be Windows because this is Windows: backslash-separated
+// absolute paths under `C:\projects\aurora`, with the drive root above it so
+// that "up" out of the project has somewhere real to go.
+
+/** Where `files/root` says the tree starts. */
+const AURORA_ROOT = "C:\\projects\\aurora";
+
+/**
+ * `MAX_READ_BYTES` from `files.rs`, restated.
+ *
+ * The one number in this section that is a copy of a constant in another
+ * language. It travels back to the frontend as `limit` on every read, so the
+ * app never spells it — and if Rust's cap moves, what goes stale here is a
+ * truncation that fires at the wrong length rather than a number a person reads.
+ */
+const READ_LIMIT = 256 * 1024;
+
+interface FakeNode {
+  /** The filesystem's own three, as `EntryKind` in the app's `rpc.ts`. */
+  kind: "dir" | "file" | "other";
+  /** A UTF-8 text file's contents, `null` otherwise. This is how `files/read`
+   *  decides to refuse: Rust learns it by trying to decode, and a fixture that
+   *  stores text and bytes separately knows it up front. */
+  text: string | null;
+  /** Standard base64, no data-URI prefix, for a file whose bytes are not text. */
+  base64: string | null;
+  mtime: number;
+}
+
+const encoder = new TextEncoder();
+
+/** `C:\` + `projects` without doubling the separator the drive root ends with. */
+function joinPath(dir: string, name: string): string {
+  return dir.endsWith("\\") ? `${dir}${name}` : `${dir}\\${name}`;
+}
+
+/**
+ * The containing directory, or `null` where Rust's `Path::parent` says `None`.
+ *
+ * The only interesting case is the drive root: `C:\projects` cuts to `C:`,
+ * which is a drive letter and not a directory, so the separator stays on.
+ */
+function parentOf(path: string): string | null {
+  const cut = path.lastIndexOf("\\");
+  if (cut <= 0 || cut === path.length - 1) return null;
+  return cut === 2 ? path.slice(0, 3) : path.slice(0, cut);
+}
+
+/** `base_name` in `files.rs`: the last component, or the whole path when a
+ *  drive root has none — an explorer headed "" would be worse than one headed
+ *  `C:\`. */
+function baseNameOf(path: string): string {
+  const cut = path.lastIndexOf("\\");
+  const name = cut === -1 ? path : path.slice(cut + 1);
+  return name === "" ? path : name;
+}
+
+/** Crossed with each other to name `node_modules`, and reused as the crate
+ *  names in the log below. Twenty by twelve is 240 packages; see the loop in
+ *  `buildTree` for why that number. */
+const PACKAGE_PREFIXES = [
+  "ansi", "async", "babel", "cache", "chalk", "chokidar", "debug", "esbuild",
+  "eslint", "glob", "graceful", "is", "json5", "lru", "micromatch", "minipass",
+  "postcss", "resolve", "semver", "yargs",
+];
+const PACKAGE_SUFFIXES = [
+  "core", "utils", "parser", "plugin", "loader", "runtime",
+  "config", "helpers", "types", "cli", "stream", "fs",
+];
+
+/**
+ * A log longer than the read cap, built rather than pasted.
+ *
+ * Deliberately ASCII. `files/read` cuts at a byte count, and one byte per
+ * character means the cut cannot land inside a character — the case Rust
+ * handles with `valid_up_to` and this fixture does not, because this is the
+ * only file in the tree that trips the cap and it will never contain one.
+ */
+function buildLog(): string {
+  const lines: string[] = [];
+  for (let i = 0; i < 4200; i += 1) {
+    const minute = String(Math.floor(i / 60) % 60).padStart(2, "0");
+    const second = String(i % 60).padStart(2, "0");
+    const crate = PACKAGE_PREFIXES[i % PACKAGE_PREFIXES.length];
+    lines.push(
+      `[2026-08-11T09:${minute}:${second}Z] aurora::build   compiling ${crate} v1.4.2 (unit ${i})`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The tree, built once and only when something asks for it.
+ *
+ * Lazy where the project list above is a top-level array, because this one is
+ * about a thousand objects and this module is in the shell's bundle whether or
+ * not `?fake=1` is set. Nothing should pay for a fixture it is not using.
+ */
+let treeCache: Map<string, FakeNode> | null = null;
+
+function fileTree(): Map<string, FakeNode> {
+  treeCache ??= buildTree();
+  return treeCache;
+}
+
+function buildTree(): Map<string, FakeNode> {
+  const nodes = new Map<string, FakeNode>();
+
+  // Distinct, descending times a minute apart. Every entry having the same
+  // mtime would make a listing sorted by time look identical to one sorted by
+  // insertion, which is a difference worth being able to see.
+  const start = Date.now();
+  let tick = 0;
+  const nextMtime = () => start - (tick += 60_000);
+
+  const dir = (path: string) =>
+    nodes.set(path, { kind: "dir", text: null, base64: null, mtime: nextMtime() });
+  const file = (path: string, text: string) =>
+    nodes.set(path, { kind: "file", text, base64: null, mtime: nextMtime() });
+  const binary = (path: string, base64: string) =>
+    nodes.set(path, { kind: "file", text: null, base64, mtime: nextMtime() });
+
+  // Above the project, so `files/list`'s `parent` leads somewhere and the
+  // drive root's `parent: null` is reachable.
+  dir("C:\\");
+  dir("C:\\projects");
+  dir(AURORA_ROOT);
+
+  const at = (...parts: string[]) => parts.reduce(joinPath, AURORA_ROOT);
+
+  // Names the Material theme has icons for, and one — `util.spec.ts` — that
+  // resolves the `spec.ts` icon rather than the `ts` one only if the resolver
+  // tries the longer suffix first.
+  file(at("README.md"), README_MD);
+  file(at("package.json"), PACKAGE_JSON);
+  file(at("tsconfig.json"), TSCONFIG_JSON);
+  file(at("Cargo.toml"), CARGO_TOML);
+  file(at(".gitignore"), GITIGNORE);
+
+  dir(at(".github"));
+  dir(at(".github", "workflows"));
+  file(at(".github", "workflows", "ci.yml"), CI_YML);
+
+  dir(at("docs"));
+  file(at("docs", "architecture.mmd"), ARCHITECTURE_MMD);
+  file(at("docs", "design-notes.md"), DESIGN_NOTES_MD);
+
+  dir(at("src"));
+  file(at("src", "main.tsx"), MAIN_TSX);
+  file(at("src", "util.spec.ts"), UTIL_SPEC_TS);
+
+  dir(at("src", "engine"));
+  file(at("src", "engine", "render.rs"), RENDER_RS);
+  file(at("src", "engine", "scene.rs"), SCENE_RS);
+  // The third `EntryKind`. Not a mistake in the fixture: a broken symlink is
+  // what `"other"` means, and it is the only arm of a closed set the frontend
+  // switches on that nothing else here would ever produce. It lists as `other`
+  // with no size and no time, and stats as `exists: false`, which is what Rust
+  // reports for it — `std::fs::metadata` follows links and finds nothing.
+  nodes.set(at("src", "engine", "dangling-symlink"), {
+    kind: "other",
+    text: null,
+    base64: null,
+    mtime: nextMtime(),
+  });
+
+  // Deep enough that indentation has somewhere to go wrong.
+  dir(at("src", "app"));
+  dir(at("src", "app", "panels"));
+  dir(at("src", "app", "panels", "inspector"));
+  dir(at("src", "app", "panels", "inspector", "widgets"));
+  file(at("src", "app", "panels", "inspector", "widgets", "TransformRow.tsx"), TRANSFORM_ROW_TSX);
+
+  dir(at("assets"));
+  binary(at("assets", "logo.png"), LOGO_PNG_BASE64);
+  binary(at("assets", "glyphs.bin"), GLYPHS_BIN_BASE64);
+
+  dir(at("logs"));
+  file(at("logs", "build.log"), buildLog());
+
+  // The big one, and the only directory here that exists for a reason other
+  // than its name: the explorer windows its rows, and a tree whose largest
+  // directory held a dozen entries would render every row it was handed and
+  // prove nothing about whether the windowing works. 240 packages is far past
+  // any viewport and costs a few hundred small objects to hold.
+  const modules = at("node_modules");
+  dir(modules);
+  file(joinPath(modules, ".package-lock.json"), '{\n  "lockfileVersion": 3\n}\n');
+  dir(joinPath(modules, ".bin"));
+  // Capitalised, and the only two names here that are: case-insensitive
+  // sorting looks exactly like case-sensitive sorting until something has a
+  // capital in it. These land between `babel-utils` and `cache-cli`, and
+  // between `json5-utils` and `lru-cli`.
+  for (const name of ["JSONStream", "Base64"]) {
+    dir(joinPath(modules, name));
+    file(joinPath(modules, `${name}\\package.json`), packageJsonFor(name));
+  }
+  for (let i = 0; i < 240; i += 1) {
+    const name = `${PACKAGE_PREFIXES[i % PACKAGE_PREFIXES.length]}-${
+      PACKAGE_SUFFIXES[Math.floor(i / PACKAGE_PREFIXES.length) % PACKAGE_SUFFIXES.length]
+    }`;
+    const pkg = joinPath(modules, name);
+    dir(pkg);
+    file(joinPath(pkg, "package.json"), packageJsonFor(name));
+    file(joinPath(pkg, "index.js"), `module.exports = require("./lib/${name}.js");\n`);
+  }
+
+  return nodes;
+}
+
+function packageJsonFor(name: string): string {
+  return `{\n  "name": "${name}",\n  "version": "1.4.2",\n  "main": "index.js"\n}\n`;
+}
+
+// --- serving the eight methods ------------------------------------------------
+
+/**
+ * The `files/*` half of `fakeAppCall`. `undefined` for anything else, so the
+ * Home switch above can fall through to here and still refuse what neither
+ * store knows.
+ */
+function filesCall(method: string, params?: unknown): unknown | undefined {
+  const p = (params ?? {}) as { path?: unknown; text?: unknown; baseMtime?: unknown };
+
+  switch (method) {
+    case "files/root":
+      return { path: AURORA_ROOT, name: baseNameOf(AURORA_ROOT) };
+
+    // Absent and null both mean "wherever you'd start me", as `resolve_path`
+    // has it; every other method requires a path, as `required_path` has it.
+    case "files/list":
+      return listAt(p.path === undefined || p.path === null ? AURORA_ROOT : requiredPath(p.path));
+
+    case "files/stat":
+      return statAt(requiredPath(p.path));
+
+    case "files/read":
+      return readAt(requiredPath(p.path));
+
+    case "files/read-bytes":
+      return readBytesAt(requiredPath(p.path));
+
+    case "files/write":
+      return writeAt(requiredPath(p.path), p.text, p.baseMtime);
+
+    // There is no OS here to hand a file to. Both resolve `null` — the same
+    // thing Rust returns on success — rather than refusing, because refusing
+    // would make the app draw an error for a button that worked, and logging
+    // is what leaves the click observable.
+    case "files/reveal":
+    case "files/open-external":
+      console.info(`helve: ${method} ${requiredPath(p.path)} — no OS here to hand it to (?fake=1)`);
+      return null;
+
+    default:
+      // A `files/` method this fixture has never heard of is a mistake worth
+      // naming, and it is the one Rust names too. Anything else belongs to
+      // another app and is not this function's to answer.
+      if (!method.startsWith("files/")) return undefined;
+      throw rpcError(HelveErrorCode.MethodNotFound, `no such method: ${method}`);
+  }
+}
+
+function requiredPath(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  throw rpcError(
+    HelveErrorCode.InvalidParams,
+    raw === undefined || raw === null
+      ? "path is required"
+      : `path must be a string, got ${JSON.stringify(raw)}`,
+  );
+}
+
+/** A file's length in bytes; `null` for anything that is not one. */
+function sizeOf(node: FakeNode): number | null {
+  if (node.kind !== "file") return null;
+  if (node.text !== null) return encoder.encode(node.text).length;
+  return base64Bytes(node.base64 ?? "");
+}
+
+/** The decoded length of base64, without decoding it. */
+function base64Bytes(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return (base64.length * 3) / 4 - padding;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function listAt(path: string): unknown {
+  const node = fileTree().get(path);
+  if (node === undefined || node.kind !== "dir") {
+    // What `read_dir` failing looks like, with the message Windows gives for
+    // the two ways it fails. Nothing matches on this text — it is here so a
+    // console showing it reads like the real thing rather than like a fixture
+    // that ran out of ideas.
+    throw rpcError(
+      HelveErrorCode.InternalError,
+      node === undefined
+        ? `could not read ${path}: The system cannot find the path specified. (os error 3)`
+        : `could not read ${path}: The directory name is invalid. (os error 267)`,
+    );
+  }
+
+  const entries = [...fileTree()]
+    .filter(([child]) => parentOf(child) === path)
+    .map(([child, entry]) => ({
+      name: baseNameOf(child),
+      path: child,
+      kind: entry.kind,
+      size: sizeOf(entry),
+      // A listing gets its times from the same `metadata()` that decided the
+      // kind, so the entry that has none also has no time.
+      mtime: entry.kind === "other" ? null : entry.mtime,
+    }));
+
+  // Directories first, then by name without regard to case — the order
+  // `files.rs` guarantees and the frontend explicitly does not re-do. Compared
+  // with `<` rather than `localeCompare` because Rust compares lowercased
+  // `String`s, which is code-point order; a locale-aware collation would sort
+  // `.gitignore` and `Cargo.toml` by rules Rust has never heard of.
+  entries.sort((a, b) => {
+    const foldersFirst = Number(a.kind !== "dir") - Number(b.kind !== "dir");
+    if (foldersFirst !== 0) return foldersFirst;
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  });
+
+  return { path, parent: parentOf(path), entries };
+}
+
+/**
+ * One entry as it is right now, including the fact that it isn't.
+ *
+ * A missing path is `exists: false` rather than a refusal, and that is
+ * load-bearing rather than lenient: the external-change poll uses this to tell
+ * "someone deleted it" from "the call failed", and those are opposite
+ * instructions about what to do with the open tab.
+ */
+function statAt(path: string): unknown {
+  const node = fileTree().get(path);
+  // A dangling symlink has nothing to stat, the same as a path that was never
+  // there — it keeps its `kind` and loses everything that came from metadata.
+  const found = node?.kind === "other" ? undefined : node;
+
+  return {
+    path,
+    name: baseNameOf(path),
+    kind: node?.kind ?? "other",
+    size: found ? sizeOf(found) : null,
+    mtime: found?.mtime ?? null,
+    exists: found !== undefined,
+  };
+}
+
+/** The file at `path`, or the refusal Rust gives for whatever is there instead. */
+function fileAt(path: string): FakeNode {
+  const node = fileTree().get(path);
+  if (node === undefined || node.kind === "other") {
+    throw rpcError(
+      HelveErrorCode.InternalError,
+      `could not stat ${path}: The system cannot find the file specified. (os error 2)`,
+    );
+  }
+  if (node.kind === "dir") {
+    throw rpcError(HelveErrorCode.InvalidParams, `${path} is a directory, not a file`);
+  }
+  return node;
+}
+
+function readAt(path: string): unknown {
+  const node = fileAt(path);
+
+  if (node.text === null) {
+    // This exact wording, because `isNotText` in the app's `rpc.ts` matches on
+    // it, and what it is really matching is the Rust message this copies. It
+    // is what hands a PNG or a `.bin` from the text viewer to the unsupported
+    // one, so a paraphrase here would break a handoff rather than a string.
+    throw rpcError(HelveErrorCode.InvalidParams, `${path} is not a UTF-8 text file`);
+  }
+
+  const truncated = encoder.encode(node.text).length > READ_LIMIT;
+  return {
+    path,
+    text: truncated ? node.text.slice(0, READ_LIMIT) : node.text,
+    truncated,
+    limit: READ_LIMIT,
+    mtime: node.mtime,
+  };
+}
+
+function readBytesAt(path: string): unknown {
+  const node = fileAt(path);
+  // No 32 MiB refusal. The cap is real in Rust, but the largest thing in this
+  // tree is a third of a megabyte, so the branch could only ever be dead code
+  // here — and dead code in a fixture is a claim nobody can check.
+  return {
+    path,
+    base64: node.base64 ?? toBase64(encoder.encode(node.text ?? "")),
+    size: sizeOf(node) ?? 0,
+    mtime: node.mtime,
+  };
+}
+
+function writeAt(path: string, rawText: unknown, rawBaseMtime: unknown): unknown {
+  if (typeof rawText !== "string") {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      rawText === undefined
+        ? "text is required — there is no method for emptying a file by omission"
+        : `text must be a string, got ${JSON.stringify(rawText)}`,
+    );
+  }
+  // Absent and explicitly null are the same claim — "I have no time to compare
+  // against" — and differ only because JSON makes them.
+  const baseMtime = rawBaseMtime === undefined ? null : rawBaseMtime;
+  if (baseMtime !== null && typeof baseMtime !== "number") {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `baseMtime must be a number or null, got ${JSON.stringify(rawBaseMtime)}`,
+    );
+  }
+
+  const nodes = fileTree();
+  const existing = nodes.get(path);
+  const current = existing?.kind === "file" ? existing.mtime : null;
+
+  // The conflict check, before anything is touched. A `null` base writes
+  // unconditionally: a filesystem that cannot report times would otherwise
+  // make the editor unusable rather than safer. A file that was *deleted*
+  // since the read counts as changed too, which is why this compares against
+  // `null` rather than skipping when the file is gone.
+  if (baseMtime !== null && baseMtime !== current) {
+    // `staleWrite` in the app's `rpc.ts` reads `data.kind`, not the code —
+    // `InvalidParams` is also what a bad `text` gets, so the payload is the
+    // only thing that says which refusal this is.
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${path} changed on disk since it was read`,
+      { kind: "stale", mtime: current },
+    );
+  }
+
+  if (existing !== undefined && existing.kind !== "file") {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${path} is a directory, not a file that can be written`,
+    );
+  }
+  // A new file is written, not refused — Rust's `write_at` creates one, and a
+  // fixture that refused would disagree with the backend the moment there is a
+  // "new file" button. Its directory does have to exist, or the file would be
+  // in the tree and in no listing.
+  const parent = parentOf(path);
+  if (parent === null || fileTree().get(parent)?.kind !== "dir") {
+    throw rpcError(
+      HelveErrorCode.InternalError,
+      `could not write ${path}: The system cannot find the path specified. (os error 3)`,
+    );
+  }
+
+  // Visibly new. `Date.now()` called twice inside one millisecond returns the
+  // same number, and a save whose mtime did not move would leave the *next*
+  // write comparing equal against a base it should have lost to — the conflict
+  // this whole check exists to catch, made undetectable by a rounding error.
+  const mtime = Math.max(Date.now(), (current ?? 0) + 1);
+  nodes.set(path, { kind: "file", text: rawText, base64: null, mtime });
+  return { path, mtime };
+}
+
+/**
+ * The two things a filesystem does that nothing inside the app can: change a
+ * file behind an open tab, and delete one.
+ *
+ * Both paths are unreachable here without them, and both are worth reaching.
+ * `files/write`'s conflict refusal only fires when the mtime moved since the
+ * read, and no button in Files can move it — so without `touch` the conflict
+ * banner ships unverified, which makes it the most likely thing in the app to
+ * be broken with nobody noticing. `remove` is the other half: the
+ * external-change poll distinguishes a deleted file by `exists: false`, and
+ * that needs a file that can go away.
+ *
+ * On the shell's window rather than the app frame's, because this module runs
+ * in the shell. From the console on the top page, with the frame untouched:
+ *
+ *     __helveFakeFiles.touch("C:\\projects\\aurora\\README.md")
+ *
+ * then save in the editor and the write comes back stale.
+ *
+ * Attached only under `?fake=1`, so a packaged build has no way to reach it —
+ * the same guard, for the same reason, as everything else in this file.
+ */
+if (isFake()) {
+  (window as unknown as { __helveFakeFiles?: unknown }).__helveFakeFiles = {
+    /** Move a file's mtime, as an editor outside this app would. */
+    touch(path: string): number | null {
+      const node = fileTree().get(path);
+      if (!node) return null;
+      const mtime = Math.max(Date.now(), node.mtime + 1);
+      fileTree().set(path, { ...node, mtime });
+      return mtime;
+    },
+    /** Delete one, so a poll can find it gone. */
+    remove(path: string): boolean {
+      return fileTree().delete(path);
+    },
+    /** Every path in the tree, for finding one to aim the other two at. */
+    paths(): string[] {
+      return [...fileTree().keys()];
+    },
+  };
+}
+
+// --- what the fixture files contain -------------------------------------------
+//
+// Below the code that uses it, because four hundred lines of sample file at the
+// top would bury the eight methods that are the point. That works only because
+// `buildTree` runs lazily — a `const` is not hoisted, and a tree built during
+// module evaluation would read every one of these before it was initialised.
+//
+// The contents are real rather than lorem. The text viewer is Monaco, and a
+// file of placeholder words says nothing about whether highlighting works.
+
+const README_MD = `# Aurora
+
+A game project that does not exist, so the Files app has something to browse.
+
+Nothing in this tree is on disk. It is the fixture that \`?fake=1\` serves in
+place of a filesystem, so that the explorer, the tabs and the viewers can be
+driven in a plain browser. See src/shell/state/fakeBackend.ts in the
+orchestrator for what it does and does not pretend.
+
+## Layout
+
+    src/            the client, TypeScript and Rust side by side
+    docs/           design notes, including a mermaid diagram
+    assets/         art the image viewer can open
+    logs/           one file deliberately larger than the read cap
+    node_modules/   240 packages, so the row list has to window
+
+## Why these names
+
+Every filename here was chosen to make something visible. Cargo.toml and
+tsconfig.json for the icon resolver; util.spec.ts to prove a spec resolves a
+different icon from plain TypeScript; a .gitignore because a leading dot is a
+name and not an extension; glyphs.bin because the text viewer has to try a
+read and hand off when the bytes are not text.
+`;
+
+const PACKAGE_JSON = `{
+  "name": "aurora",
+  "private": true,
+  "version": "0.3.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  }
+}
+`;
+
+const TSCONFIG_JSON = `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}
+`;
+
+const CARGO_TOML = `[package]
+name = "aurora-engine"
+version = "0.3.1"
+edition = "2021"
+
+[dependencies]
+glam = "0.29"
+pollster = "0.4"
+wgpu = "23"
+
+[dev-dependencies]
+approx = "0.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+`;
+
+const GITIGNORE = `/target
+node_modules/
+dist/
+*.log
+.DS_Store
+`;
+
+const CI_YML = `name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: cargo test --all-features
+`;
+
+/** Five nodes and two labelled edges — enough that a diagram that renders and
+ *  one that merely draws a box are told apart. */
+const ARCHITECTURE_MMD = `flowchart TD
+  Explorer[Explorer tree] --> Registry{Viewer registry}
+  Registry -->|text| Monaco[Monaco editor]
+  Registry -->|image| Image[Image viewer]
+  Registry -->|mmd| Mermaid[Mermaid viewer]
+`;
+
+const DESIGN_NOTES_MD = `# Design notes
+
+The renderer draws the scene twice: once into a depth prepass, and once for
+colour. That costs a second traversal and buys early-z on everything, which on
+the integrated GPUs this has to run on is the difference between forty frames
+and sixty.
+
+Open question: whether the prepass should also write velocity, or whether the
+temporal pass keeps its own. Writing it here means one more render target bound
+for the whole prepass; keeping it separate means reading depth back.
+`;
+
+const MAIN_TSX = `import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+const host = document.getElementById("root");
+if (!host) throw new Error("index.html has no #root to mount into");
+
+createRoot(host).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+`;
+
+const UTIL_SPEC_TS = `import { describe, expect, it } from "vitest";
+import { clamp, lerp } from "./util";
+
+describe("clamp", () => {
+  it("leaves a value inside the range alone", () => {
+    expect(clamp(0.5, 0, 1)).toBe(0.5);
+  });
+
+  it("pins to the nearer bound outside it", () => {
+    expect(clamp(-3, 0, 1)).toBe(0);
+    expect(clamp(9, 0, 1)).toBe(1);
+  });
+});
+
+describe("lerp", () => {
+  it("returns the endpoints exactly", () => {
+    expect(lerp(2, 8, 0)).toBe(2);
+    expect(lerp(2, 8, 1)).toBe(8);
+  });
+});
+`;
+
+const TRANSFORM_ROW_TSX = `import { useId } from "react";
+import type { Vec3 } from "../../../engine/types";
+
+export default function TransformRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: Vec3;
+  onChange(next: Vec3): void;
+}) {
+  const id = useId();
+  const axes = ["x", "y", "z"] as const;
+
+  return (
+    <div className="transform-row" role="group" aria-labelledby={id}>
+      <span id={id} className="transform-row__label">
+        {label}
+      </span>
+      {axes.map((axis, index) => (
+        <input
+          key={axis}
+          type="number"
+          step={0.01}
+          value={value[index]}
+          aria-label={label + " " + axis}
+          onChange={(event) => {
+            const next: Vec3 = [...value];
+            next[index] = Number(event.target.value);
+            onChange(next);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+`;
+
+/** The long one: enough lines to scroll, and Rust so Monaco has something to
+ *  colour. */
+const RENDER_RS = `//! The frame graph, such as it is.
+//!
+//! One pass list, executed in order, with the swapchain image threaded through
+//! as the last colour target. There is no automatic barrier insertion and no
+//! aliasing of transient targets — both are worth having and neither is worth
+//! having before there are enough passes to make the bookkeeping cheaper than
+//! writing it out.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use glam::{Mat4, Vec3};
+
+use crate::scene::{Scene, Visible};
+
+/// How many frames the renderer will let the GPU fall behind.
+///
+/// Two, not three. A third frame buys a little throughput on a GPU-bound scene
+/// and costs a frame of input latency on every other one, and this is a tool as
+/// much as it is a game.
+const FRAMES_IN_FLIGHT: usize = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PassId {
+    DepthPrepass,
+    Opaque,
+    Transparent,
+    Tonemap,
+}
+
+pub struct Pass {
+    pub id: PassId,
+    pub colour: Option<TargetId>,
+    pub depth: Option<TargetId>,
+    /// Passes that must have finished before this one starts. Not derived from
+    /// the targets, because two passes can share a target and still be
+    /// independent — a resolve reads what a prepass wrote, but two shadow
+    /// cascades write disjoint slices of one atlas.
+    pub after: Vec<PassId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TargetId(pub u32);
+
+pub struct Renderer {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    passes: Vec<Pass>,
+    targets: HashMap<TargetId, wgpu::TextureView>,
+    frame: usize,
+}
+
+impl Renderer {
+    pub fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+        Self {
+            device,
+            queue,
+            passes: Vec::new(),
+            targets: HashMap::new(),
+            frame: 0,
+        }
+    }
+
+    /// Add a pass. Order of insertion is execution order; \`after\` is checked
+    /// against it rather than used to sort, because a graph that quietly
+    /// reordered itself would make a frame capture disagree with this file.
+    pub fn add_pass(&mut self, pass: Pass) -> Result<(), GraphError> {
+        for dependency in &pass.after {
+            if !self.passes.iter().any(|p| p.id == *dependency) {
+                return Err(GraphError::OutOfOrder {
+                    pass: pass.id,
+                    needs: *dependency,
+                });
+            }
+        }
+        self.passes.push(pass);
+        Ok(())
+    }
+
+    pub fn render(&mut self, scene: &Scene, view: Mat4, projection: Mat4) {
+        let visible = scene.cull(view, projection);
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
+
+        for pass in &self.passes {
+            match pass.id {
+                PassId::DepthPrepass => self.depth_prepass(&mut encoder, &visible),
+                PassId::Opaque => self.opaque(&mut encoder, &visible),
+                PassId::Transparent => self.transparent(&mut encoder, &visible),
+                PassId::Tonemap => self.tonemap(&mut encoder),
+            }
+        }
+
+        self.queue.submit(Some(encoder.finish()));
+        self.frame = (self.frame + 1) % FRAMES_IN_FLIGHT;
+    }
+
+    fn depth_prepass(&self, encoder: &mut wgpu::CommandEncoder, visible: &Visible) {
+        let _ = (encoder, visible);
+        // Front to back, so early-z rejects as much as it can. The sort is the
+        // whole point of the pass; without it this costs a traversal and saves
+        // nothing.
+    }
+
+    fn opaque(&self, encoder: &mut wgpu::CommandEncoder, visible: &Visible) {
+        let _ = (encoder, visible);
+    }
+
+    fn transparent(&self, encoder: &mut wgpu::CommandEncoder, visible: &Visible) {
+        // Back to front, and no depth writes. Order-independent transparency
+        // is the right answer and is a larger change than it looks.
+        let _ = (encoder, visible);
+    }
+
+    fn tonemap(&self, encoder: &mut wgpu::CommandEncoder) {
+        let _ = encoder;
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GraphError {
+    #[error("pass {pass:?} depends on {needs:?}, which has not been added yet")]
+    OutOfOrder { pass: PassId, needs: PassId },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dependency_added_later_is_rejected() {
+        let mut passes: Vec<Pass> = Vec::new();
+        passes.push(Pass {
+            id: PassId::Opaque,
+            colour: Some(TargetId(0)),
+            depth: Some(TargetId(1)),
+            after: vec![PassId::DepthPrepass],
+        });
+        assert_eq!(passes.len(), 1);
+    }
+
+    #[test]
+    fn the_up_axis_is_y() {
+        assert_eq!(Vec3::Y, Vec3::new(0.0, 1.0, 0.0));
+    }
+}
+`;
+
+const SCENE_RS = `//! What there is to draw, and which of it the camera can see.
+
+use glam::{Mat4, Vec3};
+
+pub struct Scene {
+    pub meshes: Vec<Mesh>,
+}
+
+pub struct Mesh {
+    pub centre: Vec3,
+    pub radius: f32,
+}
+
+/// The result of a cull: indices into \`Scene::meshes\`, not references, so the
+/// scene stays mutable while a frame is in flight.
+pub struct Visible {
+    pub indices: Vec<usize>,
+}
+
+impl Scene {
+    pub fn cull(&self, view: Mat4, projection: Mat4) -> Visible {
+        let clip = projection * view;
+        let indices = self
+            .meshes
+            .iter()
+            .enumerate()
+            .filter(|(_, mesh)| inside(clip, mesh))
+            .map(|(index, _)| index)
+            .collect();
+        Visible { indices }
+    }
+}
+
+fn inside(clip: Mat4, mesh: &Mesh) -> bool {
+    let centre = clip * mesh.centre.extend(1.0);
+    centre.w > -mesh.radius
+}
+`;
+
+/**
+ * A real 64x64 PNG, RGB, no interlacing — a dark plate with an orange diagonal
+ * band and a lighter border, so a screenshot shows whether the image viewer
+ * drew it or drew a broken-image glyph.
+ *
+ * Built by hand and then decoded twice before being pasted here: once by
+ * walking the chunks, checking every CRC and inflating IDAT to the exact
+ * scanline length IHDR promises, and once by GDI+, which reported 64x64
+ * Format24bppRgb and the border colour at (0,0). A placeholder string would
+ * have been indistinguishable from a working fixture right up to the moment
+ * someone tried to look at it.
+ */
+const LOGO_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAA9klEQVR42u2aMQ7CMBAE84iIgiek" +
+  "oKTN//LD/IY+OLbPtuRdGOla0Ex358myvd7Ws/yIwPp4fs957PlJ/qp+Ov+/ICBOXxDQp88JWNDf" +
+  "CrjQpwWM6BMCXvRXATv6mIAgfUBAk75WQJa+SkCZviwgTn8ee05Anz4nYEF/K+BCnxYwok8IeNFf" +
+  "BezoRwrM2qPGCEzcAgcIzN1hewWmb+BdAgr3Q7uAyPXTKKBzu7UISF2eYQG1uzkmIHj1BwQ03yxq" +
+  "BWRfXKoElN+L6AP0AfoAfYA+QB+gD9AH6AP0AfoAfYA+QB+gD9AH6AP0AfoAfeDv+wBfr0+bD3v7" +
+  "ZGZLwyuZAAAAAElFTkSuQmCC";
+
+/**
+ * Forty-eight bytes that are not UTF-8 — checked with a fatal `TextDecoder`
+ * rather than assumed, since a string of high bytes that happened to decode
+ * would make `files/read` succeed and the handoff to the unsupported viewer
+ * unreachable.
+ */
+const GLYPHS_BIN_BASE64 = "R0xZRgAB//7AgAAq7aCA9ZGPvwAQIDD///79AQIDBJyNfm/DKOCAQfCCgqwAABM3";
 
 /**
  * A stand-in tool frontend, as a blob URL.

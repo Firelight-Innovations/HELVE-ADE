@@ -1,0 +1,336 @@
+/*
+ * The five viewers that draw something other than text.
+ *
+ * One sheet rather than five, which is a deliberate departure from what
+ * `files.css` says a viewer does — so here is the argument.
+ *
+ * `files.css` is right about the property that matters: a viewer's CSS must not
+ * sit on the critical path for opening a plain text file. That property is
+ * preserved here and is the reason this file is imported by the five components
+ * and by nothing else. Each of them is only reachable through the dynamic
+ * `import()` in `registry.ts`, so Rollup sees a stylesheet shared by five async
+ * chunks and emits it as an async chunk of its own, fetched the first time
+ * anyone opens a picture and never when they open a `.ts`.
+ *
+ * What one sheet buys, that five would not, is that these five viewers are the
+ * same layout four times over: a strip of chrome, a scrolling surface with one
+ * thing centred in it, and a quiet line of metadata underneath. Splitting it up
+ * means writing that skeleton four times and letting the four copies drift, and
+ * the drift is visible — a toolbar 2px taller in the PDF pane than the SVG one
+ * is exactly the sort of thing nobody files a bug about and everybody notices.
+ * Monaco's sheet stays separate because Monaco genuinely shares nothing with
+ * these; a `.mmd` and a `.png` share almost everything.
+ *
+ * Grouped selectors below are how that is reconciled with BEM: each viewer keeps
+ * its own block (`image__`, `svg__`, `pdf__`, `mermaid__`, `unsupported__`) and
+ * no shared block name is invented for the chrome, but a declaration that is one
+ * decision gets written once.
+ *
+ * Colours are `src/tokens.css`. No hex appears here — see the header of
+ * `apps/shared/app.css`.
+ */
+
+/* --- the frame every one of them draws inside ------------------------------
+   `.viewer` (files.css) is a column flex with `min-height: 0`. Each root below
+   is its single child and has to be told to fill it; `height: 100%` would be
+   the wrong tool, since the parent's height comes from the flex layout rather
+   than from a definite value these percentages could resolve against. */
+
+.image,
+.svg,
+.pdf,
+.mermaid,
+.unsupported {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Loading and failure, in whichever pane. `media__` rather than a per-viewer
+   name because it is one sentence in one place and five copies of a centred
+   paragraph is not a design decision anyone needs to make five times. */
+.media__note {
+  margin: auto;
+  padding: 18px;
+  max-width: 64ch;
+}
+
+/* --- chrome strips ---------------------------------------------------------
+   A bar above (SVG, PDF, Mermaid) or a metadata line below (image, SVG). Same
+   height, same rule, so they cannot drift apart. */
+
+.svg__bar,
+.pdf__bar,
+.mermaid__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.image__meta,
+.svg__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 5px 10px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  /* Long enough on a narrow pane that the hint has to be allowed to go. */
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* The rightmost item in a strip is always the least important one. */
+.image__hint,
+.svg__hint {
+  margin-left: auto;
+  color: var(--text-dim-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.svg__mode,
+.mermaid__mode {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim-2);
+}
+
+/* A quiet chrome button. Same shape as `.app__up` in the shared sheet, which is
+   the product's existing answer to "a small button in a strip" — restated here
+   rather than reused because that class names the explorer's up-one-level
+   control, and a viewer borrowing it would couple the two. */
+.svg__toggle,
+.mermaid__toggle,
+.pdf__step,
+.unsupported__action {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svg__toggle:hover,
+.mermaid__toggle:hover,
+.pdf__step:hover:not(:disabled),
+.unsupported__action:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
+.svg__toggle:focus-visible,
+.mermaid__toggle:focus-visible,
+.pdf__step:focus-visible,
+.unsupported__action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.pdf__step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* --- scrolling surfaces ---------------------------------------------------- */
+
+.image__scroll,
+.svg__scroll,
+.mermaid__scroll,
+.pdf__scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+
+/* --- image -----------------------------------------------------------------
+   Centring something that can overflow its scroll container is the one piece of
+   layout here worth explaining. `justify-content: center` clips the top and
+   left when the child is larger than the box — the overflow goes both ways and
+   only one end is reachable. `margin: auto` on a flex child does not: it
+   distributes only positive free space, so an oversized image simply sits at
+   the origin and scrolls. */
+
+.image__scroll {
+  display: flex;
+}
+
+.image__stage {
+  display: flex;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Fit: the stage fills the scroll area so the image's percentage maxima have a
+   definite box to resolve against. A percentage max-height against a parent
+   sized by its own content resolves to `none`, and the image would render at
+   full size inside a fitted frame. */
+.image__stage--fit {
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+}
+
+.image__stage--actual {
+  flex: 0 0 auto;
+  cursor: zoom-out;
+}
+
+.image__stage:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.image__img {
+  margin: auto;
+  /* Transparency has to read as transparency and not as "the pane is showing
+     through", which is what a flat background gives you when the file's
+     background happens to be near --bg. Painted on the image element itself so
+     it covers the picture's box exactly and never the letterbox around it —
+     which is also why fit mode scales the element rather than using
+     `object-fit: contain` inside a full-size box. */
+  background-image: repeating-conic-gradient(
+    var(--surface-2) 0% 25%,
+    var(--surface) 0% 50%
+  );
+  background-size: 18px 18px;
+}
+
+.image__img--fit {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.image__img--actual {
+  max-width: none;
+  max-height: none;
+}
+
+/* --- svg -------------------------------------------------------------------
+   Scaled to the pane rather than left at its intrinsic size. An SVG has no
+   pixels to be faithful to, and half of them arrive with a viewBox and no
+   width/height at all, which an `<img>` would otherwise lay out at the CSS
+   default of 300x150. */
+
+.svg__scroll {
+  display: flex;
+  padding: 14px;
+}
+
+.svg__img {
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background-image: repeating-conic-gradient(
+    var(--surface-2) 0% 25%,
+    var(--surface) 0% 50%
+  );
+  background-size: 18px 18px;
+}
+
+/* --- pdf ------------------------------------------------------------------- */
+
+.pdf__scroll {
+  /* `ResizeObserver`'s `contentRect` excludes this padding, which is what
+     `PdfViewer` renders the page at — so this number lives in one place. */
+  padding: 14px;
+}
+
+.pdf__count {
+  /* Between the two buttons, not pushed to one side: the page number is the
+     thing being changed, and it should not move when the count goes to three
+     digits. */
+  margin: 0 auto;
+}
+
+.pdf__canvas {
+  display: block;
+  margin: 0 auto;
+  /* The page is white. A hairline keeps its edge from dissolving into the pane
+     at the corners, where a scanned document is usually white too. */
+  border: 1px solid var(--line);
+}
+
+.pdf__canvas[hidden] {
+  display: none;
+}
+
+/* --- mermaid --------------------------------------------------------------- */
+
+.mermaid__scroll {
+  padding: 14px;
+}
+
+.mermaid__canvas svg {
+  display: block;
+  margin: 0 auto;
+  /* Mermaid emits `width: 100%` plus an inline `max-width` in pixels under its
+     default `useMaxWidth`, so the diagram fills a narrow pane and stops at its
+     natural size in a wide one. Only the height has to be freed, or the aspect
+     ratio goes with the width. */
+  height: auto;
+}
+
+.mermaid__broken {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 80ch;
+}
+
+.mermaid__truncated {
+  margin: 0 0 10px;
+  color: var(--warn);
+}
+
+/* --- unsupported -----------------------------------------------------------
+   Deliberately unlike the other four: no bar, no strip, no scroll surface.
+   There is nothing to look at, so the pane is a short paragraph and two
+   buttons, centred and left to breathe. */
+
+.unsupported__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: auto;
+  padding: 24px;
+  max-width: 52ch;
+}
+
+.unsupported__lead {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.unsupported__what {
+  /* The name can be long and the pane can be narrow; wrapping mid-path is
+     better than a horizontal scrollbar on a page with nothing to scroll. */
+  word-break: break-word;
+}
+
+.unsupported__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
