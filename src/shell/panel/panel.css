@@ -442,3 +442,12 @@
   color: var(--bg);
   cursor: pointer;
 }
+
+/* A terminal drag is over this panel and would land here on release.
+   `SecondaryPanel` sets the attribute from its `dropActive` prop; the drag
+   overlay draws nothing for it, because the highlight belongs inside the
+   element being highlighted. */
+.panel[data-drop-active] .panel__tabs {
+  background: var(--surface-gap);
+  border-bottom: 2px solid rgb(217 138 63 / 55%);
+}

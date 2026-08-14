@@ -29,22 +29,10 @@ export function DetachOutline({ x, y }: { x: MotionValue<number>; y: MotionValue
   return <motion.div className="drag-detach-outline" style={{ left: x, top: y }} {...fade} />;
 }
 
-/**
- * "monitor 2 — drop target lit" (INTERACTION 02), for the terminal panel.
- *
- * Takes its rectangle rather than querying for one. The old version looked up
- * `[data-region="panel"]` itself, which worked while the panel was the only
- * target there could be; a caller that already knows which registered zone is
- * lit should not have that answer re-derived behind its back, and the pane
- * indicators are drawn by `panes/PaneTree.tsx` from the same `target` value.
- */
-export function ZoneOutline({ rect }: { rect: DOMRect | null }) {
-  if (!rect) return null;
-  return (
-    <motion.div
-      className="drag-panel-outline"
-      style={{ left: rect.left, top: rect.top, width: rect.width }}
-      {...fade}
-    />
-  );
-}
+/* The panel's own drop highlight is drawn by `SecondaryPanel` from its
+   `dropActive` prop, and each pane's by `panes/PaneTree.tsx` from the live drop
+   target. Both are inside the element being highlighted, which the overlay is
+   not — an outline drawn out here would have to re-measure a rectangle its owner
+   already knows, and would sit above a live iframe rather than around it. So the
+   overlay keeps only the one indicator that has no owner: the detach outline,
+   which by definition is over nothing. */
