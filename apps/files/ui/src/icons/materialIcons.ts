@@ -30,12 +30,87 @@
  * `public/icons/material/`, so they are served as static files rather than
  * bundled — see that script's header for why that matters. Render the result
  * as `<img src={fileIconUrl(name)} alt="" />`.
+ *
+ * ## The HELVE icons, and why they are not in that directory
+ *
+ * `.helve` folders and `<project>.helve` files are ours, and the theme has
+ * never heard of them. Their three SVGs are hand-drawn from `assets/`, live in
+ * `public/icons/helve/`, and are **in git** — which is the whole point of the
+ * separate directory rather than the convenience of one.
+ * `generate-file-icons.mjs` opens with an `rmSync` on `public/icons/material/`,
+ * so anything dropped in there is deleted by the next `pnpm build` and, being
+ * gitignored, does not come back. A drawing nobody can recover is a bad place
+ * to put a drawing.
+ *
+ * They are looked up *before* the generated tables, so an upstream theme that
+ * one day ships a `helve` key cannot quietly take these over.
+ *
+ * ### The mark is black, and that is deliberate
+ *
+ * Every themed folder in the material set is a coloured body with a *lighter
+ * tint* of the same colour as its motive — `#4caf50` under `#c8e6c9`, and so
+ * on. These three break that convention: the body is `--accent` `#d98a3f` and
+ * the H on it is `#000000`.
+ *
+ * The convention does not survive this particular colour. Measured as WCAG
+ * contrast against the `#d98a3f` the mark actually sits on:
+ *
+ *     #f4dcc5  a light tint, the theme's own convention   2.08:1
+ *     #ffffff  pure white                                 2.74:1
+ *     #000000  black                                      7.66:1
+ *
+ * 3.0:1 is the floor for a graphical object, so both light treatments are
+ * *below* the minimum and the black is past AAA. That is not a rounding
+ * argument — at the 16px these draw at, the light mark disappears into the
+ * amber and the icon reads as a plain orange folder.
+ *
+ * The amber body against what is behind it is unaffected and was never the
+ * problem: 6.09:1 on `--surface`, 5.53:1 on the `--surface-2` a hovered or
+ * cursored row switches to.
+ *
+ * The file icon draws the mark as its own filled path rather than knocking it
+ * out of the square, which is the other half of the same fix. A knockout shows
+ * whatever is behind the icon, so the mark's contrast changed with the row
+ * state — 6.09:1 at rest, 5.53:1 on hover — and would have inverted to white
+ * on amber under any light surface. A painted mark is the same mark everywhere.
+ *
+ * This app has one theme (there is no `prefers-color-scheme` or `data-theme`
+ * anywhere in `src/tokens.css`), so dark is the only case there is to check. If
+ * a light theme is ever added, none of these numbers move: the mark's
+ * background is the icon's own amber, not the page.
  */
 
 import { defaultIcons, fileExtensions, fileNames, folderNames, folderNamesExpanded } from "./manifest.generated";
 
 /** Root-relative, so it resolves the same under Vite and under Tauri's asset host. */
 const BASE = "/icons/material/";
+
+/** The hand-maintained half. Tracked in git; see the header. */
+const HELVE_BASE = "/icons/helve/";
+
+/** HELVE's own directory inside a project. Matched exactly, dot and all. */
+const HELVE_FOLDER = ".helve";
+
+/** The project file's extension, with its dot, ready to test a name's tail. */
+const HELVE_EXTENSION = ".helve";
+
+/**
+ * The HELVE glyph for a file, or `null` to let the theme answer.
+ *
+ * A suffix test rather than a table, because the basename is the *project's*
+ * name and there is no list of those — `Torn Apart.helve` and `aurora.helve`
+ * are both the same kind of file.
+ *
+ * The dot must have something before it. `.helve` on its own is a name, not a
+ * file with a `helve` extension, and it is a name the theme has no icon for
+ * either; leaving it to the generic file glyph is the honest answer, and it is
+ * the same rule `extensionOf` in `../rpc` already applies.
+ */
+function helveFileIcon(lower: string): string | null {
+  if (lower.length <= HELVE_EXTENSION.length) return null;
+  if (!lower.endsWith(HELVE_EXTENSION)) return null;
+  return `${HELVE_BASE}helve.svg`;
+}
 
 /**
  * The theme's own order: an exact filename beats an extension, and a longer
@@ -53,6 +128,9 @@ const BASE = "/icons/material/";
  */
 export function fileIconUrl(name: string): string {
   const lower = name.toLowerCase();
+
+  const helve = helveFileIcon(lower);
+  if (helve) return helve;
 
   const exact = fileNames[lower];
   if (exact) return BASE + exact;
@@ -99,6 +177,14 @@ function bareFolderName(name: string): string {
 export function folderIconUrl(name: string, expanded: boolean): string {
   const table = expanded ? folderNamesExpanded : folderNames;
   const lower = name.toLowerCase();
+
+  // Before the theme, and before the decoration strip below — which is the
+  // reason this is here rather than folded into the exact lookup. `.helve`
+  // bares to `helve`, so a theme that ever gains a `helve` folder would win
+  // on the second pass and this folder would stop being ours.
+  if (lower === HELVE_FOLDER) {
+    return `${HELVE_BASE}folder-helve${expanded ? "-open" : ""}.svg`;
+  }
 
   const exact = table[lower];
   if (exact) return BASE + exact;

@@ -98,7 +98,7 @@
 }
 
 /* Reload is listed first and is the one that loses nothing on disk, so it is
-   the one drawn in the accent — same rule as `.tabs__notice-action`. */
+   the one drawn in the accent — same rule as `.notice__action`. */
 .text__banner-action:first-of-type {
   border-color: var(--accent-line);
   color: var(--accent);

@@ -106,6 +106,21 @@ export function appCall(id: string, method: string, params?: unknown): Promise<u
 }
 
 /**
+ * Tell the backend that a first-party app's UI has drawn its first meaningful
+ * frame.
+ *
+ * Called by `ToolWindow` when an app frame sends `helve/painted`, and by
+ * nothing else: the id is the one the shell resolved from the frame the message
+ * arrived on, never one an app named for itself. Boot holds the splash window
+ * until every app has reported (`src-tauri/src/boot.rs`), so this is what
+ * decides that the first frame after the splash is the real Home rather than
+ * the boot overlay laid over it.
+ */
+export function appPainted(id: string): Promise<void> {
+  return invoke<void>("app_painted", { id });
+}
+
+/**
  * Mirrors `boot::BootStatus`.
  *
  * Same internally tagged shape as `ToolStatus` above, but keyed on `phase`

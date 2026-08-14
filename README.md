@@ -212,11 +212,14 @@ human at the keyboard.
 ### Startup
 
 The app opens on a splash window while `boot.rs` locates the manifest, reads
-it, and scans the checkouts on a background thread. When that finishes the
-snapshot goes into `AppState`, the main window is shown, and the splash closes.
-The main window reads the cached snapshot rather than scanning again.
+it, and scans the checkouts on a background thread. The main window is created
+at the same time but hidden, so its webview — and every app iframe in it — is
+loading throughout. When the scan finishes, the snapshot goes into `AppState`
+and boot waits for each first-party app to report a painted frame; then the
+main window is shown and the splash closes. The main window reads the cached
+snapshot rather than scanning again.
 
-Two things there are load-bearing and easy to break:
+Four things there are load-bearing and easy to break:
 
 - **Tauri events are not replayed.** Boot can finish before the splash webview
   has registered its listener, so the splash also polls `boot_status` once on
@@ -224,6 +227,12 @@ Two things there are load-bearing and easy to break:
   redundant.
 - **A watchdog forces the handoff** ten seconds after boot reaches a terminal
   state, so a frontend bug can't strand the user on a splash that never closes.
+- **The apps are waited for, not started.** They boot in parallel behind the
+  splash whether anything waits or not; waiting is what stops the window being
+  revealed mid-load, with a boot overlay as the first thing anyone sees.
+- **That wait is bounded** at four seconds — inside the splash's own five-second
+  minimum, so a timeout costs no startup time — and an app that misses it is
+  logged and left behind rather than allowed to hold the window hostage.
 
 ### Shell
 

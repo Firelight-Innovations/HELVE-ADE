@@ -39,34 +39,31 @@
  * what the poll misses, and it catches it at the only moment that matters.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Notice, NoticeAction } from "../NoticeBar";
 import type { OpenFile } from "../viewer/registry";
 import type { TextModel, EditorViewState } from "../viewer/monaco";
 import { baseName, extensionOf, stat, write } from "../rpc";
-
-/** One button in a `TabNotice`. */
-export interface TabAction {
-  label: string;
-  run(): void;
-}
 
 /**
  * A question the tab strip must put to the user before something irreversible
  * happens, or a report it must make about a tab going stale under them.
  *
- * It rides on the tab rather than arriving as a prop because `App.tsx` hands
- * `TabStrip` exactly five props and this parcel does not own that file. The
- * actions travel with the notice for the same reason. If a sixth prop ever
- * appears, this becomes a plain data type and the callbacks move out.
+ * The shape moved to `../NoticeBar` when the tree needed to ask questions of
+ * its own — a file deleted from the explorer may not be open, so the bar could
+ * no longer belong to the tab strip. Re-exported under its old name because
+ * that is what a tab's field is called and renaming it would be churn for
+ * nothing.
  *
- * Left-most action is the safe one. Nothing here uses `window.confirm`: a modal
- * that blocks the event loop inside an iframe is a worse answer than a bar the
- * user can ignore.
+ * It still rides on the tab rather than arriving as a prop: a notice is *about*
+ * one file, and a tab strip handed a loose notice would have to be told which
+ * chip it belonged under.
+ *
+ * Left-most action is the safe one, and `NoticeBar` focuses it. Nothing here
+ * uses `window.confirm`: a modal that blocks the event loop inside an iframe is
+ * a worse answer than a bar the user can ignore.
  */
-export interface TabNotice {
-  tone: "warn" | "err";
-  message: string;
-  actions: TabAction[];
-}
+export type TabNotice = Notice;
+export type TabAction = NoticeAction;
 
 export interface OpenTab extends OpenFile {
   /** Bumped to force the viewer to remount and re-read — an external reload. */
@@ -77,6 +74,12 @@ export interface OpenTab extends OpenFile {
    * work because something else deleted a file.
    */
   missing: boolean;
+  /**
+   * This tab is a *peek*, and the next peek will take its place. At most one
+   * tab is ever in this state; see `open` for the whole of the rule and
+   * `promote` for the ways out of it.
+   */
+  preview: boolean;
   notice: TabNotice | null;
 }
 
@@ -100,6 +103,16 @@ export interface TabDocument {
   truncatedAt: number | null;
   /** Cursor and scroll, saved on unmount so a tab switch comes back in place. */
   viewState: EditorViewState | null;
+  /**
+   * The extension this model's *language* was chosen from.
+   *
+   * Not the same fact as the tab's `ext`, and that is exactly why it is here: a
+   * rename can change the extension under a buffer that must not be re-read, at
+   * which point the model is still tokenizing `notes.txt` as plain text while
+   * the tab says `notes.md`. `TextViewer` compares the two on mount and puts
+   * the language right. Nothing else needs to know.
+   */
+  ext: string;
 }
 
 /** How the store reports back to the tab list that owns it. */
@@ -142,6 +155,33 @@ class DocumentStore {
   }
 
   /**
+   * Move a buffer to a new path, keeping the model alive.
+   *
+   * The whole point of a rename following through to an open tab: the model is
+   * *not* disposed and *not* re-read, so unsaved changes, undo history and the
+   * cursor all survive a rename the way they survive a tab switch. Disposing
+   * and re-reading would be this app deleting someone's work because they
+   * corrected a typo in a filename.
+   *
+   * What it cannot move is the model's own URI, which Monaco fixes at creation.
+   * That is tolerable because nothing here keys off it — no JSON `fileMatch`
+   * associations are configured, and the language, which *is* derived from the
+   * name, is put right by `TextViewer` on its next mount. If a language service
+   * ever arrives, this is the line that has to become "make a new model and
+   * transplant the undo stack", and there is no cheap version of that.
+   */
+  rekey(from: string, to: string): void {
+    if (from === to) return;
+    const doc = this.byPath.get(from);
+    if (!doc) return;
+    this.byPath.delete(from);
+    // Anything already parked at the destination is gone from disk by now —
+    // the rename would have been refused otherwise — so its buffer is stale.
+    this.discard(to);
+    this.byPath.set(to, doc);
+  }
+
+  /**
    * Whether this buffer differs from what is on disk, asked of the model
    * itself rather than of React state.
    *
@@ -159,6 +199,42 @@ export const documents = new DocumentStore();
 
 /** Saves in flight, keyed by path. See `saveDocument`. */
 const saving = new Map<string, Promise<void>>();
+
+/**
+ * Where `path` ends up when `from` is renamed to `to`, or `null` if it is not
+ * affected at all.
+ *
+ * The separator check is what keeps this from being a plain `startsWith`, and
+ * it is not pedantry: renaming `src` would otherwise claim `src-generated` as
+ * a child of it and rewrite that tab's path into nonsense. A path is inside a
+ * folder only when the next character is a separator.
+ *
+ * Both separators are accepted for the reason `baseName` gives — a Windows
+ * path can contain either, and the backend returns whatever `Display` produced.
+ */
+function retarget(path: string, from: string, to: string): string | null {
+  if (path === from) return to;
+  if (!isAtOrUnder(path, from)) return null;
+  return to + path.slice(from.length);
+}
+
+/**
+ * Whether `path` is `root` itself or something inside it.
+ *
+ * The separator check is what keeps this from being a plain `startsWith`, and
+ * it is not pedantry: without it `src` would claim `src-generated` as a child,
+ * which for `retarget` means rewriting a tab's path into nonsense and for
+ * `dropUnder` means closing a file the user did not delete.
+ *
+ * Both separators are accepted for the reason `baseName` gives — a Windows path
+ * can contain either, and the backend returns whatever `Display` produced.
+ */
+function isAtOrUnder(path: string, root: string): boolean {
+  if (path === root) return true;
+  if (!path.startsWith(root)) return false;
+  const next = path.charAt(root.length);
+  return next === "\\" || next === "/";
+}
 
 /**
  * Write one open buffer to disk. The only place that calls `files/write`.
@@ -221,9 +297,20 @@ export interface OpenFiles {
   tabs: OpenTab[];
   activePath: string | null;
   dirty: ReadonlySet<string>;
-  open(path: string): void;
-  activate(path: string): void;
+  /**
+   * Show a file. `preview` opens it in the one replaceable slot; anything else
+   * opens — or promotes — a tab that stays until it is closed.
+   */
+  open(path: string, preview?: boolean): void;
+  /** Bring a tab forward. `promote` is the double-click on a preview tab. */
+  activate(path: string, promote?: boolean): void;
+  /** A rename landed on disk — move any tab that was pointing at the old path. */
+  rename(from: string, to: string): void;
   close(path: string): void;
+  /** Names of open files at or under `path` with unsaved work. For a confirmation. */
+  unsavedUnder(path: string): string[];
+  /** Close every tab at or under `path`, unprompted. For a confirmed delete. */
+  dropUnder(path: string): void;
   setDirty(path: string, dirty: boolean): void;
   registerSave(path: string, save: (() => Promise<void>) | null): void;
   saveActive(): Promise<void>;
@@ -282,15 +369,21 @@ export function useOpenFiles(): OpenFiles {
   const restat = useCallback(
     (path: string) => {
       void stat(path)
-        .then((entry) =>
+        .then((entry) => {
+          const gone = !entry.exists;
           patch(path, {
             name: entry.name,
             ext: extensionOf(entry.name),
             size: entry.size,
             mtime: entry.mtime,
-            missing: !entry.exists,
-          }),
-        )
+            missing: gone,
+            // A deleted — or renamed — file makes this tab's buffer the last
+            // copy of it, which `OpenTab.missing` is already the argument for
+            // keeping. A preview tab is the one kind that gets taken away
+            // without being asked, so it stops being one.
+            ...(gone ? { preview: false } : {}),
+          });
+        })
         .catch(() => {
           /* A stat that failed says nothing about the file, only about the
              call. The viewer's own read is what reports a real problem. */
@@ -404,7 +497,9 @@ export function useOpenFiles(): OpenFiles {
       void stat(path)
         .then((entry) => {
           if (!entry.exists) {
-            patch(path, { missing: true });
+            // Same reasoning as `restat`: the buffer is the last copy, so the
+            // tab must stop being replaceable.
+            patch(path, { missing: true, preview: false });
             return;
           }
           if (tab.missing) patch(path, { missing: false });
@@ -437,6 +532,22 @@ export function useOpenFiles(): OpenFiles {
     }
   }, [patch, reload]);
 
+  /** This tab is a preview *and* nothing would be lost by replacing it. */
+  const isSpare = useCallback((tab: OpenTab) => {
+    if (!tab.preview) return false;
+    // Every one of these is supposed to have cleared `preview` already — see
+    // `setDirty` and `restat`. Asked again here because this is the moment a
+    // buffer would actually be thrown away, and the cost of a redundant check
+    // is nothing against the cost of being wrong once. `documents.isDirty`
+    // rather than only the `Set`, for the reason given on that method: the
+    // render mirror lags a keystroke by a commit.
+    if (tab.notice || tab.missing) return false;
+    return !documents.isDirty(tab.path) && !dirtyRef.current.has(tab.path);
+  }, []);
+
+  /** Stop a tab being replaceable. Idempotent, and the only way out of preview. */
+  const promote = useCallback((path: string) => patch(path, { preview: false }), [patch]);
+
   /**
    * Open a file, or bring its tab forward if it is already open.
    *
@@ -445,30 +556,194 @@ export function useOpenFiles(): OpenFiles {
    * round trip reads as a click that missed. Everything downstream tolerates
    * the gap: the viewer takes its `baseMtime` from its own read, not from here,
    * and the poll skips a tab whose mtime is still null.
+   *
+   * ## Preview
+   *
+   * `preview` is VS Code's single-click: the file opens in a slot that the
+   * *next* single click takes over, so browsing a folder leaves one tab behind
+   * rather than forty. There is at most one such slot, because "the preview
+   * tab" is a role and not a property a second tab could also hold.
+   *
+   * A preview tab is only ever replaced when replacing it loses nothing —
+   * `isSpare` above. A preview that has been typed into, or whose file went
+   * away, or that is asking the user a question is promoted where it stands and
+   * the new file opens beside it. The rule this enforces is the only one that
+   * really matters here: **no buffer with unsaved work in it is ever discarded
+   * without being asked.**
+   *
+   * Nothing here debounces or times anything, and the double-click case is not
+   * special-cased. The DOM fires `click` before `dblclick`, so double-clicking
+   * a file in the tree arrives as a preview open followed by this same function
+   * with `preview: false` — which promotes the tab the first click just made.
+   * That is exactly VS Code's sequence, and it falls out rather than being
+   * arranged.
    */
   const open = useCallback(
-    (path: string) => {
+    (path: string, preview = false) => {
       writeActive(path);
 
-      if (!tabsRef.current.some((tab) => tab.path === path)) {
-        const name = baseName(path);
-        writeTabs([
-          ...tabsRef.current,
-          { path, name, ext: extensionOf(name), size: null, mtime: null, nonce: 0, missing: false, notice: null },
-        ]);
+      const existing = tabsRef.current.find((tab) => tab.path === path);
+      if (existing) {
+        // A deliberate open of a file that is already peeked makes it stay. A
+        // preview open of a tab that is already permanent changes nothing —
+        // demoting it would be an editor taking a tab away.
+        if (!preview && existing.preview) promote(path);
+        restat(path);
+        return;
+      }
+
+      const name = baseName(path);
+      const tab: OpenTab = {
+        path,
+        name,
+        ext: extensionOf(name),
+        size: null,
+        mtime: null,
+        nonce: 0,
+        missing: false,
+        preview,
+        notice: null,
+      };
+
+      const slot = preview ? tabsRef.current.findIndex(isSpare) : -1;
+      if (slot === -1) {
+        // Any preview tab still standing was not spare, so it keeps its place
+        // in the strip and loses only its replaceability.
+        for (const other of tabsRef.current) if (other.preview) promote(other.path);
+        writeTabs([...tabsRef.current, tab]);
+      } else {
+        // In place, not close-then-append: the strip must not reshuffle under
+        // someone arrowing down a folder one file at a time.
+        const outgoing = tabsRef.current[slot].path;
+        documents.discard(outgoing);
+        saves.current.delete(outgoing);
+        writeDirty(outgoing, false);
+        writeTabs(tabsRef.current.map((other, index) => (index === slot ? tab : other)));
       }
 
       restat(path);
     },
-    [restat, writeActive, writeTabs],
+    [isSpare, promote, restat, writeActive, writeDirty, writeTabs],
   );
 
   const activate = useCallback(
-    (path: string) => {
+    (path: string, shouldPromote = false) => {
       writeActive(path);
+      if (shouldPromote) promote(path);
       poll();
     },
-    [poll, writeActive],
+    [poll, promote, writeActive],
+  );
+
+  /**
+   * A rename landed on disk; bring every affected tab with it.
+   *
+   * Called by the tree once `files/rename` has come back, and it must run
+   * *before* anything polls: a tab still pointing at the old path would `stat`,
+   * find nothing, and mark itself missing — a phantom "deleted" tab for a file
+   * that is perfectly fine, which is the exact failure this exists to prevent.
+   *
+   * Folders count. Renaming `src` to `source` moves every open tab underneath
+   * it, because those tabs' paths are just as stale as the folder's and each
+   * one would otherwise go missing for the same reason.
+   *
+   * Nothing is re-read. `documents.rekey` carries the live buffer across, so a
+   * tab with unsaved changes stays dirty, keeps its undo history, and is still
+   * the same buffer afterwards — see that method for the one thing it cannot
+   * move.
+   */
+  const rename = useCallback(
+    (from: string, to: string) => {
+      const moves = new Map<string, string>();
+      for (const tab of tabsRef.current) {
+        const moved = retarget(tab.path, from, to);
+        if (moved !== null && moved !== tab.path) moves.set(tab.path, moved);
+      }
+      if (moves.size === 0) return;
+
+      for (const [was, now] of moves) {
+        documents.rekey(was, now);
+        // The viewer remounts on the new path and registers a fresh save; the
+        // one filed under the old path closes over a path that is now wrong.
+        saves.current.delete(was);
+      }
+
+      const nextDirty = new Set(dirtyRef.current);
+      for (const [was, now] of moves) {
+        if (nextDirty.delete(was)) nextDirty.add(now);
+      }
+      dirtyRef.current = nextDirty;
+      setDirtyState(nextDirty);
+
+      writeTabs(
+        tabsRef.current.map((tab) => {
+          const now = moves.get(tab.path);
+          if (now === undefined) return tab;
+          const name = baseName(now);
+          return {
+            ...tab,
+            path: now,
+            name,
+            ext: extensionOf(name),
+            // Whatever this tab was worried about was about the old path. A
+            // "changed on disk" question in particular cannot be answered any
+            // more, and leaving it up would be asking about a file that is
+            // gone under a name that is not.
+            missing: false,
+            notice: null,
+          };
+        }),
+      );
+
+      const active = activeRef.current;
+      if (active !== null) {
+        const moved = moves.get(active);
+        if (moved !== undefined) writeActive(moved);
+      }
+
+      for (const now of moves.values()) restat(now);
+    },
+    [restat, writeActive, writeTabs],
+  );
+
+  /**
+   * The names of open files at or under `path` that have unsaved work.
+   *
+   * Asked *before* a delete is confirmed, so the confirmation can name what is
+   * about to be lost. `documents.isDirty` as well as the `Set`, for the reason
+   * given on that method: the render mirror lags a keystroke by a commit, and a
+   * warning that misses the last thing typed is the warning that matters.
+   *
+   * Inclusive of `path` itself, so it answers for a single file and for every
+   * open file inside a folder with one call.
+   */
+  const unsavedUnder = useCallback((path: string): string[] => {
+    return tabsRef.current
+      .filter((tab) => isAtOrUnder(tab.path, path))
+      .filter((tab) => documents.isDirty(tab.path) || dirtyRef.current.has(tab.path))
+      .map((tab) => tab.name);
+  }, []);
+
+  /**
+   * Close every tab at or under `path`, without asking.
+   *
+   * For a delete that has already happened. Unconditional on purpose: `close`
+   * would prompt about unsaved changes, and the user has just been asked that
+   * exact question by the confirmation and answered it. Prompting again would
+   * be asking whether they meant the thing they already confirmed.
+   *
+   * The file is gone, so there is nothing for a tab to be about. This is the
+   * one case that overrides `OpenTab.missing`'s rule about keeping a tab whose
+   * buffer may be the last copy — that rule is for a file that vanished
+   * *unexpectedly*, and this one left because the user said so.
+   */
+  const dropUnder = useCallback(
+    (path: string) => {
+      for (const tab of tabsRef.current.filter((entry) => isAtOrUnder(entry.path, path))) {
+        drop(tab.path);
+      }
+    },
+    [drop],
   );
 
   const close = useCallback(
@@ -486,8 +761,15 @@ export function useOpenFiles(): OpenFiles {
   );
 
   const setDirty = useCallback(
-    (path: string, isDirty: boolean) => writeDirty(path, isDirty),
-    [writeDirty],
+    (path: string, isDirty: boolean) => {
+      writeDirty(path, isDirty);
+      // Typing into a peek is the plainest statement there is that this file
+      // was worth opening. Promoting on the first keystroke is also what makes
+      // `isSpare` almost always redundant, which is the point: by the time
+      // anything would consider replacing this tab, it is no longer a preview.
+      if (isDirty) promote(path);
+    },
+    [promote, writeDirty],
   );
 
   const registerSave = useCallback((path: string, save: (() => Promise<void>) | null) => {
@@ -547,5 +829,18 @@ export function useOpenFiles(): OpenFiles {
     };
   }, [poll]);
 
-  return { tabs, activePath, dirty, open, activate, close, setDirty, registerSave, saveActive };
+  return {
+    tabs,
+    activePath,
+    dirty,
+    open,
+    activate,
+    rename,
+    close,
+    unsavedUnder,
+    dropUnder,
+    setDirty,
+    registerSave,
+    saveActive,
+  };
 }

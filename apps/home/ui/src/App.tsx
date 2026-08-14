@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke, reportPainted } from "@helve/bridge";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
 import "./home.css";
 
@@ -135,6 +135,21 @@ export default function App() {
       live = false;
     };
   }, []);
+
+  /**
+   * Home is the app HELVE opens on, so the splash window is held up until this
+   * pane has something on it — see `reportPainted` in `@helve/bridge`, and
+   * `boot::await_apps` for what is waiting.
+   *
+   * The condition is "the first answer landed", either way it went. A Home that
+   * could not read its state has still finished drawing: it will show the error
+   * and the three Start actions, which is the whole of what it has to say, and
+   * holding the window back for a screen that is not going to improve would
+   * only make the failure slower to reach.
+   */
+  useEffect(() => {
+    if (state !== null || error !== null) reportPainted();
+  }, [state, error]);
 
   const open = state?.open ?? null;
   const recents = state?.recents ?? [];

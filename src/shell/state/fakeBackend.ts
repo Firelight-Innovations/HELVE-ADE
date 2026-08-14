@@ -528,7 +528,14 @@ function packageJsonFor(name: string): string {
  * store knows.
  */
 function filesCall(method: string, params?: unknown): unknown | undefined {
-  const p = (params ?? {}) as { path?: unknown; text?: unknown; baseMtime?: unknown };
+  const p = (params ?? {}) as {
+    path?: unknown;
+    text?: unknown;
+    baseMtime?: unknown;
+    parent?: unknown;
+    name?: unknown;
+    id?: unknown;
+  };
 
   switch (method) {
     case "files/root":
@@ -551,6 +558,30 @@ function filesCall(method: string, params?: unknown): unknown | undefined {
     case "files/write":
       return writeAt(requiredPath(p.path), p.text, p.baseMtime);
 
+    case "files/create-file":
+      return createAt(p, "file");
+
+    case "files/create-dir":
+      return createAt(p, "dir");
+
+    case "files/rename":
+      return renameAt(p);
+
+    case "files/delete":
+      return deleteAt(requiredPath(p.path));
+
+    case "files/tree-size":
+      return treeSizeAt(requiredPath(p.path));
+
+    case "trash/list":
+      return trashListing();
+
+    case "trash/restore":
+      return trashRestoreAt(requiredString(p.id, "id"));
+
+    case "trash/purge":
+      return trashPurgeAt(requiredString(p.id, "id"));
+
     // There is no OS here to hand a file to. Both resolve `null` — the same
     // thing Rust returns on success — rather than refusing, because refusing
     // would make the app draw an error for a button that worked, and logging
@@ -561,10 +592,10 @@ function filesCall(method: string, params?: unknown): unknown | undefined {
       return null;
 
     default:
-      // A `files/` method this fixture has never heard of is a mistake worth
-      // naming, and it is the one Rust names too. Anything else belongs to
-      // another app and is not this function's to answer.
-      if (!method.startsWith("files/")) return undefined;
+      // A `files/` or `trash/` method this fixture has never heard of is a
+      // mistake worth naming, and it is the one Rust names too. Anything else
+      // belongs to another app and is not this function's to answer.
+      if (!method.startsWith("files/") && !method.startsWith("trash/")) return undefined;
       throw rpcError(HelveErrorCode.MethodNotFound, `no such method: ${method}`);
   }
 }
@@ -778,6 +809,345 @@ function writeAt(path: string, rawText: unknown, rawBaseMtime: unknown): unknown
   const mtime = Math.max(Date.now(), (current ?? 0) + 1);
   nodes.set(path, { kind: "file", text: rawText, base64: null, mtime });
   return { path, mtime };
+}
+
+/**
+ * Characters Windows will not store, and the DOS device names it reserves —
+ * `RESERVED_CHARS` and `RESERVED_STEMS` in `files.rs`, restated.
+ *
+ * Control characters are checked by code point at the call site rather than
+ * listed here, which is both what Rust's `char::is_control` does and the only
+ * way to express the rule without putting a literal control byte in this
+ * source, where no editor would show it.
+ */
+const FAKE_RESERVED_CHARS = new Set(["<", ">", ":", '"', "|", "?", "*"]);
+const FAKE_RESERVED_STEMS = new Set([
+  "con", "prn", "aux", "nul",
+  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+]);
+
+/**
+ * `validate_component` in `files.rs`, rule for rule.
+ *
+ * Copied rather than approximated for the reason this whole section gives: a
+ * fixture that accepted a name the backend refuses would make the create flow
+ * look finished here and fail in the packaged app, which is the exact failure
+ * mode the empty switcher bar was. The wording is close to Rust's but nothing
+ * matches on it — unlike the not-UTF-8 and stale-write messages above, which
+ * the app's `rpc.ts` really does read.
+ */
+function fakeValidateName(name: string): void {
+  const refuse = (why: string) => {
+    throw rpcError(HelveErrorCode.InvalidParams, why);
+  };
+
+  if (name === "") refuse("a name is required");
+  if (name.includes("/") || name.includes("\\")) {
+    refuse(
+      `"${name}" contains a path separator — this creates one entry inside the folder you chose, ` +
+        "so the name may not be a path",
+    );
+  }
+  if (name === "." || name === "..") {
+    refuse(`"${name}" is how a path refers to a folder that already exists, not a name`);
+  }
+  for (const ch of name) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (FAKE_RESERVED_CHARS.has(ch) || code < 32 || code === 127) {
+      refuse(`"${ch}" is not allowed in a Windows file name`);
+    }
+  }
+  if (name.endsWith(" ") || name.endsWith(".")) {
+    refuse(
+      `Windows silently drops a trailing space or dot, so "${name}" would not be the name on disk`,
+    );
+  }
+  const stem = name.split(".")[0].toLowerCase();
+  if (FAKE_RESERVED_STEMS.has(stem)) {
+    refuse(`"${stem}" is a reserved device name on Windows, so "${name}" cannot be created`);
+  }
+}
+
+/**
+ * `files/create-file` and `files/create-dir`, against the `Map`.
+ *
+ * The collision check is the interesting one: Rust gets it from
+ * `create_new(true)` and `create_dir`, which refuse an existing path at the
+ * syscall, and here it is an explicit `has`. Same refusal, and it must stay
+ * that way — a fixture that overwrote would let the create flow ship having
+ * never once shown the error it spends most of its code on.
+ */
+function createAt(
+  p: { parent?: unknown; name?: unknown },
+  kind: "file" | "dir",
+): unknown {
+  const parent = requiredString(p.parent, "parent");
+  const name = requiredString(p.name, "name");
+  fakeValidateName(name);
+
+  const nodes = fileTree();
+  if (nodes.get(parent)?.kind !== "dir") {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${parent} is not a folder, so there is nothing to create a ${
+        kind === "dir" ? "folder" : "file"
+      } in`,
+    );
+  }
+
+  const path = joinPath(parent, name);
+  if (nodes.has(path)) {
+    throw rpcError(HelveErrorCode.InvalidParams, `${name} already exists in ${parent}`);
+  }
+
+  nodes.set(path, {
+    kind,
+    // An empty file, not a template — `create_at` says the same. A directory
+    // holds neither, and its emptiness is simply that nothing else in the map
+    // has it as a parent.
+    text: kind === "file" ? "" : null,
+    base64: null,
+    mtime: Date.now(),
+  });
+
+  return { path, name, kind };
+}
+
+/**
+ * `files/rename`, against the `Map`. Mirrors `rename_at` in `files.rs`.
+ *
+ * Two behaviours here are the ones worth having a fixture for at all, because
+ * both are refusals the UI has to draw and neither is reachable otherwise:
+ * renaming onto a name that is taken, and renaming a folder — which in a flat
+ * `Map` means re-keying every descendant, the thing `std::fs::rename` does for
+ * free and a fixture has to do by hand.
+ */
+function renameAt(p: { path?: unknown; name?: unknown }): unknown {
+  const path = requiredPath(p.path);
+  const name = requiredString(p.name, "name");
+  fakeValidateName(name);
+
+  const nodes = fileTree();
+  const node = nodes.get(path);
+  if (node === undefined) {
+    throw rpcError(HelveErrorCode.InvalidParams, `${path} is no longer there to rename`);
+  }
+
+  const parent = parentOf(path);
+  if (parent === null) {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${path} is a root, and a root has no name to change`,
+    );
+  }
+
+  const target = joinPath(parent, name);
+  if (target === path) return { path, name, kind: node.kind };
+
+  // `is_same_entry` in Rust, which exists for the case-only rename. This tree
+  // claims to be Windows, so the comparison is case-insensitive — and without
+  // it, renaming `Notes.md` to `notes.md` would refuse here and succeed against
+  // the real backend, which is the direction of disagreement this file is most
+  // careful about.
+  if (target.toLowerCase() !== path.toLowerCase() && nodes.has(target)) {
+    throw rpcError(HelveErrorCode.InvalidParams, `${name} already exists in ${parent}`);
+  }
+
+  // A folder takes its children with it. Snapshot the entries first: this
+  // mutates the map it is walking.
+  const prefix = `${path}\\`;
+  for (const [key, value] of [...nodes]) {
+    if (key === path) {
+      nodes.delete(key);
+      nodes.set(target, value);
+    } else if (key.startsWith(prefix)) {
+      nodes.delete(key);
+      nodes.set(target + key.slice(path.length), value);
+    }
+  }
+
+  return { path: target, name, kind: node.kind };
+}
+
+/**
+ * `files/delete`, against the `Map`. Mirrors `delete_at` in `files.rs`.
+ *
+ * There is no Recycle Bin here and nothing to recover from, so `trashed` is
+ * reported `true` because that is what the backend does rather than because
+ * anything was moved anywhere. The lie is the same lie the rest of this section
+ * tells — there is no disk — and it is the contract that has to match.
+ *
+ * A folder takes its descendants, which in a flat map means deleting by prefix.
+ */
+function deleteAt(path: string): unknown {
+  const nodes = fileTree();
+  const node = nodes.get(path);
+  if (node === undefined) {
+    throw rpcError(HelveErrorCode.InvalidParams, `${path} is no longer there to delete`);
+  }
+
+  // Everything that is about to go, kept so `trash/restore` can put it back.
+  // This is what makes the delete → restore loop reachable under `?fake=1` at
+  // all: without it the fixture could delete but never undo, and the restore
+  // path — including both of its refusals — would ship unexercised.
+  const prefix = `${path}\\`;
+  const removed: Array<[string, FakeNode]> = [];
+  for (const [key, value] of [...nodes]) {
+    if (key === path || key.startsWith(prefix)) {
+      removed.push([key, value]);
+      nodes.delete(key);
+    }
+  }
+
+  fakeTrash.push({
+    // The real backend's id is a shell display name. Anything opaque and stable
+    // will do here; what matters is that the frontend never parses it.
+    id: `fake-trash-${(fakeTrashSerial += 1)}`,
+    name: baseNameOf(path),
+    originalPath: path,
+    originalParent: parentOf(path) ?? path,
+    deletedUnixMs: Date.now(),
+    kind: node.kind,
+    removed,
+  });
+
+  return { path, kind: node.kind, trashed: true };
+}
+
+// --- the fake Recycle Bin -----------------------------------------------------
+//
+// Only what this project deleted, because that is the rule the real backend
+// enforces: `trash/list` scopes to the project root, and restore and purge look
+// their id up inside that scoped set. The fixture cannot get that wrong in an
+// interesting way — there is no system bin here and nothing outside the tree to
+// leak — so what it exists to exercise is the *shape* of the answer and the two
+// refusals that restore can produce.
+
+interface FakeTrashEntry {
+  id: string;
+  name: string;
+  originalPath: string;
+  originalParent: string;
+  deletedUnixMs: number;
+  kind: "dir" | "file" | "other";
+  /** The whole subtree that went, so a restore is exact rather than a stub. */
+  removed: Array<[string, FakeNode]>;
+}
+
+let fakeTrash: FakeTrashEntry[] = [];
+let fakeTrashSerial = 0;
+
+function trashListing(): unknown {
+  return {
+    root: AURORA_ROOT,
+    // Newest first, which is the order Rust sorts into. The frontend explicitly
+    // does not re-sort, so a fixture handing back insertion order would make the
+    // list look right here and wrong against the backend.
+    items: [...fakeTrash]
+      .sort((a, b) => b.deletedUnixMs - a.deletedUnixMs)
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        originalPath: entry.originalPath,
+        originalParent: entry.originalParent,
+        deletedUnixMs: entry.deletedUnixMs,
+        // A file reports bytes and a directory reports its immediate children,
+        // exactly as `TrashItemSize` splits them.
+        size: entry.kind === "dir" ? null : sizeOf(entry.removed[0][1]),
+        entries:
+          entry.kind === "dir"
+            ? entry.removed.filter(
+                ([key]) => parentOf(key) === entry.originalPath,
+              ).length
+            : null,
+      })),
+  };
+}
+
+function findTrashEntry(id: string): FakeTrashEntry {
+  const entry = fakeTrash.find((candidate) => candidate.id === id);
+  if (!entry) {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      "that item is not in this project's Recycle Bin — it may have been restored, purged, or " +
+        "emptied since the list was read",
+    );
+  }
+  return entry;
+}
+
+function trashRestoreAt(id: string): unknown {
+  const entry = findTrashEntry(id);
+  const nodes = fileTree();
+
+  // Both refusals the real backend produces, in the same order.
+  if (nodes.has(entry.originalPath)) {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${entry.originalPath} already exists, so restoring would overwrite it`,
+    );
+  }
+  if (nodes.get(entry.originalParent)?.kind !== "dir") {
+    throw rpcError(
+      HelveErrorCode.InvalidParams,
+      `${entry.originalParent} no longer exists, so there is nowhere to restore ${entry.name} to ` +
+        "— recreate the folder first",
+    );
+  }
+
+  for (const [key, value] of entry.removed) nodes.set(key, value);
+  fakeTrash = fakeTrash.filter((candidate) => candidate.id !== id);
+
+  return { path: entry.originalPath, name: entry.name };
+}
+
+function trashPurgeAt(id: string): unknown {
+  const entry = findTrashEntry(id);
+  fakeTrash = fakeTrash.filter((candidate) => candidate.id !== id);
+  return { name: entry.name, originalPath: entry.originalPath };
+}
+
+/** `TREE_SIZE_CAP` in `files.rs`, restated — see that constant for the argument. */
+const FAKE_TREE_SIZE_CAP = 10_000;
+
+/**
+ * `files/tree-size`: what a recursive delete would take with it.
+ *
+ * Counts by path prefix rather than by walking, because this tree is a flat map
+ * and a prefix scan is the same answer. The cap is honoured so the `truncated`
+ * branch is reachable here at all — `node_modules` in this fixture is around
+ * 750 entries, so it is not reached in practice, and that is worth knowing
+ * rather than assuming.
+ */
+function treeSizeAt(path: string): unknown {
+  const prefix = `${path}\\`;
+  let files = 0;
+  let dirs = 0;
+  let truncated = false;
+
+  for (const [key, node] of fileTree()) {
+    if (!key.startsWith(prefix)) continue;
+    if (files + dirs >= FAKE_TREE_SIZE_CAP) {
+      truncated = true;
+      break;
+    }
+    if (node.kind === "dir") dirs += 1;
+    else files += 1;
+  }
+
+  return { path, files, dirs, truncated };
+}
+
+/** `required_string` in `files.rs`, for the params only create and rename take. */
+function requiredString(raw: unknown, key: string): string {
+  if (typeof raw === "string") return raw;
+  throw rpcError(
+    HelveErrorCode.InvalidParams,
+    raw === undefined || raw === null
+      ? `${key} is required`
+      : `${key} must be a string, got ${JSON.stringify(raw)}`,
+  );
 }
 
 /**

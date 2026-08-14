@@ -31,6 +31,7 @@
 
 mod files;
 mod home;
+mod trash;
 
 use helve_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde::Serialize;
@@ -107,6 +108,17 @@ pub fn list() -> Vec<AppInfo> {
 /// asks this first, so the two id spaces resolve through one door.
 pub fn is_app(id: &str) -> bool {
     REGISTRY.iter().any(|a| a.id == id)
+}
+
+/// Every app's id and display name, for boot.
+///
+/// `list` would answer this too, but it builds a URL per app that nobody there
+/// wants — and boot asks twice (once for the step count, once for the set it is
+/// still waiting on), so it gets the two fields it actually reads. The name is
+/// in it because the splash says "Starting Home and Files" rather than naming
+/// the ids only a developer knows.
+pub fn roster() -> Vec<(&'static str, &'static str)> {
+    REGISTRY.iter().map(|a| (a.id, a.name)).collect()
 }
 
 /// Where an app's frontend is served from.

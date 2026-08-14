@@ -63,6 +63,29 @@ that answered a picker would have to invent a folder the user never chose, and a
 fixture disagreeing with the backend in the direction of looking healthier is
 worse than no fixture at all.
 
+## Reporting in at startup
+
+Every app owes the shell one thing beyond drawing itself: a call to
+`reportPainted()` from `@helve/bridge` once its first meaningful content is
+committed to the DOM.
+
+The orchestrator's splash window stays up until every app in the registry has
+sent one (`src-tauri/src/boot.rs`), which is what makes the first frame after
+the splash the app itself rather than a boot overlay that resolves into it a
+beat later. The apps are already loading the whole time — the main window is
+created hidden and its iframes mount as soon as the app list arrives — so this
+costs nothing except the discipline of reporting at the right moment.
+
+The right moment is the *content*, not the call that fetched it: Home reports
+when `home/state` has landed and been rendered, Files when the tree has rows.
+An error state counts, and reporting it is not a failure — a screen saying it
+could not read anything is finished, and holding the window back for one that
+is never going to improve only makes the bad news slower to arrive.
+
+An app that never reports is waited on for four seconds, logged, and left
+behind. So forgetting the call costs a slow start, not a hang — but it does cost
+a slow start, which is why it is in this list rather than in a comment.
+
 ## The two apps
 
 **Home** (`home/state`, plus the project verbs) — where a session starts: New,

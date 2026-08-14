@@ -24,7 +24,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { pick, type ViewerProps } from "./registry";
-import { bindSave, createModel, mountEditor } from "./monaco";
+import { bindSave, createModel, mountEditor, retargetModel } from "./monaco";
 import { documents, requestReload, saveDocument, type TabDocument } from "../tabs/useOpenFiles";
 import { describe, formatSize, isNotText, readText, staleWrite } from "../rpc";
 import "./text.css";
@@ -80,6 +80,7 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
           baseMtime: result.mtime,
           truncatedAt: result.truncated ? result.limit : null,
           viewState: null,
+          ext: file.ext,
         };
         documents.put(file.path, next);
         setDoc(next);
@@ -112,6 +113,15 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
   useEffect(() => {
     const host = hostRef.current;
     if (!doc || !host) return;
+
+    // A rename can change the extension under a buffer that was deliberately
+    // *not* re-read, so the model may still be tokenizing the old file type.
+    // Put right here rather than in `rekey`, because this is the Monaco side of
+    // the app and that one may not import it — see this file's header.
+    if (doc.ext !== file.ext) {
+      retargetModel(doc.model, file.ext);
+      doc.ext = file.ext;
+    }
 
     const readOnly = doc.truncatedAt !== null;
     const editor = mountEditor(host, doc.model, readOnly);
@@ -157,7 +167,7 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
       editor.setModel(null);
       editor.dispose();
     };
-  }, [doc, file.path]);
+  }, [doc, file.path, file.ext]);
 
   if (error) {
     return <p className="app__error text__failed">{error}</p>;

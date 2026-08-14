@@ -258,6 +258,9 @@ describe("tauri host", () => {
 
     await expect(client.invoke("helve/hello")).resolves.toEqual({ protocol: 1 });
     await expect(client.invoke("helve/shutdown")).resolves.toBeNull();
+    // `/` is not a legal Tauri command name, so a reserved method that reached
+    // `invoke` would be a guaranteed runtime error rather than a wrong answer.
+    await expect(client.invoke("helve/painted")).resolves.toBeNull();
     expect(invoke).not.toHaveBeenCalled();
   });
 

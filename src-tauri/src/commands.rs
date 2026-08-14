@@ -94,9 +94,25 @@ pub fn finish_boot(app: tauri::AppHandle) {
 pub fn boot_status(state: State<'_, AppState>) -> boot::BootStatus {
     state.boot_status().unwrap_or(boot::BootStatus::Working {
         step: 0,
-        total: boot::STEPS,
+        total: boot::total_steps(),
         label: "Starting…".to_string(),
     })
+}
+
+/// A first-party app's UI has drawn its first meaningful frame.
+///
+/// Reported by the *shell*, not by the app: an app's frontend sends
+/// `helve/painted` over transport B, and `ToolWindow` — the only thing that can
+/// say which mounted frame a message came from — forwards it here with the id
+/// it resolved. So an app cannot report on another app's behalf, for the same
+/// reason it cannot answer another app's `invoke`.
+///
+/// Boot holds the splash window until every app has said this, which is what
+/// makes the first frame after the splash the real Home rather than the boot
+/// overlay laid over it. See `boot::await_apps`.
+#[tauri::command]
+pub fn app_painted(id: String) {
+    boot::painted(&id);
 }
 
 // --- shell state ------------------------------------------------------------

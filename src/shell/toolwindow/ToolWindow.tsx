@@ -15,6 +15,7 @@ import type {
   ResponseMessage,
 } from "../../../packages/bridge/src/protocol";
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
+import { appPainted } from "../../bindings";
 import { callApp } from "../state/apps";
 import { isFake } from "../state/fakeBackend";
 import ToolMount from "./ToolMount";
@@ -40,6 +41,12 @@ import "./toolwindow.css";
  * Silence is the worse answer: the bridge times a pending call out after thirty
  * seconds, so a tool asking a question this build cannot answer would hang for
  * half a minute before finding out.
+ *
+ * The one other message the shell answers itself is `helve/painted`, which is a
+ * frame reporting that it has drawn its first meaningful content. That is not
+ * an app's question to answer — the frame is claiming something about itself,
+ * and only the shell can say *which* frame is claiming it — and what waits on
+ * the answer is the splash window, which stays up until every app has reported.
  *
  * Traffic runs the other way too: a Tauri event the backend broadcasts is
  * forwarded into app frames as a transport-B `event` message. That is the only
@@ -119,6 +126,28 @@ export default function ToolWindow({
       const { id, method, params } = event.data;
       const respond = (body: Omit<ResponseMessage, "helve" | "kind">) =>
         source.postMessage({ helve: 1, kind: "response", ...body } satisfies ResponseMessage, origin);
+
+      // `helve/*` belongs to the host, exactly as `hello` above does — this one
+      // is a frame saying it has drawn its first meaningful content, and it is
+      // answered here rather than forwarded on to an app's Rust half.
+      //
+      // What the report is *for* is the splash window: boot holds it open until
+      // every first-party app has said this, so that the window it hands off to
+      // is finished rather than still filling in (see `src-tauri/src/boot.rs`).
+      // Only an app's report travels on. A tool is a different repository's code
+      // that boot is not waiting for, and under `?fake=1` there is no backend to
+      // tell and no splash that would care — both still get their answer, since
+      // a frontend that asked and heard nothing back would sit through the
+      // bridge's thirty-second timeout for it.
+      if (method === "helve/painted") {
+        respond({ id, result: null });
+        if (frame.isApp && !isFake()) {
+          void appPainted(frame.id).catch((err: unknown) =>
+            console.error(`helve: could not report ${frame.id} painted:`, err),
+          );
+        }
+        return;
+      }
 
       if (!frame.isApp) {
         respond({

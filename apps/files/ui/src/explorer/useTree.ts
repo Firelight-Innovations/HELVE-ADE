@@ -57,6 +57,18 @@ export interface Tree {
    */
   expand: (path: string) => void;
   collapse: (path: string) => void;
+  /**
+   * Re-read one directory, because something inside it changed.
+   *
+   * The narrow half of `reloadNonce`: that drops the whole cache and re-lists
+   * every open folder, which is right for "the project changed underneath us"
+   * and absurd for "a file was just created in this folder" — with
+   * `node_modules` open it is tens of thousands of rows re-fetched to show one
+   * new row. Nothing is invalidated first; the listing that comes back replaces
+   * what was there, so a directory that has not changed is not visibly
+   * re-listed either.
+   */
+  relist: (path: string) => void;
 }
 
 export function useTree(root: Root | null, reloadNonce: number, filter: string): Tree {
@@ -155,6 +167,11 @@ export function useTree(root: Root | null, reloadNonce: number, filter: string):
     ready: root ? children.has(root.path) : false,
     expand,
     collapse,
+    // `load` already replaces whatever it finds under that key, and it is
+    // already guarded against listing the same directory twice at once, so
+    // there is nothing for this to add beyond a name that says why it is being
+    // called.
+    relist: load,
   };
 }
 
