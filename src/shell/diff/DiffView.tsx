@@ -1,10 +1,12 @@
 /**
- * A read-only side-by-side diff, rendered with Monaco's `DiffEditor`.
+ * A read-only diff, rendered with Monaco's `DiffEditor` — two columns by
+ * default, one interleaved column when `renderSideBySide` is false.
  *
- * Not mounted anywhere yet — nothing in the shell imports this file. It exists
- * so the git-diff feature (built separately, later) has a component to drop
- * in, and so `pnpm build` proves the worker wiring and the trimmed import
- * actually work before that feature lands.
+ * Mounted by the source-control panel (`worktree/SourceControlView.tsx`),
+ * which imports it lazily: this module pulls in Monaco and its worker chunk on
+ * evaluation, and the panel is mounted for the life of the window whether or
+ * not anyone opens a diff. The `lazy` boundary there is what keeps that cost
+ * on the first click rather than on startup.
  *
  * Imported from `monaco-editor/esm/vs/editor/editor.api`, not `.../editor.main`
  * — `editor.main` registers every bundled language, and the IntelliSense
@@ -64,9 +66,19 @@ export interface DiffViewProps {
    *  `editor.api` imported, this does not yet produce highlighting — it is
    *  accepted now so callers don't have to change when it does. */
   language?: string;
+  /**
+   * Two columns, or one with the removals and additions interleaved.
+   *
+   * Defaults to two because that is what a diff opened in the tool window
+   * wants. The source-control panel passes `false`: it is
+   * `--w-panel-default` (380px) wide, and two columns of code in half of that
+   * wraps every meaningful line — the same reason VS Code's own SCM view
+   * flips to inline when it is docked narrow.
+   */
+  renderSideBySide?: boolean;
 }
 
-export default function DiffView({ original, modified, language }: DiffViewProps) {
+export default function DiffView({ original, modified, language, renderSideBySide = true }: DiffViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Re-created whenever the text changes rather than fed through
@@ -81,7 +93,7 @@ export default function DiffView({ original, modified, language }: DiffViewProps
       theme: "helve-dark",
       readOnly: true,
       automaticLayout: true,
-      renderSideBySide: true,
+      renderSideBySide,
       minimap: { enabled: false },
     });
 
@@ -94,13 +106,20 @@ export default function DiffView({ original, modified, language }: DiffViewProps
     // handed — Monaco assumes a model may be shared or reused elsewhere.
     // These were created fresh above for this instance alone, so they are
     // ours to dispose too, or they leak on every unmount.
+    //
+    // Order matters, and not subtly: the widget listens for its own models
+    // being disposed, and disposing one while it is still attached throws
+    // "TextModel got disposed before DiffEditorWidget model got reset" out of
+    // an event handler on every close. Detaching first makes the disposals
+    // below unobserved, which is what lets them be ours to make.
     return () => {
       const model = diffEditor.getModel();
+      diffEditor.setModel(null);
       model?.original.dispose();
       model?.modified.dispose();
       diffEditor.dispose();
     };
-  }, [original, modified, language]);
+  }, [original, modified, language, renderSideBySide]);
 
   return <div ref={containerRef} className="diff" />;
 }

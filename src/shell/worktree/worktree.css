@@ -1,19 +1,27 @@
 /*
- * The worktree tab's body: the branch row, the changed-file list, and the
- * no-worktree empty state.
+ * The source-control tab's body: the branch row, the staged and unstaged
+ * lists, the diff pane, the commit box, and the empty states.
  *
- * Measured against the handoff's "Worktree tab selected" and "Worktree tab,
- * repository with no worktree" crops (docs/handoffs/shell-spec.html, lines
- * ~213-249). This renders into `.panel__body` (src/shell/panel/panel.css),
- * which already owns the scroll container and its background — nothing here
- * repeats those.
+ * The branch row, the file rows and the empty state are measured against the
+ * handoff's "Worktree tab selected" and "Worktree tab, repository with no
+ * worktree" crops (docs/handoffs/shell-spec.html, lines ~213-249). The crops
+ * predate staging, so the section headers, the checkbox column, the diff pane
+ * and the commit box have no crop to match and follow the same type scale and
+ * spacing rather than inventing a second one.
  *
- * No motion here — see the header comment in WorktreeView.tsx.
+ * This renders into `.panel__body` (src/shell/panel/panel.css), which already
+ * owns the scroll container and its background — nothing here repeats those.
+ *
+ * No motion here — see the header comment in SourceControlView.tsx.
  */
 
+/* Column, because the commit box is pinned to the bottom and the lists take
+   whatever is left. `min-height: 0` on the scrolling child is what actually
+   lets it scroll instead of pushing the box off the panel. */
 .worktree {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 /* --- the branch row -------------------------------------------------------
@@ -21,6 +29,7 @@
    with the name and the trailing count each overriding their own colour. */
 
 .worktree__branch {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -37,6 +46,13 @@
   color: var(--text);
 }
 
+.worktree__branch-track {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-dim-2);
+}
+
 .worktree__branch-spacer {
   flex: 1;
 }
@@ -49,20 +65,78 @@
   color: var(--text-dim-2);
 }
 
-/* --- the changed-file list -------------------------------------------------
+/* --- the two lists --------------------------------------------------------
    Plain stacked rows, no dividers between them — the crop draws none. */
 
-.worktree__changes {
+.worktree__lists {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 7px 0;
+}
+
+.worktree__section-head {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 5px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.worktree__section-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-dim-3);
 }
 
 .worktree__row {
   display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.worktree__row:hover {
+  background: var(--surface-2);
+}
+
+.worktree__row--selected {
+  background: var(--accent-wash);
+}
+
+.worktree__check {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.worktree__check:disabled {
+  cursor: default;
+}
+
+/* The row's text is a button so it is reachable by keyboard and announces as
+   one control, but it has to draw as a row: no chrome, full width, left. */
+.worktree__rowtext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 6px 14px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
 
 .worktree__kind {
@@ -72,10 +146,13 @@
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1;
-  /* colour is set inline per row from contract.ts's CHANGE_TOKEN */
+  /* colour is set inline per row from contract.ts's GIT_KIND_TOKEN */
 }
 
+/* The name never shrinks below its content; the directory is what gives way
+   when the panel is narrow, since the file is the identifying half. */
 .worktree__file {
+  flex: none;
   font-family: var(--sans);
   font-size: 11.5px;
   font-weight: 400;
@@ -87,17 +164,171 @@
    legacy-bar.tsx row. */
 .worktree__file--deleted {
   color: var(--text-dim);
+  text-decoration: line-through;
 }
 
 .worktree__dir {
+  flex: 1;
+  min-width: 0;
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 400;
   line-height: 1;
   color: var(--text-dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* --- the no-worktree empty state ------------------------------------------
+/* "No changes", "Loading diff…" — anything that occupies a list's space
+   without being a row. */
+.worktree__quiet {
+  padding: 10px 14px;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim-3);
+}
+
+/* --- the diff pane --------------------------------------------------------
+   A fixed slice of the panel rather than a share of it: Monaco needs a
+   definite height to lay out against, and the file lists above have to keep
+   enough room to still be a list while a diff is open. */
+
+.worktree__diff {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: 45%;
+  min-height: 140px;
+  border-top: 1px solid var(--line);
+}
+
+.worktree__diff-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.worktree__diff-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  /* The tail is the identifying half of a path, so the head is what goes. */
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.worktree__diff-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim-2);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worktree__diff-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Monaco measures its own container, so `.diff` (src/shell/diff/diff.css) has
+   to have a height to measure — this is the box that gives it one. */
+.worktree__diff > .diff {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- the commit box -------------------------------------------------------
+   Pinned below the lists. Never scrolls with them: the message being typed is
+   the one thing in this panel that must not move. */
+
+.worktree__commit {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.worktree__commit-box {
+  width: 100%;
+  resize: none;
+  padding: 7px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.worktree__commit-box::placeholder {
+  color: var(--text-dim-3);
+}
+
+.worktree__commit-box:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+
+.worktree__commit-btn {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: 500 11px/1 "IBM Plex Sans", sans-serif;
+  cursor: pointer;
+}
+
+.worktree__commit-btn:disabled {
+  border-color: var(--line-2);
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+/* git's own words, verbatim — "nothing to commit", a rejected hook. Wraps and
+   scrolls rather than truncating: the useful half of a hook's complaint is
+   usually the end of it.
+
+   There is no --err wash token, and this is not the place to mint one: the
+   surface token plus --err text carries it, and the accent washes exist
+   because drop targets sit over two different backgrounds, which this does
+   not. */
+.worktree__error {
+  max-height: 72px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--err);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* --- the empty states -----------------------------------------------------
    Every value below is lifted verbatim from the crop. Fills whatever height
    `.panel__body` gives it rather than a fixed 214px, since that number was
    the total height of the crop's mock window chrome, not of this view. */
@@ -126,15 +357,4 @@
 .worktree__empty-body {
   font: 400 11px/1.55 "IBM Plex Sans", sans-serif;
   color: var(--text-dim-3);
-}
-
-.worktree__empty-button {
-  margin-top: 4px;
-  font: 500 11px/1 "IBM Plex Sans", sans-serif;
-  color: var(--accent);
-  padding: 7px 12px;
-  border: 1px solid var(--accent-line);
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
 }
