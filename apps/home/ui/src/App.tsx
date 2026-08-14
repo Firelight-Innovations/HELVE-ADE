@@ -54,7 +54,7 @@ const START: {
     method: "home/clone-project",
     label: "Clone Project",
     icon: GitBranch,
-    unavailable: "Not built yet — clone the repository yourself, then use Open Project",
+    unavailable: "Not built yet. Clone the repository yourself, then use Open Project.",
   },
 ];
 
@@ -295,7 +295,7 @@ function Recent({
         disabled={busy}
         onClick={onForget}
         aria-label={`Remove ${project.name} from the recent list`}
-        title="Remove from this list — nothing is deleted"
+        title="Remove from this list. Nothing is deleted."
       >
         <Close size={14} />
       </button>
