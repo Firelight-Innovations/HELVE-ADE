@@ -1,74 +1,77 @@
 /**
  * The drag layer.
  *
- * Two interactions, one gesture machine. A tool tab dragged clear of the
- * switcher bar detaches into its own window; dragged sideways while still
- * over the bar it reorders instead. A terminal tab dropped into a HELVE
- * window's panel moves it there. Nothing else in the shell is draggable.
+ * One gesture, one payload, and every drop target registered rather than
+ * guessed. A tab — an app surface or a terminal, they no longer differ — can be
+ * dropped into a tab strip, onto a pane's edge to split it there, into the
+ * terminal panel, or clear of everything to become its own window.
  *
- * This hook owns the whole gesture — press-and-hold, movement threshold,
+ * A cluster chip drags too, through the same handle and the same threshold, and
+ * lands in only one of those places: clear of everything, which either moves it
+ * into the window it was released over or gives it one of its own. See
+ * `commitCluster`.
+ *
+ * This hook owns the whole gesture: press-and-hold, movement threshold, and
  * `pointermove`/`pointerup`/`pointercancel` tracked on `window` the same way
- * `Frame.tsx`'s resize handle does — and hands back a small, stable surface
- * that `WindowRoot` wires into the switcher bar and the panel: a handle
- * factory per drag source, and one `overlay` node for `FrameSlots.overlay`.
+ * `Frame.tsx`'s resize handle does. It hands back a small, stable surface that
+ * `WindowRoot` wires into the panes and the panel: one handle factory, one
+ * `overlay` node for `FrameSlots.overlay`, and the live drop target so a pane
+ * can draw its own indicator.
  *
- * Reading `[data-region="switcher"]` / `[data-region="panel"]` off the DOM
- * (set by `Frame.tsx`) rather than importing anything from those regions is
- * what keeps this file inside its own directory — it never reaches across
- * into `switcher/` or `panel/` source, only their rendered geometry.
+ * What it no longer does is read other regions' markup. The old version found
+ * its targets with `document.querySelector('[data-region="panel"]')` and worked
+ * out a reorder index from `bar.querySelectorAll(".switcher__tab")` — a query
+ * into another region's CSS class names. That could not survive an arbitrary
+ * number of panes and strips appearing and disappearing as the user splits
+ * things, so targets now register themselves; see `dropZones.tsx`.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { AnimatePresence, useMotionValue, useSpring } from "framer-motion";
-import type { DragHandleProps, DragPayload, DragState } from "../contract";
+import type {
+  ClusterDrag,
+  DragHandleProps,
+  DragPayload,
+  DragState,
+  DropTarget,
+} from "../contract";
 import { snap } from "../motion";
 import {
-  detachTool,
+  detachCluster,
+  detachInstance,
+  moveInstance,
   moveTerminal,
-  setDockedTools,
-  useShellState,
+  splitPane,
   windowAtCursor,
-  windowLabel,
 } from "../state/shellState";
 import DragGhost from "./DragGhost";
-import { DetachOutline, PanelDropOutline } from "./DropTargets";
+import { DetachOutline } from "./DropTargets";
+import { hitTest } from "./dropZones";
 import "./drag.css";
 
-type ToolPayload = Extract<DragPayload, { kind: "tool" }>;
-type TerminalPayload = Extract<DragPayload, { kind: "terminal" }>;
-
 /**
- * How far the pointer has to travel from the press point before a press
- * becomes a drag. Below this it stays a click — `ToolSwitcherBar` and
- * `SecondaryPanel` both spread this handle's `onPointerDown` alongside their
- * own `onClick` and rely on a press that never moves still selecting the
- * tab.
+ * How far the pointer has to travel from the press point before a press becomes
+ * a drag. Below this it stays a click — every tab spreads this handle's
+ * `onPointerDown` alongside its own `onClick` and relies on a press that never
+ * moves still selecting the tab.
  */
 const PRESS_THRESHOLD = 4;
 
 /**
- * How far clear of the source switcher bar the pointer has to get before a
- * tool drag counts as a detach rather than a reorder — `DragState.clearOfSource`.
- * The handoff's caption ("2 — clear of the bar") draws the moment but gives
- * no number. 16px is about half the bar's own height (`--h-switcher` is
- * 36px): enough that grazing the bar's bottom hairline mid-reorder doesn't
- * false-trigger a detach, small enough the gesture still reads as immediate.
- * Flagged in the report rather than silently picked — there was nothing to
- * measure this against.
- */
-const CLEAR_THRESHOLD = 16;
-
-/**
- * The ghost's spring, derived from `snap` rather than invented. `snap` is
- * the scale's answer for "the default, for anything the pointer just
- * caused" — its stiffness is the highest in the scale, which is what "light
- * lag only, it should read as attached to the cursor" calls for. `motion.ts`
- * types `snap` as the general `Transition` shape (it has to, `settle` and
- * `instant` share the export), so its spring fields are read with a narrow
- * cast here rather than by widening the shared type for one caller.
+ * The ghost's spring, derived from `snap` rather than invented. `snap` is the
+ * scale's answer for "the default, for anything the pointer just caused" — its
+ * stiffness is the highest in the scale, which is what "light lag only, it
+ * should read as attached to the cursor" calls for. `motion.ts` types `snap` as
+ * the general `Transition` shape (it has to, `settle` and `instant` share the
+ * export), so its spring fields are read with a narrow cast here rather than by
+ * widening the shared type for one caller.
  */
 const springSource = snap as unknown as { stiffness: number; damping: number; mass?: number };
-const ghostSpring = { stiffness: springSource.stiffness, damping: springSource.damping, mass: springSource.mass };
+const ghostSpring = {
+  stiffness: springSource.stiffness,
+  damping: springSource.damping,
+  mass: springSource.mass,
+};
 
 interface Session {
   payload: DragPayload;
@@ -76,233 +79,237 @@ interface Session {
   startX: number;
   startY: number;
   began: boolean;
-  /** The switcher bar (tool) or panel (terminal) this drag started from,
-   *  measured once — the bars never move, so one measurement holds for the
-   *  whole gesture. */
-  sourceBarRect: DOMRect | null;
-  /** Tool only: this window's docked order, kept live as reordering happens
-   *  so each pointermove reorders from the last order it produced rather
-   *  than the one at drag start. */
-  toolOrder: string[];
 }
 
-export function useDrag(): {
-  toolHandle(payload: ToolPayload): DragHandleProps;
-  terminalHandle(payload: TerminalPayload): DragHandleProps;
-  overlay: React.ReactNode;
-  dragging: boolean;
-} {
-  const shell = useShellState();
-  const label = useMemo(() => windowLabel(), []);
-  const placement = shell?.windows.find((w) => w.label === label) ?? null;
-  // The pointer handlers below are added once per gesture and read this on
-  // every move — a plain closure over `placement` would freeze on whatever
-  // order was current when the drag began.
-  const placementRef = useRef(placement);
-  placementRef.current = placement;
-
+/**
+ * `label` and `activeClusterId` are the *destination* half of every commit: a
+ * pane belongs to a cluster, and a tab released over another window has to be
+ * moved to that window rather than this one. Passed in rather than read from
+ * `shell:state` here, because `WindowRoot` has already resolved which cluster
+ * this window is showing and a second derivation would be a second chance to
+ * disagree with it.
+ */
+export function useDrag(label: string, activeClusterId: string | null) {
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [overPanel, setOverPanel] = useState(false);
   const sessionRef = useRef<Session | null>(null);
 
-  // Raw pointer position, written directly on every move — no animation of
-  // its own, this is what the spring below chases. `useSpring` on a source
-  // motion value is the documented pattern for "this value, but lagging."
+  // Written raw on every move and chased by a spring, rather than routed through
+  // React state. The ghost has to read as attached to the cursor, and a
+  // re-render per frame cannot promise that under load — least of all during a
+  // drag, when a re-render also re-measures every pane in the window.
   const rawX = useMotionValue(0);
   const rawY = useMotionValue(0);
   const ghostX = useSpring(rawX, ghostSpring);
   const ghostY = useSpring(rawY, ghostSpring);
 
-  const beginPress = useCallback(
-    (payload: DragPayload, e: ReactPointerEvent) => {
-      if (e.button !== 0) return;
+  const tabHandle = useCallback(
+    (payload: DragPayload): DragHandleProps => ({
+      style: { cursor: "grab" },
+      onPointerDown: (e: ReactPointerEvent) => {
+        // Only the primary button drags. A right-click that started a gesture
+        // would leave a ghost stuck to the cursor with no release to end it.
+        if (e.button !== 0) return;
 
-      const sourceEl = e.currentTarget as HTMLElement;
-      const barSelector = payload.kind === "tool" ? '[data-region="switcher"]' : '[data-region="panel"]';
-      const sourceBarRect = sourceEl.closest(barSelector)?.getBoundingClientRect() ?? null;
+        sessionRef.current = {
+          payload,
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          began: false,
+        };
 
-      const session: Session = {
-        payload,
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        began: false,
-        sourceBarRect,
-        toolOrder: placementRef.current?.toolIds ?? [],
-      };
-      sessionRef.current = session;
+        // Capture keeps the gesture alive when the cursor outruns the tab, which
+        // it always does. It is an optimisation rather than the mechanism — the
+        // window listeners below are what track the drag — and it throws for a
+        // pointer id the browser no longer considers active. Bare, it sat above
+        // those listeners, so a throw would abort the handler and lose the drag
+        // entirely. Guarded, the worst case is a slightly less forgiving gesture.
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {
+          // Nothing to do; see above.
+        }
 
-      // An optimisation, not the mechanism — the window listeners below are
-      // what actually track the drag — and it throws for a pointer id the
-      // browser no longer considers active. Guarded so a throw here can't
-      // abort the gesture; same pattern as Frame.tsx's resize handle.
-      try {
-        sourceEl.setPointerCapture(e.pointerId);
-      } catch {
-        // Nothing to do; see above.
-      }
+        const onMove = (ev: PointerEvent) => {
+          const s = sessionRef.current;
+          if (!s || ev.pointerId !== s.pointerId) return;
 
-      const onMove = (ev: PointerEvent) => {
-        const s = sessionRef.current;
-        if (!s || ev.pointerId !== s.pointerId) return;
+          if (!s.began) {
+            const travelled = Math.hypot(ev.clientX - s.startX, ev.clientY - s.startY);
+            if (travelled < PRESS_THRESHOLD) return;
+            s.began = true;
+            // Seeded so the ghost springs from under the cursor rather than
+            // flying in from the origin.
+            rawX.jump(ev.clientX);
+            rawY.jump(ev.clientY);
+          }
 
-        if (!s.began) {
-          const dx = ev.clientX - s.startX;
-          const dy = ev.clientY - s.startY;
-          if (Math.hypot(dx, dy) < PRESS_THRESHOLD) return;
-          s.began = true;
-          // Park the ghost at the current pointer position before the spring
-          // has a source value to chase, so the first visible frame doesn't
-          // fly in from wherever the previous drag ended (or from 0,0).
           rawX.set(ev.clientX);
           rawY.set(ev.clientY);
-          ghostX.set(ev.clientX);
-          ghostY.set(ev.clientY);
-          setDrag({ payload: s.payload, x: ev.clientX, y: ev.clientY, clearOfSource: false });
-        }
+          const target = resolve(s.payload, ev.clientX, ev.clientY);
+          setDrag({ payload: s.payload, x: ev.clientX, y: ev.clientY, target });
+        };
 
-        rawX.set(ev.clientX);
-        rawY.set(ev.clientY);
+        const onUp = (ev: PointerEvent) => {
+          const s = sessionRef.current;
+          sessionRef.current = null;
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
 
-        const clearOfSource = computeClearOfSource(s.sourceBarRect, ev.clientY);
+          // Cleared before the commit rather than after. The pointer is already
+          // up, some commits resolve asynchronously, and nothing about ending
+          // the gesture should wait on or race one.
+          setDrag(null);
+          if (!s || ev.pointerId !== s.pointerId || !s.began) return;
 
-        if (s.payload.kind === "tool") {
-          if (!clearOfSource) {
-            const bar = sourceEl.closest('[data-region="switcher"]');
-            const tabs = bar ? Array.from(bar.querySelectorAll<HTMLElement>(".switcher__tab")) : [];
-            if (tabs.length === s.toolOrder.length) {
-              const targetIndex = indexForX(tabs, ev.clientX);
-              const next = reorder(s.toolOrder, s.payload.toolId, targetIndex);
-              if (next !== s.toolOrder) {
-                s.toolOrder = next;
-                void setDockedTools(label, next);
-              }
-            }
-          }
-        } else {
-          setOverPanel(pointerOverPanel(ev.clientX, ev.clientY));
-        }
+          commit(s.payload, resolve(s.payload, ev.clientX, ev.clientY), label, activeClusterId);
+        };
 
-        setDrag((prev) => (prev ? { ...prev, x: ev.clientX, y: ev.clientY, clearOfSource } : prev));
-      };
-
-      const onUp = (ev: PointerEvent) => {
-        const s = sessionRef.current;
-        cleanup();
-        // Clear the gesture immediately rather than after `windowAtCursor()`
-        // resolves below — the pointer is already up, the answer arrives
-        // asynchronously, and nothing about ending the gesture should wait
-        // on or race it.
-        setDrag(null);
-        setOverPanel(false);
-        if (!s || ev.pointerId !== s.pointerId || !s.began) return;
-
-        if (s.payload.kind === "tool") {
-          if (computeClearOfSource(s.sourceBarRect, ev.clientY)) {
-            void detachTool(s.payload.toolId);
-          }
-          // Otherwise the reorder already happened live, one
-          // `setDockedTools` call per crossing — nothing left to do on
-          // release.
-        } else {
-          // Only the backend can say which HELVE window the cursor is over —
-          // a page-local listener can't see past this window's own edge.
-          // `null` means the terminal was dropped outside every HELVE
-          // window, which is a cancelled drag, not a move.
-          const payload = s.payload;
-          void windowAtCursor().then((toLabel) => {
-            if (toLabel) void moveTerminal(payload.sessionId, toLabel);
-          });
-        }
-      };
-
-      const onCancel = (ev: PointerEvent) => {
-        const s = sessionRef.current;
-        cleanup();
-        if (!s || ev.pointerId !== s.pointerId) return;
-        setDrag(null);
-        setOverPanel(false);
-      };
-
-      function cleanup() {
-        sessionRef.current = null;
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onCancel);
-      }
-
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onCancel);
-    },
-    [ghostX, ghostY, rawX, rawY, label],
-  );
-
-  const toolHandle = useCallback(
-    (payload: ToolPayload): DragHandleProps => ({
-      onPointerDown: (e) => beginPress(payload, e),
-      style: { cursor: "grab" },
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+      },
     }),
-    [beginPress],
+    [label, activeClusterId, rawX, rawY],
   );
 
-  const terminalHandle = useCallback(
-    (payload: TerminalPayload): DragHandleProps => ({
-      onPointerDown: (e) => beginPress(payload, e),
-      style: { cursor: "grab" },
-    }),
-    [beginPress],
+  const overlay = useMemo(
+    () =>
+      drag ? (
+        <div className="drag-overlay">
+          <DragGhost payload={drag.payload} x={ghostX} y={ghostY} />
+          <AnimatePresence>
+            {drag.target.kind === "detach" && <DetachOutline key="detach" x={ghostX} y={ghostY} />}
+          </AnimatePresence>
+        </div>
+      ) : null,
+    [drag, ghostX, ghostY],
   );
 
-  const overlay = drag ? (
-    <div className="drag-overlay">
-      <DragGhost payload={drag.payload} x={ghostX} y={ghostY} />
-      <AnimatePresence>
-        {drag.payload.kind === "tool" && drag.clearOfSource && (
-          <DetachOutline key="detach" x={ghostX} y={ghostY} />
-        )}
-        {drag.payload.kind === "terminal" && overPanel && <PanelDropOutline key="panel-drop" />}
-      </AnimatePresence>
-    </div>
-  ) : null;
-
-  return { toolHandle, terminalHandle, overlay, dragging: drag !== null };
-}
-
-function computeClearOfSource(bar: DOMRect | null, y: number): boolean {
-  if (!bar) return true;
-  return y > bar.bottom + CLEAR_THRESHOLD || y < bar.top - CLEAR_THRESHOLD;
+  return {
+    tabHandle,
+    overlay,
+    dragging: drag !== null,
+    /** So a pane can draw its own indicator. Null when nothing is in the air. */
+    target: drag?.target ?? null,
+  };
 }
 
 /**
- * Whether the pointer is over this window's own panel. The only drop target
- * a page-local pointer listener can ever see — see the report on why a
- * second HELVE window's panel is out of reach from here.
+ * Where *this* payload would land, which is not always what is under the cursor.
+ *
+ * The zones answer for a tab, because a tab is what they were registered for. A
+ * cluster can only be released on a window: it holds panes, so there is no sense
+ * in which it goes inside one, and the terminal panel is a region of a window
+ * rather than a place a cluster could live. Substituting `none` over those is
+ * what stops the row drawing an insertion caret, a pane lighting an edge, and
+ * the panel lighting up for a release `commitCluster` would refuse — an
+ * indicator that promises something the drop will not do is worse than no
+ * indicator, because it is read as a commitment.
+ *
+ * Done here rather than in the regions so that no region has to learn what is
+ * being dragged. They are handed a target and draw it; that is the whole of
+ * their involvement in the gesture.
  */
-function pointerOverPanel(x: number, y: number): boolean {
-  const panel = document.querySelector('[data-region="panel"]');
-  if (!panel) return false;
-  const rect = panel.getBoundingClientRect();
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+function resolve(payload: DragPayload, x: number, y: number): DropTarget {
+  const target = hitTest(x, y);
+  if (payload.what !== "cluster") return target;
+  return target.kind === "detach" ? target : { kind: "none" };
 }
 
-/** How many tab midpoints the pointer has passed — the insertion index. */
-function indexForX(tabs: HTMLElement[], x: number): number {
-  let idx = 0;
-  for (const tab of tabs) {
-    const rect = tab.getBoundingClientRect();
-    if (x > rect.left + rect.width / 2) idx++;
+/**
+ * Act on a release.
+ *
+ * Split out of the handler so the mapping from target to call is one readable
+ * table rather than a branch buried in a closure — this is the part someone
+ * changing the gesture will come looking for.
+ */
+function commit(
+  payload: DragPayload,
+  target: DropTarget,
+  label: string,
+  activeClusterId: string | null,
+): void {
+  if (payload.what === "cluster") return commitCluster(payload, target, label);
+
+  switch (target.kind) {
+    case "strip":
+      if (activeClusterId) {
+        void moveInstance(payload.instanceId, activeClusterId, target.paneId, target.index);
+      }
+      return;
+
+    case "pane":
+      if (target.edge) {
+        void splitPane(target.paneId, target.edge, payload.instanceId, target.before);
+      } else if (activeClusterId) {
+        void moveInstance(payload.instanceId, activeClusterId, target.paneId, null);
+      }
+      return;
+
+    case "panel":
+      // Only a terminal can live in the panel. An app surface dropped there is a
+      // no-op rather than an error: the panel holds terminals and the git view,
+      // and there is nothing sensible for it to do with a Files. Refusing
+      // silently leaves the tab where it was, which is what a cancelled drag
+      // should look like.
+      if (payload.kind === "terminal") void moveTerminal(payload.instanceId, label);
+      return;
+
+    case "detach":
+      // Released over no registered target. Which window that is over decides
+      // nothing here, and deliberately: `window_at_cursor` answers with a label
+      // and nothing else — it hit-tests window rectangles, so it cannot say
+      // *where inside* another window the cursor was. Guessing a pane would drop
+      // the tab somewhere the user did not aim, so a release over another window
+      // detaches into a new one just as a release over the desktop does. Moving
+      // into a specific pane of another window needs a richer hit-test that
+      // returns window-local coordinates; that is the follow-up.
+      //
+      // The call is still made, because it is the only way to distinguish "over
+      // no HELVE window" from "over one, outside its targets" in the log when
+      // this behaviour is revisited.
+      void windowAtCursor().then(() => detachInstance(payload.instanceId));
+      return;
+
+    case "none":
+      // Unreachable for a tab: `resolve` substitutes this for a cluster and for
+      // nothing else. Spelled out rather than left to fall off the end of the
+      // switch, so this table stays a complete list of what a release can mean.
+      return;
   }
-  return idx;
 }
 
-function reorder(order: string[], id: string, targetIndex: number): string[] {
-  const from = order.indexOf(id);
-  if (from === -1) return order;
-  const clamped = Math.max(0, Math.min(targetIndex, order.length - 1));
-  if (from === clamped) return order;
-  const next = order.slice();
-  next.splice(from, 1);
-  next.splice(clamped, 0, id);
-  return next;
+/**
+ * The same release, for a cluster.
+ *
+ * Only two targets can reach here, because `resolve` has already turned every
+ * strip, pane and panel a cluster was released over into `none` — see it for
+ * why. `none` does nothing at all: the cluster stays exactly where it was, which
+ * is what a cancelled drag looks like, and is better than inventing a meaning
+ * for a gesture the user cannot have intended.
+ *
+ * So `detach` is the one that acts, and unlike a tab's `detach` it uses the
+ * answer it is given:
+ *
+ * - **Over another HELVE window** — the cluster moves into it. This is built
+ *   here where the same drop for a single tab was deliberately not, and the
+ *   difference is real rather than an inconsistency somebody forgot to fix. A
+ *   tab needs a *pane* to land in, and `window_at_cursor` returns a label —
+ *   it hit-tests window rectangles and cannot say where inside one the cursor
+ *   was, so a pane would have to be guessed. A cluster is appended to that
+ *   window's cluster list; the label is the whole of the address. The same
+ *   reasoning is written at `commands::detach_cluster`, on the other side.
+ * - **Over this window, or over nothing** — a window of its own. Releasing over
+ *   the window it came from is not treated as "put it back where it was": the
+ *   whole row is a drop zone, so a release that reaches `detach` at all is one
+ *   that missed the bar on purpose.
+ */
+function commitCluster(payload: ClusterDrag, target: DropTarget, label: string): void {
+  if (target.kind !== "detach") return;
+
+  void windowAtCursor().then((over) =>
+    detachCluster(payload.clusterId, over && over !== label ? over : null),
+  );
 }

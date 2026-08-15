@@ -15,12 +15,15 @@ use crate::error::{AppError, Result};
 use crate::manifest::{self, Manifest};
 use crate::project;
 use crate::pty::{self, PtySessions};
-use crate::shell_state::{EngineState, ShellSnapshot, ShellState};
+use crate::layout::SplitDir;
+use crate::shell_state::{
+    EngineState, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry,
+};
 use crate::state::AppState;
 use crate::tool_frontend;
 use crate::windows;
 use std::path::{Path, PathBuf};
-use tauri::State;
+use tauri::{Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 /// Read helve.toml, resolve every declared tool against the filesystem, cache
@@ -137,40 +140,282 @@ pub fn shell_state(shell: State<'_, ShellState>) -> ShellSnapshot {
     shell.snapshot()
 }
 
+/// Open a new instance of an app or tool.
+///
+/// The id that comes back is an *instance* id (`files-2`), not the app id that
+/// went in. Everything downstream — which frame a message came from, which tab
+/// to close — is keyed on it, and the app id survives only as the thing that
+/// says which code to load and where to route an `invoke`.
 #[tauri::command]
-pub fn set_docked_tools(
+pub fn open_instance(
     app: tauri::AppHandle,
     shell: State<'_, ShellState>,
     label: String,
-    tool_ids: Vec<String>,
-) {
-    shell.set_docked(&app, &label, tool_ids);
+    app_id: String,
+    pane_id: Option<String>,
+) -> Result<String> {
+    // An app ships in this binary; a tool is a checkout that may not be here.
+    // The distinction decides where an `invoke` from the resulting frame is
+    // answered, so it is resolved once, here, from the registry itself rather
+    // than trusted from the frontend.
+    let kind = if apps::is_app(&app_id) {
+        SurfaceKind::App
+    } else {
+        SurfaceKind::Tool
+    };
+
+    let title = apps::list()
+        .into_iter()
+        .find(|a| a.id == app_id)
+        .map(|a| a.name.to_string())
+        .unwrap_or_else(|| app_id.clone());
+
+    shell
+        .open_instance(&app, &label, &app_id, kind, &title, pane_id.as_deref())
+        .ok_or_else(|| AppError::UnknownTool(app_id))
 }
 
 #[tauri::command]
-pub fn set_active_tool(
+pub fn close_instance(app: tauri::AppHandle, shell: State<'_, ShellState>, instance_id: String) {
+    shell.close_instance(&app, &instance_id);
+}
+
+/// An app naming its own tab — "Files" becoming `client.ts`, the way an editor
+/// tab says what is in it.
+///
+/// The same shape as `set_terminal_title` and for the same reason: a title is
+/// identity, identity is Rust's because a tab can be dragged into another
+/// window, and this only ever *reports* — the title to render comes back around
+/// through `shell:state`. The empty and no-op guards live in `ShellState`.
+#[tauri::command]
+pub fn set_instance_title(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    instance_id: String,
+    title: String,
+) {
+    shell.set_instance_title(&app, &instance_id, &title);
+}
+
+#[tauri::command]
+pub fn activate_instance(app: tauri::AppHandle, shell: State<'_, ShellState>, instance_id: String) {
+    shell.activate_instance(&app, &instance_id);
+}
+
+/// Move a tab into a pane — reordering within one strip, or across windows.
+#[tauri::command]
+pub fn move_instance(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    instance_id: String,
+    cluster_id: String,
+    pane_id: String,
+    index: Option<usize>,
+) {
+    shell.move_instance(&app, &instance_id, &cluster_id, &pane_id, index);
+}
+
+/// Drop a tab on a pane's edge: split there and put it in the new half.
+#[tauri::command]
+pub fn split_pane(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    pane_id: String,
+    dir: SplitDir,
+    instance_id: String,
+    before: bool,
+) {
+    shell.split_with_instance(&app, &pane_id, dir, &instance_id, before);
+}
+
+/// What a divider drag commits on release. Weights, not pixels — see `layout`.
+#[tauri::command]
+pub fn set_pane_sizes(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    split_id: String,
+    sizes: Vec<f32>,
+) {
+    shell.set_pane_sizes(&app, &split_id, sizes);
+}
+
+// --- clusters ---------------------------------------------------------------
+
+/// Add a cluster, and open Home in it.
+///
+/// Home rather than nothing, for the same reason `seed_first_run` opens it on a
+/// first launch: a cluster is where a piece of work starts, and Home is the one
+/// surface that can start one — it is where a project is opened. An empty
+/// cluster would hand you a blank window and the Apps menu, which is a puzzle
+/// rather than a starting point.
+///
+/// Composed here rather than folded into `ShellState::add_cluster`, which stays
+/// a primitive that does exactly what its name says. That costs a second
+/// broadcast and a second write of `layout.json`; both are cheap, and the
+/// alternative is a state method that quietly opens a surface nobody asked it
+/// for. `open_instance` needs no cluster id because `add_cluster` has already
+/// made this one active.
+#[tauri::command]
+pub fn add_cluster(
     app: tauri::AppHandle,
     shell: State<'_, ShellState>,
     label: String,
-    tool_id: Option<String>,
-) {
-    shell.set_active_tool(&app, &label, tool_id);
+    name: String,
+) -> Option<String> {
+    let cluster_id = shell.add_cluster(&app, &label, &name)?;
+    shell.open_instance(&app, &label, "home", SurfaceKind::App, "Home", None);
+    Some(cluster_id)
 }
+
+#[tauri::command]
+pub fn set_active_cluster(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    label: String,
+    cluster_id: Option<String>,
+) {
+    shell.set_active_cluster(&app, &label, cluster_id);
+}
+
+#[tauri::command]
+pub fn rename_cluster(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    cluster_id: String,
+    name: String,
+) {
+    shell.rename_cluster(&app, &cluster_id, &name);
+}
+
+/// Close a cluster and everything in it.
+///
+/// The ptys are killed here rather than left to be tidied later. `close_cluster`
+/// hands back the session ids precisely so they cannot be forgotten: a shell
+/// still running with no tab anywhere on screen is a process nobody can see,
+/// stop, or find out about.
+#[tauri::command]
+pub fn close_cluster(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    ptys: State<'_, PtySessions>,
+    cluster_id: String,
+) {
+    let (_instances, terminals) = shell.close_cluster(&app, &cluster_id);
+    for id in terminals {
+        ptys.close(&id);
+    }
+}
+
+// --- windows ----------------------------------------------------------------
 
 /// Which HELVE window the cursor is over, or `None` if it is over none of them.
 ///
-/// Called by the drag layer on drop, to find out which window's panel a
-/// terminal was let go over. The frontend cannot answer this for itself — see
-/// `windows::at_cursor`.
+/// Called by the drag layer on drop, to find out which window a tab was let go
+/// over. The frontend cannot answer this for itself — see `windows::at_cursor`.
 #[tauri::command]
 pub fn window_at_cursor(app: tauri::AppHandle) -> Option<String> {
     windows::at_cursor(&app)
 }
 
-/// Drag a tab clear of the switcher bar. The only way a tool detaches.
+/// File > New Window: an empty window with a cluster of its own.
+///
+/// Distinct from `detach_instance`, which makes a window by *moving* a surface
+/// into it. This takes nothing from the window that asked, which is what the
+/// menu item has always claimed and could not do while a window's label was
+/// derived from the tool inside it — there was no label a second empty window
+/// could have had.
 #[tauri::command]
-pub fn detach_tool(app: tauri::AppHandle, shell: State<'_, ShellState>, tool_id: String) -> Result<()> {
-    windows::detach(&app, &shell, &tool_id)
+pub fn new_window(app: tauri::AppHandle, shell: State<'_, ShellState>) -> Result<()> {
+    let label = shell.claim_window_label();
+    // Bookkeeping first, window second, the same order `detach` uses: a window
+    // on screen with no entry in the shared state would render nothing and have
+    // no way to be given anything.
+    shell.add_window(&app, &label);
+    // And Home in the cluster that came with it, for the reason `add_cluster`
+    // above gives. A new window is a new cluster; "empty" should not mean two
+    // different things depending on which menu item made it.
+    shell.open_instance(&app, &label, "home", SurfaceKind::App, "Home", None);
+    windows::create(&app, &label, None, true)
+}
+
+/// Drag a whole cluster clear of its window — the multi-monitor gesture.
+///
+/// `to_label` is where it lands. `Some(label)` moves it into a HELVE window that
+/// is already open, which is what a release over another window means; `None`
+/// gives it a window of its own.
+///
+/// That first case is deliberately built here where the same thing for a single
+/// tab was deliberately left out (see the `detach` case in
+/// `src/shell/drag/useDrag.tsx`). The reason a tab could not do it is that
+/// `window_at_cursor` answers with a label and cannot say *where inside* the
+/// window the cursor was, so a pane would have to be guessed. A cluster is not
+/// dropped into a pane: it is appended to the window's cluster list, and the
+/// label is the whole of the address. There is nothing left to guess, so the
+/// two gestures differing is not an inconsistency to be tidied up later.
+///
+/// A `to_label` that names no window in the shared state falls back to making
+/// one, rather than being an error: the only caller passes what
+/// `window_at_cursor` just returned, and a window that has since closed should
+/// still leave the cluster somewhere on screen.
+#[tauri::command]
+pub fn detach_cluster(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    cluster_id: String,
+    to_label: Option<String>,
+) -> Result<()> {
+    match to_label.filter(|label| shell.has_window(label)) {
+        // Into a window that is already open: bookkeeping only, since the
+        // window it is going to is on screen already.
+        Some(label) => match shell.move_cluster(&app, &cluster_id, &label) {
+            true => Ok(()),
+            false => Err(AppError::UnknownTool(cluster_id)),
+        },
+        None => windows::detach_cluster(&app, &shell, &cluster_id),
+    }
+}
+
+/// Drag a tab clear of its window. The gesture that makes a second window.
+#[tauri::command]
+pub fn detach_instance(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    instance_id: String,
+) -> Result<()> {
+    windows::detach(&app, &shell, &instance_id)
+}
+
+/// A window reporting where it now is, after a move or a resize.
+///
+/// Deliberately does not broadcast: this fires continuously while a window is
+/// being dragged, and telling every other window about each frame of that would
+/// be a storm none of them need. See `ShellState::set_geometry`.
+#[tauri::command]
+pub fn set_window_geometry(
+    shell: State<'_, ShellState>,
+    label: String,
+    geometry: WindowGeometry,
+) {
+    shell.set_geometry(&label, geometry);
+}
+
+/// Close a window on purpose.
+///
+/// The title bar's × goes through here rather than calling `close()` directly,
+/// and that indirection is the entire mechanism separating a deliberate close
+/// from a shutdown. `WindowEvent::Destroyed` cannot tell them apart, and at
+/// shutdown it fires for every window — so without this announcement, closing
+/// HELVE would fold every window into `main` on the way out and save that as
+/// the layout to restore. See `ShellState::closing`.
+#[tauri::command]
+pub fn close_window(app: tauri::AppHandle, shell: State<'_, ShellState>, label: String) {
+    shell.mark_closing(&label);
+    // The geometry updates above are recorded but never written; this is the
+    // last moment they can be.
+    shell.flush(&app);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.close();
+    }
 }
 
 /// Open a terminal: a session in the shared state, and a real shell behind it.
@@ -210,6 +455,21 @@ pub fn open_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<String> {
+    // A terminal belongs to the window, not to whichever cluster that window
+    // happened to be showing — the panel is the window's, so a terminal opened
+    // while looking at `auth` is still there when you switch to `billing`. That
+    // is what makes it useful for work that spans clusters: a shell on one
+    // worktree while the layout in front of it is about another.
+    //
+    // Checked rather than assumed, because a label naming no window would put a
+    // live shell behind a tab no panel draws.
+    if !shell.has_window(label) {
+        return Err(AppError::Pty {
+            id: label.to_string(),
+            reason: "no such window to open a terminal in".to_string(),
+        });
+    }
+
     let (id, ordinal) = shell.claim_terminal_id();
     let name = ptys.open(app, &id, &terminal_cwd(app), cols, rows)?;
 
@@ -261,11 +521,11 @@ pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, ptys:
 /// function's, for the same reason grouping lives on `TerminalSession` at
 /// all — see the doc comment there.
 ///
-/// The new pty opens in whichever window `id` is currently showing in, read
-/// off `ShellState` rather than taken as an argument — the caller already
-/// told the backend that once, when the session was created or last moved,
-/// and asking it to repeat itself here would just be a second place for the
-/// two to disagree.
+/// The new pty opens beside the one it is splitting from, in that session's
+/// own window, read off `ShellState` rather than taken as an argument — the
+/// caller already told the backend that once, when the session was created or
+/// last moved, and asking it to repeat itself here would just be a second place
+/// for the two to disagree.
 #[tauri::command]
 pub fn split_terminal(
     app: tauri::AppHandle,
@@ -275,12 +535,10 @@ pub fn split_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<String> {
-    let label = shell
-        .window_label_of(&id)
-        .ok_or_else(|| AppError::Pty {
-            id: id.clone(),
-            reason: "no such terminal to split".to_string(),
-        })?;
+    let label = shell.window_of_terminal(&id).ok_or_else(|| AppError::Pty {
+        id: id.clone(),
+        reason: "no such terminal to split".to_string(),
+    })?;
 
     let new_id = open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))?;
     shell.group_with(&app, &id, &new_id);
@@ -334,7 +592,21 @@ pub fn move_terminal(
     id: String,
     to_label: String,
 ) {
+    // Named by *window*, which is both what the drag layer can find out —
+    // `window_at_cursor` hit-tests screen rectangles — and what a panel now
+    // belongs to. No lookup in between: the label is the answer.
     shell.move_terminal(&app, &id, &to_label);
+}
+
+/// Which terminal a window's panel is showing.
+#[tauri::command]
+pub fn set_active_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    label: String,
+    id: Option<String>,
+) {
+    shell.set_active_terminal(&app, &label, id);
 }
 
 /// A terminal's own program set its title (an OSC `0`/`2` escape sequence),

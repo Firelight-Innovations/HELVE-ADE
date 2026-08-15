@@ -5,34 +5,49 @@ import BootOverlay from "./BootOverlay";
 import UnavailableState from "./UnavailableState";
 
 /**
- * One docked tool's slot in the tool window: its iframe (once a URL is
- * known), the boot overlay laid over it until the handshake completes, or
- * the unavailable state in place of an empty iframe.
+ * One instance's iframe, plus the boot overlay laid over it until the handshake
+ * completes, or the unavailable state in place of an empty frame.
  *
- * Mounted once per tool id and kept mounted for the component's lifetime —
- * `ToolWindow` renders every docked tool, not just the active one, so this
- * never unmounts on a tab switch. `useToolFrontend`'s effect only re-runs if
- * `tool.id` changes, which it doesn't for a stable instance, so the iframe
- * (once it exists) is never re-keyed or re-parented either.
+ * Mounted once per *instance* id and kept mounted for that instance's whole
+ * life. `ToolWindow` renders one of these per tab in the cluster and positions
+ * them over their panes, so this never unmounts on a tab switch, a split, a
+ * divider drag, or a tab being dragged into another pane. That is the property
+ * the whole arrangement exists to protect: an iframe that remounts reloads the
+ * app inside it, and a Files that forgot its open file every time you
+ * rearranged the layout would make the layout not worth rearranging.
+ *
+ * The two ids here are not interchangeable, and keeping them apart is the point:
+ *
+ *   * `instanceId` is identity — what a message from this frame resolves to,
+ *     which tab to close, whose title changed.
+ *   * `tool.id` is the app id — a *type*. It is what decides which code to load,
+ *     so it is what `useToolFrontend` resolves a URL from. Two Files instances
+ *     ask for the same URL and get two independent frames, which is exactly
+ *     right: same code, separate state.
  */
 export default function ToolMount({
+  instanceId,
   tool,
-  active,
+  title,
   ready,
   registerFrame,
   unregisterFrame,
 }: {
+  instanceId: string;
+  /** How to present the app this is an instance of. `tool.id` is the app id. */
   tool: ToolPresentation;
-  /** Whether this is the tab currently shown. Inactive slots stay mounted. */
-  active: boolean;
-  /** Whether this tool's hello/ready handshake has completed. */
+  /** This instance's own tab title, which the boot overlay names. */
+  title: string;
+  /** Whether this instance's hello/ready handshake has completed. */
   ready: boolean;
   /**
-   * `isApp` travels with the registration rather than being looked up later:
-   * it decides where this frame's requests are routed, and the tool window
-   * should learn it from the same call that established the frame's identity.
+   * Both ids travel with the registration rather than being looked up later.
+   * The instance id is what a message resolves to; the app id is where its
+   * `invoke` is routed and what `helve/painted` reports. Establishing identity
+   * and routing in one call means there is no second lookup to disagree with
+   * the first.
    */
-  registerFrame: (toolId: string, isApp: boolean, win: Window) => void;
+  registerFrame: (instanceId: string, appId: string, isApp: boolean, win: Window) => void;
   unregisterFrame: (win: Window) => void;
 }) {
   const frontend = useToolFrontend(tool.id);
@@ -40,15 +55,15 @@ export default function ToolMount({
 
   // `useCallback` keyed on stable deps so the ref callback's identity never
   // changes across re-renders — an inline arrow here would make React detach
-  // and reattach the ref (and so re-register the frame) on every render,
-  // which is wasted churn even though it wouldn't lose iframe state.
+  // and reattach the ref (and so re-register the frame) on every render, which
+  // is wasted churn even though it wouldn't lose iframe state.
   const setIframe = useCallback(
     (el: HTMLIFrameElement | null) => {
       if (windowRef.current) unregisterFrame(windowRef.current);
       windowRef.current = el?.contentWindow ?? null;
-      if (windowRef.current) registerFrame(tool.id, tool.isApp, windowRef.current);
+      if (windowRef.current) registerFrame(instanceId, tool.id, tool.isApp, windowRef.current);
     },
-    [tool.id, tool.isApp, registerFrame, unregisterFrame],
+    [instanceId, tool.id, tool.isApp, registerFrame, unregisterFrame],
   );
 
   useEffect(() => {
@@ -57,31 +72,31 @@ export default function ToolMount({
     };
   }, [unregisterFrame]);
 
-  // `null` — URL still resolving. The tool window shows its boot state for
-  // this, not an error; there is no iframe to mount yet.
+  // `null` — URL still resolving. The boot state, not an error; there is no
+  // iframe to mount yet.
   if (frontend === null) {
     return (
-      <div className="toolwindow__slot" data-active={active || undefined}>
-        <BootOverlay toolName={tool.name} />
+      <div className="toolwindow__slot">
+        <BootOverlay toolName={title} />
       </div>
     );
   }
 
   if (frontend.state === "unavailable") {
     return (
-      <div className="toolwindow__slot" data-active={active || undefined}>
+      <div className="toolwindow__slot">
         <UnavailableState tool={tool} reason={frontend.reason} />
       </div>
     );
   }
 
   return (
-    <div className="toolwindow__slot" data-active={active || undefined}>
-      <iframe ref={setIframe} src={frontend.url} title={tool.name} className="toolwindow__iframe" />
+    <div className="toolwindow__slot">
+      <iframe ref={setIframe} src={frontend.url} title={title} className="toolwindow__iframe" />
       {/* Laid over the iframe, not in place of it — the frame starts loading
-          the moment its URL is known. This only disappears once the tool's
-          own `hello` has been answered with `ready`. */}
-      {!ready && <BootOverlay toolName={tool.name} />}
+          the moment its URL is known. This only disappears once this
+          instance's own `hello` has been answered with `ready`. */}
+      {!ready && <BootOverlay toolName={title} />}
     </div>
   );
 }

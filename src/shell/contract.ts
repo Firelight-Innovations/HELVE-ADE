@@ -420,21 +420,43 @@ export interface SearchIndex {
 }
 
 // ---------------------------------------------------------------------------
-// Menus — all eight open, items may be inert
+// Menus — every menu opens, and an item that cannot act says so
 // ---------------------------------------------------------------------------
 
 export interface MenuItem {
   label: string;
+  /**
+   * Shown at the trailing edge of the row, and **bound** — an accelerator on
+   * display is a promise that the keystroke does this. Either `useKeyboard.ts`
+   * binds it, or the platform already does (the Edit menu's, which the focused
+   * text surface handles natively). Nothing here is decorative; see the
+   * accelerator note in `titlebar/TitleBar.tsx`.
+   */
   accelerator?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
   /**
    * Renders inert and unclickable — the native `disabled` attribute, not a
-   * dimmed-but-live button. Used by the Terminal menu's Split/Kill/Clear,
-   * which need a session to act on and have none while the worktree tab is
-   * active; New Terminal never needs one and stays live regardless.
+   * dimmed-but-live button. This is the only way an item is allowed to be
+   * unable to act: an item that renders live and silently does nothing teaches
+   * the user that the menu lies.
    */
   disabled?: boolean;
+  /**
+   * A sentence about this row, shown as its `title`.
+   *
+   * Almost always **why it is disabled**, which is the case it exists for: an
+   * item the user cannot click owes them a reason, and "no dead items" is only
+   * half an answer without one. It is also allowed on a live item whose effect
+   * is not obvious from its label — File > Open Recent, which shows the Home
+   * app rather than a submenu.
+   *
+   * Rendered on the wrapping `<li>` rather than the button, because a
+   * `disabled` button receives no pointer events and so never shows a tooltip
+   * of its own — which would leave the explanation reachable on exactly the
+   * items that do not need one.
+   */
+  hint?: string;
 }
 
 export interface Menu {
@@ -443,26 +465,216 @@ export interface Menu {
 }
 
 // ---------------------------------------------------------------------------
-// Drag — both interactions, one vocabulary
+// Instances, panes, clusters — the layout
+// ---------------------------------------------------------------------------
+//
+// The distinction this whole section draws: an *app id* is a type, an *instance
+// id* is an identity. `files` names some code; `files-1` and `files-2` name two
+// live surfaces with their own open files and their own scroll positions.
+//
+// All of it is owned by Rust and arrives on `shell:state`, for the reason
+// `TerminalSession.groupId` below already gives about terminal groups: anything
+// a tab can be dragged across windows with cannot live in one window's own
+// state, because it would come apart the moment it moved. A client-side pane
+// tree would be the first shell layout state outside that broadcast, and it
+// would be wrong for exactly the same reason.
+
+/** Mirrors `shell_state::SurfaceKind`. */
+export type SurfaceKind = "app" | "tool" | "terminal";
+
+/**
+ * One live surface. Mirrors `shell_state::SurfaceInstance`.
+ *
+ * `appId` survives only as the thing that says which code to load and where to
+ * route an `invoke`. Everything else — which frame a message came from, which
+ * tab to close, which iframe to keep mounted — is keyed on `id`.
+ */
+export interface SurfaceInstance {
+  id: string;
+  appId: string;
+  kind: SurfaceKind;
+  title: string;
+}
+
+/** Mirrors `layout::SplitDir`. */
+export type SplitDir = "row" | "column";
+
+/**
+ * One node of a cluster's layout. Mirrors `layout::PaneNode`.
+ *
+ * Discriminated on `kind` rather than on which keys are present, matching
+ * `ToolStatus` and `BootStatus`.
+ *
+ * `sizes` are fractions of the parent, one per child, summing to 1 — not
+ * pixels. The window is resizable, so a layout stored in pixels would have to
+ * be recomputed on every resize and would restore wrongly onto a different
+ * monitor.
+ */
+export type PaneNode =
+  | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
+  | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
+
+/** Mirrors `shell_state::WorktreeRef`. A stub — nothing reads it yet. */
+export interface WorktreeRef {
+  path: string;
+  branch: string | null;
+}
+
+/**
+ * One tab in the switcher bar: a layout and its worktree.
+ *
+ * A cluster is one thing being worked on. Switching cluster tabs swaps the pane
+ * tree — and only that. The panel beside it does not change, because the
+ * terminals in it are the *window's*: a shell watching one worktree is exactly
+ * the thing you want still in front of you while you move between the clusters
+ * working on others. See `TerminalSessionState.windowLabel`.
+ *
+ * A terminal that has been dragged into the layout is a different matter. It is
+ * a tab in `tree` like any other surface, drawn in the pane area, and the panel
+ * stops listing it — membership of one excludes the other, and both are derived
+ * from the tree rather than tracked.
+ */
+export interface Cluster {
+  id: string;
+  name: string;
+  tree: PaneNode;
+  worktree: WorktreeRef | null;
+}
+
+/**
+ * One entry in the shell's single tab bar.
+ *
+ * The bar is one row: a chip per cluster, and — for the cluster that is
+ * expanded — every surface and terminal inside it, inline. So a member is
+ * whichever of those two things a tab happens to be, flattened to the one shape
+ * the bar draws. `paneId` is the whole distinction: a surface lives in a pane of
+ * the layout, a terminal lives in the panel, and `null` is what says which.
+ *
+ * Built fresh from `shell:state` on every render rather than tracked. There is
+ * no membership stored anywhere — a cluster's surfaces are its tree's tabs and
+ * its terminals are the sessions carrying its id, both already single sources of
+ * truth, and a cached list beside them would be a second answer that could
+ * disagree.
+ */
+export interface ClusterMember {
+  /** The tab's own identity: an instance id, or a terminal tab's group id. */
+  id: string;
+  /**
+   * What the drag layer moves when this tab is dragged.
+   *
+   * The same as `id` except for a split terminal, whose tab is identified by the
+   * group and whose *sessions* are what can actually be moved. Carried
+   * explicitly so no caller has to know that a group id is not a session id.
+   */
+  dragId: string;
+  title: string;
+  kind: SurfaceKind;
+  /** The pane holding it, or `null` when it lives in the terminal panel. */
+  paneId: string | null;
+  /** On screen right now — its pane's active tab, or the panel's. */
+  showing: boolean;
+  /** Only ever true for a terminal. Drives the dot, exactly as in the panel. */
+  agentFinished: boolean;
+}
+
+/** Every tab in a tree, in layout order. */
+export function paneTabs(node: PaneNode): string[] {
+  return node.kind === "leaf" ? node.tabs : node.children.flatMap(paneTabs);
+}
+
+/** Which pane holds a tab, or `null` if this tree does not have it. */
+export function paneOfTab(node: PaneNode, instanceId: string): string | null {
+  if (node.kind === "leaf") return node.tabs.includes(instanceId) ? node.id : null;
+  for (const child of node.children) {
+    const found = paneOfTab(child, instanceId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Every leaf in a tree, in layout order. */
+export function paneLeaves(node: PaneNode): Extract<PaneNode, { kind: "leaf" }>[] {
+  return node.kind === "leaf" ? [node] : node.children.flatMap(paneLeaves);
+}
+
+// ---------------------------------------------------------------------------
+// Drag — every interaction, one vocabulary
 // ---------------------------------------------------------------------------
 
 /**
  * What is currently in the air.
  *
- * A tool dragged clear of the switcher bar becomes a window. A terminal can be
- * dropped into any HELVE window's panel. Nothing else is draggable.
+ * Two things can be dragged, and `what` is which. They are not variations on
+ * one shape: a surface is a tab and goes *into* the layout, while a cluster is
+ * the layout — it can only ever be dropped on a window, never in a pane, so it
+ * has no pane, no index and no edge to speak of. A union rather than a wide
+ * object with half its fields unused is what makes `commit` say that out loud
+ * instead of leaving a cluster to fall through the tab branches and land
+ * somewhere it cannot go.
  */
-export type DragPayload =
-  | { kind: "tool"; toolId: string; name: string }
-  | { kind: "terminal"; sessionId: string; title: string; agentFinished: boolean };
+export type DragPayload = SurfaceDrag | ClusterDrag;
+
+/**
+ * A tab in the air.
+ *
+ * One kind, where there used to be two. A tab is a tab: an app surface and a
+ * terminal drag identically, drop in the same places, and split a pane the same
+ * way. `kind` is carried for the ghost's benefit — a terminal's ghost shows its
+ * agent-finished dot — and for nothing else.
+ */
+export interface SurfaceDrag {
+  what: "surface";
+  instanceId: string;
+  title: string;
+  kind: SurfaceKind;
+  /** Only ever true for a terminal. Drives the dot on the ghost. */
+  agentFinished?: boolean;
+  /** Where it came from, so a drop that lands nowhere can be a no-op. */
+  fromPaneId: string | null;
+}
+
+/**
+ * A whole cluster in the air — its chip, and with it its entire pane tree.
+ *
+ * The gesture exists for a second monitor: one cluster over there, another over
+ * here. Nothing of the cluster's contents is carried, because nothing needs to
+ * be — the id is the address, and the tree travels with it in the backend.
+ */
+export interface ClusterDrag {
+  what: "cluster";
+  clusterId: string;
+  name: string;
+}
+
+/**
+ * Where a drag would land if it were released now.
+ *
+ * `pane` with an `edge` splits that pane on that side; `pane` with no edge
+ * appends to its tab strip. `strip` is a drop between two tabs, with `index`
+ * naming the insertion point. `panel` is the terminal panel — the one place a
+ * terminal can go that is not the tree. `detach` is clear of every drop target,
+ * and releasing there makes a window.
+ *
+ * `none` is the pointer being somewhere this *particular* payload cannot go —
+ * a cluster over a pane, which holds panes and cannot be put inside one. It is
+ * never what a hit test returns; `useDrag` substitutes it, so that a region does
+ * not draw an insertion caret or light an edge for a release that will be
+ * refused. Releasing on it does nothing at all, exactly like cancelling.
+ */
+export type DropTarget =
+  | { kind: "pane"; paneId: string; edge: SplitDir | null; before: boolean }
+  | { kind: "strip"; paneId: string; index: number }
+  | { kind: "panel" }
+  | { kind: "detach" }
+  | { kind: "none" };
 
 export interface DragState {
   payload: DragPayload;
   /** Viewport coordinates of the pointer, for the ghost. */
   x: number;
   y: number;
-  /** True once the pointer has left its source bar — the detach threshold. */
-  clearOfSource: boolean;
+  /** Where a release right now would put it. */
+  target: DropTarget;
 }
 
 /** What a region spreads onto an element to make it a drag source. */
@@ -478,9 +690,9 @@ export interface DragHandleProps {
 /**
  * Which window this is.
  *
- * A detached window holds exactly one tool, so it has no switcher bar — there
- * is nothing to switch between. Everything else about it is identical to the
- * main window, including the title bar and the panel.
+ * Only the title bar's traffic-light treatment still turns on this. Both kinds
+ * now have a switcher bar and a panel: a detached window holds real clusters
+ * that can be added to and switched between, so there is something to switch.
  */
 export type WindowKind = "main" | "detached";
 

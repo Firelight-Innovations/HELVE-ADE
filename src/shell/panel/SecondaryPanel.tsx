@@ -22,6 +22,20 @@
  * those two controls must not share a parent — see the CSS header in
  * panel.css for the geometry.
  *
+ * ## Why the tabs are here and not only in the cluster bar
+ *
+ * They were briefly moved up there, on the theory that a terminal was a
+ * cluster's content like any surface. It is not: a terminal in this panel
+ * belongs to the *window* (see `TerminalSessionState.windowLabel`), so it
+ * stays put while the cluster above it changes, and no cluster's group in
+ * that bar could list it without claiming something untrue. The panel is an
+ * independent region and names its own contents.
+ *
+ * A terminal dragged into the layout is the other case, and it needs nothing
+ * here: it becomes a tab in a pane tree and the cluster bar lists it as one,
+ * because that is what it now is. `sessions` excludes it, so it leaves this
+ * row on the same frame — one home each way, never both.
+ *
  * Sessions that share a `groupId` (set by Rust when a split happens — see
  * `TerminalSession` in contract.ts) render as one tab here, via
  * `groupTerminalTabs`: a split still needs exactly one clickable tab before
@@ -47,6 +61,7 @@ import {
   type TerminalSession,
   type TerminalTabGroup,
 } from "../contract";
+import { useDropZone } from "../drag/dropZones";
 import { Close, ChevronLeft, ChevronRight, GitBranch, Plus } from "../../ui/Icon";
 import { snap } from "../motion";
 import CloseConfirm from "./CloseConfirm";
@@ -55,6 +70,10 @@ import "./panel.css";
 const WORKTREE_TAB = "worktree";
 
 export interface SecondaryPanelProps {
+  /**
+   * Every terminal in this window's panel — the window's, not any cluster's,
+   * and already excluding any that have been dragged into the layout.
+   */
   sessions: TerminalSession[];
   /** A session id, a group id, or the literal `"worktree"`. */
   activeTabId: string;
@@ -93,12 +112,23 @@ export interface SecondaryPanelProps {
   onConfirmClose: () => void;
   /**
    * Supplied by the drag layer. Spread onto each terminal tab to make it a
-   * drag source; terminals move between windows by being dropped into a
-   * panel. Only session tabs are drag sources — the worktree segment, the
-   * new-terminal button, and the collapse chevron are not sessions and
-   * nothing about them is draggable.
+   * drag source.
+   *
+   * Not optional in spirit, whatever the type says: this handle is the only
+   * way a panel terminal can be dragged into a cluster's layout at all, which
+   * is half of what the panel is for. Only session tabs are drag sources — the
+   * worktree segment, the new-terminal button and the collapse chevron are not
+   * sessions and nothing about them is draggable.
    */
   dragHandleFor?: (session: TerminalSession) => DragHandleProps | undefined;
+  /**
+   * A drag is currently over this panel and would land here on release.
+   *
+   * Passed in rather than read from the drag layer, so the panel stays a
+   * component that draws what it is told — the same arrangement the panes use
+   * for their own indicators.
+   */
+  dropActive?: boolean;
 }
 
 export default function SecondaryPanel({
@@ -115,21 +145,27 @@ export default function SecondaryPanel({
   onCancelClose,
   onConfirmClose,
   dragHandleFor,
+  dropActive = false,
 }: SecondaryPanelProps) {
   if (collapsed) {
     return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
   }
 
+  const panelZone = useDropZone({ kind: "panel" });
   const onWorktree = activeTabId === WORKTREE_TAB;
   const tabs = groupTerminalTabs(sessions);
 
   return (
-    <div className="panel">
+    // Registered as a drop zone so a terminal dragged out into the layout can
+    // be dragged back. The drag layer used to find this element by querying
+    // `[data-region="panel"]`; it now has to be told, because there is no query
+    // that can enumerate an arbitrary number of panes as well.
+    <div className="panel" ref={panelZone} data-drop-active={dropActive || undefined}>
       {/* Plain div, fixed height, no `layout` prop — the row itself never
           animates. Only the rule sliding inside it does, and (since this
           split) the strip's own scroll position, which is native and not
-          animated either. A tab lifting out to become a drag ghost is
-          Parcel J's concern; this row's own height is unaffected either
+          animated either. A tab lifting out to become a drag ghost is the
+          drag layer's concern; this row's own height is unaffected either
           way. */}
       <div className="panel__tabs">
         <div className="panel__tabs-strip">
@@ -206,8 +242,8 @@ function SessionTab({
   active: boolean;
   onSelect: (id: string) => void;
   onRequestClose: (tab: TerminalTabGroup) => void;
-  /** Undefined until the drag layer is wired in — the tab behaves exactly as
-   *  before in that case. */
+  /** The drag source. Undefined only leaves the tab undraggable; nothing else
+   *  about it changes. */
   dragHandle?: DragHandleProps;
 }) {
   // The label and the native tooltip show the group's first pane's title —
@@ -228,9 +264,10 @@ function SessionTab({
   // button gave up: a keyboard-reachable, screen-reader-legible tab.
   //
   // `onClick` and `onPointerDown` are untouched otherwise — a press that
-  // never moves is still a click, and Parcel J's `onPointerDown` still owns
-  // the movement threshold that turns a press into a drag. This component
-  // doesn't debounce or replace either handler, it just lets both listen.
+  // never moves is still a click, and the drag layer's `onPointerDown` still
+  // owns the movement threshold that turns a press into a drag. This
+  // component doesn't debounce or replace either handler, it just lets both
+  // listen.
   return (
     <div
       role="tab"

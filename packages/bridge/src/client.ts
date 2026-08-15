@@ -7,6 +7,7 @@
  * `src/index.ts` is the thin layer that supplies the real globals.
  */
 import {
+  isCommandMessage,
   isEventMessage,
   isHelveMessage,
   isReadyMessage,
@@ -61,6 +62,23 @@ export interface ClientOptions {
 export interface Client {
   invoke<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T>;
   on(event: string, cb: (payload: unknown) => void): () => void;
+  /**
+   * Run this when the shell's menu bar asks for a command. See
+   * `declareCommands` for how the shell knows which ones to offer.
+   */
+  onCommand(cb: (command: string) => void): () => void;
+  /**
+   * Tell the shell which commands this frontend can carry out **right now**.
+   *
+   * The set is a fact about the current moment, not about the app: Save is
+   * possible only while something is dirty, Undo only while an editor holds a
+   * history. So this is called again whenever that changes, and the last call
+   * wins — it replaces the declaration rather than adding to it.
+   *
+   * De-duplicated against the last set actually sent, because the natural place
+   * to call it is a React effect that runs on every render.
+   */
+  declareCommands(commands: readonly string[]): void;
   session(): Promise<Session>;
   host(): Host;
 }
@@ -95,6 +113,9 @@ export function createClient(opts: ClientOptions): Client {
   let nextId = 1;
   const pending = new Map<number, PendingRequest>();
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
+  const commandHandlers = new Set<(command: string) => void>();
+  /** The last set handed to `declareCommands`, joined, for the dedupe there. */
+  let declared: string | null = null;
 
   // Set from the `ready` message's `event.origin` (see the listener below),
   // and used as the exact `targetOrigin` for every post after that. Null
@@ -139,6 +160,10 @@ export function createClient(opts: ClientOptions): Client {
       }
       if (isEventMessage(msg)) {
         listeners.get(msg.event)?.forEach((cb) => cb(msg.payload));
+        return;
+      }
+      if (isCommandMessage(msg)) {
+        commandHandlers.forEach((cb) => cb(msg.command));
       }
     });
 
@@ -208,6 +233,12 @@ export function createClient(opts: ClientOptions): Client {
     // second window to reveal, so it acknowledges and does nothing, like
     // `helve/shutdown` above.
     if (method === "helve/painted") return null as unknown as T;
+    // Nothing under this host has a menu bar to grey out — the tool's own Tauri
+    // app draws its own chrome — so the declaration is accepted and dropped,
+    // exactly like `helve/painted` above. Refusing it instead would make every
+    // frontend that supports menu commands log an error on a host where the
+    // feature simply does not apply.
+    if (method === "helve/commands") return null as unknown as T;
     if (method.startsWith("helve/")) {
       throw new HelveRpcError(HelveErrorCode.MethodNotFound, `no such method: ${method}`);
     }
@@ -215,12 +246,19 @@ export function createClient(opts: ClientOptions): Client {
     return tauri.invoke(method, params) as Promise<T>;
   }
 
+  // Named rather than written straight into the object literal, because
+  // `declareCommands` below calls it. `index.ts` exports every method of this
+  // client *unbound* (`export const invoke = client.invoke`), so a `this.invoke`
+  // there would be a `this` of undefined the moment anyone imported the
+  // shorthand — which is every caller.
+  function invokeAny<T>(method: string, params?: unknown, timeoutMs = defaultTimeoutMs): Promise<T> {
+    return host === "helve"
+      ? invokeHelve<T>(method, params, timeoutMs)
+      : invokeTauri<T>(method, params);
+  }
+
   return {
-    invoke<T>(method: string, params?: unknown, timeoutMs = defaultTimeoutMs): Promise<T> {
-      return host === "helve"
-        ? invokeHelve<T>(method, params, timeoutMs)
-        : invokeTauri<T>(method, params);
-    },
+    invoke: invokeAny,
 
     on(event: string, cb: (payload: unknown) => void): () => void {
       if (host === "helve") {
@@ -252,6 +290,30 @@ export function createClient(opts: ClientOptions): Client {
         cancelled = true;
         unlisten?.();
       };
+    },
+
+    onCommand(cb: (command: string) => void): () => void {
+      // No registration with the host: `declareCommands` is what tells the
+      // shell anything, and a frontend that listened without declaring would
+      // simply never be sent a command. Under the Tauri host nothing ever
+      // arrives at all, and the unsubscribe is still real so a component can
+      // clean up without knowing which host it is on.
+      commandHandlers.add(cb);
+      return () => commandHandlers.delete(cb);
+    },
+
+    declareCommands(commands: readonly string[]): void {
+      // Sorted before joining so that two orderings of the same set compare
+      // equal — the caller assembles this from conditionals, and the order they
+      // happen to fall in is not a change worth a round trip.
+      const key = [...commands].sort().join(" ");
+      if (key === declared) return;
+      declared = key;
+      // Fire-and-forget. A host that has no use for the declaration answers
+      // null, and one that refuses has told us nothing we can act on — the
+      // frontend's own state is unchanged either way. What must not happen is
+      // an unhandled rejection from a call nobody awaited.
+      void invokeAny("helve/commands", { commands: [...commands] }).catch(() => {});
     },
 
     session(): Promise<Session> {

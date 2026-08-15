@@ -3,7 +3,6 @@
  * out with `instantOut`) — nothing here invents a transition, the numbers
  * live in `motion.ts` and this file only composes them into a variant.
  */
-import { useEffect, useState } from "react";
 import type { MotionValue } from "framer-motion";
 import { motion } from "framer-motion";
 import { instant, instantOut } from "../motion";
@@ -30,36 +29,10 @@ export function DetachOutline({ x, y }: { x: MotionValue<number>; y: MotionValue
   return <motion.div className="drag-detach-outline" style={{ left: x, top: y }} {...fade} />;
 }
 
-/**
- * "monitor 2 — drop target lit" (INTERACTION 02). The crop's precise
- * treatment is an insertion slot between two tabs inside the target panel's
- * own tab row — not reachable from here without editing `panel/`, which is
- * out of this parcel's files. This renders the closest thing the overlay
- * can draw on its own: the whole tab row lit the same way the crop's row
- * is (`--surface-gap` fill, `rgba(217,138,63,.55)` bottom rule — again kept
- * literal, no named token matches .55). Flagged in the report as a
- * simplification, not the full per-slot treatment.
- */
-export function PanelDropOutline() {
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    const measure = () => {
-      const panel = document.querySelector('[data-region="panel"]');
-      setRect(panel ? panel.getBoundingClientRect() : null);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-
-  if (!rect) return null;
-
-  return (
-    <motion.div
-      className="drag-panel-outline"
-      style={{ left: rect.left, top: rect.top, width: rect.width }}
-      {...fade}
-    />
-  );
-}
+/* The panel's own drop highlight is drawn by `SecondaryPanel` from its
+   `dropActive` prop, and each pane's by `panes/PaneTree.tsx` from the live drop
+   target. Both are inside the element being highlighted, which the overlay is
+   not — an outline drawn out here would have to re-measure a rectangle its owner
+   already knows, and would sit above a live iframe rather than around it. So the
+   overlay keeps only the one indicator that has no owner: the detach outline,
+   which by definition is over nothing. */

@@ -14,10 +14,18 @@
  * radius, and `opacity: .92`. The two box-shadow alphas (.5 tool, .55
  * terminal) are kept as drawn rather than collapsed into one.
  *
- * A tool's ghost shows only its name — no health, no version, matching "no
- * per-tool state on tabs." A terminal's ghost shows its title and the same
- * *agent finished* dot the panel tab carries; nothing else reaches the
- * ghost either.
+ * An app surface's ghost shows only its title — no health, no version, matching
+ * "no per-tool state on tabs." A terminal's shows its title and the same *agent
+ * finished* dot the panel tab carries; nothing else reaches the ghost either.
+ *
+ * The two readings are kept even though the payload types have merged. `kind`
+ * still says which of the two a tab is, and the crops still specify different
+ * sizes for them — one payload type was the right simplification, one visual
+ * treatment would have been a redesign nobody asked for.
+ *
+ * A third case sits outside those crops: a whole cluster being dragged to
+ * another window. It takes the tool reading's box and the cluster chip's accent
+ * dot rather than a size of its own — see the branch below.
  */
 import type { MotionValue } from "framer-motion";
 import { motion } from "framer-motion";
@@ -32,12 +40,25 @@ export default function DragGhost({
   x: MotionValue<number>;
   y: MotionValue<number>;
 }) {
+  // A cluster's ghost is the chip it was dragged from, not a third invention:
+  // the tool reading's box, its name, and the accent dot the open chip carries
+  // in the bar. There is no crop for this gesture — it did not exist when the
+  // spec was drawn — so it borrows rather than picking new numbers.
+  if (payload.what === "cluster") {
+    return (
+      <motion.div className="drag-ghost drag-ghost--cluster" style={{ left: x, top: y }}>
+        <span className="drag-ghost-cluster-dot" />
+        <span className="drag-ghost-label">{payload.name}</span>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       className={`drag-ghost drag-ghost--${payload.kind}`}
       style={{ left: x, top: y }}
     >
-      <span className="drag-ghost-label">{payload.kind === "tool" ? payload.name : payload.title}</span>
+      <span className="drag-ghost-label">{payload.title}</span>
       {payload.kind === "terminal" && payload.agentFinished && <span className="drag-ghost-dot" />}
     </motion.div>
   );

@@ -40,8 +40,9 @@ export interface SearchSlotProps {
  *
  * `expanded`/`onExpandedChange` are optional: standalone (no props) this
  * component owns its own open/closed state exactly as before. The switcher
- * bar needs to react to the field opening — hiding inactive tool tabs and
- * yielding its spacer — so when it passes `expanded` in, that becomes the
+ * bar needs to react to the field opening — clipping its whole tab row,
+ * dropping the health badge and yielding its spacer, so the field takes the
+ * bar edge to edge — so when it passes `expanded` in, that becomes the
  * source of truth and every internal path that used to call `setExpanded`
  * routes through the callback too. Internal state stays in sync either way
  * so the component never has two different opinions about whether it's
@@ -166,8 +167,10 @@ export default function SearchSlot({ expanded: expandedProp, onExpandedChange }:
         spellCheck={false}
         autoComplete="off"
       />
-      <span className="search-slot__caret" />
-      <span className="search-slot__spacer" />
+      {/* No spacer between the input and the count any more: the input grows
+          into the width the bar yields (see search.css), so the trailing
+          controls are already pushed to the edge and a second `flex: 1` beside
+          it would only halve the room it just gained. */}
       <span className="search-slot__count">
         {types.length} of 5 types
       </span>

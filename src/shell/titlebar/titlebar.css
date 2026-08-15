@@ -119,7 +119,13 @@
   top: calc(100% + 6px);
   left: 0;
   z-index: 40;
-  width: 224px;
+  /* Fixed rather than `max-content`, so expanding a different group does not
+     resize the popover under the pointer. Raised from 224px when the
+     accelerators became Windows text: `Ctrl+Shift+P` is three times the width
+     of `⇧⌘P`, and a row is `label ... accelerator` with a 24px gap and no
+     shrinking (both ends are `white-space: nowrap`). At 224px the widest row —
+     Command Palette… — had nothing left to sit in. */
+  width: 260px;
   max-height: calc(100vh - 60px);
   overflow-y: auto;
   background: var(--surface);
@@ -190,11 +196,12 @@
   background: var(--surface-2);
 }
 
-/* The Terminal menu's Split/Kill/Clear while there's no session to act on
-   (the worktree tab is active). Dimmed and inert rather than removed, so
-   the menu's shape never changes depending on what tab happens to be
-   showing — a menu whose item count moves under you is harder to learn than
-   one whose items grey out. */
+/* Any item that cannot act right now: Save with nothing dirty, Delete with no
+   file open, Split with no session. Dimmed and inert rather than removed, so
+   the menu's shape never changes depending on what happens to be showing — a
+   menu whose item count moves under you is harder to learn than one whose
+   items grey out. The reason sits on the row's `title`, because a disabled
+   button takes no pointer events and could never show one of its own. */
 .menu-list__item:disabled {
   color: var(--text-dim-3);
   cursor: default;
@@ -223,19 +230,43 @@
    the spec is explicit that it may sit under other elements, and that no
    collision avoidance should be added. */
 
+/* Flex rather than `text-align: center`, because the title is three segments
+   now and the gaps between them have to be even whether or not the middle one
+   is there. Written as spacing rather than as literal spaces around the bar so
+   an absent segment leaves no gap behind it. */
 .titlebar__title {
   position: absolute;
   left: 0;
   right: 0;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
   font: 400 11.5px var(--sans);
   color: var(--text-dim);
   pointer-events: none;
 }
 
+/* Dimmer than either thing it divides. It is punctuation: it should be
+   findable when reading the line and invisible when scanning past it. */
+.titlebar__title-sep {
+  color: var(--text-dim-3);
+}
+
 .titlebar__title-name {
   color: var(--text);
   font-weight: 500;
+}
+
+/* Mono, matching the branch in the status bar — a branch name is an identifier
+   and is read character by character when it matters. Kept at the surrounding
+   dim weight rather than the project's, because the project is what the window
+   is *about* and the branch is a qualifier on it. */
+.titlebar__title-worktree {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
 }
 
 /* --- spacer + window controls -------------------------------------------- */

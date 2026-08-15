@@ -22,6 +22,27 @@ body,
   height: 100%;
 }
 
+/* The background is on `html` as well as on `body`, and the duplication is the
+   point rather than an oversight.
+
+   A document's *canvas* — everything outside the root element's own box, and
+   what the compositor falls back to when it has no rastered content for this
+   frame yet — takes its colour from `html`, or from `body` only by propagation
+   when `html` has none. An app renders in an iframe that the shell hides with
+   `visibility: hidden` when its tab is not the active one, and an unhidden
+   frame has to run a full style/layout/paint/raster pass before it can draw.
+   Until that lands the canvas is all there is, and an iframe document's base
+   canvas colour is **white**. Under a dark app, in a dark shell, that is the
+   white flash on a tab switch.
+
+   So: `html` says the colour outright rather than leaving it to be inherited
+   from a box that may not have been painted yet. See also the `<style>` block
+   in each app's `index.html`, which says the same thing again for the window
+   before this stylesheet has loaded at all. */
+html {
+  background: var(--bg);
+}
+
 body {
   margin: 0;
   background: var(--bg);

@@ -15,8 +15,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { on, reportPainted } from "@helve/bridge";
 import { useMotionValue } from "framer-motion";
-import Explorer from "./explorer/Explorer";
+import Explorer, { type ExplorerHandle } from "./explorer/Explorer";
 import NoticeBar from "./NoticeBar";
+import { useMenuCommands } from "./commands";
 import { useDelete } from "./useDelete";
 import Splitter from "./Splitter";
 import TabStrip from "./tabs/TabStrip";
@@ -130,6 +131,29 @@ export default function App() {
     onDeleted: () => setTreeNonce((n) => n + 1),
   });
 
+  /**
+   * The title bar's File and Edit menus, answered from here.
+   *
+   * Here rather than in a region, for the same reason the delete confirmation
+   * is: a menu command can be about the tree, the tabs, or the editor, and this
+   * is the only file that can see all three. It is also the only one that can
+   * declare honestly what is possible — Save needs the buffer's dirty state,
+   * Delete needs a tab, New File needs a root.
+   *
+   * Every command routes into the code the equivalent gesture already uses, so
+   * a menu-bar Delete raises the same confirmation the right-click one does.
+   * See `commands.ts`.
+   */
+  const explorerRef = useRef<ExplorerHandle | null>(null);
+  useMenuCommands({
+    root,
+    files,
+    explorer: explorerRef,
+    askDelete: del.ask,
+    onTreeChanged: () => setTreeNonce((n) => n + 1),
+    onError: setError,
+  });
+
   const active = files.tabs.find((tab) => tab.path === files.activePath) ?? null;
 
   return (
@@ -138,6 +162,7 @@ export default function App() {
 
       <div className="files__split" ref={splitRef}>
         <Explorer
+          ref={explorerRef}
           root={root}
           width={explorerWidth}
           reloadNonce={treeNonce}

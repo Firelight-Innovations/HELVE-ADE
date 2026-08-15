@@ -1,0 +1,75 @@
+/*
+ * The open cluster's "open an app here" button, and the menu it drops.
+ *
+ * Its own file rather than more of `switcher.css`: this is one control and one
+ * portalled surface, and `switcher.css` is the busiest file in the region.
+ *
+ * Nothing here is a new value. The colours are the row's own tokens, the
+ * surface repeats `.menubar__dropdown` exactly — `var(--surface)` on
+ * `var(--line)`, 6px radius, `0 10px 28px rgba(0,0,0,.55)` — because it *is*
+ * that surface, holding the same `.menu-list` (styled in `titlebar.css`, which
+ * loads with the component this one imports from). The open/close is
+ * `motion.ts`'s shared `popover`, in the component.
+ */
+
+/* --- the button -----------------------------------------------------------
+   The last thing in `.switcher__members`, past the open cluster's app tabs.
+   Deliberately not shaped like a tab: no `border-right`, narrower padding, a
+   dimmer resting colour. There is a second `+` further along this row that
+   makes a whole new cluster, and the two must not be mistaken for each other.
+
+   What separates them is the caret. That `+` acts the moment it is clicked;
+   this one opens a list, and a disclosure caret is how the rest of this shell
+   says so. Position helps too — this sits inside the open group's fill and
+   under its accent band, the cluster `+` sits outside both — but position is
+   the weaker signal of the two and is not carrying the distinction alone. */
+
+.addapp {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim-3);
+  cursor: pointer;
+  /* Positioned for the same reason `.switcher__caret` is, and it is not
+     optional: the open group's fill is an absolutely positioned element, and
+     CSS paints those over every in-flow background in the same stacking
+     context. Unpositioned, this button's hover shade would be drawn *under*
+     the very fill that says the group is open — a button that looked inert on
+     hover, only inside the one cluster it belongs to. */
+  position: relative;
+}
+
+.addapp:hover,
+.addapp[data-open] {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* Rotated rather than drawn as a second icon: `ChevronRight` is the shell's
+   only chevron and a menu opens downward. */
+.addapp__caret {
+  transform: rotate(90deg);
+}
+
+/* --- the menu -------------------------------------------------------------
+   Portalled to `document.body` and placed by measured viewport coordinates —
+   `.switcher__tabs` is a scroll container with `overflow-y: hidden`, so a
+   surface positioned inside it would be clipped to the height of the bar. See
+   the header of `AddAppButton.tsx`.
+
+   `top`, `left` and `min-width` all come from the component; this rule only
+   says what the surface looks like. */
+.addapp__menu {
+  position: fixed;
+  z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  padding: 6px 0;
+}

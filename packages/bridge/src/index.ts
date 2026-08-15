@@ -11,6 +11,7 @@ import { createClient, type WindowLike } from "./client.js";
 
 export type { Client, ClientOptions, Host, TauriCore, WindowLike } from "./client.js";
 export type {
+  CommandMessage,
   EventMessage,
   HelloMessage,
   HelveErrorPayload,
@@ -37,6 +38,18 @@ export const invoke: <T = unknown>(
 ) => Promise<T> = client.invoke;
 
 export const on: (event: string, cb: (payload: unknown) => void) => () => void = client.on;
+
+/**
+ * Run this when the shell's menu bar asks for a command.
+ *
+ * The other half is `declareCommands` — the shell only sends what the frontend
+ * has said it can do right now, so a handler registered without a matching
+ * declaration is simply never called. See `docs/tool-protocol.md` §3.
+ */
+export const onCommand: (cb: (command: string) => void) => () => void = client.onCommand;
+
+/** Which menu commands this frontend can carry out **at this moment**. */
+export const declareCommands: (commands: readonly string[]) => void = client.declareCommands;
 
 export const session: typeof client.session = client.session;
 

@@ -4,14 +4,13 @@
  * `@tauri-apps/api/window` is safe to import in a plain browser — nothing at
  * module scope talks to the runtime. It is only *calling* `getCurrentWindow()`
  * or its methods that requires the Tauri internals to exist, so that's what's
- * guarded, right before every command.
+ * guarded, right before every command. `isTauri` itself lives in
+ * `../hostWindow`, which is where the menu bar's window commands are too — one
+ * definition of "is there a real window here", not two that could drift.
  */
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "../hostWindow";
 import { WindowClose, WindowMaximise, WindowMinimise } from "../../ui/Icon";
-
-function isTauri(): boolean {
-  return "__TAURI_INTERNALS__" in window;
-}
 
 function run(fn: (win: ReturnType<typeof getCurrentWindow>) => Promise<unknown>) {
   return () => {

@@ -48,6 +48,32 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
 }
 
+/* A whole cluster in the air. The tool reading's box, since there is no crop
+   for this gesture and inventing a fourth size would be inventing a token; the
+   gap is the terminal reading's, which is the one the spec gives for a chip
+   with a dot in it. */
+.drag-ghost--cluster {
+  height: 28px;
+  padding: 0 13px;
+  gap: 7px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* The open chip's marker (`.switcher__tab-dot[data-open]`), same size and same
+   token — this is the chip you are holding, not a new kind of object. */
+.drag-ghost-cluster-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.drag-ghost--cluster .drag-ghost-label {
+  font-size: 12px;
+  line-height: 1;
+}
+
 .drag-ghost-label {
   font-family: var(--sans);
   font-weight: 500;

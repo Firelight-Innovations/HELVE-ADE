@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window and every detached tool window",
-  "windows": ["main", "tool-*"],
+  "description": "The main window and every detached window. Tauri scopes capabilities per window label, and a label matching nothing here gets NO permissions — including core:default, which is what carries event:allow-listen. Such a window would mount, render, and then never receive shell:state, project:changed, or a byte of pty:data:*, with nothing in any console to say why. This glob and windows::create mint the same labels and have to change together.",
+  "windows": ["main", "win-*"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -10,6 +10,9 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-is-maximized",
-    "core:window:allow-close"
+    "core:window:allow-close",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:webview:allow-set-webview-zoom"
   ]
 }

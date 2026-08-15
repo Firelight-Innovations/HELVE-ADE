@@ -38,12 +38,18 @@ export default function HamburgerMenu({ menus }: { menus: Menu[] }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeAll();
     };
+    // Focus leaving this document closes it, for the reason `MenuBar`'s copy of
+    // this spells out: a click inside an app's iframe never reaches the shell's
+    // `window`, so `onPointerDown` alone cannot see most of the window.
+    const onBlur = () => closeAll();
 
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", onBlur);
     };
   }, [open]);
 

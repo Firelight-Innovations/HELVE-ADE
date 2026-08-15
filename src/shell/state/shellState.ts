@@ -13,17 +13,55 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { EngineState } from "../contract";
-import { isFake, subscribeFakeShellState } from "./fakeBackend";
+import type { Cluster, EngineState, SplitDir, SurfaceInstance } from "../contract";
+// `fakeLayout` is the no-backend stand-in for every mutation below. It is a
+// real, mutating model rather than a set of no-ops, and that matters more here
+// than it sounds: browser verification has been unreachable in this
+// environment, so `?fake=1` is the only way any of this layout work can be
+// clicked through at all. `fakeBackend`'s own comments record what a fixture
+// that merely *looked* right once cost — a hardcoded dock list that disagreed
+// with `ShellState::default` hid an empty-switcher bug for the fixture's whole
+// life.
+import { isFake, subscribeFakeShellState, fakeLayout as fake } from "./fakeBackend";
+
+/** Mirrors `shell_state::WindowGeometry`. Physical pixels. */
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 /** Mirrors `shell_state::WindowPlacement`. */
 export interface WindowPlacement {
   label: string;
-  toolIds: string[];
-  activeToolId: string | null;
+  clusters: Cluster[];
+  activeClusterId: string | null;
+  /**
+   * Which terminal this window's panel is showing.
+   *
+   * The window's, not any cluster's, because the panel does not change when you
+   * switch clusters. Rust re-establishes after every mutation that this names
+   * one of this window's panel terminals and never one that has been dragged
+   * into a pane tree, so the frontend can render it without re-checking.
+   */
+  activeTerminal: string | null;
+  geometry: WindowGeometry | null;
 }
 
-/** Mirrors `shell_state::TerminalSession`. */
+/**
+ * Mirrors `shell_state::TerminalSession`.
+ *
+ * `windowLabel`, not a cluster id: the panel belongs to the window, so a
+ * terminal opened in it stays there whichever cluster is on screen above it.
+ * That is what makes a terminal useful across clusters — orchestrating, or
+ * working between worktrees — instead of disappearing with the tab you happened
+ * to have open when you pressed `+`.
+ *
+ * It says where the terminal lives *in a panel*. A terminal dragged into a
+ * cluster's pane tree is drawn there instead and the panel stops listing it;
+ * this still records which window's panel it would return to.
+ */
 export interface TerminalSessionState {
   id: string;
   title: string;
@@ -35,6 +73,12 @@ export interface TerminalSessionState {
 /** Mirrors `shell_state::ShellSnapshot`. */
 export interface ShellSnapshot {
   windows: WindowPlacement[];
+  /**
+   * Every live app and tool surface, flat. The pane trees hold ids; this is
+   * what they resolve against. Flat rather than nested in the trees so a title
+   * change does not mean rewriting a tree.
+   */
+  instances: SurfaceInstance[];
   terminals: TerminalSessionState[];
   engine: EngineState;
 }
@@ -101,30 +145,145 @@ export function windowLabel(): string {
 // update optimistically and no chance of a window applying a change its
 // siblings never hear about. Fire and let the event come back.
 
-export function setDockedTools(label: string, toolIds: string[]): Promise<void> {
-  if (isFake()) return Promise.resolve();
-  return invoke("set_docked_tools", { label, toolIds });
+// --- instances --------------------------------------------------------------
+
+/**
+ * Open a new instance of an app. Resolves to its *instance* id.
+ *
+ * `pane_id` omitted means the active cluster's first pane, which is what the
+ * Apps menu wants — someone asking for another Files has no opinion about which
+ * pane receives it.
+ */
+export function openInstance(
+  label: string,
+  appId: string,
+  paneId?: string,
+): Promise<string> {
+  if (isFake()) return fake.openInstance(label, appId, paneId);
+  return invoke<string>("open_instance", { label, appId, paneId: paneId ?? null });
 }
 
-export function setActiveTool(label: string, toolId: string | null): Promise<void> {
-  if (isFake()) return Promise.resolve();
-  return invoke("set_active_tool", { label, toolId });
+export function closeInstance(instanceId: string): Promise<void> {
+  if (isFake()) return fake.closeInstance(instanceId);
+  return invoke("close_instance", { instanceId });
 }
 
-/** Drag a tab clear of the switcher bar. The only way a tool detaches. */
-export function detachTool(toolId: string): Promise<void> {
-  if (isFake()) return Promise.resolve();
-  return invoke("detach_tool", { toolId });
+export function activateInstance(instanceId: string): Promise<void> {
+  if (isFake()) return fake.activateInstance(instanceId);
+  return invoke("activate_instance", { instanceId });
 }
 
-export function createTerminal(label: string): Promise<string> {
-  if (isFake()) return Promise.resolve("term-fake");
-  return invoke<string>("create_terminal", { label });
+/** Reorder within a strip, or move a tab into another pane or window. */
+export function moveInstance(
+  instanceId: string,
+  clusterId: string,
+  paneId: string,
+  index: number | null,
+): Promise<void> {
+  if (isFake()) return fake.moveInstance(instanceId, clusterId, paneId, index);
+  return invoke("move_instance", { instanceId, clusterId, paneId, index });
 }
 
-export function closeTerminal(id: string): Promise<void> {
+/** Drop a tab on a pane's edge: split there, and put it in the new half. */
+export function splitPane(
+  paneId: string,
+  dir: SplitDir,
+  instanceId: string,
+  before: boolean,
+): Promise<void> {
+  if (isFake()) return fake.splitPane(paneId, dir, instanceId, before);
+  return invoke("split_pane", { paneId, dir, instanceId, before });
+}
+
+/** What a divider drag commits on release. Weights, not pixels. */
+export function setPaneSizes(splitId: string, sizes: number[]): Promise<void> {
+  if (isFake()) return fake.setPaneSizes(splitId, sizes);
+  return invoke("set_pane_sizes", { splitId, sizes });
+}
+
+// --- clusters ---------------------------------------------------------------
+
+export function addCluster(label: string, name: string): Promise<string | null> {
+  if (isFake()) return fake.addCluster(label, name);
+  return invoke<string | null>("add_cluster", { label, name });
+}
+
+export function setActiveCluster(label: string, clusterId: string | null): Promise<void> {
+  if (isFake()) return fake.setActiveCluster(label, clusterId);
+  return invoke("set_active_cluster", { label, clusterId });
+}
+
+export function renameCluster(clusterId: string, name: string): Promise<void> {
+  if (isFake()) return fake.renameCluster(clusterId, name);
+  return invoke("rename_cluster", { clusterId, name });
+}
+
+export function closeCluster(clusterId: string): Promise<void> {
+  if (isFake()) return fake.closeCluster(clusterId);
+  return invoke("close_cluster", { clusterId });
+}
+
+// --- windows ----------------------------------------------------------------
+
+/** Drag a tab clear of its window. The gesture that makes a second window. */
+export function detachInstance(instanceId: string): Promise<void> {
   if (isFake()) return Promise.resolve();
-  return invoke("close_terminal", { id });
+  return invoke("detach_instance", { instanceId });
+}
+
+/**
+ * Move a whole cluster — its chip and its entire pane tree — to another window.
+ *
+ * `toLabel` names a window that is already open; `null` asks for a new one.
+ * That distinction is the caller's because only the caller knows what the drop
+ * meant: `windowAtCursor` answering with *this* window is a release over the
+ * window the cluster is already in, which is a request for a new window and not
+ * a request to move it where it already is.
+ *
+ * A cluster can be moved into another window where a single tab cannot, and the
+ * asymmetry is deliberate — see `commitCluster` in `drag/useDrag.tsx`.
+ *
+ * Refused, with nothing changed, when it is the last cluster in its window: a
+ * window with no cluster has no layout and no panel. The bar hides the drag
+ * affordance on the same condition, so the refusal should be unreachable by
+ * pointer; it is enforced in Rust anyway, because an invariant that only the
+ * interface remembers is one broadcast away from being forgotten.
+ */
+export function detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
+  if (isFake()) return fake.detachCluster(clusterId, toLabel);
+  return invoke("detach_cluster", { clusterId, toLabel });
+}
+
+/**
+ * Close this window on purpose.
+ *
+ * Goes through the backend rather than calling `getCurrentWindow().close()`,
+ * and that indirection is load-bearing: it is the only thing separating a
+ * deliberate close from the application shutting down. `Destroyed` fires for
+ * every window at shutdown, so without the announcement HELVE would fold every
+ * window into `main` on the way out and save that as the layout to restore.
+ */
+export function closeWindow(label: string): Promise<void> {
+  if (isFake()) return Promise.resolve();
+  return invoke("close_window", { label });
+}
+
+/**
+ * Open a new, empty window.
+ *
+ * Distinct from `detachInstance`, which makes a window by *moving* a tab into
+ * it. This one takes nothing from the window you are in, which is what File >
+ * New Window has always claimed to do and could not until window labels stopped
+ * being derived from the surface inside them.
+ */
+export function newWindow(): Promise<void> {
+  if (isFake()) return Promise.resolve();
+  return invoke("new_window");
+}
+
+export function setWindowGeometry(label: string, geometry: WindowGeometry): Promise<void> {
+  if (isFake()) return Promise.resolve();
+  return invoke("set_window_geometry", { label, geometry });
 }
 
 /**
@@ -145,8 +304,31 @@ export function windowAtCursor(): Promise<string | null> {
   return invoke<string | null>("window_at_cursor");
 }
 
-/** Drop a terminal into any HELVE window's panel, including this one. */
+/**
+ * Drop a terminal into any HELVE window's panel, including this one.
+ *
+ * Named by *window*, because a window is the only thing `windowAtCursor` can
+ * identify — it hit-tests screen rectangles, and a panel has none. That is also
+ * what a panel belongs to now, so there is nothing left to resolve: the label is
+ * the destination.
+ *
+ * Dropping onto the panel it is already in is not a no-op. A terminal dragged
+ * out of a pane and back onto the panel takes this path, and leaving the tree is
+ * the half of the move that matters.
+ */
 export function moveTerminal(id: string, toLabel: string): Promise<void> {
-  if (isFake()) return Promise.resolve();
+  if (isFake()) return fake.moveTerminal(id, toLabel);
   return invoke("move_terminal", { id, toLabel });
+}
+
+/** Which terminal a window's panel is showing. */
+export function setActiveTerminal(label: string, id: string | null): Promise<void> {
+  if (isFake()) return fake.setActiveTerminal(label, id);
+  return invoke("set_active_terminal", { label, id });
+}
+
+/** An app naming its own tab — "Files" becoming `client.ts`. */
+export function setInstanceTitle(instanceId: string, title: string): Promise<void> {
+  if (isFake()) return fake.setInstanceTitle(instanceId, title);
+  return invoke("set_instance_title", { instanceId, title });
 }

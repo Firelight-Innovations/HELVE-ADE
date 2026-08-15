@@ -20,7 +20,7 @@
  * appears here for exactly one thing: the pane's own width, which the splitter
  * writes to during a drag.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { motion, type MotionStyle, type MotionValue } from "framer-motion";
 import ContextMenu, { type DraftKind, type MenuTarget } from "../ContextMenu";
 import DraftRow from "./DraftRow";
@@ -64,18 +64,25 @@ interface Draft {
   initialName: string;
 }
 
-export default function Explorer({
-  root,
-  width,
-  reloadNonce,
-  selectedPath,
-  onFirstListing,
-  onRefresh,
-  onOpenFile,
-  onRenamed,
-  onDelete,
-}: {
-  root: Root | null;
+/**
+ * The two things the title bar's File menu asks of the tree.
+ *
+ * Imperative rather than props, because both are *events* — "the user just
+ * chose New File" — and a prop would have to be a nonce the tree watched for a
+ * change in, which is a worse way of saying the same thing. Same reasoning as
+ * `TerminalDeck`'s handle in the shell.
+ */
+export interface ExplorerHandle {
+  /** Begin naming a new file, in the folder the cursor is in. */
+  newFile(): void;
+  /** Show the Recycle Bin list — File > Trash. */
+  showTrash(): void;
+}
+
+const Explorer = forwardRef<
+  ExplorerHandle,
+  {
+    root: Root | null;
   /** Written directly by `Splitter`; never React state. See `Splitter.tsx`. */
   width: MotionValue<number>;
   /** A change means "drop the cache and re-list whatever is open". */
@@ -106,8 +113,22 @@ export default function Explorer({
    * confirmation at a time for the whole app, and it is `App.tsx` that knows
    * about open buffers and therefore about what a delete would cost.
    */
-  onDelete: (target: DeleteTarget) => void;
-}) {
+    onDelete: (target: DeleteTarget) => void;
+  }
+>(function Explorer(
+  {
+    root,
+    width,
+    reloadNonce,
+    selectedPath,
+    onFirstListing,
+    onRefresh,
+    onOpenFile,
+    onRenamed,
+    onDelete,
+  },
+  ref,
+) {
   const [filter, setFilter] = useState("");
   /**
    * Where the keyboard is. Separate from `selectedPath` because the two are
@@ -312,6 +333,26 @@ export default function Explorer({
     [rows],
   );
 
+  /**
+   * Where a "New …" aimed at `row` creates: a folder row holds it, a file row's
+   * folder does, and nothing at all means the project root.
+   *
+   * One function rather than the expression written twice, because there are
+   * now two ways to ask for a new file — the right-click menu and the title
+   * bar's File > New File — and two copies of this rule is two rules that will
+   * eventually disagree about where a new file goes. `row.parent` is the tree's
+   * own fact about a path's folder, which is why this lives here and not
+   * anywhere that would have to work it out from the string.
+   */
+  const createInFor = useCallback(
+    (row: Row | null): string | null => {
+      if (!root) return null;
+      if (!row) return root.path;
+      return row.entry.kind === "dir" ? row.entry.path : row.parent;
+    },
+    [root],
+  );
+
   const cancelDraft = useCallback(() => {
     setDraft(null);
     setDraftError(null);
@@ -405,6 +446,27 @@ export default function Explorer({
     // every time a folder finishes listing underneath one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      newFile() {
+        // The cursor is where the keyboard is, and it follows every open — so
+        // "the folder the cursor is in" is the same place a right-click would
+        // have aimed at, resolved by the same function.
+        const parent = createInFor(rows.find((row) => row.entry.path === cursor) ?? null);
+        if (parent === null) return;
+        // A draft cannot be typed into a pane the tree is not on. Switching
+        // back is what the user would have done next anyway.
+        setView("files");
+        beginDraft(parent, "file");
+      },
+      showTrash() {
+        setView("trash");
+      },
+    }),
+    [beginDraft, createInFor, cursor, rows],
+  );
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -576,7 +638,7 @@ export default function Explorer({
           event.preventDefault();
           setMenu({
             path: null,
-            createIn: root.path,
+            createIn: createInFor(null),
             // The project root is not this app's to rename or delete — it is
             // the folder the whole tree is anchored on, and `files/root` is the
             // only thing that decides where that is.
@@ -638,12 +700,12 @@ export default function Explorer({
                 setCursor(target.entry.path);
                 setMenu({
                   path: target.entry.path,
-                  // A folder holds new entries; a file's folder does. That
-                  // second case is why this is computed here rather than in
-                  // the menu — `row.parent` is the tree's fact, not a path
-                  // this app is entitled to work out for itself.
-                  createIn:
-                    target.entry.kind === "dir" ? target.entry.path : target.parent,
+                  // A folder holds new entries; a file's folder does. Resolved
+                  // here rather than in the menu — `row.parent` is the tree's
+                  // fact, not a path this app is entitled to work out for
+                  // itself — and by the same function File > New File uses, so
+                  // the two gestures can never aim at different folders.
+                  createIn: createInFor(target),
                   name: target.entry.name,
                   kind: target.entry.kind,
                   x: event.clientX,
@@ -671,7 +733,9 @@ export default function Explorer({
       )}
     </motion.div>
   );
-}
+});
+
+export default Explorer;
 
 /** Index-based rather than path-based: a path is not a legal `id`, and the
  *  flat array's index is what both ends of `aria-activedescendant` have. */
