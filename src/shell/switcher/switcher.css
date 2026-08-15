@@ -1,11 +1,23 @@
 /*
- * The tool switcher bar and its health popover.
+ * The one tab bar — cluster chips, the open cluster's contents, and the health
+ * popover.
  *
  * Measured against the handoff's SCREEN 01/02 switcher crops and the isolated
  * TOOL HEALTH popover crop (docs/handoffs/shell-spec.html). This component
  * renders into `.frame__switcher`, which already carries the bar's height,
  * background and bottom hairline (src/shell/frame/frame.css) — nothing here
  * repeats those.
+ *
+ * Three depths, and they are the whole visual grammar of the row:
+ *
+ *   the bar        --surface      the ground everything sits on
+ *   the open group --surface-gap  one shade up, so the expanded cluster reads
+ *                                 as a single region rather than loose tabs
+ *   a showing tab  --bg           lifted clear, the same treatment the active
+ *                                 tool tab has always had
+ *
+ * Nothing new is introduced for the members: they are the existing tab, one
+ * size down, on a ground the existing tokens already provide.
  */
 
 .switcher {
@@ -43,6 +55,99 @@
   background: transparent;
 }
 
+/* The whole row, out of the way, while the search field is expanded — the field
+ * takes the bar edge to edge, not just the part right of whichever chip was left
+ * standing.
+ *
+ * Clipped rather than unmounted, and that is the entire reason this is a CSS
+ * state and not a condition in ClusterBar. The open group carries the accent band
+ * (`layoutId="tool-rule"`), which framer animates from wherever it last measured
+ * it: unmount the groups and the band has no origin and blinks back into place
+ * when the field closes; render only the open group and the band slides in from
+ * whatever position that left it at. A zero-width box moves nothing. Every item
+ * in this row is `flex: none`, so it does not squeeze them — they simply overflow
+ * and get clipped, keeping the exact offsets they had. That covers the band even
+ * though it now spans a whole group: a group is `flex: none` too, so nothing
+ * inside it is compressed and the box the band insets from is unchanged. Its
+ * rect is the same pixel throughout, so there is nothing for framer to animate
+ * at all and the row comes back drawn rather than animating back.
+ *
+ * `visibility`, because `overflow: hidden` only stops the paint: a clipped chip
+ * is still reachable by Tab and still in the accessibility tree, and a row nobody
+ * can see should be neither. It does not generate a new layout, so the rects
+ * above survive it.
+ *
+ * `overflow: hidden` also displaces the `auto` above, which would otherwise be a
+ * scroll container with a scroll range and no width.
+ *
+ * The strip drop zone is this element, and here it has an empty rect that
+ * `hitTest` can never be within — correct rather than merely harmless, since a
+ * drop cannot be in flight at the same time anyway: the field opens on a click
+ * or Ctrl+K, and there is no tab to have grabbed while it is open. At rest the
+ * row is untouched, which is the state the zone is measured in. */
+.switcher__tabs--collapsed {
+  flex: 0 0 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* --- a cluster group ------------------------------------------------------
+   The chip and, when it is the open one, its members. One box so the group
+   reads as a group: the background below spans the chip and everything
+   expanded beside it, which is what makes "these tabs belong to this cluster"
+   legible at a glance rather than something you have to count out. */
+
+.switcher__group {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  /* Positioning context for three things that all need this box and no other:
+     the fill below, the accent band that spans the open group, and whatever
+     framer has popped out of the flow on its way out — a leaving group's
+     contents, a leaving terminal tab. `popLayout` pins those to their offset
+     parent, and without this they would pin to something further up the shell
+     and leave from the wrong place. The fill and the band inset from it, which
+     is what makes them span the cluster rather than the chip. */
+  position: relative;
+}
+
+/* The open group's ground.
+ *
+ * The modifier used to carry this as a `background` and no longer carries
+ * anything: a background cannot move between elements, and this shade is the
+ * one thing in the row that has to. It is a `motion.div` with
+ * `layoutId="cluster-fill"` now (see ClusterBar.tsx), so opening another
+ * cluster hands the same rectangle across and it slides and resizes into place
+ * rather than one region blinking off and another blinking on — the treatment
+ * the accent band above it gets too, for the same reason and off the same box.
+ *
+ * Behind the whole group without a z-index: it is the group's first child and
+ * every chip and member in the row is positioned, so paint order already puts
+ * them over it.
+ *
+ * The modifier itself stays on the element. It is what the DOM says about which
+ * cluster is open, which is worth keeping true whether or not any rule reads it
+ * today. */
+.switcher__group-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-gap);
+  /* While it is travelling between two chips it is transformed clear of its own
+     box and sits over the group it came from. Decoration must not be able to
+     eat the click that would send it back. */
+  pointer-events: none;
+}
+
+/* The expanded contents. Its own box because it is the strip drop zone — a
+   tab dropped between two others lands in the pane tree, and the terminals
+   sitting outside this box are deliberately not part of that target. */
+.switcher__members {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
 /* A tab is a name and a close button, and nothing else — no version, no status
    chip, no per-cluster colour. */
 .switcher__tab {
@@ -57,7 +162,9 @@
   font: inherit;
   cursor: pointer;
   user-select: none;
-  /* Positioning context for the accent rule. */
+  /* Positioning context for the count badge, which `popLayout` pins to its
+     offset parent on the way out. It used to be the accent rule's as well; that
+     now insets from the group instead. */
   position: relative;
 }
 
@@ -137,8 +244,45 @@
   pointer-events: none;
 }
 
+/* Deliberately not lifted to `--bg`. It used to be, when a tab in this row was
+   the thing on screen; the thing on screen is now a *member*, and giving both
+   the chip and its members the top depth would leave nothing to distinguish
+   "this cluster is open" from "this app is showing". That is said instead by
+   the accent band over the whole group, the filled dot, and the weight below. */
 .switcher__tab--active {
-  background: var(--bg);
+  background: transparent;
+}
+
+/* Chrome gives each group a colour. A cluster has none in the model, and
+   inventing a palette would be inventing design tokens, so the marker is the
+   one accent already in the system: filled when the group is open, hollow when
+   it is collapsed. */
+.switcher__tab-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--text-dim-3);
+}
+
+.switcher__tab-dot[data-open] {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* How many tabs are folded up inside a collapsed chip. Only on collapsed ones:
+   the open cluster's contents are right there to be counted by eye. */
+.switcher__tab-count {
+  flex: none;
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--surface-gap);
+  font-family: var(--sans);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  color: var(--text-dim-2);
 }
 
 .switcher__tab-label {
@@ -159,9 +303,22 @@
   color: var(--text-dim-3);
 }
 
-/* The active tab's accent rule — a separate motion.div with
-   layoutId="tool-rule", not a box-shadow, so it slides between tabs instead
-   of blinking. The tab boxes above never move. */
+/* The open group's accent band — a separate motion.div with
+   layoutId="tool-rule", not a box-shadow, so it slides between groups instead
+   of blinking. The tab boxes above never move.
+ *
+ * It insets from `.switcher__group`, not from the chip, so it runs the full
+ * width of the open cluster: the chip, its members and its terminals under one
+ * rule. That is the whole point of it — Chrome bands a tab group in its colour
+ * for the same reason, and a marker that stopped at the chip would say which
+ * chip was clicked rather than which tabs belong together.
+ *
+ * Over the tabs rather than under them, which is why this is not simply a
+ * `border-top` on the fill above. A showing member paints an opaque `--bg` over
+ * its full height, so a band at the fill's depth would be cut through wherever
+ * one is on screen. It is the group's last child and every tab in the row is
+ * positioned, so paint order already puts it on top; no z-index is needed and
+ * none is claimed. */
 .switcher__rule {
   position: absolute;
   left: 0;
@@ -169,15 +326,153 @@
   top: 0;
   height: 2px;
   background: var(--accent);
+  /* It lies over the top 2px of the chip and every member, and while it travels
+     between groups it is transformed clear of its own box entirely. Decoration
+     must not eat a click meant for a tab. */
+  pointer-events: none;
+}
+
+/* --- the open cluster's members ------------------------------------------
+   An app or a terminal, drawn as the same tab one size down from the chip:
+   lighter padding, no dot-and-name gap to speak of, and a hover-revealed ×.
+   The only state it carries is `--showing`, which means "this is on screen
+   right now". With a split that is true of more than one at once, which is
+   the honest answer — there really are two surfaces visible. */
+
+/* `border-right`, like the chip and the `+` button either side of this list,
+   and not the `border-left` it used to be. Every separator in this row is now a
+   trailing one, which is the only arrangement that gives every seam exactly one
+   hairline: a leading border here met the chip's trailing border and drew the
+   chip/first-member seam 2px thick, where every other seam in the row is 1px.
+   The box is the same width either way — the border moves from one edge to the
+   other, it is not added — so nothing reflows and the rects `dropZones.ts`
+   measures are unchanged. */
+.switcher__member {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.switcher__member--showing {
+  background: var(--bg);
+}
+
+.switcher__member-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-dim-2);
+}
+
+/* A terminal is set in the mono face. That is the one difference this row draws
+   between an app tab and a terminal tab, and it is enough: the panel already
+   names its sessions in mono, so the association is one the eye has. No icon,
+   because the row has no icons and adding one kind would owe every other kind
+   one too. */
+.switcher__member[data-kind="terminal"] .switcher__member-label {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.switcher__member--showing .switcher__member-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* One 5px box, two occupants that are never both visible — the agent-finished
+   dot, or the close button on hover. Fixed at the dot's footprint so a tab's
+   width never changes between them; nothing may shift under the cursor. Same
+   construction as `.panel__tab-end`, which this replaces. */
+.switcher__member-end {
+  position: relative;
+  flex: none;
+  width: 5px;
+  height: 5px;
+}
+
+/* The dot means *this agent finished*. Not tool health — it never appears on an
+   app tab, only on a terminal. */
+.switcher__member-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ok);
+  display: block;
+  transition: opacity 0.1s linear;
+}
+
+/* Reach well past its 5px slot for a real 15px target, but absolutely
+   positioned so that reach never grows the box flex actually measures.
+   `pointer-events` is off while hidden, so a click meant for the label cannot
+   land on an invisible button. */
+.switcher__member-close {
+  position: absolute;
+  inset: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s linear;
+}
+
+.switcher__member-close:hover {
+  color: var(--text);
+}
+
+.switcher__member:hover .switcher__member-close,
+.switcher__member:focus-within .switcher__member-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.switcher__member:hover .switcher__member-dot,
+.switcher__member:focus-within .switcher__member-dot {
+  opacity: 0;
+}
+
+/* Where a dragged tab would be inserted. A full-height bar rather than a
+   hairline, so it reads at a glance in a row of narrow tabs. */
+.switcher__caret {
+  flex: none;
+  width: 2px;
+  align-self: stretch;
+  background: var(--accent);
+  /* Positioned only to be painted. The open group's fill is an absolutely
+     positioned element, and CSS paints those over every in-flow background in
+     the same stacking context — so an unpositioned caret drawn inside the open
+     group would be covered by the very shade that says the group is open, and a
+     drag over the one cluster you can actually drop into would show no caret at
+     all. Every chip and member in the row is already relative for its own
+     reasons; this is the one box that was not. It shifts nothing. */
+  position: relative;
 }
 
 .switcher__spacer {
   flex: 1;
 }
 
-/* While the search field is expanded it takes every pixel back to the active
-   tab itself, so the spacer that normally pushes the badge/search to the
-   trailing edge has nothing left to reserve. */
+/* While the search field is expanded it takes the bar from edge to edge, so the
+   spacer that normally pushes the badge/search to the trailing edge has nothing
+   left to reserve. */
 .switcher__spacer--collapsed {
   flex: 0;
 }

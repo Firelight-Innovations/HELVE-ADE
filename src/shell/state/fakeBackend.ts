@@ -222,6 +222,37 @@ function fakeProjectState() {
   };
 }
 
+// The real backend emits `project:changed` on every open and close, and the
+// title bar is now a subscriber to it (`state/project.ts`). A browser has no
+// Tauri event system, so this is the same stand-in the fake shell state uses: a
+// subscriber list, published from the mutating cases below.
+//
+// Without it the bar would name whatever was open when the window mounted —
+// which under `?fake=1` is nothing — and stay that way however many projects
+// were opened from Home. That is a fixture disagreeing with the backend in the
+// direction of looking *emptier* rather than healthier, but it is still the
+// kind of disagreement that makes a real regression unnoticeable here.
+type FakeProjectListener = (open: { name: string; path: string } | null) => void;
+const fakeProjectListeners = new Set<FakeProjectListener>();
+
+function publishFakeProject() {
+  const open = fakeProjectState().open;
+  const value = open ? { name: open.name, path: open.path } : null;
+  for (const cb of fakeProjectListeners) cb(value);
+}
+
+/** Mirrors a `project:changed` subscription, plus the initial read the shell
+ *  does with `home/state` — one call covers both, because in a fixture they
+ *  cannot disagree. */
+export function subscribeFakeProject(cb: FakeProjectListener): () => void {
+  fakeProjectListeners.add(cb);
+  const open = fakeProjectState().open;
+  cb(open ? { name: open.name, path: open.path } : null);
+  return () => {
+    fakeProjectListeners.delete(cb);
+  };
+}
+
 /**
  * How long a fixture takes to answer.
  *
@@ -270,12 +301,19 @@ export async function fakeAppCall(method: string, params?: unknown): Promise<unk
     case "home/state":
       return { ...fakeProjectState(), version: "0.1.0" };
 
+    // The three that end in Rust's `project::open` or `project::close` also
+    // publish, because those two are what emit `project:changed`. `forget`
+    // deliberately does not — it touches the history and never the open project
+    // — so it does not here either.
     case "home/open-recent":
       if (fakeProjects.some((p) => p.path === path && p.exists)) fakeOpen = path ?? null;
+      publishFakeProject();
       return fakeProjectState();
 
     case "home/initialize-project":
       fakeProjects = fakeProjects.map((p) => (p.path === path ? { ...p, initialized: true } : p));
+      fakeOpen = path ?? fakeOpen;
+      publishFakeProject();
       return fakeProjectState();
 
     case "home/forget-recent":
@@ -284,6 +322,7 @@ export async function fakeAppCall(method: string, params?: unknown): Promise<unk
 
     case "home/close-project":
       fakeOpen = null;
+      publishFakeProject();
       return fakeProjectState();
 
     default:
@@ -1893,9 +1932,9 @@ export const fakeGitControl: GitControl = {
 // the module doc above for why `?fake=1` exists at all.
 
 let fakeTerminals: TerminalSessionState[] = [
-  { id: "term-1", title: "bash", clusterId: "cluster-1", agentFinished: false, groupId: null },
-  { id: "term-2", title: "bash 2", clusterId: "cluster-1", agentFinished: false, groupId: null },
-  { id: "term-3", title: "forger", clusterId: "cluster-1", agentFinished: true, groupId: null },
+  { id: "term-1", title: "bash", windowLabel: "main", agentFinished: false, groupId: null },
+  { id: "term-2", title: "bash 2", windowLabel: "main", agentFinished: false, groupId: null },
+  { id: "term-3", title: "forger", windowLabel: "main", agentFinished: true, groupId: null },
 ];
 let fakeTerminalSerial = 3;
 
@@ -1943,18 +1982,20 @@ let fakeWindows: WindowPlacement[] = [
             { kind: "leaf", id: "pane-2", tabs: ["files-1"], activeTab: "files-1" },
           ],
         },
-        activeTerminal: "term-1",
         worktree: null,
       },
       {
         id: "cluster-2",
         name: "auth",
         tree: { kind: "leaf", id: "pane-3", tabs: ["files-2"], activeTab: "files-2" },
-        activeTerminal: null,
         worktree: null,
       },
     ],
     activeClusterId: "cluster-1",
+    // The panel's selection is the window's, so switching to `auth` above
+    // leaves it exactly where it is. That is the thing to look at under
+    // `?fake=1`: the tab strip beside the deck must not change with the cluster.
+    activeTerminal: "term-1",
     geometry: null,
   },
 ];
@@ -1967,6 +2008,8 @@ const fakeInstanceSerials = new Map<string, number>([
 let fakePaneSerial = 3;
 let fakeSplitSerial = 1;
 let fakeClusterSerial = 2;
+/** Minted by `detachCluster`, exactly as `claim_window_label` mints `win-<n>`. */
+let fakeWindowSerial = 0;
 
 const fakeShellListeners = new Set<(snapshot: ShellSnapshot) => void>();
 
@@ -1980,12 +2023,35 @@ function fakeSnapshot(): ShellSnapshot {
 }
 
 function publishFakeShellState() {
+  // The counterpart of `ShellState::mutate` doing this: every mutation, one
+  // place. See `reseatActiveTerminals`.
+  reseatActiveTerminals();
   // A fresh array identity per publish, so React sees a change. The nested
   // objects are replaced rather than mutated in place by every mutator below,
   // for the same reason.
   fakeWindows = [...fakeWindows];
   const snapshot = fakeSnapshot();
   for (const cb of fakeShellListeners) cb(snapshot);
+}
+
+/**
+ * Port of `reseat_active_terminals` in `shell_state.rs` — read that for the
+ * rule and why it lives at the one door every mutation goes through.
+ *
+ * The short version: a window's panel selection has to name one of *that
+ * window's* terminals, and never one that has been dragged into a pane tree,
+ * because a terminal in a tree draws in the pane area and the panel does not
+ * list it at all.
+ */
+function reseatActiveTerminals(): void {
+  fakeWindows = fakeWindows.map((w) => {
+    const inATree = w.clusters.flatMap((c) => paneTabsOf(c.tree));
+    const isPanelTerminal = (id: string) =>
+      fakeTerminals.some((t) => t.id === id && t.windowLabel === w.label) && !inATree.includes(id);
+
+    if (w.activeTerminal && isPanelTerminal(w.activeTerminal)) return w;
+    return { ...w, activeTerminal: fakeTerminals.find((t) => isPanelTerminal(t.id))?.id ?? null };
+  });
 }
 
 export function fakeShellState(): ShellSnapshot {
@@ -2005,11 +2071,19 @@ export function subscribeFakeShellState(cb: (snapshot: ShellSnapshot) => void): 
   };
 }
 
-/** Mirrors `commands::open_terminal`: a new, ungrouped session. */
+/**
+ * Mirrors `commands::open_terminal`: a new, ungrouped session in this window's
+ * panel. The window, not the cluster it happens to be showing — which is what
+ * makes the new tab survive a cluster switch here the same way it does for real.
+ */
 export function fakeAddTerminal(title: string): string {
   fakeTerminalSerial += 1;
   const id = `term-fake-${fakeTerminalSerial}`;
-  fakeTerminals = [...fakeTerminals, { id, title, clusterId: activeClusterId() ?? "cluster-1", agentFinished: false, groupId: null }];
+  const label = fakeWindows[0]?.label ?? "main";
+  fakeTerminals = [...fakeTerminals, { id, title, windowLabel: label, agentFinished: false, groupId: null }];
+  // `ShellState::add_terminal` selects what it just opened, so the panel is
+  // showing the terminal the "+" produced rather than the one before it.
+  fakeWindows = fakeWindows.map((w) => (w.label === label ? { ...w, activeTerminal: id } : w));
   publishFakeShellState();
   return id;
 }
@@ -2332,7 +2406,6 @@ export const fakeLayout = {
                 id,
                 name,
                 tree: { kind: "leaf", id: `pane-${fakePaneSerial}`, tabs: [], activeTab: null },
-                activeTerminal: null,
                 worktree: null,
               },
             ],
@@ -2340,13 +2413,21 @@ export const fakeLayout = {
           }
         : w,
     );
-    publishFakeShellState();
-    return Promise.resolve(id);
+    // Home, exactly as `commands::add_cluster` does it — and for the same
+    // reason it composes rather than folding the surface into the primitive.
+    // `openInstance` acts on the active cluster, which the map above has just
+    // made this one. It publishes, so nothing publishes twice here.
+    return this.openInstance(label, "home").then(() => id);
   },
 
   setActiveCluster(label: string, clusterId: string | null): Promise<void> {
     fakeWindows = fakeWindows.map((w) =>
-      w.label === label ? { ...w, activeClusterId: clusterId } : w,
+      // The guard `ShellState::set_active_cluster` carries, and for the reason
+      // written there: the click that ends a chip's drag arrives after the chip
+      // has left, asking for a cluster the window no longer holds.
+      w.label === label && (clusterId === null || w.clusters.some((c) => c.id === clusterId))
+        ? { ...w, activeClusterId: clusterId }
+        : w,
     );
     publishFakeShellState();
     return Promise.resolve();
@@ -2378,16 +2459,104 @@ export const fakeLayout = {
       };
     });
 
-    fakeTerminals = fakeTerminals.filter((t) => t.clusterId !== clusterId);
+    // Only what was in its *tree*, terminals included — mirrors
+    // `ShellState::close_cluster`. A terminal in the panel is the window's and
+    // has nothing to do with the cluster being closed.
+    fakeTerminals = fakeTerminals.filter((t) => !held.includes(t.id));
     fakeInstances = fakeInstances.filter((i) => !held.includes(i.id));
     publishFakeShellState();
     return Promise.resolve();
   },
 
-  setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
-    eachCluster((cluster) =>
-      cluster.id === clusterId ? { ...cluster, activeTerminal: id } : cluster,
+  /**
+   * Port of `move_cluster_pure` in `shell_state.rs` — read that for the two
+   * refusals and for why the terminals in the tree have to be rewritten.
+   *
+   * One thing here is not a faithful picture, and it cannot be: `?fake=1` has no
+   * backend and so no way to open an OS window. A cluster detached to a fresh
+   * label is moved into a `WindowPlacement` this page does not draw, so on
+   * screen it simply leaves the row. That is the state being correct rather than
+   * the fixture being broken — for real, a window opens beside it holding
+   * exactly that cluster.
+   *
+   * What is worth exercising here is the rest of it: that the last cluster in a
+   * window cannot be dragged out, that the bar's chip stops being a drag source
+   * when only one is left, and that the window's selection falls to a survivor
+   * rather than pointing at something that has gone.
+   */
+  detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
+    const source = fakeWindows.find((w) => w.clusters.some((c) => c.id === clusterId));
+    // A cluster nobody holds, and the last cluster in its window — a window with
+    // none has no layout, no panel and no way to make either.
+    if (!source || source.clusters.length <= 1) return Promise.resolve();
+    // Already where it was asked to be.
+    if (toLabel === source.label) return Promise.resolve();
+
+    const i = source.clusters.findIndex((c) => c.id === clusterId);
+    const cluster = source.clusters[i];
+    const remaining = source.clusters.filter((c) => c.id !== clusterId);
+    const label = toLabel ?? `win-${(fakeWindowSerial += 1)}`;
+    const held = paneTabsOf(cluster.tree);
+
+    fakeWindows = fakeWindows.map((w) =>
+      w.label === source.label
+        ? {
+            ...w,
+            clusters: remaining,
+            // The neighbour rule again: whatever slid into the vacated
+            // position, or the last one. Shared with `closeCluster` in Rust;
+            // here the two read alike rather than sharing a helper.
+            activeClusterId:
+              w.activeClusterId === clusterId
+                ? (remaining[i]?.id ?? remaining[remaining.length - 1]?.id ?? null)
+                : w.activeClusterId,
+          }
+        : w,
     );
+
+    // A terminal in the moved tree is on screen in the new window now, so the
+    // panel it would return to has to be that window's.
+    fakeTerminals = fakeTerminals.map((t) =>
+      held.includes(t.id) ? { ...t, windowLabel: label } : t,
+    );
+
+    fakeWindows = fakeWindows.some((w) => w.label === label)
+      ? fakeWindows.map((w) =>
+          w.label === label
+            ? { ...w, clusters: [...w.clusters, cluster], activeClusterId: cluster.id }
+            : w,
+        )
+      : [
+          ...fakeWindows,
+          {
+            label,
+            clusters: [cluster],
+            activeClusterId: cluster.id,
+            activeTerminal: null,
+            geometry: null,
+          },
+        ];
+
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  setActiveTerminal(label: string, id: string | null): Promise<void> {
+    fakeWindows = fakeWindows.map((w) => (w.label === label ? { ...w, activeTerminal: id } : w));
+    publishFakeShellState();
+    return Promise.resolve();
+  },
+
+  /**
+   * Mirrors `ShellState::move_terminal`. Leaving the tree is the half that
+   * matters under `?fake=1`, since there is only one window to move between:
+   * this is the path a terminal takes when it is dragged out of a pane and back
+   * onto the panel, and without it the drag would look like it did nothing.
+   */
+  moveTerminal(id: string, toLabel: string): Promise<void> {
+    eachCluster((cluster) => ({ ...cluster, tree: removeTab(cluster.tree, id) }));
+    fakeTerminals = fakeTerminals.map((t) => (t.id === id ? { ...t, windowLabel: toLabel } : t));
+    fakeWindows = fakeWindows.map((w) => (w.label === toLabel ? { ...w, activeTerminal: id } : w));
     publishFakeShellState();
     return Promise.resolve();
   },

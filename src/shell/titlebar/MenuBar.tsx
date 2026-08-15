@@ -2,9 +2,10 @@
  * The eight inline menu labels, ≥1100px.
  *
  * Standard menu-bar behaviour: a menu opens on click; while one is open,
- * hovering a sibling switches to it without a second click; Escape or a click
- * outside closes whichever is open. One `openLabel` captures all of that — the
- * dropdown that's showing is just "the menu whose label equals `openLabel`".
+ * hovering a sibling switches to it without a second click; Escape, a click
+ * outside, or anything that takes focus out of this document closes whichever
+ * is open. One `openLabel` captures all of that — the dropdown that's showing
+ * is just "the menu whose label equals `openLabel`".
  */
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -26,11 +27,27 @@ export default function MenuBar({ menus }: { menus: Menu[] }) {
       if (e.key === "Escape") setOpenLabel(null);
     };
 
+    // Why blur as well, when `onPointerDown` already handles "clicked
+    // outside": most of this window is not in this document. Every app and tool
+    // surface is an iframe, and a pointer event inside one is delivered to that
+    // frame and never reaches the shell's `window` — so clicking into the file
+    // tree, an editor or a terminal left the menu hanging open, and the only
+    // way to dismiss it was to click the label a second time. Focus moving into
+    // a frame *does* blur the top-level window, which is the one signal that
+    // crosses the boundary without the app having to cooperate.
+    //
+    // It fires on alt-tab too, and that is wanted rather than tolerated: a menu
+    // still open when the window comes back would be one left over from
+    // whatever the user was doing somewhere else.
+    const onBlur = () => setOpenLabel(null);
+
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", onBlur);
     };
   }, [openLabel]);
 

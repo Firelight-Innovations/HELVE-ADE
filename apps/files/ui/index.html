@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Files</title>
+    <!-- See the note in `apps/home/ui/index.html`: the palette and the canvas
+         colour, applied before this app's own code has loaded, so a surface
+         never starts as a white rectangle in a dark window. -->
+    <link rel="stylesheet" href="/src/tokens.css" />
+    <style>
+      html,
+      body {
+        background: var(--bg);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

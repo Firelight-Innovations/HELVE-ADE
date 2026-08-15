@@ -358,10 +358,10 @@ mod tests {
                     id: "cluster-1".to_string(),
                     name: "auth".to_string(),
                     tree,
-                    active_terminal: Some("term-1".to_string()),
                     worktree: None,
                 }],
                 active_cluster_id: Some("cluster-1".to_string()),
+                active_terminal: Some("term-1".to_string()),
                 geometry: Some(WindowGeometry {
                     x: 100,
                     y: 50,
@@ -386,7 +386,7 @@ mod tests {
             terminals: vec![TerminalSession {
                 id: "term-1".to_string(),
                 title: "pwsh".to_string(),
-                cluster_id: "cluster-1".to_string(),
+                window_label: "main".to_string(),
                 agent_finished: false,
                 group_id: None,
             }],
@@ -403,7 +403,12 @@ mod tests {
         assert_eq!(back.windows[0].clusters[0].tree, stored.windows[0].clusters[0].tree);
         assert_eq!(back.windows[0].geometry, stored.windows[0].geometry);
         assert_eq!(back.instances.len(), 2, "two Files, which is the whole point");
-        assert_eq!(back.terminals[0].cluster_id, "cluster-1");
+        assert_eq!(back.terminals[0].window_label, "main");
+        assert_eq!(
+            back.windows[0].active_terminal.as_deref(),
+            Some("term-1"),
+            "which terminal the panel had open is the window's, and comes back with it"
+        );
     }
 
     /// An older build must not choke on a file a newer one wrote, and a file
@@ -422,6 +427,49 @@ mod tests {
         assert!(stored.terminals.is_empty(), "an absent field takes its default");
     }
 
+    /// The file already on disk: terminals carrying a `clusterId`, the panel's
+    /// selection stored on the cluster, and no window label anywhere. Both
+    /// renamed fields have to survive it, and the terminal has to land in a
+    /// window that exists — `main` — rather than in the empty label a bare
+    /// `#[serde(default)]` would have given it, which names no window at all and
+    /// would drop every restored tab out of every panel.
+    #[test]
+    fn a_layout_from_before_the_panel_left_the_clusters_still_loads() {
+        let json = r#"{
+            "windows": [{
+                "label": "main",
+                "clusters": [{
+                    "id": "cluster-1",
+                    "name": "auth",
+                    "tree": {"kind": "leaf", "id": "pane-1", "tabs": [], "activeTab": null},
+                    "activeTerminal": "term-1",
+                    "worktree": null
+                }],
+                "activeClusterId": "cluster-1",
+                "geometry": null
+            }],
+            "instances": [],
+            "terminals": [{
+                "id": "term-1",
+                "title": "pwsh",
+                "clusterId": "cluster-1",
+                "agentFinished": false,
+                "groupId": null
+            }]
+        }"#;
+
+        let stored: Stored = serde_json::from_str(json).expect("last week's layout still reads");
+
+        assert_eq!(
+            stored.terminals[0].window_label, "main",
+            "a terminal with no label goes somewhere a panel will draw it"
+        );
+        assert_eq!(
+            stored.windows[0].active_terminal, None,
+            "the cluster's old selection is not read back; `restore` re-seats it"
+        );
+    }
+
     #[test]
     fn an_empty_document_is_a_valid_empty_layout() {
         let stored: Stored = serde_json::from_str("{}").expect("`{}` is a layout with nothing in it");
@@ -436,7 +484,7 @@ mod tests {
             terminals: vec![TerminalSession {
                 id: "term-1".to_string(),
                 title: "claude".to_string(),
-                cluster_id: "cluster-1".to_string(),
+                window_label: "main".to_string(),
                 agent_finished: true,
                 group_id: None,
             }],

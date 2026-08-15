@@ -92,6 +92,26 @@ pub fn detach(app: &AppHandle, state: &ShellState, instance_id: &str) -> Result<
     create(app, &label, None, true)
 }
 
+/// Pull a whole cluster out of its window and into a new one.
+///
+/// The same shape and the same ordering as `detach` above, one level up: a
+/// cluster is not a surface being lifted into a fresh cluster, it *is* the
+/// cluster, so its tree arrives in the new window exactly as it left.
+///
+/// `move_cluster` returning false means the move was refused — most often
+/// because it was the last cluster in its window, which a window may not be left
+/// without. Building the window first would have put an empty frame on screen
+/// for a move that never happened.
+pub fn detach_cluster(app: &AppHandle, state: &ShellState, cluster_id: &str) -> Result<()> {
+    let label = state.claim_window_label();
+
+    if !state.move_cluster(app, cluster_id, &label) {
+        return Err(AppError::UnknownTool(cluster_id.to_string()));
+    }
+
+    create(app, &label, None, true)
+}
+
 /// Which HELVE window the cursor is over, if any.
 ///
 /// A tab moves between windows by being dropped into another window, and no

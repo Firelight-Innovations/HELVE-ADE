@@ -21,11 +21,16 @@ import "./titlebar.css";
 
 export default function TitleBar({
   kind,
-  title,
+  project,
+  worktree,
   menus,
 }: {
   kind: WindowKind;
-  title: string;
+  /** The open project's name, or `null` when none is open. */
+  project: string | null;
+  /** The checked-out branch, or `null` when the project is not a repository —
+   *  see the note on the title element below for why it is the branch. */
+  worktree: string | null;
   /** Built by `defaultMenus()`, wired against `WindowRoot`'s state and the
    *  active app frame. Rebuilt on every render, because half the items read
    *  live state — Save disables when nothing is dirty, the toggles say which
@@ -49,9 +54,41 @@ export default function TitleBar({
       {/* Absolutely centred across the whole bar, pointer-events: none, and
           deliberately allowed to sit under the menu block or the window
           controls at narrow widths — the spec calls that out by name, so
-          there is no collision-avoidance logic to look for here. */}
+          there is no collision-avoidance logic to look for here.
+
+          The spec's title was "HELVE Engine — [tool]", and that has been
+          replaced: the surface you are looking at is already named by the tab
+          you clicked to get to it, an arm's length below this, so repeating it
+          here spent the most legible strip in the window on the one fact
+          nothing else could hide. What the tabs cannot say is *which project*
+          and *which checkout* — both of which change under you (Open Recent, a
+          branch switched in a terminal) and both of which decide what every
+          other action in this window will touch.
+
+          The worktree is the checked-out branch, from the same single
+          `useGitStatus` the status bar and the source-control tab read.
+          `Cluster.worktree` is the field this will eventually name, but it is a
+          stub nothing populates, and a title bound to it would be empty
+          forever.
+
+          Segments with no answer are dropped rather than drawn as a placeholder
+          or an em-dash. With nothing open this reads "HELVE Engine", which is
+          true; "HELVE Engine | — | —" would be three claims where there is
+          one. */}
       <div className="titlebar__title">
-        HELVE Engine — <span className="titlebar__title-name">{title}</span>
+        <span>HELVE Engine</span>
+        {project !== null && (
+          <>
+            <span className="titlebar__title-sep">|</span>
+            <span className="titlebar__title-name">{project}</span>
+          </>
+        )}
+        {worktree !== null && (
+          <>
+            <span className="titlebar__title-sep">|</span>
+            <span className="titlebar__title-worktree">{worktree}</span>
+          </>
+        )}
       </div>
 
       <div className="titlebar__spacer" />
@@ -169,6 +206,35 @@ export interface AppsMenuHandlers {
   available: { id: string; name: string }[];
   /** Opens a new instance. Always available — there is no "already open". */
   open: (appId: string) => void;
+}
+
+/**
+ * The Apps menu — **the** definition of it, and the only one.
+ *
+ * Pulled out of `defaultMenus` below because the menu bar is no longer the only
+ * place this list appears: the switcher row's add-app button
+ * (`switcher/AddAppButton.tsx`) shows the same items, and hands them to the same
+ * `MenuItemList`. Two hand-built lists would agree today and disagree the first
+ * time an app is added to the registry — one surface would show it, the other
+ * would not, and nothing would fail. There is one list because there is one
+ * function that builds it.
+ *
+ * Apps sits between Edit and View, where a menu about *what is open* reads more
+ * naturally than one buried under File. Every entry opens a new instance; none
+ * of them is ever disabled, because "already open" stopped being a state an app
+ * can be in.
+ *
+ * A flat list, not a submenu. `MenuItem` has none and faking one is out — the
+ * same rule Open Recent obeys two menus up.
+ */
+export function appsMenu(apps: AppsMenuHandlers): Menu {
+  return {
+    label: "Apps",
+    items: apps.available.map((entry) => ({
+      label: `New ${entry.name}`,
+      onSelect: () => apps.open(entry.id),
+    })),
+  };
 }
 
 /** Everything the five wired menus act on. */
@@ -297,20 +363,9 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         command("Replace", edit, APP_COMMAND.replace, { accelerator: "Ctrl+H" }),
       ],
     },
-    {
-      // Apps sits between Edit and View, where a menu about *what is open* reads
-      // more naturally than one buried under File. Every entry opens a new
-      // instance; none of them is ever disabled, because "already open" stopped
-      // being a state an app can be in.
-      //
-      // A flat list, not a submenu. `MenuItem` has none and faking one is out —
-      // the same rule Open Recent obeys two menus up.
-      label: "Apps",
-      items: apps.available.map((entry) => ({
-        label: `New ${entry.name}`,
-        onSelect: () => apps.open(entry.id),
-      })),
-    },
+    // Not built here. `appsMenu` above is the one definition, shared with the
+    // switcher row's add-app button — see its comment.
+    appsMenu(apps),
     {
       label: "View",
       items: [

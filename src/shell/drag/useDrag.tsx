@@ -6,6 +6,11 @@
  * dropped into a tab strip, onto a pane's edge to split it there, into the
  * terminal panel, or clear of everything to become its own window.
  *
+ * A cluster chip drags too, through the same handle and the same threshold, and
+ * lands in only one of those places: clear of everything, which either moves it
+ * into the window it was released over or gives it one of its own. See
+ * `commitCluster`.
+ *
  * This hook owns the whole gesture: press-and-hold, movement threshold, and
  * `pointermove`/`pointerup`/`pointercancel` tracked on `window` the same way
  * `Frame.tsx`'s resize handle does. It hands back a small, stable surface that
@@ -23,9 +28,16 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { AnimatePresence, useMotionValue, useSpring } from "framer-motion";
-import type { DragHandleProps, DragPayload, DragState, DropTarget } from "../contract";
+import type {
+  ClusterDrag,
+  DragHandleProps,
+  DragPayload,
+  DragState,
+  DropTarget,
+} from "../contract";
 import { snap } from "../motion";
 import {
+  detachCluster,
   detachInstance,
   moveInstance,
   moveTerminal,
@@ -134,7 +146,7 @@ export function useDrag(label: string, activeClusterId: string | null) {
 
           rawX.set(ev.clientX);
           rawY.set(ev.clientY);
-          const target = hitTest(ev.clientX, ev.clientY);
+          const target = resolve(s.payload, ev.clientX, ev.clientY);
           setDrag({ payload: s.payload, x: ev.clientX, y: ev.clientY, target });
         };
 
@@ -151,7 +163,7 @@ export function useDrag(label: string, activeClusterId: string | null) {
           setDrag(null);
           if (!s || ev.pointerId !== s.pointerId || !s.began) return;
 
-          commit(s.payload, hitTest(ev.clientX, ev.clientY), label, activeClusterId);
+          commit(s.payload, resolve(s.payload, ev.clientX, ev.clientY), label, activeClusterId);
         };
 
         window.addEventListener("pointermove", onMove);
@@ -185,6 +197,28 @@ export function useDrag(label: string, activeClusterId: string | null) {
 }
 
 /**
+ * Where *this* payload would land, which is not always what is under the cursor.
+ *
+ * The zones answer for a tab, because a tab is what they were registered for. A
+ * cluster can only be released on a window: it holds panes, so there is no sense
+ * in which it goes inside one, and the terminal panel is a region of a window
+ * rather than a place a cluster could live. Substituting `none` over those is
+ * what stops the row drawing an insertion caret, a pane lighting an edge, and
+ * the panel lighting up for a release `commitCluster` would refuse — an
+ * indicator that promises something the drop will not do is worse than no
+ * indicator, because it is read as a commitment.
+ *
+ * Done here rather than in the regions so that no region has to learn what is
+ * being dragged. They are handed a target and draw it; that is the whole of
+ * their involvement in the gesture.
+ */
+function resolve(payload: DragPayload, x: number, y: number): DropTarget {
+  const target = hitTest(x, y);
+  if (payload.what !== "cluster") return target;
+  return target.kind === "detach" ? target : { kind: "none" };
+}
+
+/**
  * Act on a release.
  *
  * Split out of the handler so the mapping from target to call is one readable
@@ -197,6 +231,8 @@ function commit(
   label: string,
   activeClusterId: string | null,
 ): void {
+  if (payload.what === "cluster") return commitCluster(payload, target, label);
+
   switch (target.kind) {
     case "strip":
       if (activeClusterId) {
@@ -236,5 +272,44 @@ function commit(
       // this behaviour is revisited.
       void windowAtCursor().then(() => detachInstance(payload.instanceId));
       return;
+
+    case "none":
+      // Unreachable for a tab: `resolve` substitutes this for a cluster and for
+      // nothing else. Spelled out rather than left to fall off the end of the
+      // switch, so this table stays a complete list of what a release can mean.
+      return;
   }
+}
+
+/**
+ * The same release, for a cluster.
+ *
+ * Only two targets can reach here, because `resolve` has already turned every
+ * strip, pane and panel a cluster was released over into `none` — see it for
+ * why. `none` does nothing at all: the cluster stays exactly where it was, which
+ * is what a cancelled drag looks like, and is better than inventing a meaning
+ * for a gesture the user cannot have intended.
+ *
+ * So `detach` is the one that acts, and unlike a tab's `detach` it uses the
+ * answer it is given:
+ *
+ * - **Over another HELVE window** — the cluster moves into it. This is built
+ *   here where the same drop for a single tab was deliberately not, and the
+ *   difference is real rather than an inconsistency somebody forgot to fix. A
+ *   tab needs a *pane* to land in, and `window_at_cursor` returns a label —
+ *   it hit-tests window rectangles and cannot say where inside one the cursor
+ *   was, so a pane would have to be guessed. A cluster is appended to that
+ *   window's cluster list; the label is the whole of the address. The same
+ *   reasoning is written at `commands::detach_cluster`, on the other side.
+ * - **Over this window, or over nothing** — a window of its own. Releasing over
+ *   the window it came from is not treated as "put it back where it was": the
+ *   whole row is a drop zone, so a release that reaches `detach` at all is one
+ *   that missed the bar on purpose.
+ */
+function commitCluster(payload: ClusterDrag, target: DropTarget, label: string): void {
+  if (target.kind !== "detach") return;
+
+  void windowAtCursor().then((over) =>
+    detachCluster(payload.clusterId, over && over !== label ? over : null),
+  );
 }

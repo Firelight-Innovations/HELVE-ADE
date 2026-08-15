@@ -45,11 +45,31 @@ export const instant: Transition = {
   ease: [0.4, 0, 0.2, 1],
 };
 
-/** Leaving is faster than arriving. Dismissal should never make you wait. */
+/**
+ * Leaving is faster than arriving. Dismissal should never make you wait.
+ *
+ * The two numbers are pulled out as constants because this one transition is
+ * needed in two languages — framer's object below, and a CSS `transition`
+ * shorthand for `.toolwindow__surface`, which is a plain positioned div rather
+ * than a `motion.div`. Written twice by hand they would drift; written once
+ * here they cannot.
+ */
+const INSTANT_OUT_MS = 60;
+const INSTANT_OUT_EASE: [number, number, number, number] = [0.4, 0, 1, 1];
+
 export const instantOut: Transition = {
-  duration: 0.06,
-  ease: [0.4, 0, 1, 1],
+  duration: INSTANT_OUT_MS / 1000,
+  ease: INSTANT_OUT_EASE,
 };
+
+/** `instantOut` as a CSS `transition` timing, for the CSS-side callers. */
+export const instantOutCss = `${INSTANT_OUT_MS}ms cubic-bezier(${INSTANT_OUT_EASE.join(", ")})`;
+
+/**
+ * `instantOut`'s duration in milliseconds, for the caller that has to know when
+ * a CSS transition it started has finished.
+ */
+export const instantOutMs = INSTANT_OUT_MS;
 
 /**
  * The shared open/close for every popover and menu in the shell — the health

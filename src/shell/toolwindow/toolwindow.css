@@ -21,12 +21,45 @@
    JavaScript — see `ToolWindow`'s `rects`, and the comment there on why the
    surfaces are positioned rather than parented into their panes.
 
-   `z-index` puts them under the pane layer's tab strips and dividers, which
-   need to stay clickable, and under the drop indicators, which need to be
-   visible over a mounted iframe. */
+   The window's stacking order, bottom to top, is: the pane layer, a surface (1),
+   the surface a switch is leaving (2), a focused pane's ring (3), the split
+   dividers (4), the drop indicators (5). The last three are in
+   `src/shell/panes/panes.css` and the numbers are one sequence across the two
+   files — nothing here creates a stacking context, so they all compete
+   directly. Dividers stay above a surface because they have to stay clickable
+   over a mounted iframe, and drop indicators because an outline drawn under a
+   live iframe is invisible exactly when it is needed.
+
+   The background matters even though a surface is nearly always covered by the
+   iframe filling it. It is what shows in the one frame between a rect being
+   measured and the frame inside being drawn, and the shell's own colour is the
+   right thing to see there. */
 .toolwindow__surface {
   position: absolute;
   z-index: 1;
+  background: var(--bg);
+}
+
+/* The surface a tab switch is leaving, held on screen over the one replacing
+   it rather than hidden the instant the click lands.
+
+   Unhiding an iframe does not put its content back on screen: the frame has to
+   run a style, layout, paint and raster pass before the compositor has anything
+   to draw for it, and until that lands the pane shows the frame's bare canvas.
+   Hiding the outgoing surface in the same frame that unhides the incoming one
+   is what makes that gap visible. So the outgoing one stays drawn, on top,
+   through two animation frames — long enough for the incoming frame to have
+   rastered — and then fades out over `instantOut` from `src/shell/motion.ts`,
+   which supplies `--surface-fade`. It takes no clicks while it does: the
+   surface under it is the one the user just asked for. */
+.toolwindow__surface[data-outgoing] {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.toolwindow__surface[data-fading] {
+  opacity: 0;
+  transition: opacity var(--surface-fade);
 }
 
 /* Fills whatever box its surface was given. Kept as its own element rather

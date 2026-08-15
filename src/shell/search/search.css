@@ -57,10 +57,11 @@
 /* --- expanded: the full field --------------------------------------------
    Plain `flex: 1`, per the spec crop. This used to need a dominant
    flex-grow to outweigh `.switcher__spacer`'s own `flex: 1`
-   (src/shell/switcher/switcher.css), but Parcel D now collapses that
-   spacer and hides the inactive tool tabs whenever search is open — the
-   width comes from the bar yielding it, not from this slot outgrowing a
-   competitor. */
+   (src/shell/switcher/switcher.css), but the bar now collapses that spacer,
+   drops the health badge and clips its whole tab row whenever search is open
+   — the width comes from the bar yielding it, not from this slot outgrowing
+   a competitor. Nothing else is left in the row, so `flex: 1` here is the
+   full bar, edge to edge: a field you can type a path into. */
 .search-slot--expanded {
   flex: 1;
   gap: 10px;
@@ -73,9 +74,25 @@
   color: var(--accent);
 }
 
+/* Takes the width the bar just gave up, which is the whole reason the bar gives
+   it up: an 18ch box in a bar-wide field is a field that only looks roomy, and a
+   query long enough to need the room would still be scrolling inside it with its
+   first characters out of sight.
+ *
+ * `min-width: 0` because an input's automatic minimum size is its `size`
+ * attribute's width, and that floor would keep it from ever shrinking below ~20ch
+ * in a narrow window — the same overflow the tab row above was taught to avoid.
+ *
+ * The caret is the browser's own again. It was drawn as a sibling element to
+ * reproduce the handoff crop's caret, which is fine while the input's width is
+ * fixed and the caret can be pinned to its right edge, and wrong the moment the
+ * input grows: the block would sit at the far end of the bar with the text it is
+ * supposed to be sitting in ten inches to its left. Colouring the native one
+ * accent gets the same 1px blinking accent line the crop draws, at the insertion
+ * point rather than at a fixed offset from it. */
 .search-slot__input {
-  flex: none;
-  width: 18ch;
+  flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -86,33 +103,7 @@
   line-height: 1;
   color: var(--text);
   white-space: nowrap;
-  /* The handoff draws a stylised block caret, not the browser's native
-     one — see `.search-slot__caret` below. */
-  caret-color: transparent;
-}
-
-.search-slot__caret {
-  flex: none;
-  width: 1px;
-  height: 15px;
-  background: var(--accent);
-  display: block;
-  animation: search-caret-blink 1s step-end infinite;
-}
-
-@keyframes search-caret-blink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-.search-slot__spacer {
-  flex: 1;
+  caret-color: var(--accent);
 }
 
 .search-slot__count {

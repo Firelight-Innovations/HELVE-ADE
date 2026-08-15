@@ -1,25 +1,24 @@
 import { useCallback, useRef } from "react";
 import { useDropZone } from "../drag/dropZones";
-import { motion } from "framer-motion";
-import type {
-  DragHandleProps,
-  DropTarget,
-  PaneNode,
-  SplitDir,
-  SurfaceInstance,
-} from "../contract";
-import { snap } from "../motion";
-import { Close } from "../../ui/Icon";
+import type { DropTarget, PaneNode, SplitDir } from "../contract";
 import "./panes.css";
 
 /**
- * The recursive pane layout — splits, dividers, and one tab strip per pane.
+ * The recursive pane layout — splits and dividers, and nothing else.
  *
  * ## What this component does not contain
  *
- * The surfaces. Every pane draws its tab strip and an empty content box, and
- * reports that box's element up through `onHostChange`; `ToolWindow` positions
- * the actual iframes over those boxes from a flat list that never reorders.
+ * **Tabs.** Every pane used to draw its own strip, which meant a window with
+ * two splits listed the same handful of surfaces across three rows at once —
+ * the cluster bar, and one strip per pane. They are all in the cluster bar now
+ * (see `switcher/ClusterBar.tsx`), and this draws none of them: a pane is a
+ * rectangle with a focus outline. A tab listed in two rows is two things that
+ * can disagree about which one is active, and the second row was never telling
+ * anyone anything the first could not.
+ *
+ * **The surfaces.** Every pane is an empty content box and reports its element
+ * up through `onHostChange`; `ToolWindow` positions the actual iframes over
+ * those boxes from a flat list that never reorders.
  *
  * That separation is a correctness requirement, not a tidiness one, and
  * `TerminalDeck` already learned it the hard way — read its doc comment. Moving
@@ -43,18 +42,13 @@ import "./panes.css";
  */
 export interface PaneTreeProps {
   tree: PaneNode;
-  /** Resolves an instance id to what its tab should show. */
-  instances: Map<string, SurfaceInstance>;
-  /** The pane whose strip has focus, for the active-pane outline. */
+  /** The pane a new surface lands in, drawn with the active-pane outline. */
   focusedPaneId: string | null;
   onFocusPane: (paneId: string) => void;
-  onSelectTab: (instanceId: string) => void;
-  onCloseTab: (instanceId: string) => void;
   /** Commits a divider drag. One weight per child, summing to 1. */
   onResize: (splitId: string, sizes: number[]) => void;
   /** Called as panes mount, move and unmount. See the note above. */
   onHostChange: (paneId: string, el: HTMLDivElement | null) => void;
-  dragHandleFor?: (instanceId: string) => DragHandleProps | undefined;
   /** Where a drag would land right now, so the target pane can say so. */
   dropTarget?: DropTarget | null;
 }
@@ -202,13 +196,9 @@ function Split({
 
 function Pane({
   leaf,
-  instances,
   focusedPaneId,
   onFocusPane,
-  onSelectTab,
-  onCloseTab,
   onHostChange,
-  dragHandleFor,
   dropTarget,
 }: PaneTreeProps & { leaf: Extract<PaneNode, { kind: "leaf" }> }) {
   const hostRef = useCallback(
@@ -219,22 +209,13 @@ function Pane({
   // Registered rather than found. The drag layer used to locate its targets by
   // querying the DOM, which cannot work now that panes come and go as the user
   // splits things — see `drag/dropZones.tsx`.
+  //
+  // A pane registers one zone where it used to register two. The strip zone
+  // went with the strip; the row that answers "insert between these two tabs"
+  // is the cluster bar, and it registers that zone itself.
   const paneZone = useDropZone({ kind: "pane", paneId: leaf.id });
-  const stripRef = useRef<HTMLDivElement>(null);
-  const stripZone = useDropZone({
-    kind: "strip",
-    paneId: leaf.id,
-    // Measured on demand, not once: a strip scrolls, and a cached rect would put
-    // the insertion caret in the wrong gap the moment it had.
-    tabRects: () =>
-      Array.from(stripRef.current?.querySelectorAll<HTMLElement>("[data-tab]") ?? []).map((el) =>
-        el.getBoundingClientRect(),
-      ),
-  });
 
-  const drop = dropTarget && targetsPane(dropTarget, leaf.id) ? dropTarget : null;
-  const edge = drop?.kind === "pane" ? drop : null;
-  const caret = drop?.kind === "strip" ? drop.index : null;
+  const edge = dropTarget?.kind === "pane" && dropTarget.paneId === leaf.id ? dropTarget : null;
 
   return (
     <div
@@ -243,38 +224,13 @@ function Pane({
       onPointerDown={() => onFocusPane(leaf.id)}
       ref={paneZone}
     >
-      <div
-        className="pane__strip"
-        role="tablist"
-        ref={(el) => {
-          stripRef.current = el;
-          stripZone(el);
-        }}
-      >
-        {leaf.tabs.map((instanceId, i) => (
-          <Tab
-            key={instanceId}
-            instance={instances.get(instanceId)}
-            instanceId={instanceId}
-            active={leaf.activeTab === instanceId}
-            caretBefore={caret === i}
-            onSelect={onSelectTab}
-            onClose={onCloseTab}
-            dragHandle={dragHandleFor?.(instanceId)}
-          />
-        ))}
-        {/* The insertion caret past the last tab. Rendered as its own element
-            rather than as a trailing style on the last tab, so dropping at the
-            end reads the same as dropping anywhere else. */}
-        {caret === leaf.tabs.length && <span className="pane__caret" />}
-      </div>
-
-      {/* What `ToolWindow` measures. Deliberately empty. */}
+      {/* What `ToolWindow` measures. Deliberately empty, and now the pane's
+          whole area rather than everything below a strip. */}
       <div className="pane__host" ref={hostRef} />
 
       {/* Drop indicators sit above the surface, which is a live iframe — an
           outline drawn under one would be invisible exactly when it matters. */}
-      {drop?.kind === "pane" && edge?.edge === null && <span className="pane__drop" />}
+      {edge?.edge === null && <span className="pane__drop" />}
       {edge?.edge && (
         <span
           className="pane__drop pane__drop--edge"
@@ -283,82 +239,6 @@ function Pane({
         />
       )}
     </div>
-  );
-}
-
-function Tab({
-  instance,
-  instanceId,
-  active,
-  caretBefore,
-  onSelect,
-  onClose,
-  dragHandle,
-}: {
-  instance: SurfaceInstance | undefined;
-  instanceId: string;
-  active: boolean;
-  caretBefore: boolean;
-  onSelect: (instanceId: string) => void;
-  onClose: (instanceId: string) => void;
-  dragHandle?: DragHandleProps;
-}) {
-  // An id in a tree with no instance behind it should not happen, and drawing
-  // its id is how you find out that it did. Silently skipping it would leave a
-  // gap that looks like a rendering bug rather than a state one.
-  const title = instance?.title ?? instanceId;
-
-  return (
-    <>
-      {caretBefore && <span className="pane__caret" />}
-      {/* A `div role="tab"` rather than a `<button>`, for the reason the
-          terminal panel's tab already documents: a button cannot legally nest
-          the close button this needs. Keyboard access is put back by hand. */}
-      <div
-        role="tab"
-        aria-selected={active}
-        tabIndex={0}
-        className={active ? "pane__tab pane__tab--active" : "pane__tab"}
-        data-tab={instanceId}
-        title={title}
-        onClick={() => onSelect(instanceId)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(instanceId);
-          }
-        }}
-        onPointerDown={dragHandle?.onPointerDown}
-        style={dragHandle?.style}
-      >
-        <span className="pane__tab-label">{title}</span>
-        {instance?.kind === "terminal" && instance.title && (
-          <span className="pane__tab-kind" aria-hidden="true" />
-        )}
-        <button
-          type="button"
-          className="pane__tab-close"
-          aria-label={`Close ${title}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose(instanceId);
-          }}
-          // Without this, pressing the × starts a drag of the tab it sits in.
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <Close />
-        </button>
-        {active && <motion.div className="pane__rule" layoutId="pane-rule" transition={snap} />}
-      </div>
-    </>
-  );
-}
-
-/** Whether a drop target names this pane, in either of the two forms that can. */
-function targetsPane(target: DropTarget, paneId: string): boolean {
-  return (
-    (target.kind === "pane" && target.paneId === paneId) ||
-    (target.kind === "strip" && target.paneId === paneId)
   );
 }
 

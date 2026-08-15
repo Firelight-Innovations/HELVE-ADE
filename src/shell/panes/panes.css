@@ -6,6 +6,11 @@
  * doc comment on `PaneTree` for why they cannot be children of these panes.
  * What `.pane__host` provides is the box to measure, and it is deliberately
  * empty.
+ *
+ * The three `z-index` values below are the top of one sequence shared with
+ * `src/shell/toolwindow/toolwindow.css` — nothing in either file creates a
+ * stacking context, so they compete directly and have to be read together. See
+ * the comment on `.toolwindow__surface` for the whole order.
  */
 
 /* --- splits --------------------------------------------------------------- */
@@ -44,7 +49,7 @@
    shifting the panes, so the line stays exactly on the boundary. */
 .pane-split__divider {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
 }
 
 .pane-split__divider[data-dir="row"] {
@@ -109,109 +114,15 @@
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--accent-wash, var(--line));
 }
 
-/* --- tab strips ----------------------------------------------------------- */
-
-/* Scrolls rather than overflowing. The switcher bar's failure to do this is a
-   real bug that only shows up once there are enough tabs; a pane is narrower
-   than the window, so here it shows up immediately. Same 5px treatment the
-   terminal panel's strip uses. */
-.pane__strip {
-  flex: none;
-  display: flex;
-  align-items: stretch;
-  height: var(--h-paneltabs);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  z-index: 2;
-}
-
-.pane__strip::-webkit-scrollbar {
-  height: 5px;
-}
-
-.pane__strip::-webkit-scrollbar-thumb {
-  background: var(--line);
-}
-
-.pane__strip::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.pane__tab {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 0 12px;
-  border-right: 1px solid var(--line);
-  cursor: default;
-  user-select: none;
-}
-
-.pane__tab--active {
-  background: var(--bg);
-}
-
-.pane__tab-label {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--text-dim);
-}
-
-.pane__tab--active .pane__tab-label {
-  color: var(--text);
-  font-weight: 500;
-}
-
-/* Revealed on hover or when focused, so a strip of tabs is not a row of ×s.
-   Sized as a real 15px target around a smaller glyph. */
-.pane__tab-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 15px;
-  height: 15px;
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--text-dim-3);
-  opacity: 0;
-  cursor: default;
-}
-
-.pane__tab:hover .pane__tab-close,
-.pane__tab:focus-within .pane__tab-close,
-.pane__tab--active .pane__tab-close {
-  opacity: 1;
-}
-
-.pane__tab-close:hover {
-  color: var(--text);
-}
-
-.pane__rule {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  background: var(--accent);
-}
-
-/* --- the measured box ----------------------------------------------------- */
+/* --- the measured box -----------------------------------------------------
+   No tab strip above it any more. Every tab in the window is in the cluster
+   bar (src/shell/switcher/switcher.css), so a pane is its host and nothing
+   else, and the host is the pane's whole area. */
 
 .pane__host {
   flex: 1;
@@ -226,7 +137,7 @@
 .pane__drop {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 5;
   pointer-events: none;
   background: rgb(217 138 63 / 12%);
   box-shadow: inset 0 0 0 1.5px rgb(217 138 63 / 60%);
@@ -252,21 +163,5 @@
   bottom: 0;
 }
 
-/* Where a tab would be inserted. A full-height bar rather than a hairline, so
-   it reads at a glance in a strip of narrow tabs. */
-.pane__caret {
-  flex: none;
-  width: 2px;
-  align-self: stretch;
-  background: var(--accent);
-}
-
-/* The dot that says an agent finished, on a terminal tab that has been dragged
-   into the layout. Same meaning and same treatment as in the panel. */
-.pane__tab-kind {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-}
+/* The insertion caret used to be here too. It moved with the tabs: see
+   `.switcher__caret`. */

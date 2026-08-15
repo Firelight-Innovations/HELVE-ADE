@@ -23,7 +23,7 @@
   position: relative;
 }
 
-/* --- the tab row ------------------------------------------------------------
+/* --- the control row --------------------------------------------------------
    The handoff is explicit that this uses the same segment style as the tool
    switcher bar: full height, hairline dividers, an accent rule on the active
    segment. The row's own height never animates — only the rule inside it
@@ -32,6 +32,12 @@
    Terminals are unbounded and this row is not, so it is not one flat
    sequence: a strip that scrolls (session tabs + the `+` button) and two
    pinned groups that never move — the worktree tab and the collapse button.
+
+   These tabs are the *panel's* contents, which is why they are here and not
+   only in the cluster bar. A terminal in the panel belongs to the window
+   rather than to any cluster, so there is no cluster whose group could
+   honestly list it; the panel is its own region and names what is in it.
+
    Each pinned group is absolutely positioned over the strip — not laid out
    beside it — so the strip's own box, and its scrollbar, run the full width
    of the row and pass *under* both pinned groups rather than stopping short

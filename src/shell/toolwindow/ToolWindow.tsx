@@ -1,12 +1,15 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { listen } from "@tauri-apps/api/event";
-import type {
-  DragHandleProps,
-  DropTarget,
-  PaneNode,
-  SurfaceInstance,
-  ToolPresentation,
-} from "../contract";
+import type { DropTarget, PaneNode, SurfaceInstance, ToolPresentation } from "../contract";
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
 import PaneTree from "../panes/PaneTree";
 import XTermView from "../terminal/XTermView";
@@ -28,6 +31,7 @@ import type {
 } from "../../../packages/bridge/src/protocol";
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
 import { appPainted } from "../../bindings";
+import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
 import { isFake } from "../state/fakeBackend";
 import ToolMount from "./ToolMount";
@@ -108,15 +112,12 @@ const ToolWindow = forwardRef<
     instances: Map<string, SurfaceInstance>;
     /** How to present the app an instance is an instance of. */
     presentationOf: (appId: string) => ToolPresentation | undefined;
-    /** The pane whose strip has focus, for the active-pane treatment. */
+    /** The pane a new surface lands in, drawn with the active-pane treatment. */
     focusedPaneId: string | null;
     onFocusPane: (paneId: string) => void;
-    onSelectTab: (instanceId: string) => void;
-    onCloseTab: (instanceId: string) => void;
     onResize: (splitId: string, sizes: number[]) => void;
     onOpenApp: (appId: string) => void;
     onRescan: () => void;
-    dragHandleFor?: (instanceId: string) => DragHandleProps | undefined;
     dropTarget?: DropTarget | null;
     /**
      * A frame's declared command set changed — it said `helve/commands`, or it
@@ -133,12 +134,9 @@ const ToolWindow = forwardRef<
     presentationOf,
     focusedPaneId,
     onFocusPane,
-    onSelectTab,
-    onCloseTab,
     onResize,
     onOpenApp,
     onRescan,
-    dragHandleFor,
     dropTarget,
     onCommandsChange,
   },
@@ -240,6 +238,37 @@ const ToolWindow = forwardRef<
     measure();
     return () => observer.disconnect();
   }, [measure, tree]);
+
+  /**
+   * Which pane the user is actually working in, when the click that says so
+   * happened inside an iframe.
+   *
+   * A pointerdown inside a frame never reaches this document, so a pane cannot
+   * learn it was clicked. That used to be survivable: every pane drew a tab
+   * strip, the strip is outside the frame, and clicking it focused the pane. The
+   * strips are gone — every tab in the window is in the cluster bar now — so
+   * without this, focus in a split could only be moved by clicking a tab, and
+   * Save would go on meaning the other pane however long you had been typing in
+   * this one.
+   *
+   * `blur` on the host window plus `document.activeElement` is the one signal a
+   * parent document gets for this: when a frame takes focus, the element holding
+   * it out here is the `<iframe>` itself. Alt-tabbing away fires the same event
+   * with `body` active, which the type check below discards.
+   */
+  useEffect(() => {
+    const onBlur = () => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLIFrameElement)) return;
+      const instanceId = active.closest<HTMLElement>("[data-instance]")?.dataset.instance;
+      if (!instanceId) return;
+      const paneId = paneOfTab(tree, instanceId);
+      if (paneId) onFocusPane(paneId);
+    };
+
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [tree, onFocusPane]);
 
   // Held in a ref for the same reason `useKeyboard` holds its actions in one:
   // the message listener below is installed once, and a prop that changes
@@ -477,25 +506,153 @@ const ToolWindow = forwardRef<
   // unmounted. Derived from the tree every render rather than tracked, so there
   // is no second place it could disagree with what Rust says.
   const activeByPane = new Map(paneLeaves(tree).map((leaf) => [leaf.id, leaf.activeTab]));
+
+  // The same answer flattened to a string, because the `Map` above is a new
+  // object every render and the effect below must run when what it *says*
+  // changes, not when it is rebuilt.
+  const activeKey = [...activeByPane].map(([pane, tab]) => `${pane}:${tab ?? ""}`).join("|");
+
+  /**
+   * The surface each pane was showing until a moment ago, kept drawn over the
+   * one that replaced it.
+   *
+   * This is the white flash on a tab switch. Hiding a surface with
+   * `visibility: hidden` is what keeps its iframe mounted, and that part is not
+   * negotiable — the alternative reloads the app and throws away its open file.
+   * But a hidden frame is one the engine stops running a rendering lifecycle
+   * for, and its rastered tiles are free to be dropped. Unhiding it therefore
+   * does not put its content back: the frame has to be styled, laid out,
+   * painted and rastered again first, and for the frame or two that takes, the
+   * compositor has nothing to draw but the document's bare canvas — which, in
+   * an iframe, is white unless the document says otherwise.
+   *
+   * Two fixes, and both are here because they cover different halves of it.
+   * The canvas is no longer white (`apps/shared/app.css`, and the `<style>` in
+   * each app's `index.html` for the window before that sheet has loaded), so
+   * the worst case is now the shell's own colour rather than a white slab.
+   * And the outgoing surface stays on screen over the incoming one until the
+   * incoming one has had time to draw, so in the ordinary case there is nothing
+   * to see at all.
+   *
+   * "Time to draw" is counted in animation frames, not milliseconds — two of
+   * them, which is what it takes for a change committed now to have been
+   * rastered — and only the fade that follows is a duration, taken from
+   * `instantOut`. `helve/painted` would be the exact signal to wait on instead,
+   * and it is not usable here: `reportPainted` in `packages/bridge/src/index.ts`
+   * latches on first call, so a frontend sends it once in its life. It answers
+   * "has this app booted", which is what the splash window needs, and not "has
+   * this frame drawn since you unhid it".
+   *
+   * Nothing here changes what is mounted. An outgoing surface is the same
+   * element it always was, still holding the same iframe; the only thing that
+   * moves is when it stops being visible.
+   */
+  const [outgoing, setOutgoing] = useState<{ ids: ReadonlySet<string>; fading: boolean }>(() => ({
+    ids: new Set<string>(),
+    fading: false,
+  }));
+
+  // What each pane was showing last time this ran. A ref rather than state:
+  // it is how the effect recognises a switch, and it must not itself cause a
+  // render.
+  const shownByPane = useRef<Map<string, string>>(new Map());
+
+  // Noticing the switch. Nothing is scheduled here, and that split is what
+  // makes this survive `StrictMode`: React runs every effect twice on mount and
+  // again on every dependency change in development, and this one *mutates a
+  // ref* — the second pass sees the record it just wrote, finds nothing has
+  // changed, and does nothing. An effect that had also owned the timers would
+  // have had them torn down by that second pass and never rebuilt, leaving the
+  // outgoing surface parked on top of the window for good.
+  //
+  // `useLayoutEffect` rather than `useEffect`, and the whole fix depends on it.
+  // A passive effect runs *after* the browser has painted, so the commit that
+  // hides the outgoing surface and reveals the incoming one would get a frame
+  // on screen before this ran — the exact gap this exists to cover, followed by
+  // the outgoing surface flashing back in a frame later, which is worse than
+  // the flash. A layout effect runs after the DOM is mutated and before paint,
+  // and React flushes the state it sets synchronously, so the outgoing surface
+  // is never hidden in a frame anyone sees.
+  useLayoutEffect(() => {
+    const leaving = new Set<string>();
+    const livePanes = new Set<string>();
+
+    for (const [paneId, active] of activeByPane) {
+      livePanes.add(paneId);
+      const before = shownByPane.current.get(paneId);
+      if (active) shownByPane.current.set(paneId, active);
+      else shownByPane.current.delete(paneId);
+      if (before && active && before !== active) leaving.add(before);
+    }
+    // A pane that has gone takes its record with it, so a later pane reusing
+    // the id cannot inherit a surface that was never in it.
+    for (const paneId of [...shownByPane.current.keys()]) {
+      if (!livePanes.has(paneId)) shownByPane.current.delete(paneId);
+    }
+
+    // A second switch while the first is still fading replaces the set rather
+    // than adding to it, which is right: only the surface immediately behind
+    // the incoming one can cover it, and the one before that is already out of
+    // sight. `fading: false` restarts at full opacity, so the new outgoing
+    // surface gets its two frames like any other.
+    if (leaving.size > 0) setOutgoing({ ids: leaving, fading: false });
+    // `activeKey` is `activeByPane` as a value; see its comment above.
+  }, [activeKey]);
+
+  // Running it. Two animation frames at full opacity — enough for the surface
+  // underneath to have been rastered — then the fade, then hidden again.
+  //
+  // Keyed on the set itself rather than on the switch that produced it, so this
+  // holds no state of its own and re-running it is free.
+  useEffect(() => {
+    if (outgoing.ids.size === 0) return;
+
+    let second = 0;
+    let done = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        // The transition cannot be declared in the same commit that reveals the
+        // incoming surface: the browser needs a frame with the outgoing one
+        // opaque to transition *from*, and starting the fade there would race
+        // the very gap this exists to cover.
+        setOutgoing((prev) => (prev.fading ? prev : { ids: prev.ids, fading: true }));
+        done = window.setTimeout(
+          () => setOutgoing({ ids: new Set<string>(), fading: false }),
+          instantOutMs,
+        );
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+      clearTimeout(done);
+    };
+  }, [outgoing.ids]);
+
   const tabs = paneTabs(tree);
   const empty = tabs.length === 0;
 
   return (
-    <div className="toolwindow" ref={containerRef}>
-      {/* The layout. Draws the panes, the dividers and the tab strips, and
-          reports where each pane's content area ended up — but holds no
-          surfaces itself. See the `rects` comment above for why the two are
+    <div
+      className="toolwindow"
+      ref={containerRef}
+      // The one number `.toolwindow__surface`'s fade needs, handed to CSS from
+      // the motion scale rather than written into the stylesheet, so the shell
+      // still has exactly one file that decides how long anything takes.
+      style={{ "--surface-fade": instantOutCss } as CSSProperties}
+    >
+      {/* The layout. Draws the panes and the dividers, and reports where each
+          pane's content area ended up — but holds no surfaces and, since the
+          cluster bar took over every tab in the window, no tabs either. See the
+          `rects` comment above for why the layout and the surfaces are
           deliberately separate trees. */}
       <PaneTree
         tree={tree}
-        instances={instances}
         focusedPaneId={focusedPaneId}
         onFocusPane={onFocusPane}
-        onSelectTab={onSelectTab}
-        onCloseTab={onCloseTab}
         onResize={onResize}
         onHostChange={onHostChange}
-        dragHandleFor={dragHandleFor}
         dropTarget={dropTarget}
       />
 
@@ -522,16 +679,42 @@ const ToolWindow = forwardRef<
         const paneId = paneOfTab(tree, instanceId);
         const rect = paneId ? rects.get(paneId) : undefined;
 
+        const active = activeByPane.get(paneId ?? "") === instanceId;
+        // Being active wins. An instance can be in the outgoing set and active
+        // at once — a tab dragged out of one pane and into another leaves the
+        // first while arriving in the second — and covering itself with itself
+        // would leave a surface stuck behind a fade it can never finish.
+        const leaving = !active && outgoing.ids.has(instanceId);
+
         return (
           <div
             key={instanceId}
             className="toolwindow__surface"
+            // Read by `toolwindow.css`: on top and click-through while it
+            // covers the incoming surface, then transparent. See the `outgoing`
+            // comment above for why the two are separate attributes.
+            data-outgoing={leaving || undefined}
+            data-fading={(leaving && outgoing.fading) || undefined}
+            // Read back by the blur handler above, to resolve a focused iframe
+            // to the pane holding it.
+            data-instance={instanceId}
+            // The other half of the same job, for a surface that is *not* a
+            // frame. A terminal's emulator is in this document, so its clicks do
+            // arrive — and arrive here rather than at the pane, since the
+            // surfaces are positioned over the layout rather than inside it.
+            onPointerDown={() => {
+              if (paneId) onFocusPane(paneId);
+            }}
             // Hidden rather than unmounted or `display: none`. `visibility`
             // keeps the element laid out, which matters for anything inside
             // measuring itself — the same reason `ToolMount` has always used
             // it. A pane with no rect yet is hidden too: it has nowhere to be
             // until the first measure lands, and drawing it at 0,0 first would
             // be a visible jump.
+            //
+            // A surface on its way out is visible as well, for the moment it
+            // takes the one replacing it to draw. That is the whole of the
+            // deferred hide; see the `outgoing` comment above.
             style={
               rect
                 ? {
@@ -539,8 +722,7 @@ const ToolWindow = forwardRef<
                     top: rect.top,
                     width: rect.width,
                     height: rect.height,
-                    visibility:
-                      activeByPane.get(paneId ?? "") === instanceId ? "visible" : "hidden",
+                    visibility: active || leaving ? "visible" : "hidden",
                   }
                 : { visibility: "hidden" }
             }

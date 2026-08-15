@@ -37,20 +37,35 @@ export interface WindowPlacement {
   label: string;
   clusters: Cluster[];
   activeClusterId: string | null;
+  /**
+   * Which terminal this window's panel is showing.
+   *
+   * The window's, not any cluster's, because the panel does not change when you
+   * switch clusters. Rust re-establishes after every mutation that this names
+   * one of this window's panel terminals and never one that has been dragged
+   * into a pane tree, so the frontend can render it without re-checking.
+   */
+  activeTerminal: string | null;
   geometry: WindowGeometry | null;
 }
 
 /**
  * Mirrors `shell_state::TerminalSession`.
  *
- * `clusterId`, not a window label: the panel belongs to the cluster, so a
- * terminal follows its cluster between windows rather than being pinned to one.
- * Which window that is follows from which window holds the cluster.
+ * `windowLabel`, not a cluster id: the panel belongs to the window, so a
+ * terminal opened in it stays there whichever cluster is on screen above it.
+ * That is what makes a terminal useful across clusters — orchestrating, or
+ * working between worktrees — instead of disappearing with the tab you happened
+ * to have open when you pressed `+`.
+ *
+ * It says where the terminal lives *in a panel*. A terminal dragged into a
+ * cluster's pane tree is drawn there instead and the panel stops listing it;
+ * this still records which window's panel it would return to.
  */
 export interface TerminalSessionState {
   id: string;
   title: string;
-  clusterId: string;
+  windowLabel: string;
   agentFinished: boolean;
   groupId: string | null;
 }
@@ -217,6 +232,29 @@ export function detachInstance(instanceId: string): Promise<void> {
 }
 
 /**
+ * Move a whole cluster — its chip and its entire pane tree — to another window.
+ *
+ * `toLabel` names a window that is already open; `null` asks for a new one.
+ * That distinction is the caller's because only the caller knows what the drop
+ * meant: `windowAtCursor` answering with *this* window is a release over the
+ * window the cluster is already in, which is a request for a new window and not
+ * a request to move it where it already is.
+ *
+ * A cluster can be moved into another window where a single tab cannot, and the
+ * asymmetry is deliberate — see `commitCluster` in `drag/useDrag.tsx`.
+ *
+ * Refused, with nothing changed, when it is the last cluster in its window: a
+ * window with no cluster has no layout and no panel. The bar hides the drag
+ * affordance on the same condition, so the refusal should be unreachable by
+ * pointer; it is enforced in Rust anyway, because an invariant that only the
+ * interface remembers is one broadcast away from being forgotten.
+ */
+export function detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
+  if (isFake()) return fake.detachCluster(clusterId, toLabel);
+  return invoke("detach_cluster", { clusterId, toLabel });
+}
+
+/**
  * Close this window on purpose.
  *
  * Goes through the backend rather than calling `getCurrentWindow().close()`,
@@ -270,19 +308,23 @@ export function windowAtCursor(): Promise<string | null> {
  * Drop a terminal into any HELVE window's panel, including this one.
  *
  * Named by *window*, because a window is the only thing `windowAtCursor` can
- * identify — it hit-tests screen rectangles, and a cluster has none. Which
- * cluster inside it is the backend's to resolve: the one that window is
- * showing, since that is the panel the terminal was dropped on.
+ * identify — it hit-tests screen rectangles, and a panel has none. That is also
+ * what a panel belongs to now, so there is nothing left to resolve: the label is
+ * the destination.
+ *
+ * Dropping onto the panel it is already in is not a no-op. A terminal dragged
+ * out of a pane and back onto the panel takes this path, and leaving the tree is
+ * the half of the move that matters.
  */
 export function moveTerminal(id: string, toLabel: string): Promise<void> {
-  if (isFake()) return Promise.resolve();
+  if (isFake()) return fake.moveTerminal(id, toLabel);
   return invoke("move_terminal", { id, toLabel });
 }
 
-/** Which terminal a cluster's panel is showing. */
-export function setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
-  if (isFake()) return fake.setActiveTerminal(clusterId, id);
-  return invoke("set_active_terminal", { clusterId, id });
+/** Which terminal a window's panel is showing. */
+export function setActiveTerminal(label: string, id: string | null): Promise<void> {
+  if (isFake()) return fake.setActiveTerminal(label, id);
+  return invoke("set_active_terminal", { label, id });
 }
 
 /** An app naming its own tab — "Files" becoming `client.ts`. */

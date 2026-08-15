@@ -160,6 +160,7 @@ pub fn run() {
             commands::rename_cluster,
             commands::close_cluster,
             commands::new_window,
+            commands::detach_cluster,
             commands::detach_instance,
             commands::window_at_cursor,
             commands::set_window_geometry,

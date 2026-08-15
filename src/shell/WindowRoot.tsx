@@ -4,9 +4,11 @@ import type { StackSnapshot } from "../bindings";
 import Frame from "./frame/Frame";
 import {
   appPresentation,
+  groupTerminalTabs,
   paneLeaves,
   paneTabs,
   toolPresentation,
+  type ClusterMember,
   type EngineState,
   type PaneNode,
   type TerminalBusy,
@@ -29,6 +31,7 @@ import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
 import { callApp, useApps } from "./state/apps";
+import { useOpenProject } from "./state/project";
 import {
   activateInstance,
   addCluster,
@@ -148,13 +151,30 @@ export default function WindowRoot({
     clusters.find((c) => c.id === placement?.activeClusterId) ?? clusters[0] ?? null;
   const activeClusterId = activeCluster?.id ?? null;
 
-  // Resolvable by id, for the tab strips. Every surface in every cluster, not
-  // just the active one — a drag can name a tab in a cluster that is not on
-  // screen, and a `Map` missing it would draw its raw id.
-  const instances = useMemo(
-    () => new Map((shell?.instances ?? []).map((i) => [i.id, i])),
-    [shell?.instances],
-  );
+  // Resolvable by id: what any tab id in any tree resolves to. Every surface in
+  // every cluster, not just the active one — a drag can name a tab in a cluster
+  // that is not on screen, and a `Map` missing it would draw its raw id.
+  //
+  // Terminals are in here too, and they have to be. A terminal dragged into the
+  // layout becomes a tab in a pane tree, and `ToolWindow` mounts a surface for
+  // every tab it can resolve — its `kind === "terminal"` branch is what draws
+  // the emulator in the pane area instead of an iframe, and it is reachable only
+  // if the id resolves at all. Rust keeps them in `terminals` rather than in
+  // `instances` because a session has a pty behind it and an ordinary surface
+  // does not; that distinction is about ownership, not about how a tab is drawn,
+  // so it is flattened away here where the drawing happens.
+  //
+  // `appId` is `"terminal"` — a type name like `files` or `home`, kept out of the
+  // real app registry on purpose. Nothing looks it up: the terminal branch never
+  // asks for a presentation, and the two places that resolve an app id from the
+  // focused surface guard on `kind` first.
+  const instances = useMemo(() => {
+    const map = new Map((shell?.instances ?? []).map((i) => [i.id, i]));
+    for (const t of shell?.terminals ?? []) {
+      map.set(t.id, { id: t.id, appId: "terminal", kind: "terminal", title: t.title });
+    }
+    return map;
+  }, [shell?.instances, shell?.terminals]);
 
   // The tree this window draws. An empty leaf covers the moment before the
   // first `shell:state` lands — there is always a pane, so there is always
@@ -184,13 +204,18 @@ export default function WindowRoot({
 
   const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
 
-  const onSelectTab = useCallback((instanceId: string) => {
-    void activateInstance(instanceId);
-  }, []);
+  // The *app* in the focused pane, or null when what is in it is a terminal.
+  //
+  // A terminal's `appId` is a type name, not an entry in the app registry, so
+  // anything that resolves a checkout or a presentation from it has to stop
+  // here rather than ask about an app that does not exist.
+  const activeAppId =
+    activeInstance && activeInstance.kind !== "terminal" ? activeInstance.appId : null;
 
-  const onCloseInstanceTab = useCallback((instanceId: string) => {
-    void closeInstance(instanceId);
-  }, []);
+  // Selecting and closing a tab live further down, with the terminals — the one
+  // bar lists surfaces and terminals together, so the handlers it is given have
+  // to be able to act on either, and the terminal half needs state declared
+  // below this point. See `onSelectMember`.
 
   const onOpenApp = useCallback(
     (appId: string) => {
@@ -263,20 +288,22 @@ export default function WindowRoot({
   // a filter over shared state rather than anything this window owns. Each one
   // has a real pty behind it (src-tauri/src/pty.rs) — the panel is not showing
   // a fixture any more.
-  // Filtered by *cluster*, not by window. The panel belongs to the cluster, so
-  // switching from `auth` to `billing` swaps the terminals under it — which is
-  // the whole reason a cluster is a useful unit: the shells you had running
-  // against one worktree are still there when you come back to it.
+  // Filtered by *window*, not by cluster. The panel belongs to the window, so
+  // switching from `auth` to `billing` leaves the terminals under it exactly
+  // where they are — which is the point of them: a shell watching one worktree
+  // while the layout in front of it is about another.
   //
-  // A terminal that has been dragged into the layout is excluded. It is drawn as
-  // a tab by the pane that now holds it, and drawing it in both places is the
-  // one way the single-home rule can visibly break.
+  // A terminal that has been dragged into the layout is excluded — and against
+  // *every* cluster in this window, not just the one on screen. A terminal in
+  // cluster B's tree must not reappear in the panel the moment you switch to
+  // cluster A: it would be drawn twice for anyone who then switched back, which
+  // is the one way the single-home rule can visibly break.
   const sessions = useMemo(() => {
-    const inTree = new Set(paneTabs(tree));
+    const inTree = new Set(clusters.flatMap((c) => paneTabs(c.tree)));
     return (shell?.terminals ?? [])
-      .filter((t) => t.clusterId === activeClusterId && !inTree.has(t.id))
+      .filter((t) => t.windowLabel === label && !inTree.has(t.id))
       .map(({ id, title, agentFinished, groupId }) => ({ id, title, agentFinished, groupId }));
-  }, [shell?.terminals, activeClusterId, tree]);
+  }, [shell?.terminals, label, clusters]);
 
   // `activePanelTab` is stored as whatever id was last clicked or created —
   // a plain session id most of the time. A tab's own identity can move out
@@ -320,30 +347,32 @@ export default function WindowRoot({
   const deckRef = useRef<TerminalDeckHandle>(null);
 
   /**
-   * Which panel tab is showing — locally *and* in the cluster that owns it.
+   * Which panel tab is showing — locally *and* in the window that owns it.
    *
    * Both, because the two answer different questions. The local value paints on
-   * the same frame as the click; the cluster's is what survives switching away
-   * and back, and what a restart restores. Reporting only locally would mean a
-   * cluster always reopened on its first terminal rather than the one you were
-   * using; reporting only to Rust would make every click wait a round trip.
+   * the same frame as the click; the window's is what a restart restores, and
+   * what a terminal dragged in from elsewhere lands on. Reporting only locally
+   * would mean a relaunch always reopened on the first terminal rather than the
+   * one you were using; reporting only to Rust would make every click wait a
+   * round trip.
    *
    * `"worktree"` is a panel tab but not a terminal, so it is deliberately not
-   * sent on — the cluster's `activeTerminal` names a session or nothing.
+   * sent on — the window's `activeTerminal` names a session or nothing.
    */
   const onSelectPanelTab = useCallback(
     (id: string) => {
       setActivePanelTab(id);
-      if (activeClusterId && id !== "worktree") void setActiveTerminal(activeClusterId, id);
+      if (id !== "worktree") void setActiveTerminal(label, id);
     },
-    [activeClusterId],
+    [label],
   );
 
-  // What the cluster says was last showing, so switching clusters comes back to
-  // the terminal you were using rather than to whichever is first.
+  // What the window says was last showing. It does not change when the cluster
+  // does — the panel is not the cluster's — so this only fires when a restore, a
+  // drop from another window, or a close moved the selection somewhere new.
   useEffect(() => {
-    if (activeCluster?.activeTerminal) setActivePanelTab(activeCluster.activeTerminal);
-  }, [activeCluster?.id, activeCluster?.activeTerminal]);
+    if (placement?.activeTerminal) setActivePanelTab(placement.activeTerminal);
+  }, [placement?.activeTerminal]);
 
   const onNewTerminal = useCallback(async () => {
     // 80×24 is a placeholder the emulator overwrites the moment it has measured
@@ -460,6 +489,130 @@ export default function WindowRoot({
     if (activeTabSessions.length === 0) return;
     requestCloseTab({ id: panelTabId, sessions: activeTabSessions });
   }, [activeTabSessions, panelTabId, requestCloseTab]);
+
+  // --- the cluster bar ------------------------------------------------------
+  //
+  // Every tab *in the open cluster*, flattened into the row that draws them.
+  // The per-pane strips that used to share this job are gone; see `ClusterBar`'s
+  // doc comment for why listing the same surface in several rows was worse than
+  // listing it in one.
+  //
+  // The panel's terminals are not in this list, and that is the change. A
+  // cluster's members are its tree's tabs — a panel terminal belongs to the
+  // window and outlives every cluster in it, so no cluster's group can list it
+  // without claiming something untrue. The panel names its own contents; see
+  // `SecondaryPanel`. A terminal *dragged into* a tree is still here, because by
+  // then it is a tree tab like any other.
+  //
+  // Derived, never stored. A cluster's surfaces are its tree's tabs, and a
+  // membership list kept beside them would be a second answer that could drift.
+
+  // The panel's tabs, grouped so a split terminal is one entry rather than two.
+  // Computed once here because several things below want the same grouping and
+  // recomputing it per caller is that many chances to group differently.
+  const panelTabs = useMemo(() => groupTerminalTabs(sessions), [sessions]);
+
+  // Agent-finished state for a terminal that has been dragged *into* the layout.
+  // It is no longer in `sessions` (the panel does not hold it any more), but it
+  // is still a live session with a dot to draw.
+  const terminalsById = useMemo(
+    () => new Map((shell?.terminals ?? []).map((t) => [t.id, t])),
+    [shell?.terminals],
+  );
+
+  const members: ClusterMember[] = useMemo(() => {
+    const list: ClusterMember[] = [];
+
+    // Layout order, pane by pane. A surface that is its pane's active tab is
+    // `showing` — with a split that is true of more than one at once, which is
+    // the honest answer: there really are two surfaces on screen.
+    for (const leaf of paneLeaves(tree)) {
+      for (const id of leaf.tabs) {
+        const instance = instances.get(id);
+        list.push({
+          id,
+          dragId: id,
+          // An id in the tree with no instance behind it should not happen, and
+          // drawing the raw id is how you find out that it did. Skipping it
+          // silently would look like a rendering bug rather than a state one.
+          title: instance?.title ?? id,
+          kind: instance?.kind ?? "app",
+          paneId: leaf.id,
+          showing: leaf.activeTab === id,
+          agentFinished: terminalsById.get(id)?.agentFinished ?? false,
+        });
+      }
+    }
+
+    // And nothing else. The panel's terminals used to be appended here; they
+    // are the window's now, not this cluster's, so the cluster's group does not
+    // claim them. `SecondaryPanel` lists them in its own row.
+    return list;
+  }, [tree, instances, terminalsById]);
+
+  // What a collapsed chip shows instead of its contents. Counted the same way
+  // `members` is built, so the number a chip promises is the number that appears
+  // when you click it: its tree's tabs, and only those.
+  const memberCount = useCallback(
+    (clusterId: string) => {
+      const cluster = clusters.find((c) => c.id === clusterId);
+      return cluster ? paneTabs(cluster.tree).length : 0;
+    },
+    [clusters],
+  );
+
+  /**
+   * Clicking a tab in the bar.
+   *
+   * The two halves land in different places, which is the one thing this row
+   * hides from the person using it. A surface is activated in the pane that
+   * already holds it, and that pane becomes the focused one — so the menus
+   * follow the click, the way they would have if you had clicked the surface
+   * itself. A terminal is in the panel, so the panel is opened if it was
+   * collapsed and switched to it; a click that revealed nothing would read as a
+   * click that missed.
+   */
+  const onSelectMember = useCallback(
+    (member: ClusterMember) => {
+      if (member.paneId !== null) {
+        setActivePane(member.paneId);
+        void activateInstance(member.id);
+        return;
+      }
+      setPanelCollapsed(false);
+      onSelectPanelTab(member.id);
+    },
+    [onSelectPanelTab],
+  );
+
+  /**
+   * Closing one, from its ×.
+   *
+   * A surface goes straight away — an app has nothing running that closing it
+   * would interrupt. A terminal goes through the same "still running, close
+   * anyway?" path the Terminal menu's Kill item uses, because it might.
+   */
+  const onCloseMember = useCallback(
+    (member: ClusterMember) => {
+      // A terminal is a terminal wherever it is drawn. One in a pane tree must
+      // still go through the "still running, close anyway?" path and still end
+      // its pty — `closeInstance` only takes a tab out of the tree, which for a
+      // session would leave the shell alive and drop it back into the panel a
+      // frame later, looking like a × that missed.
+      if (member.kind === "terminal") {
+        const session = terminalsById.get(member.dragId);
+        if (session) void requestClose(session);
+        return;
+      }
+      if (member.paneId !== null) {
+        void closeInstance(member.id);
+        return;
+      }
+      const tab = panelTabs.find((t) => t.id === member.id);
+      if (tab) requestCloseTab(tab);
+    },
+    [terminalsById, requestClose, panelTabs, requestCloseTab],
+  );
 
   // --- the menu bar ---------------------------------------------------------
   //
@@ -595,6 +748,19 @@ export default function WindowRoot({
     else onOpenApp("home");
   }, [tree, instances, onOpenApp]);
 
+  // Every app this build ships, as things you can open another of. Built from
+  // the registry rather than a literal list, so an app added in Rust appears
+  // without a second edit here.
+  //
+  // One object, handed to both surfaces that offer this list — the title bar's
+  // Apps menu and the switcher row's add-app button. They also share the
+  // function that turns it into menu items (`appsMenu` in `TitleBar.tsx`), so
+  // there is nothing about "which apps exist" that either of them decides.
+  const appsHandlers = useMemo(
+    () => ({ available: apps.map((a) => ({ id: a.id, name: a.name })), open: onOpenApp }),
+    [apps, onOpenApp],
+  );
+
   const [engine, setEngine] = useState<EngineState>("idle");
   useEffect(() => idleEngineStatus.subscribe(setEngine), []);
 
@@ -609,7 +775,14 @@ export default function WindowRoot({
   // and is where this goes next — `Cluster.worktree` is already carried for it —
   // but that field is a stub in this work, and pointing a live git view at an
   // unpopulated one would report "no repository" for every cluster.
-  const git = useGitStatus(gitControl, activeInstance?.appId ?? null);
+  const git = useGitStatus(gitControl, activeAppId);
+
+  // The third reader of that one status is the title bar, which names the
+  // branch beside the project. Still one fetch: a title that disagreed with the
+  // status bar about which branch is checked out would be the worse half of the
+  // two-opinions problem `useGitStatus` exists to prevent, because it is the
+  // half that is read at a glance and never questioned.
+  const project = useOpenProject();
 
   // The drag layer is the only thing in the shell that spans regions, so it is
   // the only thing that has to be handed down rather than owned locally. The
@@ -677,22 +850,19 @@ export default function WindowRoot({
         panelMaximized={panelMaximized}
         onPanelMaximizedChange={setPanelMaximized}
         slots={{
-          // The spec's title is "HELVE Engine — [tool]": the bar names what the
-          // window is currently showing, not the application again.
+          // "HELVE Engine | project | branch". What the window is *pointed at*,
+          // rather than which surface happens to be in front — the tab strip
+          // already says that, and says it next to the thing it names. See the
+          // note on the title element in `TitleBar.tsx`.
           titleBar: (
             <TitleBar
               kind={kind}
-              title={activeInstanceName}
+              project={project?.name ?? null}
+              worktree={git.status?.branch ?? null}
               menus={defaultMenus({
                 app,
                 edit,
-                apps: {
-                  // Every app this build ships, as things you can open another
-                  // of. Built from the registry rather than a literal list, so
-                  // an app added in Rust appears here without a second edit.
-                  available: apps.map((a) => ({ id: a.id, name: a.name })),
-                  open: onOpenApp,
-                },
+                apps: appsHandlers,
                 file: {
                   newWindow: onNewWindow,
                   openProject: onOpenProject,
@@ -726,14 +896,50 @@ export default function WindowRoot({
           // detached one. That omission was right when a detached window held
           // exactly one tool and so had nothing to switch between; it holds real
           // clusters that can be added to and switched between, so there is.
+          //
+          // It is also the only tab strip in the window. The panes and the panel
+          // used to draw their own, listing the same surfaces two and three
+          // times over; this row lists each of them once.
           switcherBar: (
             <ClusterBar
               clusters={clusters}
               activeClusterId={activeClusterId}
+              members={members}
+              memberCount={memberCount}
+              dropPaneId={activePaneId}
+              dropTarget={drag.target}
               onSelect={onSelectCluster}
               onAdd={onAddCluster}
               onClose={onCloseCluster}
               onRename={onRenameCluster}
+              onSelectMember={onSelectMember}
+              onCloseMember={onCloseMember}
+              // An app surface and a terminal drag identically — same ghost,
+              // same drop targets, same commit — which is what lets a terminal
+              // be dropped into the layout and an app be dropped out of it.
+              dragHandleFor={(member) =>
+                drag.tabHandle({
+                  what: "surface",
+                  instanceId: member.dragId,
+                  title: member.title,
+                  kind: member.kind,
+                  agentFinished: member.agentFinished,
+                  fromPaneId: member.paneId,
+                })
+              }
+              // A cluster drags too, and it is the one thing in this row that
+              // is not a tab: it can only be released on a *window*, so it
+              // moves into whichever one it was let go over, or takes a new one
+              // — which is the whole point, a cluster per monitor. Same handle
+              // and same press threshold as a tab, so a press that never moves
+              // still selects the chip and a double-click still renames it.
+              dragHandleForCluster={(cluster) =>
+                drag.tabHandle({ what: "cluster", clusterId: cluster.id, name: cluster.name })
+              }
+              // The same object the Apps menu above is built from, so the
+              // button at the end of the open cluster's tabs offers exactly
+              // what that menu offers and opens it exactly the same way.
+              apps={appsHandlers}
               healthOf={stackTools}
               onRescan={onRescan}
               searchExpanded={searchExpanded}
@@ -750,21 +956,9 @@ export default function WindowRoot({
               presentationOf={presentationOf}
               focusedPaneId={activePaneId}
               onFocusPane={setActivePane}
-              onSelectTab={onSelectTab}
-              onCloseTab={onCloseInstanceTab}
               onResize={onResizePane}
               onOpenApp={onOpenApp}
               onRescan={onRescan}
-              dragHandleFor={(instanceId) => {
-                const instance = instances.get(instanceId);
-                if (!instance) return undefined;
-                return drag.tabHandle({
-                  instanceId,
-                  title: instance.title,
-                  kind: instance.kind,
-                  fromPaneId: activePaneId,
-                });
-              }}
               dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
             />
@@ -787,8 +981,8 @@ export default function WindowRoot({
               }}
               // Every session's emulator, all mounted, one visible. Passed as a
               // slot for the same reason the worktree view is: the panel owns
-              // the tab row and the geometry, and has no business knowing that
-              // a terminal is xterm rather than anything else.
+              // the geometry and has no business knowing that a terminal is
+              // xterm rather than anything else.
               terminalView={
                 <TerminalDeck
                   ref={deckRef}
@@ -807,18 +1001,16 @@ export default function WindowRoot({
                 />
               }
               worktreeView={
-                <SourceControlView
-                  control={gitControl}
-                  toolId={activeInstance?.appId ?? null}
-                  git={git}
-                />
+                <SourceControlView control={gitControl} toolId={activeAppId} git={git} />
               }
               // The same handle a pane's tab gets. A terminal and an app surface
-              // drag identically now, which is what lets a terminal be dropped
-              // into the layout at all — the panel is where it starts, not the
-              // only place it can be.
+              // drag identically, which is what lets a panel terminal be dropped
+              // into a cluster's layout at all — the panel is where it starts,
+              // not the only place it can be. `fromPaneId: null` says it is
+              // coming *from* the panel rather than out of a pane.
               dragHandleFor={(session) =>
                 drag.tabHandle({
+                  what: "surface",
                   instanceId: session.id,
                   title: session.title,
                   kind: "terminal",

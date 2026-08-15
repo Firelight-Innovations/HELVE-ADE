@@ -24,18 +24,20 @@
 //!
 //! Terminals were already built this way — `term-1`, `term-2`, moveable between
 //! windows, outliving whichever one is showing them — and that existing shape
-//! is what everything here generalizes. A terminal now names its **cluster**
-//! rather than its window, because the panel belongs to the cluster; which
-//! window that is follows from which window holds the cluster, and deriving it
-//! rather than storing it is what stops the two from ever disagreeing.
+//! is what everything here generalizes. A terminal names its **window**, not a
+//! cluster: the panel is the window's, so a terminal opened there stays put
+//! while you switch clusters beneath it. That is the point of it — a shell
+//! watching one worktree while you move between the clusters working on others
+//! has nowhere to live if it has to belong to one of them.
 //!
 //! ## Where a surface lives
 //!
 //! There is exactly one answer, and it is the tree. An instance is in whichever
 //! cluster's `tree` contains its id, and nowhere else. A terminal is in its
-//! cluster's panel *unless* its id appears in that cluster's tree, in which case
-//! it has been dragged into the layout and the panel no longer draws it. No
-//! second field records this, so no second field can contradict it.
+//! window's panel *unless* its id appears in a tree — any cluster's tree, in
+//! any window — in which case it has been dragged into the layout and is drawn
+//! there as a surface instead. No second field records this, so no second field
+//! can contradict it, and a terminal can never draw in two places at once.
 
 use crate::layout::{PaneNode, SplitDir};
 use serde::{Deserialize, Serialize};
@@ -111,10 +113,6 @@ pub struct Cluster {
     pub name: String,
     /// The pane tree. Holds instance ids; see `layout`.
     pub tree: PaneNode,
-    /// Which terminal the panel is showing. The set of terminals is derived
-    /// from `ShellSnapshot::terminals` rather than duplicated here — see the
-    /// module doc on why there is only ever one answer to where a thing lives.
-    pub active_terminal: Option<String>,
     pub worktree: Option<WorktreeRef>,
 }
 
@@ -144,6 +142,20 @@ pub struct WindowPlacement {
     pub label: String,
     pub clusters: Vec<Cluster>,
     pub active_cluster_id: Option<String>,
+    /// Which terminal this window's panel is showing.
+    ///
+    /// A fact about the window, not about any cluster: the panel does not
+    /// change when you switch clusters, so neither does what it has selected.
+    /// The *set* of terminals is derived from `ShellSnapshot::terminals`
+    /// rather than duplicated here — see the module doc on why there is only
+    /// ever one answer to where a thing lives — and the invariant that this
+    /// names one of them, and never one that has been dragged into a tree, is
+    /// re-established after every mutation by `reseat_active_terminals`.
+    ///
+    /// `default` because `layout.json` files written before the panel became
+    /// the window's have this on the cluster instead.
+    #[serde(default)]
+    pub active_terminal: Option<String>,
     /// `None` until the window has reported where it is. Only ever written from
     /// the window's own move and resize events.
     pub geometry: Option<WindowGeometry>,
@@ -166,13 +178,25 @@ impl WindowPlacement {
 pub struct TerminalSession {
     pub id: String,
     pub title: String,
-    /// Which cluster's panel holds it. Not which window — see the module doc.
-    pub cluster_id: String,
+    /// Which window's panel holds it. Not which cluster — see the module doc.
+    ///
+    /// Defaulted rather than required, because a `layout.json` written before
+    /// terminals left the clusters has a `clusterId` here and no label at all.
+    /// The default is `main` and not `""` on purpose: an empty label matches no
+    /// window, so every restored terminal would vanish from every panel while
+    /// its pty ran on, which reads as the shells having failed to start.
+    #[serde(default = "main_window")]
+    pub window_label: String,
     /// The dot on a terminal tab: *this agent finished*. Not tool health.
     pub agent_finished: bool,
     /// Sessions sharing a group id render as one tab, laid out side by side in
     /// the deck. `None` for an ordinary, unsplit session.
     pub group_id: Option<String>,
+}
+
+/// The window a terminal falls back to. See `TerminalSession::window_label`.
+fn main_window() -> String {
+    "main".to_string()
 }
 
 /// The whole shared state, as one serializable object.
@@ -266,7 +290,6 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
         // after `project::restore`, since only then is there a name to use.
         name: "Workspace".to_string(),
         tree: PaneNode::leaf(format!("pane-{}", counters.panes)),
-        active_terminal: None,
         worktree: None,
     };
 
@@ -274,6 +297,7 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
         label: label.to_string(),
         clusters: vec![cluster],
         active_cluster_id: Some(cluster_id),
+        active_terminal: None,
         geometry: None,
     }
 }
@@ -294,6 +318,12 @@ impl ShellState {
             let mut counters = self.counters.write().expect("counter lock poisoned");
             *counters = counters_for(&snapshot);
         }
+        let mut snapshot = snapshot;
+        // A file written by an older build has the panel's selection on the
+        // cluster, so every window comes back with none. `mutate` fixes this up
+        // after every change; a restore is the one way state arrives without
+        // going through it.
+        reseat_active_terminals(&mut snapshot);
         *self.inner.write().expect("shell state lock poisoned") = snapshot;
     }
 
@@ -306,10 +336,18 @@ impl ShellState {
     /// The write lock is dropped before the emit: `emit` reaches into Tauri's
     /// event machinery, and holding a lock across a call that might itself want
     /// to read this state is how a deadlock gets written.
+    ///
+    /// Every mutation is followed by `reseat_active_terminals`, so that "a
+    /// window's panel selection names one of that window's panel terminals" is
+    /// a property of the state rather than something each mutator has to
+    /// remember. Closing a terminal, closing the cluster a terminal was dragged
+    /// into, moving one between windows and dragging one into a pane all
+    /// invalidate it, and only one of them is obviously about the panel.
     fn mutate<F: FnOnce(&mut ShellSnapshot)>(&self, app: &AppHandle, f: F) {
         let updated = {
             let mut guard = self.inner.write().expect("shell state lock poisoned");
             f(&mut guard);
+            reseat_active_terminals(&mut guard);
             guard.clone()
         };
         let _ = app.emit(SHELL_STATE_EVENT, &updated);
@@ -397,6 +435,15 @@ impl ShellState {
                 return;
             };
             let gone = s.windows.remove(i);
+            // The panel's terminals come home too. They belong to the window,
+            // not to any of the clusters being folded in, so nothing else would
+            // move them — and a terminal whose label names a window that is no
+            // longer there is a live shell with no tab anywhere on screen.
+            for t in s.terminals.iter_mut() {
+                if t.window_label == label {
+                    t.window_label = "main".to_string();
+                }
+            }
             if let Some(main) = s.windows.iter_mut().find(|w| w.label == "main") {
                 if main.active_cluster_id.is_none() {
                     main.active_cluster_id = gone.clusters.first().map(|c| c.id.clone());
@@ -429,7 +476,6 @@ impl ShellState {
                 id: cluster_id.clone(),
                 name: name.to_string(),
                 tree: PaneNode::leaf(pane_id.clone()),
-                active_terminal: None,
                 worktree: None,
             });
             w.active_cluster_id = Some(cluster_id.clone());
@@ -440,9 +486,23 @@ impl ShellState {
 
     pub fn set_active_cluster(&self, app: &AppHandle, label: &str, cluster_id: Option<String>) {
         self.mutate(app, |s| {
-            if let Some(w) = s.windows.iter_mut().find(|w| w.label == label) {
-                w.active_cluster_id = cluster_id;
+            let Some(w) = s.windows.iter_mut().find(|w| w.label == label) else {
+                return;
+            };
+            // A cluster this window does not hold is not something it can show.
+            // The guard is not hypothetical: a chip's drag ends with a
+            // `pointerup` on the chip, so the browser fires a `click` on it too,
+            // and that click asks to select a cluster that has just been dragged
+            // into another window. Honouring it would leave the source window
+            // pointing at a cluster that is not in it — no tree, no panel, an
+            // empty frame — and nothing would ever correct it.
+            if cluster_id
+                .as_deref()
+                .is_some_and(|id| !w.clusters.iter().any(|c| c.id == id))
+            {
+                return;
             }
+            w.active_cluster_id = cluster_id;
         });
     }
 
@@ -461,6 +521,13 @@ impl ShellState {
     /// ids that went with it, so the caller can dispose of what sat behind them
     /// — a pty in particular, which this module deliberately knows nothing
     /// about and must not be left running with nothing on screen for it.
+    ///
+    /// "In it" means *in its tree*, terminals included. A terminal in the panel
+    /// is the window's and outlives every cluster in it: killing those here
+    /// would take out the shell you had watching another worktree because you
+    /// closed a cluster it was never part of. Only a terminal that was dragged
+    /// into this cluster's layout goes with it — it is on screen inside the
+    /// thing being closed, exactly like an app instance is.
     pub fn close_cluster(&self, app: &AppHandle, cluster_id: &str) -> (Vec<String>, Vec<String>) {
         let mut instances = Vec::new();
         let mut terminals = Vec::new();
@@ -473,41 +540,37 @@ impl ShellState {
             else {
                 return;
             };
-            let Some(i) = w.clusters.iter().position(|c| c.id == cluster_id) else {
+            let Some(gone) = take_cluster(w, cluster_id) else {
                 return;
             };
-
-            let gone = w.clusters.remove(i);
             let held: Vec<String> = gone.tree.tabs().iter().map(|t| t.to_string()).collect();
 
-            if w.active_cluster_id.as_deref() == Some(cluster_id) {
-                // The same neighbour rule tabs use: whatever slid into the
-                // vacated position, or the last one.
-                w.active_cluster_id = w
-                    .clusters
-                    .get(i)
-                    .or_else(|| w.clusters.last())
-                    .map(|c| c.id.clone());
-            }
-
-            terminals = s
-                .terminals
-                .iter()
-                .filter(|t| t.cluster_id == cluster_id)
-                .map(|t| t.id.clone())
-                .collect();
-            s.terminals.retain(|t| t.cluster_id != cluster_id);
-
-            // A terminal that had been dragged into the tree is in `held` too;
-            // it is disposed of as a terminal, not as an instance.
-            instances = held
-                .into_iter()
-                .filter(|id| !terminals.contains(id))
-                .collect();
+            (terminals, instances) = sort_held(held, &s.terminals);
+            s.terminals.retain(|t| !terminals.contains(&t.id));
             s.instances.retain(|i| !instances.contains(&i.id));
         });
 
         (instances, terminals)
+    }
+
+    /// Move a whole cluster — its tree, its tabs and all — into another window.
+    ///
+    /// The window named by `to_label` is used if the state already knows it, and
+    /// created if it does not; that second case is a *detach*, and the caller is
+    /// then responsible for building the OS window to match. Doing the
+    /// bookkeeping first and the window second is the ordering `detach_instance`
+    /// already uses, and it is what makes a refusal here cost nothing: no window
+    /// is ever built for a move that did not happen.
+    ///
+    /// Returns whether the cluster is in `to_label` afterwards. `false` means
+    /// the move was refused and nothing changed at all — see `move_cluster_pure`
+    /// for the two things it refuses and why.
+    pub fn move_cluster(&self, app: &AppHandle, cluster_id: &str, to_label: &str) -> bool {
+        let mut moved = false;
+        self.mutate(app, |s| {
+            moved = move_cluster_pure(s, cluster_id, to_label);
+        });
+        moved
     }
 
     // --- instances ---------------------------------------------------------
@@ -759,15 +822,16 @@ impl ShellState {
                 id: cluster_id.clone(),
                 name,
                 tree,
-                active_terminal: None,
                 worktree: None,
             };
 
-            // A terminal dragged out has to bring its panel home with it, or it
-            // would be drawn in the new window's tree while still belonging to
-            // a cluster in the old one.
+            // A terminal dragged out has to bring its panel home with it. It is
+            // drawn in the new window's tree, so it is not in a panel at all
+            // right now — but the moment it is dragged back out of that tree it
+            // lands in one, and it must be the panel of the window it is
+            // actually on screen in.
             if let Some(t) = s.terminals.iter_mut().find(|t| t.id == instance_id) {
-                t.cluster_id = cluster_id.clone();
+                t.window_label = new_label.to_string();
             }
 
             match s.windows.iter_mut().find(|w| w.label == new_label) {
@@ -779,6 +843,7 @@ impl ShellState {
                     label: new_label.to_string(),
                     clusters: vec![cluster],
                     active_cluster_id: Some(cluster_id.clone()),
+                    active_terminal: None,
                     geometry: None,
                 }),
             }
@@ -801,33 +866,26 @@ impl ShellState {
         (format!("term-{}", counters.terminals), counters.terminals)
     }
 
-    /// Which cluster a new terminal in this window belongs to.
-    pub fn active_cluster_of(&self, label: &str) -> Option<String> {
+    /// Does this label name a window? Asked before a terminal is opened into
+    /// one: a session whose label matches nothing is a shell running with no
+    /// panel anywhere that would draw its tab.
+    pub fn has_window(&self, label: &str) -> bool {
         let guard = self.inner.read().expect("shell state lock poisoned");
-        guard
-            .windows
-            .iter()
-            .find(|w| w.label == label)?
-            .active_cluster_id
-            .clone()
+        guard.windows.iter().any(|w| w.label == label)
     }
 
     /// Publish a session whose shell is already running.
-    pub fn add_terminal(&self, app: &AppHandle, id: &str, title: &str, cluster_id: &str) {
+    pub fn add_terminal(&self, app: &AppHandle, id: &str, title: &str, label: &str) {
         self.mutate(app, |s| {
             s.terminals.push(TerminalSession {
                 id: id.to_string(),
                 title: title.to_string(),
-                cluster_id: cluster_id.to_string(),
+                window_label: label.to_string(),
                 agent_finished: false,
                 group_id: None,
             });
-            if let Some(c) = s
-                .windows
-                .iter_mut()
-                .find_map(|w| w.cluster_mut(cluster_id))
-            {
-                c.active_terminal = Some(id.to_string());
+            if let Some(w) = s.windows.iter_mut().find(|w| w.label == label) {
+                w.active_terminal = Some(id.to_string());
             }
         });
     }
@@ -839,39 +897,22 @@ impl ShellState {
             for w in s.windows.iter_mut() {
                 for c in w.clusters.iter_mut() {
                     c.tree.remove_tab(id);
-                    if c.active_terminal.as_deref() == Some(id) {
-                        c.active_terminal = s
-                            .terminals
-                            .iter()
-                            .find(|t| t.cluster_id == c.id)
-                            .map(|t| t.id.clone());
-                    }
                 }
             }
+            // Whichever panel was pointing at it is re-seated by `mutate`.
         });
     }
 
-    /// Which cluster a session sits in, for the split command — it opens the
+    /// Which window a session sits in, for the split command — it opens the
     /// new pty beside the one it is splitting from, and the caller has no other
     /// way to know where that is.
-    pub fn cluster_of_terminal(&self, id: &str) -> Option<String> {
+    pub fn window_of_terminal(&self, id: &str) -> Option<String> {
         let guard = self.inner.read().expect("shell state lock poisoned");
         guard
             .terminals
             .iter()
             .find(|t| t.id == id)
-            .map(|t| t.cluster_id.clone())
-    }
-
-    /// Which window is showing a cluster. Derived rather than stored — see the
-    /// module doc on there being one answer to where a thing lives.
-    pub fn window_of_cluster(&self, cluster_id: &str) -> Option<String> {
-        let guard = self.inner.read().expect("shell state lock poisoned");
-        guard
-            .windows
-            .iter()
-            .find(|w| w.clusters.iter().any(|c| c.id == cluster_id))
-            .map(|w| w.label.clone())
+            .map(|t| t.window_label.clone())
     }
 
     /// Put `id` into `sibling_id`'s group, creating one if `sibling_id` doesn't
@@ -885,8 +926,8 @@ impl ShellState {
         assigned
     }
 
-    /// Move a terminal into another cluster's panel.
-    pub fn move_terminal(&self, app: &AppHandle, id: &str, to_cluster: &str) {
+    /// Move a terminal into another window's panel.
+    pub fn move_terminal(&self, app: &AppHandle, id: &str, to_label: &str) {
         self.mutate(app, |s| {
             // Leaving the tree is part of moving: a terminal dragged from a
             // pane back into a panel must stop being a tab, or it would draw in
@@ -897,18 +938,19 @@ impl ShellState {
                 }
             }
             if let Some(t) = s.terminals.iter_mut().find(|t| t.id == id) {
-                t.cluster_id = to_cluster.to_string();
+                t.window_label = to_label.to_string();
             }
-            if let Some(c) = s.windows.iter_mut().find_map(|w| w.cluster_mut(to_cluster)) {
-                c.active_terminal = Some(id.to_string());
+            if let Some(w) = s.windows.iter_mut().find(|w| w.label == to_label) {
+                w.active_terminal = Some(id.to_string());
             }
         });
     }
 
-    pub fn set_active_terminal(&self, app: &AppHandle, cluster_id: &str, id: Option<String>) {
+    /// Which terminal a window's panel is showing.
+    pub fn set_active_terminal(&self, app: &AppHandle, label: &str, id: Option<String>) {
         self.mutate(app, |s| {
-            if let Some(c) = s.windows.iter_mut().find_map(|w| w.cluster_mut(cluster_id)) {
-                c.active_terminal = id;
+            if let Some(w) = s.windows.iter_mut().find(|w| w.label == label) {
+                w.active_terminal = id;
             }
         });
     }
@@ -953,6 +995,151 @@ impl ShellState {
         };
         let _ = app.emit(SHELL_STATE_EVENT, &updated);
         crate::shell_store::persist(app, &updated);
+    }
+}
+
+/// Split the tabs a closing cluster held into `(terminals, instances)`.
+///
+/// A tree holds both under one kind of id, and the caller disposes of them
+/// differently — a terminal has a pty behind it that has to be killed. The
+/// input is the cluster's *tree*, never the whole terminal list, which is what
+/// keeps a panel terminal out of the answer: it was not on screen inside the
+/// cluster being closed, so closing that cluster is not a reason to end it.
+fn sort_held(held: Vec<String>, terminals: &[TerminalSession]) -> (Vec<String>, Vec<String>) {
+    held.into_iter()
+        .partition(|id| terminals.iter().any(|t| &t.id == id))
+}
+
+/// Lift a cluster out of a window, and let the window's selection fall to a
+/// survivor if it named the one that left.
+///
+/// The neighbour rule — whatever slid into the vacated position, or the last one
+/// — is the same one tabs use, and it is written once here because closing a
+/// cluster and moving one to another window are the same event as far as the
+/// window losing it is concerned.
+fn take_cluster(w: &mut WindowPlacement, cluster_id: &str) -> Option<Cluster> {
+    let i = w.clusters.iter().position(|c| c.id == cluster_id)?;
+    let gone = w.clusters.remove(i);
+
+    if w.active_cluster_id.as_deref() == Some(cluster_id) {
+        w.active_cluster_id = w
+            .clusters
+            .get(i)
+            .or_else(|| w.clusters.last())
+            .map(|c| c.id.clone());
+    }
+    Some(gone)
+}
+
+/// Move a cluster into `to_label`'s window, creating that window's entry if it
+/// does not have one. The whole of `ShellState::move_cluster`, minus the lock
+/// and the broadcast, so that it can be tested against a bare `ShellSnapshot`.
+///
+/// Two refusals, both returning `false` with nothing changed:
+///
+/// - **A cluster nobody holds.** It has already been closed, or never existed.
+/// - **The last cluster in its window.** A window must always have at least one:
+///   with none it has no tree, no panel and no way to make either, so it would
+///   sit on screen as a frame with nothing in it and nothing to click. This is
+///   the same invariant that hides the close × on a lone chip. The refusal is a
+///   refusal on purpose rather than a move that quietly seeds a replacement —
+///   that would turn "move this cluster" into "move it and make another", which
+///   is not what the gesture said.
+///
+/// Moving a cluster to the window it is already in is neither of those: nothing
+/// happens and `true` is returned, because the cluster *is* where the caller
+/// asked for it to be.
+///
+/// What travels with it: the tree, and therefore every tab in the tree. Terminals
+/// among those tabs have their `window_label` rewritten, because that field says
+/// which window's *panel* would draw them, and a terminal on screen in window B
+/// claiming to belong to A's panel lands in the wrong window the moment it is
+/// dragged out of the tree. Instances need no such fixup, and deliberately: they
+/// are a flat global list keyed by id, and the tree is the only thing that says
+/// where any of them are.
+fn move_cluster_pure(s: &mut ShellSnapshot, cluster_id: &str, to_label: &str) -> bool {
+    let Some(source) = s
+        .windows
+        .iter_mut()
+        .find(|w| w.clusters.iter().any(|c| c.id == cluster_id))
+    else {
+        return false;
+    };
+    if source.label == to_label {
+        return true;
+    }
+    if source.clusters.len() <= 1 {
+        return false;
+    }
+    let Some(cluster) = take_cluster(source, cluster_id) else {
+        return false;
+    };
+
+    let held: Vec<String> = cluster.tree.tabs().iter().map(|t| t.to_string()).collect();
+    for t in s.terminals.iter_mut() {
+        if held.iter().any(|id| id == &t.id) {
+            t.window_label = to_label.to_string();
+        }
+    }
+
+    match s.windows.iter_mut().find(|w| w.label == to_label) {
+        Some(w) => {
+            w.active_cluster_id = Some(cluster.id.clone());
+            w.clusters.push(cluster);
+        }
+        None => s.windows.push(WindowPlacement {
+            label: to_label.to_string(),
+            active_cluster_id: Some(cluster.id.clone()),
+            clusters: vec![cluster],
+            active_terminal: None,
+            geometry: None,
+        }),
+    }
+    true
+}
+
+/// Make every window's panel selection name something the panel is drawing.
+///
+/// Run after every mutation, from `mutate`. The rule it enforces is the one the
+/// panel renders by: a window's `active_terminal` is one of *its* terminals, and
+/// not one that has been dragged into a pane tree, because a terminal in a tree
+/// is a surface in the pane area and the panel does not draw it at all.
+///
+/// A selection that survives the check is left exactly as it is — this only ever
+/// repairs, so a deliberate `set_active_terminal` is never second-guessed. When
+/// it does have to repair, it falls back to that window's first panel terminal
+/// rather than to nothing, since a panel with sessions in it and none selected
+/// shows an empty deck beside a list of tabs.
+fn reseat_active_terminals(snapshot: &mut ShellSnapshot) {
+    let ShellSnapshot {
+        windows, terminals, ..
+    } = snapshot;
+
+    for w in windows.iter_mut() {
+        // Owned rather than borrowed from the tree, so that nothing is still
+        // holding `w` when the selection is written back to it.
+        let in_a_tree: Vec<String> = w
+            .clusters
+            .iter()
+            .flat_map(|c| c.tree.tabs())
+            .map(str::to_string)
+            .collect();
+        let label = w.label.clone();
+        let is_panel_terminal = |id: &str| {
+            terminals
+                .iter()
+                .any(|t| t.id == id && t.window_label == label)
+                && !in_a_tree.iter().any(|held| held == id)
+        };
+
+        if w.active_terminal.as_deref().is_some_and(&is_panel_terminal) {
+            continue;
+        }
+        w.active_terminal = terminals
+            .iter()
+            .map(|t| t.id.as_str())
+            .find(|id| is_panel_terminal(id))
+            .map(str::to_string);
     }
 }
 
@@ -1113,10 +1300,14 @@ mod tests {
     use super::*;
 
     fn session(id: &str, group: Option<&str>) -> TerminalSession {
+        in_window("main", id, group)
+    }
+
+    fn in_window(label: &str, id: &str, group: Option<&str>) -> TerminalSession {
         TerminalSession {
             id: id.to_string(),
             title: id.to_string(),
-            cluster_id: "cluster-1".to_string(),
+            window_label: label.to_string(),
             agent_finished: false,
             group_id: group.map(str::to_string),
         }
@@ -1234,10 +1425,10 @@ mod tests {
                     id: "cluster-3".to_string(),
                     name: "w".to_string(),
                     tree,
-                    active_terminal: None,
                     worktree: None,
                 }],
                 active_cluster_id: Some("cluster-3".to_string()),
+                active_terminal: None,
                 geometry: None,
             }],
             instances: instances
@@ -1319,6 +1510,275 @@ mod tests {
 
         assert_eq!(back.instances.len(), snapshot.instances.len());
         assert_eq!(back.windows[0].clusters[0].tree, snapshot.windows[0].clusters[0].tree);
-        assert_eq!(back.terminals[0].cluster_id, "cluster-1");
+        assert_eq!(back.terminals[0].window_label, "main");
+    }
+
+    // --- the panel belongs to the window ------------------------------------
+
+    fn window(label: &str, cluster: &str, tabs: &[&str]) -> WindowPlacement {
+        let mut tree = PaneNode::leaf("pane-1");
+        for tab in tabs {
+            tree.insert_tab("pane-1", tab, None);
+        }
+        WindowPlacement {
+            label: label.to_string(),
+            clusters: vec![Cluster {
+                id: cluster.to_string(),
+                name: cluster.to_string(),
+                tree,
+                worktree: None,
+            }],
+            active_cluster_id: Some(cluster.to_string()),
+            active_terminal: None,
+            geometry: None,
+        }
+    }
+
+    fn state(windows: Vec<WindowPlacement>, terminals: Vec<TerminalSession>) -> ShellSnapshot {
+        ShellSnapshot {
+            windows,
+            instances: Vec::new(),
+            terminals,
+            engine: EngineState::Idle,
+        }
+    }
+
+    /// The whole point of the change: a panel terminal is the window's, so
+    /// switching clusters — or closing the one that happened to be open when it
+    /// was opened — must not touch it.
+    #[test]
+    fn a_panel_terminal_is_not_in_any_cluster() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &[])],
+            vec![session("term-1", None)],
+        );
+        s.windows[0].clusters.push(Cluster {
+            id: "cluster-2".to_string(),
+            name: "cluster-2".to_string(),
+            tree: PaneNode::leaf("pane-2"),
+            worktree: None,
+        });
+
+        reseat_active_terminals(&mut s);
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-1"),
+            "the panel shows it whichever cluster is open"
+        );
+    }
+
+    /// A terminal dragged into the layout draws in the pane area, so the panel
+    /// must stop pointing at it — otherwise the deck and a pane both claim it.
+    #[test]
+    fn a_terminal_in_a_tree_is_not_the_panel_selection() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &["term-1"])],
+            vec![session("term-1", None), session("term-2", None)],
+        );
+        s.windows[0].active_terminal = Some("term-1".to_string());
+
+        reseat_active_terminals(&mut s);
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-2"),
+            "the panel falls back to one it is actually drawing"
+        );
+    }
+
+    #[test]
+    fn a_panel_never_selects_another_windows_terminal() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &[]), window("win-1", "cluster-2", &[])],
+            vec![in_window("win-1", "term-1", None)],
+        );
+        s.windows[0].active_terminal = Some("term-1".to_string());
+
+        reseat_active_terminals(&mut s);
+        assert_eq!(s.windows[0].active_terminal, None, "main has no terminals");
+        assert_eq!(s.windows[1].active_terminal.as_deref(), Some("term-1"));
+    }
+
+    #[test]
+    fn a_live_selection_is_left_exactly_where_it_is() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &[])],
+            vec![session("term-1", None), session("term-2", None)],
+        );
+        s.windows[0].active_terminal = Some("term-2".to_string());
+
+        reseat_active_terminals(&mut s);
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-2"),
+            "repair only; a deliberate selection is not second-guessed"
+        );
+    }
+
+    /// The regression this guards: under the old model `close_cluster`
+    /// collected every terminal whose `cluster_id` matched and the caller
+    /// killed those ptys. A terminal is the window's now, so that same code
+    /// would end the shell you had watching another worktree because you closed
+    /// a cluster it was never part of.
+    #[test]
+    fn closing_a_cluster_disposes_of_what_was_in_its_tree_and_nothing_else() {
+        let terminals = vec![
+            session("term-1", None), // dragged into the tree
+            session("term-2", None), // sitting in the panel
+        ];
+        let held = vec!["term-1".to_string(), "files-1".to_string()];
+
+        let (gone, instances) = sort_held(held, &terminals);
+
+        assert_eq!(gone, ["term-1"], "only the one that was on screen in it");
+        assert!(
+            !gone.contains(&"term-2".to_string()),
+            "the panel's terminal survives the cluster it happened to be opened beside"
+        );
+        assert_eq!(instances, ["files-1"], "and the apps go as instances");
+    }
+
+    // --- a cluster moving between windows -----------------------------------
+    //
+    // `move_cluster_pure` is the whole of `detach_cluster`'s bookkeeping. Every
+    // test below runs `reseat_active_terminals` after it, because `mutate` does
+    // and the panel invariant is part of what the move has to leave intact.
+
+    /// Two clusters in `main`, one of them holding `tabs` in its tree.
+    fn two_clusters(tabs: &[&str]) -> ShellSnapshot {
+        let mut placement = window("main", "cluster-1", &[]);
+        let mut tree = PaneNode::leaf("pane-2");
+        for tab in tabs {
+            tree.insert_tab("pane-2", tab, None);
+        }
+        placement.clusters.push(Cluster {
+            id: "cluster-2".to_string(),
+            name: "auth".to_string(),
+            tree,
+            worktree: None,
+        });
+        state(vec![placement], Vec::new())
+    }
+
+    fn moved(s: &mut ShellSnapshot, cluster_id: &str, to_label: &str) -> bool {
+        let ok = move_cluster_pure(s, cluster_id, to_label);
+        reseat_active_terminals(s);
+        ok
+    }
+
+    /// The invariant that makes this a refusal rather than a move: a window with
+    /// no cluster has no tree, no panel, and no way to make either.
+    #[test]
+    fn detaching_the_only_cluster_in_a_window_is_refused() {
+        let mut s = state(vec![window("main", "cluster-1", &["files-1"])], Vec::new());
+
+        assert!(!moved(&mut s, "cluster-1", "win-1"), "refused");
+        assert_eq!(s.windows.len(), 1, "and no window was made for it");
+        assert_eq!(s.windows[0].clusters.len(), 1, "it is still where it was");
+        assert_eq!(s.windows[0].active_cluster_id.as_deref(), Some("cluster-1"));
+    }
+
+    #[test]
+    fn a_detached_cluster_arrives_with_its_whole_tree() {
+        let mut s = two_clusters(&["files-1", "files-2"]);
+        let before = s.windows[0].clusters[1].tree.clone();
+
+        assert!(moved(&mut s, "cluster-2", "win-1"));
+
+        assert_eq!(s.windows.len(), 2, "a window entry was made for it");
+        let new = &s.windows[1];
+        assert_eq!(new.label, "win-1");
+        assert_eq!(new.clusters.len(), 1);
+        assert_eq!(new.clusters[0].tree, before, "the tree came across unchanged");
+        assert_eq!(new.active_cluster_id.as_deref(), Some("cluster-2"));
+        assert_eq!(
+            s.windows[0].clusters.len(),
+            1,
+            "and it is no longer in the window it left"
+        );
+    }
+
+    /// The failure this prevents: a terminal drawn as a tab in the new window
+    /// while still claiming to belong to the old window's panel. Drag it out of
+    /// the tree and `move_terminal` would put it back in a panel two monitors
+    /// away from where it is on screen.
+    #[test]
+    fn terminals_in_a_detached_cluster_change_window() {
+        let mut s = two_clusters(&["term-1", "files-1"]);
+        s.terminals = vec![session("term-1", None), session("term-2", None)];
+
+        assert!(moved(&mut s, "cluster-2", "win-1"));
+
+        assert_eq!(s.terminals[0].window_label, "win-1", "it is on screen there now");
+        assert_eq!(
+            s.terminals[1].window_label, "main",
+            "the panel's terminal is the window's and does not travel"
+        );
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-2"),
+            "main's panel is unmoved"
+        );
+        assert_eq!(
+            s.windows[1].active_terminal, None,
+            "and a terminal drawn in a tree is not the new window's panel selection"
+        );
+    }
+
+    #[test]
+    fn the_source_windows_active_cluster_falls_to_a_survivor() {
+        let mut s = two_clusters(&[]);
+        s.windows[0].active_cluster_id = Some("cluster-2".to_string());
+
+        assert!(moved(&mut s, "cluster-2", "win-1"));
+        assert_eq!(
+            s.windows[0].active_cluster_id.as_deref(),
+            Some("cluster-1"),
+            "the window it left is still showing something"
+        );
+    }
+
+    /// Released over another HELVE window. A cluster is appended to that
+    /// window's list, so a label is the whole of the address — which is why this
+    /// works where the same drop for a single tab does not.
+    #[test]
+    fn a_cluster_dropped_over_another_window_joins_it_rather_than_making_one() {
+        let mut s = two_clusters(&["files-1"]);
+        s.windows.push(window("win-1", "cluster-9", &[]));
+
+        assert!(moved(&mut s, "cluster-2", "win-1"));
+
+        assert_eq!(s.windows.len(), 2, "no third window");
+        assert_eq!(s.windows[1].clusters.len(), 2, "it joined the ones already there");
+        assert_eq!(s.windows[1].active_cluster_id.as_deref(), Some("cluster-2"));
+    }
+
+    #[test]
+    fn moving_a_cluster_to_the_window_it_is_already_in_changes_nothing() {
+        let mut s = two_clusters(&["files-1"]);
+
+        assert!(moved(&mut s, "cluster-2", "main"), "it is where it was asked to be");
+        assert_eq!(s.windows.len(), 1);
+        assert_eq!(s.windows[0].clusters.len(), 2, "and it was not moved to the end");
+        assert_eq!(s.windows[0].clusters[1].id, "cluster-2");
+    }
+
+    /// A `layout.json` written before terminals left the clusters has a
+    /// `clusterId` and no window label. Defaulting that to `""` would put every
+    /// restored terminal in a window that does not exist — the tabs would be
+    /// gone from every panel while `respawn_terminals` started their shells
+    /// anyway, which looks exactly like the ptys having failed.
+    #[test]
+    fn a_terminal_stored_without_a_window_label_lands_in_the_main_window() {
+        let json = r#"{
+            "id": "term-1",
+            "title": "pwsh",
+            "clusterId": "cluster-1",
+            "agentFinished": false,
+            "groupId": null
+        }"#;
+
+        let restored: TerminalSession = serde_json::from_str(json).expect("an old tab still reads");
+        assert_eq!(restored.window_label, "main");
+        assert_eq!(restored.id, "term-1");
     }
 }

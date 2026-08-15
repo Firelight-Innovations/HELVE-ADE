@@ -339,13 +339,17 @@ Manual test plan for Braden, on `pnpm app`:
 2. Split a pane vertically, then horizontally. Drag the divider.
 3. Drag a tab onto the opposite pane's edge; confirm it splits there and the
    file is still open at the same scroll position.
-4. Create a second cluster. Confirm switching swaps both the tree and the panel.
+4. Create a second cluster. Confirm it opens on Home, that switching swaps both
+   the tree and the panel, and that the first cluster's chip collapses to a
+   count matching what it was holding.
 5. Drag an instance out to a new window. Move it to the second monitor.
 6. Create a terminal in the new window; confirm its panel appears.
 7. Drag a terminal from the panel into the pane tree, and back.
 8. Close HELVE. Reopen. Both windows, both monitors, both clusters, same trees.
 9. Unplug the second monitor and reopen. The window must appear on the remaining
    display, not off-screen.
+10. Reorder two tabs inside the bar, then release a tab over the bar's empty
+    right-hand end. It must land in the row, not open a new window.
 
 ## What is not built
 
@@ -391,6 +395,60 @@ matters, not `cargo check`.
 `pnpm app` is Braden's alone, so nothing here has been seen running. Every claim
 above is about compilation and unit tests. The manual test plan is the real
 check, and it has not been performed.
+
+## Revision: one tab bar
+
+Built as first written, this shell drew tabs in three places at once — the
+cluster bar, a strip per pane, and the terminal panel's row — and the same
+handful of surfaces appeared in two or three of them. Braden's correction was to
+collapse all of it into one row, modelled on Chrome's tab groups.
+
+**What the bar is now.** A chip per cluster. The open cluster's chip is followed
+inline by everything in it: the layout's surfaces in layout order, then the
+panel's terminals. Clicking another chip expands that cluster and collapses this
+one. A collapsed chip carries a count instead of its contents.
+
+**What went away.** `PaneTree` no longer draws a strip — a pane is a host with a
+focus outline, and `pane__host` is now the pane's whole area rather than
+everything below a header. `SecondaryPanel` no longer draws session tabs; what
+is left in that row operates the region (`+`, the worktree segment, the collapse
+chevron), none of which names a session. `ClusterMember` in `contract.ts` is the
+one shape the bar draws, flattened from those two sources and derived fresh on
+every render — no membership is stored anywhere it could drift from the tree or
+from `terminals`.
+
+**The two things worth knowing before changing it.**
+
+*There is no sliding accent rule on the members, only on the chip.* A split shows
+two surfaces at once and the panel can show a third, so "the active tab" is not a
+single thing the row could point at. `showing` — a lifted background — is a claim
+that stays true however many panes there are; a rule would have to pick one of
+several equally-current tabs and be wrong about the rest.
+
+*The whole row is one strip drop zone, registered on `.switcher__tabs`.* Two
+reasons, both load-bearing. A zone that stopped at the last tab would leave the
+space beside it resolving to `detach`, so releasing an inch wide of the row would
+silently open a new OS window — the most destructive outcome in the gesture,
+reached by the smallest miss. And one element that always exists beats one per
+group: `useDropZone` holds a single element, so a zone that migrated as the open
+cluster changed would depend on React detaching the old ref before attaching the
+new. It does, but the day someone assumes otherwise, every drop lands nowhere.
+The rects it measures are still only the focused pane's own tabs, because the row
+lists several panes at once and the terminals are not in the tree at all.
+
+**A new cluster opens Home** (`commands::add_cluster`), as does File > New
+Window, for the reason `seed_first_run` already opened it on a first launch: a
+cluster is where a piece of work starts, and Home is the surface that starts one.
+Composed in the command layer rather than folded into `ShellState::add_cluster`,
+which stays a primitive that does what its name says.
+
+**Still not built, and now more visible than before:** dropping a tab onto
+*another* cluster's chip does nothing. It is the obvious Chrome gesture and
+`move_instance` already takes a cluster id, so the frontend half is small — but a
+terminal moved that way would be in cluster B's tree while `TerminalSession
+.cluster_id` still said A, and `sessions` filters on that field, so it would draw
+in both places. Moving a terminal across clusters has to update that field in the
+same mutation before this can be wired up.
 
 ## Constraints
 
