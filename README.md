@@ -71,13 +71,52 @@ minutes; subsequent runs are incremental and fast. Editing anything under `src/`
 hot-reloads; editing anything under `src-tauri/src/` recompiles and restarts the
 app automatically.
 
-Other useful commands, run from the repo root:
+### Before you commit
+
+**Every commit and every pull request must pass all four checks.** They are a
+gate, not a suggestion, and one command runs them:
 
 ```sh
-cargo test              # every crate in the workspace
-cargo clippy --all-targets -- -D warnings   # Rust linter
-cargo fmt --all                             # Rust formatter
+pnpm verify
 ```
+
+| Check | Command | Covers |
+|---|---|---|
+| Build | `pnpm build` | runs `tsc` first, so this covers types |
+| Tests | `pnpm test` | 28 vitest + 212 `cargo test` |
+| Lint | `pnpm lint` | ESLint, clippy, comment density |
+| Format | `pnpm format:check` | Prettier and rustfmt |
+
+Each half is available on its own when you want a faster loop:
+
+```sh
+pnpm test:js      # vitest across the workspace packages
+pnpm test:rust    # cargo test --workspace
+pnpm lint:js      # ESLint only
+pnpm lint:rust    # clippy only
+pnpm format       # apply Prettier and rustfmt rather than just checking
+pnpm slop         # structural report — advisory, not part of the gate
+```
+
+A failing test is not fixed by deleting or skipping it. Per `STANDARDS.md` §8, a
+bug fix arrives with the test that would have caught it.
+
+#### Lint baselines
+
+The linters were switched on against a codebase written without them, so all
+three are **ratchets** rather than gates: they record what already exists and
+fail only when a count goes *up*. A new violation in an already-dirty file still
+fails, because counts are kept per file and per rule.
+
+| File | Holds |
+|---|---|
+| `eslint-suppressions.json` | pre-existing ESLint findings |
+| `clippy-baseline.json` | pre-existing clippy warnings, per file and lint |
+| `comment-baseline.json` | files above the comment-density caps |
+
+`pnpm baseline` rewrites all three. Use it **after** a cleanup pass, to bank the
+improvement — never to make a failing check pass, since it would absorb the new
+violation along with everything else.
 
 Note that `cargo clippy` replays cached diagnostics — it will report "Finished"
 in well under a second without actually rechecking anything. To force a real

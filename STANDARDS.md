@@ -252,18 +252,31 @@ in a command is logic that cannot be tested without Tauri.
 
 ## 8. Tests
 
-What exists today: `packages/bridge/src/client.test.ts` under vitest,
-`crates/helve-tool-manifest/tests/reference_manifest.rs`, and
-`examples/echo-tool/tests/roundtrip.rs`. The protocol layer is covered because it
-is a published contract.
+**Every commit and every pull request must pass all tests.** `pnpm test` runs
+both halves; `pnpm verify` runs tests alongside the build, the linters and the
+formatters. A failing test is never fixed by deleting or skipping it.
+
+What exists today — 240 tests, all passing:
+
+| Where | Count | Runner |
+|---|---|---|
+| `src-tauri/src/**` | 183 | `cargo test` |
+| `crates/helve-rpc` | 15 | `cargo test` |
+| `crates/helve-tool-manifest` | 11 | `cargo test` |
+| `examples/echo-tool` | 3 | `cargo test` |
+| `packages/bridge` | 28 | vitest |
+
+The protocol layer is covered because it is a published contract. The state
+machines are now covered too: `shell_state.rs` has 35 tests, `layout.rs` has 32,
+`shell_store.rs` has 11.
 
 What is expected going forward:
 
 1. **Anything in `crates/` needs tests.** Other repositories depend on these. A
    change without a test is a change no tool author can trust.
-2. **State machines get unit tests before they grow.** `shell_state.rs` is 2100
-   lines and has none. New state transitions should arrive with `#[cfg(test)]`
-   coverage even while the old ones lack it.
+2. **State machines get unit tests before they grow.** This was aspirational when
+   first written and is now largely true; keep it that way. New state transitions
+   arrive with `#[cfg(test)]` coverage in the same commit.
 3. **Pure functions in the frontend get vitest coverage** — `toolPresentation`,
    `healthOf`, the layout math. Components do not need render tests yet; that is
    a deliberate omission, not an oversight.
@@ -276,19 +289,25 @@ What is expected going forward:
 
 Before a pull request is ready:
 
-1. `pnpm build` passes — it runs `tsc` first, so this covers types.
-2. `cargo check --manifest-path src-tauri/Cargo.toml` passes.
-3. `cargo test` passes.
-4. `pnpm lint` passes — ESLint, clippy and the comment-density check (§10).
-5. `pnpm format:check` passes, or `pnpm format` has been run.
-6. New modules have doc comments; new decisions have their rejected alternative
+1. **`pnpm verify` passes.** This is the whole mechanical gate, and it is not
+   optional for any commit or pull request. It runs, in order:
+
+   | Step | Covers |
+   |---|---|
+   | `pnpm build` | `tsc` runs first, so this covers types |
+   | `pnpm test` | all 240 tests, both runners (§8) |
+   | `pnpm lint` | ESLint, clippy, comment density (§10) |
+   | `pnpm format:check` | Prettier and rustfmt |
+
+2. New modules have doc comments; new decisions have their rejected alternative
    recorded.
-7. If it touches `docs/tool-protocol.md`, `src/bindings.ts`, or
+3. If it touches `docs/tool-protocol.md`, `src/bindings.ts`, or
    `src/shell/contract.ts`, the PR description says so explicitly. Those three
    are contracts other code and other repositories are built against.
 
-Items 1 through 5 are mechanical and belong in CI; once that workflow lands
-(`docs/open-source-plan.md` phase 3) this list shortens to items 6 and 7.
+Item 1 is mechanical and belongs in CI; once that workflow lands
+(`docs/open-source-plan.md` phase 3) this list shortens to items 2 and 3. Until
+then it is on whoever opens the PR, which is why it is one command.
 
 ---
 
