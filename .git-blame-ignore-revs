@@ -11,3 +11,6 @@
 
 # Format the tree with rustfmt and Prettier
 6a985b62d607350255d080615da175e2169fd6d1
+
+# Format CSS, JSON and the icon script with Prettier
+7b786edd3fd38e880a0d3ea7a256cfe00ef3b33c

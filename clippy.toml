@@ -1,0 +1,10 @@
+# Thresholds and lists for clippy. Lint *levels* are not set here — they live in
+# `[workspace.lints]` in Cargo.toml so every member inherits one copy.
+
+# `unwrap` and `expect` are idiomatic in tests and are not what STANDARDS.md §5
+# is about. In a test a panic *is* the failure report, and threading `Result`
+# through every assertion to avoid one buys nothing and reads worse. The §5 ban
+# is about code that runs for a user, where a panic is a crash rather than a
+# red line in a test runner.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

@@ -9,6 +9,10 @@
 //! third-party code, and nothing here should let its manifest point outside
 //! its own checkout.
 
+// Published contract — see the note in crates/helve-rpc/src/lib.rs.
+#![warn(missing_docs)]
+#![warn(unreachable_pub)]
+
 use semver::Version;
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};

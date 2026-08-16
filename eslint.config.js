@@ -1,0 +1,195 @@
+/**
+ * ESLint configuration.
+ *
+ * Scope is deliberately narrow: this file encodes the rules STANDARDS.md §10
+ * already lists as "not yet enforced", and almost nothing else. Every rule here
+ * can be traced to a section of a document that was written before the linter
+ * existed, so a failure cites a decision rather than a preference.
+ *
+ * What is deliberately absent: typescript-eslint's `recommended` and
+ * `*-type-checked` tiers. They catch real defects `tsc --strict` misses
+ * (`no-floating-promises` above all) and are the obvious next step, but they
+ * are a much larger baseline than the documented rules, and mixing "things we
+ * agreed to in writing" with "things the ecosystem suggests" in one pass makes
+ * neither reviewable. Escalate by adding `tseslint.configs.recommended` below
+ * once the current baseline is worked down.
+ *
+ * Existing violations are grandfathered in `eslint-suppressions.json`, not by
+ * relaxing rules. A new violation in an old file still fails.
+ */
+
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+
+/**
+ * The subdirectories of `src/shell` that count as regions for STANDARDS.md
+ * §1.2. Note the doc says "the six shell regions" and there are sixteen; the
+ * count drifted, the rule did not.
+ */
+const REGIONS = [
+  "diff",
+  "drag",
+  "frame",
+  "keys",
+  "panel",
+  "panes",
+  "scrollbar",
+  "search",
+  "state",
+  "statusbar",
+  "stubs",
+  "switcher",
+  "terminal",
+  "titlebar",
+  "toolwindow",
+  "worktree",
+];
+
+/**
+ * §1.1 — `src/bindings.ts` is the only door to Rust. `packages/bridge` is
+ * exempt because it *is* the other door: it wraps the same API for apps and
+ * tools, which is the symmetry apps/README.md describes.
+ */
+const TAURI_RESTRICTION = {
+  group: ["@tauri-apps/api", "@tauri-apps/api/**"],
+  message:
+    "STANDARDS.md §1.1: src/bindings.ts is the only file that may call invoke or listen. " +
+    "Add a typed wrapper there instead of reaching past it.",
+};
+
+/**
+ * §1.4 — apps and shell code talk to the bridge through its package entry
+ * point, never by reaching into its source tree. Importing
+ * `packages/bridge/src/*` by relative path bypasses the published surface and
+ * would not survive the bridge being extracted to its own repository.
+ */
+const BRIDGE_RESTRICTION = {
+  group: ["**/packages/bridge/src/**"],
+  message:
+    "STANDARDS.md §1.4: import from '@helve/bridge', not from its source tree. " +
+    "A relative path into packages/bridge/src breaks the moment the bridge ships separately.",
+};
+
+/** Restrictions that apply to every file under src/, apps/ and packages/. */
+function baseRestrictions() {
+  return [TAURI_RESTRICTION, BRIDGE_RESTRICTION];
+}
+
+/**
+ * One config block per region, forbidding relative imports into any *other*
+ * region.
+ *
+ * Files directly under `src/shell/` are not regions and stay importable:
+ * `contract.ts` is the sanctioned vocabulary (§2), and `motion.ts` and
+ * `hostWindow.ts` are shared leaf modules with no region of their own.
+ *
+ * This is written as per-region blocks rather than one global rule because
+ * `no-restricted-imports` options replace rather than merge across flat-config
+ * blocks — a region block that set only its own patterns would silently drop
+ * the Tauri and bridge restrictions above.
+ */
+const regionIsolation = REGIONS.map((region) => ({
+  files: [`src/shell/${region}/**/*.{ts,tsx}`],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          ...baseRestrictions(),
+          {
+            group: REGIONS.filter((other) => other !== region).flatMap((other) => [
+              `../${other}`,
+              `../${other}/**`,
+            ]),
+            message:
+              `STANDARDS.md §1.2: the '${region}' region may not import another region's source. ` +
+              "Regions are built against src/shell/contract.ts and exchange everything else as props.",
+          },
+        ],
+      },
+    ],
+  },
+}));
+
+export default tseslint.config(
+  {
+    // These are `**/`-anchored on purpose. A bare "dist/**" matches only the
+    // repository root, which left examples/echo-tool/ui/dist and the Tauri
+    // codegen assets under target/ being linted — 217 findings in bundled
+    // output, swamping the 46 in code anyone writes.
+    ignores: [
+      "**/dist/**",
+      "**/dist-ssr/**",
+      "**/target/**",
+      "**/node_modules/**",
+      "public/**",
+      // Regenerated from material-icon-theme on every install.
+      "packages/file-icons/src/manifest.generated.ts",
+    ],
+  },
+
+  js.configs.recommended,
+
+  {
+    files: ["**/*.{ts,tsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.browser, ...globals.es2021 },
+    },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      // `tsc` already reports these, and it reports them better. Leaving both
+      // on means every unused import is two findings in two tools.
+      "no-unused-vars": "off",
+      "no-undef": "off",
+
+      // §6.1 — no `any`. `unknown` at boundaries, narrowed immediately.
+      "@typescript-eslint/no-explicit-any": "error",
+
+      // §6.3 — `interface` for object shapes, `type` for unions and mirrors.
+      "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
+
+      // §1.1 and §1.4, for everything the region blocks below do not cover.
+      "no-restricted-imports": ["error", { patterns: baseRestrictions() }],
+    },
+  },
+
+  // §1.1 — the files allowed through the Tauri door by the standard itself.
+  //
+  // `src/shell/hostWindow.ts` is deliberately NOT listed, even though it calls
+  // the Tauri API today. §1.1 names exactly one door, and hostWindow is a
+  // second one. Exempting it here would quietly ratify that; grandfathering it
+  // in the suppressions file instead leaves it visible as a decision someone
+  // still has to make — either fold it into bindings.ts or amend §1.1.
+  {
+    files: ["src/bindings.ts", "packages/bridge/src/**/*.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // react-hooks is here for a specific reason rather than as a preset grab.
+  // Three files already carry `// eslint-disable-next-line
+  // react-hooks/exhaustive-deps`, two of them with a written justification —
+  // so the codebase was authored expecting these rules, and without the plugin
+  // ESLint errors on the disable comments themselves for naming a rule it does
+  // not know. `rules-of-hooks` is also the mechanical half of §6.5.
+  {
+    files: ["**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
+
+  ...regionIsolation,
+
+  // Node scripts and config files run outside the browser.
+  {
+    files: ["scripts/**/*.mjs", "*.config.{ts,js}", "*.config.mjs"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+);

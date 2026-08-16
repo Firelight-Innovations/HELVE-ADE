@@ -33,3 +33,37 @@ serde_json = "1"
 toml = "0.9"
 thiserror = "2"
 semver = "1"
+
+# Lint levels are declared here and inherited by every member through
+# `lints.workspace = true`, for the same reason dependencies are: five copies of
+# a `#![warn(...)]` block in five lib.rs files drift apart, and the drift is
+# invisible until one crate starts accepting what another rejects.
+#
+# Note what is *not* here. Clippy's correctness, suspicious, style, complexity
+# and perf groups are already on by default, and `cargo clippy -- -D warnings`
+# in CI is what promotes them to errors. Listing them again would say nothing.
+# `pedantic` is deliberately left off: it is worth having, but it is a much
+# larger baseline than the rules below, which are the ones STANDARDS.md §10
+# already committed to in writing.
+[workspace.lints.clippy]
+# §5 — no `unwrap()` or `expect()` on anything that depends on the filesystem, a
+# process, or user input. Clippy cannot tell a genuine invariant from a fallible
+# call, so two escape hatches carry the difference: tests are exempted wholesale
+# in clippy.toml, and the pre-existing sites in shipping code carry a file-level
+# allow marked GRANDFATHERED.
+unwrap_used = "warn"
+expect_used = "warn"
+
+# §4.1 (`missing_docs`) and §5 modules (`unreachable_pub`) are deliberately NOT
+# here, because they are not workspace-wide rules even though they read like
+# ones. Both are about a *published surface*: what another repository imports
+# and has to understand. `crates/helve-rpc` and `crates/helve-tool-manifest`
+# have one; `src-tauri` does not — it is an application whose `pub` items exist
+# to cross module boundaries inside a single binary.
+#
+# Enabling them workspace-wide produced 1115 warnings, 816 of them
+# `unreachable_pub` against src-tauri alone, which is noise rather than debt.
+# They are set instead at the top of each protocol crate's lib.rs, where they
+# describe something true. Cargo does not allow a member to inherit
+# `[workspace.lints]` and add its own, so the crate-level attribute is the only
+# way to have both.

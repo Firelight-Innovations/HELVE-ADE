@@ -6,6 +6,15 @@
 //! depend on this crate, so the wire format only has one implementation to
 //! drift out of sync with the spec.
 
+// This crate is a published contract: tool repositories depend on it, and its
+// public surface is the part they read. STANDARDS.md §4.1 asks every module to
+// document what it is for, and §5 asks for private modules with flat public
+// re-exports — the shape declared just below. Both are enforced here rather
+// than in [workspace.lints] because neither is true of `src-tauri`, which is an
+// application, not a library. See the root Cargo.toml for the full reasoning.
+#![warn(missing_docs)]
+#![warn(unreachable_pub)]
+
 mod codec;
 mod host;
 mod tool;

@@ -12,6 +12,14 @@
     "build:monaco-languages": "pnpm --filter @helve/monaco-languages build",
     "generate:icons": "node scripts/generate-file-icons.mjs",
     "postinstall": "pnpm run generate:icons",
+    "lint": "pnpm run lint:js && pnpm run lint:rust && pnpm run lint:comments",
+    "lint:js": "eslint .",
+    "lint:rust": "node scripts/clippy-baseline.mjs",
+    "lint:comments": "node scripts/check-comments.mjs",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write . && cargo fmt --all",
+    "format:check": "prettier --check . && cargo fmt --all -- --check",
+    "baseline": "eslint . --suppress-all && node scripts/clippy-baseline.mjs --update && node scripts/check-comments.mjs --update",
     "preview": "vite preview",
     "tauri": "tauri",
     "app": "tauri dev",
@@ -37,11 +45,17 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.67.0",
     "vite": "^7.0.4"
   }
 }

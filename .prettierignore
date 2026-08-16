@@ -13,6 +13,14 @@ packages/file-icons/src/manifest.generated.ts
 pnpm-lock.yaml
 Cargo.lock
 
+# HTML is excluded, and this one is not a style preference. Whitespace between
+# inline elements is significant in HTML, so reformatting it is not the
+# guaranteed no-op it is in TypeScript or CSS. The concrete case: running
+# Prettier over docs/handoffs/shell-spec.html rewrote 4540 lines of a
+# standalone design artifact nobody edits by hand. The remaining HTML is Vite
+# entry points, which are a few lines each and gain nothing from formatting.
+*.html
+
 # Markdown is deliberately excluded. The docs in this repo are hand-wrapped
 # prose, and Prettier's markdown printer rewraps paragraphs — it would reflow
 # every table and paragraph in STANDARDS.md and docs/tool-protocol.md for no
