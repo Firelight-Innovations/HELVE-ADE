@@ -11,11 +11,25 @@
 //!
 //! ## The shape
 //!
-//! A **window** holds one or more **clusters** and shows one of them. A cluster
-//! is one thing being worked on: a pane tree of app surfaces, the terminals
-//! sitting in the panel beside them, and — once Braden's git work lands — the
-//! worktree they all operate on. Switching cluster tabs swaps the whole layout
-//! beneath the switcher bar.
+//! A **window** holds zero or more **clusters** and shows one of them. A cluster
+//! is one thing being worked on: a pane tree of app surfaces, the **project**
+//! every surface in it resolves against, and — once Braden's git work lands —
+//! the worktree it operates on. Switching cluster tabs swaps the whole layout
+//! beneath the switcher bar, and the project underneath it.
+//!
+//! The project is the cluster's and not the process's, which is the reason
+//! `Cluster::project` exists at all. Two windows on two monitors, each showing a
+//! cluster of its own, are meant to be able to work on two different projects at
+//! once — and a single global "the open project" makes that unexpressible, not
+//! merely awkward: whichever window opened something last would have retitled
+//! and re-rooted the other one.
+//!
+//! "Zero or more" is deliberate too, and it is a change. A window used to be
+//! guaranteed a cluster; closing the last one is now allowed, and the app area
+//! draws an empty state while the terminal panel — which is the *window's*, not
+//! any cluster's — keeps working. Dragging the last one out to another window is
+//! allowed for the same reason, and gets there the same way: see
+//! `move_cluster_pure`, which used to refuse exactly that and no longer does.
 //!
 //! An **instance** is one live surface. `files-1` and `files-2` are two Files,
 //! side by side, with their own open files and their own scroll positions. This
@@ -40,6 +54,7 @@
 //! can contradict it, and a terminal can never draw in two places at once.
 
 use crate::layout::{PaneNode, SplitDir};
+use crate::presets;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -105,7 +120,8 @@ pub struct WorktreeRef {
     pub branch: Option<String>,
 }
 
-/// One tab in the switcher bar: a layout, its terminals, and its worktree.
+/// One tab in the switcher bar: a layout, the project it is about, and its
+/// worktree.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cluster {
@@ -113,6 +129,23 @@ pub struct Cluster {
     pub name: String,
     /// The pane tree. Holds instance ids; see `layout`.
     pub tree: PaneNode,
+    /// The folder this cluster's work is in, or `None` for a cluster that has
+    /// not been pointed at one yet — a brand-new cluster, which draws Home's
+    /// pick-a-project state rather than inheriting whatever the last one was
+    /// looking at.
+    ///
+    /// A `String` and not a `PathBuf`, matching [`WorktreeRef::path`] and for
+    /// the reason [`crate::project::ProjectInfo`] spells out: this crosses into
+    /// JSON, a Windows path is not guaranteed to be UTF-8, and doing the
+    /// conversion at one boundary is better than doing it by accident at
+    /// several.
+    ///
+    /// `default` because a `layout.json` written before a cluster owned a
+    /// project has no such key, and a layout that failed to load is a session
+    /// lost. It arrives as `None` and the migration in `lib.rs` seeds the first
+    /// cluster from the old global.
+    #[serde(default)]
+    pub project: Option<String>,
     pub worktree: Option<WorktreeRef>,
 }
 
@@ -234,21 +267,25 @@ struct Counters {
 pub struct ShellState {
     inner: RwLock<ShellSnapshot>,
     counters: RwLock<Counters>,
-    /// Labels of windows whose close is a deliberate user action rather than
-    /// the application shutting down.
+    /// Labels of windows whose close has been asked for — as opposed to a
+    /// window the OS destroys directly, with no request first.
     ///
-    /// This exists because `WindowEvent::Destroyed` cannot tell the two apart,
-    /// and the difference decides whether `reclaim` should run. At quit,
-    /// `Destroyed` fires for *every* window — so a `reclaim` that trusted it
+    /// This exists because `WindowEvent::Destroyed` alone cannot tell the two
+    /// apart, and the difference decides whether `reclaim` should run. A
+    /// shutdown that destroys every window that way fires `Destroyed` for
+    /// *every* one of them — so a `reclaim` that trusted `Destroyed` alone
     /// would fold every detached window into `main` on the way out, and,
     /// because every mutation is persisted, would write that collapsed layout
     /// to disk as the thing to restore. You would close HELVE with three
     /// windows and open it with one, every time, and the tree serialization
     /// would look broken when it was working perfectly.
     ///
-    /// So intent is stated rather than inferred: the title bar's close button
-    /// goes through `close_window`, which marks the label here first. Anything
-    /// that did not announce itself is a shutdown, and a shutdown reclaims
+    /// So intent is stated rather than inferred: `windows::request_close`
+    /// marks the label here the moment `WindowEvent::CloseRequested` fires —
+    /// which happens for a close requested by our own titlebar's ×, by
+    /// Alt+F4, by the taskbar, or by a graceful OS shutdown closing windows
+    /// one at a time, but never for a window destroyed with no close request
+    /// at all. Anything that did not announce itself that way reclaims
     /// nothing and writes nothing.
     closing: RwLock<Vec<String>>,
 }
@@ -290,6 +327,9 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
         // after `project::restore`, since only then is there a name to use.
         name: "Workspace".to_string(),
         tree: PaneNode::leaf(format!("pane-{}", counters.panes)),
+        // No project. A seeded window is one nobody has pointed anywhere yet,
+        // and Home is what points it — see `set_cluster_project`.
+        project: None,
         worktree: None,
     };
 
@@ -383,8 +423,10 @@ impl ShellState {
     ///
     /// Seeded with a cluster, unlike the window `detach_instance` builds, which
     /// is handed one holding the surface that was dragged out. A window with no
-    /// cluster has no layout, no panel and no way to make either; there would be
-    /// nothing on screen and nothing to click.
+    /// clusters is a legal state now — closing the last one gets you there —
+    /// but it is not a sensible thing to *open*: File > New Window that landed
+    /// on the empty state would have asked the user to undo a step of its own
+    /// making.
     pub fn add_window(&self, app: &AppHandle, label: &str) {
         let seed = {
             let mut counters = self.counters.write().expect("counter lock poisoned");
@@ -404,7 +446,9 @@ impl ShellState {
         // frame of that would be a storm no window needs to see. The value is
         // only ever read back at launch, so recording it and skipping both the
         // broadcast and the disk write is exactly right — the next real
-        // mutation persists it, and so does `close_window`.
+        // mutation persists it, and so does a window closing (`flush` for
+        // `main`, `reclaim_window`'s own `mutate` for anything else — see
+        // `windows::request_close`).
         let mut guard = self.inner.write().expect("shell state lock poisoned");
         if let Some(w) = guard.windows.iter_mut().find(|w| w.label == label) {
             w.geometry = Some(geometry);
@@ -423,9 +467,18 @@ impl ShellState {
     /// Fold a closing window's clusters into the main window, so nothing is
     /// stranded in a window that is no longer on screen.
     ///
-    /// Returns `false` — and changes nothing — when the close was not announced
-    /// through `close_window`, which means the application is shutting down.
-    /// See the `closing` field.
+    /// Returns `false` — and changes nothing — when the close was not marked
+    /// through `mark_closing`, which means the window is not actually closing
+    /// on purpose. See the `closing` field.
+    ///
+    /// `windows::request_close` calls this itself, synchronously, from
+    /// `WindowEvent::CloseRequested` — before the window is actually gone, so
+    /// a closed window can never be resurrected by a later flush of state
+    /// that still lists it. `windows::reclaim` calls it again from
+    /// `WindowEvent::Destroyed`, once the window actually finishes closing,
+    /// but by then `take_closing` has already consumed the marker, so that
+    /// second call is normally a no-op; it remains as the fallback for a
+    /// window the OS destroys directly, without a `CloseRequested` first.
     pub fn reclaim_window(&self, app: &AppHandle, label: &str) -> bool {
         if label == "main" || !self.take_closing(label) {
             return false;
@@ -476,6 +529,12 @@ impl ShellState {
                 id: cluster_id.clone(),
                 name: name.to_string(),
                 tree: PaneNode::leaf(pane_id.clone()),
+                // Deliberately empty, and deliberately *not* inherited from the
+                // cluster this one was added beside. A new cluster is a new
+                // piece of work; if it were meant to be about the same project
+                // it would have been a pane in the one already open. Home opens
+                // in it (see `commands::add_cluster`) and offers the picker.
+                project: None,
                 worktree: None,
             });
             w.active_cluster_id = Some(cluster_id.clone());
@@ -506,6 +565,116 @@ impl ShellState {
         });
     }
 
+    /// Point a cluster at a project, or at nothing.
+    ///
+    /// Through `mutate` like every other cluster change, which is what makes a
+    /// project switch reach every window and reach `layout.json` — the same
+    /// guarantee the tree gets, and the reason this is a `ShellState` method
+    /// rather than something `project` writes into a store of its own. A
+    /// project that only the window that opened it knew about would be the
+    /// exact bug the per-cluster model exists to prevent, in miniature.
+    ///
+    /// Silent when `cluster_id` names nothing: a cluster can be closed while a
+    /// picker is up, and the honest answer to "set the project of a cluster
+    /// that is gone" is that there is nothing to set.
+    pub fn set_cluster_project(&self, app: &AppHandle, cluster_id: &str, path: Option<String>) {
+        self.mutate(app, |s| {
+            for w in s.windows.iter_mut() {
+                if let Some(c) = w.cluster_mut(cluster_id) {
+                    c.project = path;
+                    return;
+                }
+            }
+        });
+    }
+
+    /// The project a cluster is pointed at, exactly as stored. `None` both for
+    /// a cluster with no project and for an id that names no cluster — the
+    /// caller wants somewhere to work, and neither answer gives it one.
+    pub fn cluster_project(&self, cluster_id: &str) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        guard
+            .windows
+            .iter()
+            .flat_map(|w| w.clusters.iter())
+            .find(|c| c.id == cluster_id)
+            .and_then(|c| c.project.clone())
+    }
+
+    /// Which cluster holds `instance_id` — the whole of "which project is this
+    /// app call about".
+    ///
+    /// The tree is the only thing that answers it, and deliberately: an
+    /// instance is in whichever cluster's `tree` contains its id and nowhere
+    /// else, so this is a search of the same structure `move_instance` moves
+    /// tabs around in, using the same `PaneNode::tabs` walk `close_cluster`
+    /// already uses to decide what a closing cluster took with it. No second
+    /// field records the answer, so no second field can disagree with it.
+    pub fn cluster_of_instance(&self, instance_id: &str) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        cluster_of_instance_pure(&guard, instance_id)
+    }
+
+    /// The project of the cluster a window is *showing*.
+    ///
+    /// What a terminal opens in, and what the OS window title names. A terminal
+    /// belongs to the window's panel rather than to any cluster (see the module
+    /// doc), so "the project" for one is a question about the window, answered
+    /// at the moment it is asked — a panel terminal outlives the cluster it was
+    /// opened beside, and this deliberately does not follow it afterwards.
+    pub fn active_cluster_project(&self, label: &str) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        let w = guard.windows.iter().find(|w| w.label == label)?;
+        let active = w.active_cluster_id.as_deref()?;
+        w.clusters
+            .iter()
+            .find(|c| c.id == active)
+            .and_then(|c| c.project.clone())
+    }
+
+    /// Every window, with the project of whatever cluster it is showing. What
+    /// `project::retitle` walks — one read of the lock rather than one per
+    /// window, and no `ShellSnapshot` clone for a pair of strings.
+    pub fn window_projects(&self) -> Vec<(String, Option<String>)> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        guard
+            .windows
+            .iter()
+            .map(|w| {
+                let project = w
+                    .active_cluster_id
+                    .as_deref()
+                    .and_then(|id| w.clusters.iter().find(|c| c.id == id))
+                    .and_then(|c| c.project.clone());
+                (w.label.clone(), project)
+            })
+            .collect()
+    }
+
+    /// The first cluster of the main window, for the one-time migration in
+    /// `lib.rs` that moves the old global open project onto a cluster.
+    pub fn first_cluster_id(&self) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        guard
+            .windows
+            .iter()
+            .find(|w| w.label == "main")
+            .or_else(|| guard.windows.first())
+            .and_then(|w| w.clusters.first())
+            .map(|c| c.id.clone())
+    }
+
+    /// Whether any cluster anywhere is pointed at a project. The migration's
+    /// guard — see `lib.rs`.
+    pub fn any_cluster_has_a_project(&self) -> bool {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        guard
+            .windows
+            .iter()
+            .flat_map(|w| w.clusters.iter())
+            .any(|c| c.project.is_some())
+    }
+
     pub fn rename_cluster(&self, app: &AppHandle, cluster_id: &str, name: &str) {
         self.mutate(app, |s| {
             for w in s.windows.iter_mut() {
@@ -528,6 +697,18 @@ impl ShellState {
     /// closed a cluster it was never part of. Only a terminal that was dragged
     /// into this cluster's layout goes with it — it is on screen inside the
     /// thing being closed, exactly like an app instance is.
+    ///
+    /// **The last cluster in a window may be closed.** There is no guard here
+    /// and its absence is deliberate: a window that answered "no, it is the only
+    /// one" would be refusing the one thing the × means. What it is left with is
+    /// an empty app area and a working terminal panel, which is a state someone
+    /// can act from — `NoClustersState` says so and names the way out.
+    ///
+    /// `move_cluster_pure` reaches the same window state by the other route, and
+    /// deliberately: it used to refuse to move the last cluster out, on the
+    /// grounds that emptying the source was a side effect nobody asked for, and
+    /// that refusal is gone. The two now agree, which is one fewer rule to hold
+    /// and one fewer gesture the interface has to hide.
     pub fn close_cluster(&self, app: &AppHandle, cluster_id: &str) -> (Vec<String>, Vec<String>) {
         let mut instances = Vec::new();
         let mut terminals = Vec::new();
@@ -573,13 +754,156 @@ impl ShellState {
         moved
     }
 
+    /// Where a surface opened "here" goes: the active cluster, and a pane in it.
+    ///
+    /// `pane_id` is the caller's preference and is honoured only if that pane is
+    /// actually in this cluster — a stale id from a layout that has since
+    /// changed falls back to the first pane rather than to nowhere, which is the
+    /// same forgiveness `open_instance` shows a `None`.
+    ///
+    /// `None` means the window has no cluster at all, which is the one case with
+    /// no sensible answer: there is no tree, so there is no pane.
+    ///
+    /// Exists because a terminal opened into the layout needs both halves of the
+    /// address before it has a session to move — `move_instance` names a cluster
+    /// *and* a pane, and `commands::open_terminal_in_pane` has only a window
+    /// label to start from.
+    pub fn active_pane(&self, label: &str, pane_id: Option<&str>) -> Option<(String, String)> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        let w = guard.windows.iter().find(|w| w.label == label)?;
+        let active = w.active_cluster_id.as_deref()?;
+        let cluster = w.clusters.iter().find(|c| c.id == active)?;
+
+        let pane = pane_id
+            .filter(|id| cluster.tree.pane_of_id(id))
+            .unwrap_or_else(|| cluster.tree.first_pane_id())
+            .to_string();
+
+        Some((cluster.id.clone(), pane))
+    }
+
+    // --- presets -----------------------------------------------------------
+    //
+    // Two halves of one feature, and both of them are deliberately thin: the
+    // model, the merge and the placement rule are all in `crate::presets`, as
+    // pure functions over plain data that are tested as such. What is here is
+    // the part that cannot be — reading the active cluster under the lock, and
+    // minting ids from `Counters`. `layout` and this module already split that
+    // way; see `layout`'s header.
+
+    /// The active cluster's arrangement, in the form a preset stores it.
+    ///
+    /// `None` when the window has no cluster: there is no arrangement to save,
+    /// which is a different answer from "an empty one".
+    ///
+    /// The tab-to-slot resolution happens here rather than in `presets` because
+    /// this is where it can be answered. A tab is an id and nothing else; what
+    /// it *is* lives in the flat `instances` and `terminals` lists, which
+    /// `presets` has deliberately never heard of.
+    pub fn capture_preset(&self, label: &str) -> Option<presets::PresetNode> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        let w = guard.windows.iter().find(|w| w.label == label)?;
+        let active = w.active_cluster_id.as_deref()?;
+        let cluster = w.clusters.iter().find(|c| c.id == active)?;
+
+        Some(presets::capture(&cluster.tree, &|id: &str| {
+            slot_of_tab(&guard, id)
+        }))
+    }
+
+    /// Rearrange the active cluster into `root`, and say what is still missing.
+    ///
+    /// Returns the cluster it acted on and the slots it had nothing to fill, or
+    /// `None` when the window has no cluster to act on. **Nothing is closed** —
+    /// see `presets::plan`, which is where that rule is written down and tested.
+    ///
+    /// The gaps come back rather than being filled here, and that is not an
+    /// oversight: filling one means minting an instance *or spawning a pty*, and
+    /// a pty lives in `PtySessions`, which this module knows nothing about and
+    /// must not start knowing about — a `ShellState` that could spawn processes
+    /// is a `ShellState` that cannot be tested against a bare snapshot.
+    /// `commands::apply_preset` fills them through the same public doors
+    /// everything else opens surfaces through.
+    pub fn apply_preset(
+        &self,
+        app: &AppHandle,
+        label: &str,
+        root: &presets::PresetNode,
+    ) -> Option<(String, Vec<presets::Gap>)> {
+        // Minted before the lock, exactly as `split_with_instance` does it, and
+        // exactly as many as the shape needs. Ids handed out for an apply that
+        // then finds no cluster are simply skipped, which costs a gap in the
+        // numbering and nothing else — a counter that went backwards on a
+        // refusal would be the far worse trade.
+        let mut ids = {
+            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let panes = (0..root.pane_count())
+                .map(|_| {
+                    counters.panes += 1;
+                    format!("pane-{}", counters.panes)
+                })
+                .collect();
+            let splits = (0..root.split_count())
+                .map(|_| {
+                    counters.splits += 1;
+                    format!("split-{}", counters.splits)
+                })
+                .collect();
+            presets::Ids::new(panes, splits)
+        };
+
+        let mut applied = None;
+        self.mutate(app, |s| {
+            // Destructured so the tree can be read against the two flat lists
+            // without one borrow of `s` shutting out the other — the same split
+            // `reseat_active_terminals` takes, for the same reason.
+            let ShellSnapshot {
+                windows,
+                instances,
+                terminals,
+                ..
+            } = s;
+
+            let Some(w) = windows.iter_mut().find(|w| w.label == label) else {
+                return;
+            };
+            let Some(cluster) = w.active_cluster_mut() else {
+                return;
+            };
+
+            let existing: Vec<presets::Existing> = cluster
+                .tree
+                .tabs()
+                .iter()
+                .map(|id| presets::Existing {
+                    instance_id: (*id).to_string(),
+                    fills: resolve_slot(instances, terminals, id),
+                })
+                .collect();
+
+            let (tree, gaps) = presets::plan(root, &existing, &mut ids);
+            cluster.tree = tree;
+            applied = Some((cluster.id.clone(), gaps));
+        });
+        applied
+    }
+
     // --- instances ---------------------------------------------------------
 
     /// Mint an instance and put it on screen.
     ///
-    /// `pane_id` names where; `None` means the active cluster's first pane,
-    /// which is what the Apps menu wants — the caller asking for a new Files
-    /// has no opinion about which pane receives it.
+    /// `pane_id` names which pane the open is *relative to*; `None` falls back
+    /// to the active cluster's first pane. It used to mean "and put it in that
+    /// pane", which is no longer what an open does — see `dir`.
+    ///
+    /// `dir` is the axis the frontend measured the target pane along, and
+    /// passing one asks for the surface to get a **pane of its own** beside it
+    /// rather than a tab inside it. `PaneNode::open_into` owns that rule, the
+    /// two cases that refuse it, and the ceiling; nothing about it is decided
+    /// here. `None` is the old behaviour, and is what the callers with no pane
+    /// on screen to measure pass: seeding a window, seeding a cluster, and
+    /// filling a preset's gap — a preset builds its own tree and must not have
+    /// this splitting underneath it.
     pub fn open_instance(
         &self,
         app: &AppHandle,
@@ -588,13 +912,33 @@ impl ShellState {
         kind: SurfaceKind,
         title: &str,
         pane_id: Option<&str>,
+        dir: Option<SplitDir>,
     ) -> Option<String> {
+        // Both taken before `mutate` takes the state lock, which is the order
+        // every other minting site here uses and is not merely convention:
+        // `counters` is a second lock, and taking it *inside* the closure would
+        // invert the order these two are acquired in everywhere else — the
+        // classic way to write a deadlock that only shows up under two windows
+        // opening at once.
         let instance_id = {
             let mut counters = self.counters.write().expect("counter lock poisoned");
             let ordinal = counters.instances.entry(app_id.to_string()).or_insert(0);
             *ordinal += 1;
             format!("{app_id}-{ordinal}")
         };
+        // Only when a split is actually being asked for. `open_into` may still
+        // decline it — an empty pane, or the ceiling — and the pair is then
+        // simply unused, which costs a gap in the numbering and nothing else.
+        // Minting unconditionally would burn two ids on every Home seed.
+        let split_ids = dir.map(|_| {
+            let mut counters = self.counters.write().expect("counter lock poisoned");
+            counters.splits += 1;
+            counters.panes += 1;
+            (
+                format!("split-{}", counters.splits),
+                format!("pane-{}", counters.panes),
+            )
+        });
 
         let mut opened = None;
         self.mutate(app, |s| {
@@ -609,7 +953,14 @@ impl ShellState {
                 .map(str::to_string)
                 .unwrap_or_else(|| cluster.tree.first_pane_id().to_string());
 
-            if !cluster.tree.insert_tab(&target, &instance_id, None) {
+            let split = match (dir, &split_ids) {
+                (Some(dir), Some((split_id, new_pane_id))) => {
+                    Some((dir, split_id.as_str(), new_pane_id.as_str()))
+                }
+                _ => None,
+            };
+
+            if !cluster.tree.open_into(&target, &instance_id, None, split) {
                 return;
             }
 
@@ -720,6 +1071,19 @@ impl ShellState {
     /// Split a pane and put an instance in the new half — the drop-on-an-edge
     /// gesture. The instance is removed from wherever it was first, so this
     /// works both for a fresh surface and for a tab dragged out of a neighbour.
+    ///
+    /// **Nothing is touched unless `pane_id` is actually somewhere.** The removal
+    /// used to run unconditionally, ahead of a search that could come up empty,
+    /// which made a drop naming a pane that no longer exists *delete the tab that
+    /// was dropped*: it left every tree, no split took it, and the broadcast went
+    /// out with the surface belonging to nothing. That was reachable — the drop
+    /// zone registry was handing out stale pane ids until recently (see
+    /// `dropZones.ts`) — and a gesture whose failure mode is losing the thing you
+    /// dragged has no business being ordered this way even when nothing is
+    /// handing it bad input.
+    ///
+    /// Returns whether the split happened. The caller surfaces `false`; a drop
+    /// that silently does nothing is the hardest kind of failure to report.
     pub fn split_with_instance(
         &self,
         app: &AppHandle,
@@ -740,6 +1104,19 @@ impl ShellState {
 
         let mut split = false;
         self.mutate(app, |s| {
+            // Look before leaping. A pane nobody holds means the drop named
+            // somewhere that is not on screen, and the right answer to that is to
+            // change nothing at all — see the doc comment for what the other
+            // order cost.
+            let known = s
+                .windows
+                .iter()
+                .flat_map(|w| w.clusters.iter())
+                .any(|c| c.tree.holds_pane(pane_id));
+            if !known {
+                return;
+            }
+
             for w in s.windows.iter_mut() {
                 for c in w.clusters.iter_mut() {
                     c.tree.remove_tab(instance_id);
@@ -809,6 +1186,22 @@ impl ShellState {
                 })
                 .unwrap_or_else(|| "Workspace".to_string());
 
+            // The project the surface was already working in, read *before* the
+            // tab is pulled out of the tree that answers this.
+            //
+            // Inherited here where `add_cluster` deliberately does not inherit,
+            // and the two are not inconsistent: adding a cluster starts a new
+            // piece of work, while detaching *moves an existing surface* that is
+            // already rooted somewhere. A Files dragged onto a second monitor
+            // that came back rooted at nothing would read as the drag having
+            // broken it.
+            let project = s
+                .windows
+                .iter()
+                .flat_map(|w| w.clusters.iter())
+                .find(|c| c.tree.tabs().iter().any(|t| *t == instance_id))
+                .and_then(|c| c.project.clone());
+
             for w in s.windows.iter_mut() {
                 for c in w.clusters.iter_mut() {
                     c.tree.remove_tab(instance_id);
@@ -822,6 +1215,7 @@ impl ShellState {
                 id: cluster_id.clone(),
                 name,
                 tree,
+                project,
                 worktree: None,
             };
 
@@ -886,6 +1280,82 @@ impl ShellState {
             });
             if let Some(w) = s.windows.iter_mut().find(|w| w.label == label) {
                 w.active_terminal = Some(id.to_string());
+            }
+        });
+    }
+
+    /// Publish a session **straight into a cluster's tree**, never into a panel.
+    ///
+    /// The counterpart of [`add_terminal`](Self::add_terminal) for the Apps
+    /// menu's Terminal row and for a preset's terminal slot, and it is one
+    /// mutation rather than "add it, then move it" for a reason that is visible
+    /// on screen. `add_terminal` selects what it just opened, because the panel's
+    /// `+` should show you the terminal you asked for. Doing that and then moving
+    /// the session into a pane broadcasts twice: the panel jumps to a terminal
+    /// that is about to leave it, and `reseat_active_terminals` then repairs the
+    /// selection to *some* panel terminal, which is not necessarily the one you
+    /// were reading. Opening a terminal in a pane would change which terminal the
+    /// panel is showing — a side effect nobody asked for, and a visible flicker
+    /// on the way to it.
+    ///
+    /// So there is no intermediate state. The session is published with its id
+    /// already in the tree, `reseat_active_terminals` sees the finished picture,
+    /// finds the window's existing panel selection still valid, and leaves it
+    /// exactly where it was.
+    ///
+    /// A `pane_id` that no longer names a pane leaves the session in the panel
+    /// instead of nowhere. That is a real shell with a tab you can find, which is
+    /// the failure worth having — the alternative is a live process with nothing
+    /// on screen for it.
+    ///
+    /// `dir` asks for a pane of its own rather than a tab, on exactly the terms
+    /// `open_instance` above does and through the same `PaneNode::open_into`.
+    /// The Apps menu lists Terminal beside the apps, so a row in that menu that
+    /// split and a row that stacked would be two behaviours in one list. A
+    /// preset's terminal slot passes `None` with an `index`, because a preset
+    /// has already decided the shape.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_terminal_in_pane(
+        &self,
+        app: &AppHandle,
+        id: &str,
+        title: &str,
+        label: &str,
+        cluster_id: &str,
+        pane_id: &str,
+        index: Option<usize>,
+        dir: Option<SplitDir>,
+    ) {
+        // Before the lock, for the reason `open_instance` writes out in full.
+        let split_ids = dir.map(|_| {
+            let mut counters = self.counters.write().expect("counter lock poisoned");
+            counters.splits += 1;
+            counters.panes += 1;
+            (
+                format!("split-{}", counters.splits),
+                format!("pane-{}", counters.panes),
+            )
+        });
+
+        self.mutate(app, |s| {
+            s.terminals.push(TerminalSession {
+                id: id.to_string(),
+                title: title.to_string(),
+                window_label: label.to_string(),
+                agent_finished: false,
+                group_id: None,
+            });
+            let split = match (dir, &split_ids) {
+                (Some(dir), Some((split_id, new_pane_id))) => {
+                    Some((dir, split_id.as_str(), new_pane_id.as_str()))
+                }
+                _ => None,
+            };
+            for w in s.windows.iter_mut() {
+                if let Some(c) = w.cluster_mut(cluster_id) {
+                    c.tree.open_into(pane_id, id, index, split);
+                    return;
+                }
             }
         });
     }
@@ -998,6 +1468,62 @@ impl ShellState {
     }
 }
 
+/// Which cluster holds `instance_id`. The whole of `ShellState::
+/// cluster_of_instance` minus the lock, so it can be tested against a bare
+/// `ShellSnapshot` — the same split `move_cluster_pure` has, for the same
+/// reason.
+///
+/// Searches every window, not just the calling one. A surface's cluster is a
+/// fact about the tree it is in, and an app frame asking a question has no idea
+/// which OS window it ended up in — nor should it need one.
+fn cluster_of_instance_pure(s: &ShellSnapshot, instance_id: &str) -> Option<String> {
+    s.windows
+        .iter()
+        .flat_map(|w| w.clusters.iter())
+        .find(|c| c.tree.tabs().iter().any(|t| *t == instance_id))
+        .map(|c| c.id.clone())
+}
+
+/// What a tab id is, expressed as the slot a preset would use for it.
+///
+/// The one place that answer is derived, which is what keeps `capture_preset`
+/// and `apply_preset` from disagreeing about what a tab is — a disagreement that
+/// would show up as a preset saving a terminal and then refusing to recognise
+/// the terminal it had just saved.
+///
+/// `None` for an id that resolves to neither list. That is not a state anything
+/// should be able to produce (an instance is in whichever tree holds its id, and
+/// the flat lists are what the ids resolve against), and it is deliberately not
+/// papered over: `presets::Existing` treats it as filling nothing, so the tab
+/// survives as a leftover instead of quietly satisfying a terminal slot.
+///
+/// A *tool* instance answers `App { app_id }` with a tool's id in it, which no
+/// preset can ever contain — `PresetNode::normalized` strips slots naming
+/// anything outside `apps::REGISTRY`. So a tool surface is never claimed and
+/// always lands in the last pane, which is the right answer for a surface this
+/// build cannot mount anyway.
+fn resolve_slot(
+    instances: &[SurfaceInstance],
+    terminals: &[TerminalSession],
+    id: &str,
+) -> Option<presets::PresetSlot> {
+    if let Some(instance) = instances.iter().find(|i| i.id == id) {
+        return Some(presets::PresetSlot::App {
+            app_id: instance.app_id.clone(),
+        });
+    }
+    terminals
+        .iter()
+        .any(|t| t.id == id)
+        .then_some(presets::PresetSlot::Terminal)
+}
+
+/// [`resolve_slot`] against a whole snapshot — what `capture_preset` hands to
+/// `presets::capture`, which takes a resolver rather than the lists themselves.
+fn slot_of_tab(snapshot: &ShellSnapshot, id: &str) -> Option<presets::PresetSlot> {
+    resolve_slot(&snapshot.instances, &snapshot.terminals, id)
+}
+
 /// Split the tabs a closing cluster held into `(terminals, instances)`.
 ///
 /// A tree holds both under one kind of id, and the caller disposes of them
@@ -1035,20 +1561,28 @@ fn take_cluster(w: &mut WindowPlacement, cluster_id: &str) -> Option<Cluster> {
 /// does not have one. The whole of `ShellState::move_cluster`, minus the lock
 /// and the broadcast, so that it can be tested against a bare `ShellSnapshot`.
 ///
-/// Two refusals, both returning `false` with nothing changed:
+/// One refusal, returning `false` with nothing changed: **a cluster nobody
+/// holds**, which has already been closed or never existed.
 ///
-/// - **A cluster nobody holds.** It has already been closed, or never existed.
-/// - **The last cluster in its window.** A window must always have at least one:
-///   with none it has no tree, no panel and no way to make either, so it would
-///   sit on screen as a frame with nothing in it and nothing to click. This is
-///   the same invariant that hides the close × on a lone chip. The refusal is a
-///   refusal on purpose rather than a move that quietly seeds a replacement —
-///   that would turn "move this cluster" into "move it and make another", which
-///   is not what the gesture said.
+/// **The last cluster in a window may be moved out**, and that is a change. It
+/// used to be the second refusal, on the reasoning that emptying the source
+/// window was a side effect of a gesture that had only named a destination. That
+/// reasoning does not survive contact with the machine this feature exists for.
+/// A window with no clusters is a legal state — `close_cluster` makes one,
+/// `NoClustersState` draws it, and the terminal panel beside it is the window's
+/// own and keeps working — so there was no invariant left to defend, only a
+/// preference about what a gesture should imply. Against that preference: the
+/// whole point of dragging a cluster onto another monitor is that the cluster
+/// should be *there* and not *here*, and someone with one cluster open wants
+/// that at least as much as someone with four. Refusing them meant the interface
+/// had to hide the drag handle to avoid offering a gesture it would not honour,
+/// so the feature simply vanished from the window where it was most obviously
+/// wanted, with nothing on screen to say why. An empty source window is one +
+/// away from useful; a gesture that is not offered is not discoverable at all.
 ///
-/// Moving a cluster to the window it is already in is neither of those: nothing
-/// happens and `true` is returned, because the cluster *is* where the caller
-/// asked for it to be.
+/// Moving a cluster to the window it is already in is not a refusal either:
+/// nothing happens and `true` is returned, because the cluster *is* where the
+/// caller asked for it to be.
 ///
 /// What travels with it: the tree, and therefore every tab in the tree. Terminals
 /// among those tabs have their `window_label` rewritten, because that field says
@@ -1068,9 +1602,9 @@ fn move_cluster_pure(s: &mut ShellSnapshot, cluster_id: &str, to_label: &str) ->
     if source.label == to_label {
         return true;
     }
-    if source.clusters.len() <= 1 {
-        return false;
-    }
+    // No count check. `take_cluster` already leaves a window that has just lost
+    // its only cluster with `active_cluster_id: None`, which is the same state
+    // `close_cluster` leaves and the state `NoClustersState` draws.
     let Some(cluster) = take_cluster(source, cluster_id) else {
         return false;
     };
@@ -1425,6 +1959,7 @@ mod tests {
                     id: "cluster-3".to_string(),
                     name: "w".to_string(),
                     tree,
+                    project: None,
                     worktree: None,
                 }],
                 active_cluster_id: Some("cluster-3".to_string()),
@@ -1526,6 +2061,7 @@ mod tests {
                 id: cluster.to_string(),
                 name: cluster.to_string(),
                 tree,
+                project: None,
                 worktree: None,
             }],
             active_cluster_id: Some(cluster.to_string()),
@@ -1556,6 +2092,7 @@ mod tests {
             id: "cluster-2".to_string(),
             name: "cluster-2".to_string(),
             tree: PaneNode::leaf("pane-2"),
+            project: None,
             worktree: None,
         });
 
@@ -1582,6 +2119,72 @@ mod tests {
             s.windows[0].active_terminal.as_deref(),
             Some("term-2"),
             "the panel falls back to one it is actually drawing"
+        );
+    }
+
+    /// What `add_terminal_in_pane` produces: a session that is in the tree from
+    /// the moment it exists, and a panel selection nobody touched.
+    ///
+    /// The property is that opening a terminal *in a pane* does not change which
+    /// terminal the **panel** is showing. Built here as a finished snapshot
+    /// rather than by calling the method, which needs an `AppHandle` — what is
+    /// worth pinning is that `reseat_active_terminals` sees nothing to repair,
+    /// because that is the whole reason the method publishes in one step instead
+    /// of adding to the panel and moving out of it a broadcast later.
+    #[test]
+    fn a_terminal_born_in_a_pane_leaves_the_panel_selection_alone() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &["term-3"])],
+            vec![
+                session("term-1", None),
+                session("term-2", None),
+                session("term-3", None),
+            ],
+        );
+        s.windows[0].active_terminal = Some("term-2".to_string());
+
+        reseat_active_terminals(&mut s);
+
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-2"),
+            "the panel is still showing what it was showing, not the new terminal \
+             and not whichever panel terminal happens to be first"
+        );
+    }
+
+    #[test]
+    fn the_active_pane_falls_back_rather_than_addressing_nothing() {
+        let shell = ShellState::default();
+        shell.restore(state(vec![window("main", "cluster-1", &[])], Vec::new()));
+
+        let first = Some(("cluster-1".to_string(), "pane-1".to_string()));
+        assert_eq!(shell.active_pane("main", None), first, "no opinion means the first pane");
+        assert_eq!(
+            shell.active_pane("main", Some("pane-99")),
+            first,
+            "a pane id from a layout that has since changed is not addressed"
+        );
+        assert_eq!(
+            shell.active_pane("main", Some("pane-1")),
+            first,
+            "a pane that is really there is honoured"
+        );
+        assert_eq!(shell.active_pane("nonesuch", None), None, "no window, no pane");
+    }
+
+    #[test]
+    fn a_window_with_no_clusters_has_no_pane_to_open_into() {
+        let shell = ShellState::default();
+        let mut snapshot = state(vec![window("main", "cluster-1", &[])], Vec::new());
+        snapshot.windows[0].clusters.clear();
+        snapshot.windows[0].active_cluster_id = None;
+        shell.restore(snapshot);
+
+        assert_eq!(
+            shell.active_pane("main", None),
+            None,
+            "there is no tree, so there is no pane — the menu disables the row for this"
         );
     }
 
@@ -1654,6 +2257,7 @@ mod tests {
             id: "cluster-2".to_string(),
             name: "auth".to_string(),
             tree,
+            project: None,
             worktree: None,
         });
         state(vec![placement], Vec::new())
@@ -1665,16 +2269,26 @@ mod tests {
         ok
     }
 
-    /// The invariant that makes this a refusal rather than a move: a window with
-    /// no cluster has no tree, no panel, and no way to make either.
+    /// This was a refusal, and the refusal was the bug. A window holding one
+    /// cluster is the commonest window there is, and it is exactly the one
+    /// somebody wants to pull onto a second monitor — refusing it meant the
+    /// gesture was unavailable in the case it was built for.
     #[test]
-    fn detaching_the_only_cluster_in_a_window_is_refused() {
+    fn detaching_the_only_cluster_in_a_window_empties_that_window() {
         let mut s = state(vec![window("main", "cluster-1", &["files-1"])], Vec::new());
 
-        assert!(!moved(&mut s, "cluster-1", "win-1"), "refused");
-        assert_eq!(s.windows.len(), 1, "and no window was made for it");
-        assert_eq!(s.windows[0].clusters.len(), 1, "it is still where it was");
-        assert_eq!(s.windows[0].active_cluster_id.as_deref(), Some("cluster-1"));
+        assert!(moved(&mut s, "cluster-1", "win-1"), "allowed");
+        assert_eq!(s.windows.len(), 2, "and a window entry was made for it");
+        assert_eq!(s.windows[1].label, "win-1");
+        assert_eq!(s.windows[1].clusters.len(), 1, "the cluster arrived");
+        assert!(
+            s.windows[0].clusters.is_empty(),
+            "and the window it left is empty, which NoClustersState draws"
+        );
+        assert_eq!(
+            s.windows[0].active_cluster_id, None,
+            "with nothing selected, rather than naming a cluster that has gone"
+        );
     }
 
     #[test]
@@ -1760,6 +2374,126 @@ mod tests {
         assert_eq!(s.windows.len(), 1);
         assert_eq!(s.windows[0].clusters.len(), 2, "and it was not moved to the end");
         assert_eq!(s.windows[0].clusters[1].id, "cluster-2");
+    }
+
+    // --- a cluster owns its project -----------------------------------------
+
+    /// The lookup every app call now depends on: an `invoke` arrives naming an
+    /// instance, and the project it is answered against is whichever cluster's
+    /// tree holds that instance. Getting this wrong roots a Files at the wrong
+    /// project rather than failing, which is the reason it is tested at all.
+    #[test]
+    fn an_instance_resolves_to_the_cluster_whose_tree_holds_it() {
+        let s = two_clusters(&["files-2"]);
+
+        assert_eq!(
+            cluster_of_instance_pure(&s, "files-2").as_deref(),
+            Some("cluster-2"),
+            "the second cluster's tree is the one holding it"
+        );
+        assert_eq!(
+            cluster_of_instance_pure(&s, "files-99"), None,
+            "an instance nobody holds resolves to no cluster rather than to the first one"
+        );
+    }
+
+    /// Two clusters, two projects, at once. This is the whole feature stated as
+    /// a property: nothing about setting one cluster's project can reach
+    /// another's, because there is no shared field left for it to reach.
+    #[test]
+    fn two_clusters_hold_two_different_projects() {
+        let mut s = two_clusters(&[]);
+        s.windows[0].clusters[0].project = Some(r"C:\code\aurora".to_string());
+        s.windows[0].clusters[1].project = Some(r"C:\code\borealis".to_string());
+
+        assert_eq!(
+            s.windows[0].clusters[0].project.as_deref(),
+            Some(r"C:\code\aurora")
+        );
+        assert_eq!(
+            s.windows[0].clusters[1].project.as_deref(),
+            Some(r"C:\code\borealis")
+        );
+    }
+
+    /// A cluster's project travels with it into another window, which is what
+    /// makes "a project per monitor" the same act as "a cluster per monitor".
+    #[test]
+    fn a_detached_cluster_takes_its_project_with_it() {
+        let mut s = two_clusters(&["files-1"]);
+        s.windows[0].clusters[1].project = Some(r"C:\code\auth".to_string());
+
+        assert!(moved(&mut s, "cluster-2", "win-1"));
+
+        assert_eq!(
+            s.windows[1].clusters[0].project.as_deref(),
+            Some(r"C:\code\auth"),
+            "the cluster is the project's owner, so moving one moves the other"
+        );
+    }
+
+    /// Braden has a `layout.json` on disk right now, written before a cluster
+    /// had a project. A missing key must read as "no project yet" — the
+    /// migration in `lib.rs` then seeds it — and never as a parse failure,
+    /// which would silently reset the whole saved session.
+    #[test]
+    fn a_cluster_stored_without_a_project_still_loads() {
+        let json = r#"{
+            "id": "cluster-1",
+            "name": "orchestrator",
+            "tree": { "kind": "leaf", "id": "pane-1", "tabs": [], "activeTab": null },
+            "worktree": null
+        }"#;
+
+        let restored: Cluster = serde_json::from_str(json).expect("an older cluster still reads");
+        assert_eq!(restored.project, None);
+        assert_eq!(restored.id, "cluster-1");
+    }
+
+    /// The counterpart: a project written today comes back tomorrow. A field
+    /// that serializes and does not deserialize would be a project that resets
+    /// on every launch, which is the failure the whole per-cluster model exists
+    /// to make impossible.
+    #[test]
+    fn a_clusters_project_survives_a_json_round_trip() {
+        let mut s = two_clusters(&[]);
+        s.windows[0].clusters[0].project = Some(r"C:\code\aurora".to_string());
+
+        let json = serde_json::to_string(&s).expect("a snapshot serializes");
+        let back: ShellSnapshot = serde_json::from_str(&json).expect("and reads back");
+
+        assert_eq!(
+            back.windows[0].clusters[0].project.as_deref(),
+            Some(r"C:\code\aurora")
+        );
+        assert_eq!(back.windows[0].clusters[1].project, None);
+    }
+
+    /// What made the old refusal defensible was the fear that an emptied window
+    /// would be a dead one. It is not: the panel is the *window's*, so the shells
+    /// beside the empty app area are still there, still in this window, still
+    /// selected. That is the whole reason closing the last cluster was allowed,
+    /// and it is just as true when the last cluster leaves by being dragged.
+    #[test]
+    fn a_window_emptied_by_a_drag_keeps_its_panel_terminals() {
+        let mut s = state(
+            vec![window("main", "cluster-1", &["files-1"])],
+            vec![session("term-1", None)],
+        );
+        s.windows[0].active_terminal = Some("term-1".to_string());
+
+        assert!(moved(&mut s, "cluster-1", "win-1"));
+
+        assert!(s.windows[0].clusters.is_empty(), "the cluster left");
+        assert_eq!(
+            s.terminals[0].window_label, "main",
+            "the panel's shell did not go with it — it was never in the tree"
+        );
+        assert_eq!(
+            s.windows[0].active_terminal.as_deref(),
+            Some("term-1"),
+            "and the panel is still showing it"
+        );
     }
 
     /// A `layout.json` written before terminals left the clusters has a

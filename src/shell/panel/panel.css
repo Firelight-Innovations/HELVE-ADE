@@ -39,12 +39,25 @@
    honestly list it; the panel is its own region and names what is in it.
 
    Each pinned group is absolutely positioned over the strip — not laid out
-   beside it — so the strip's own box, and its scrollbar, run the full width
-   of the row and pass *under* both pinned groups rather than stopping short
-   of them. They are two separate elements rather than one shared wrapper on
-   a standing instruction: the worktree control and the collapse control
-   must not share a parent. Positioned edge-to-edge with no gap between
-   them, they still read as one contiguous strip. */
+   beside it — so the strip's own box runs the full width of the row and
+   passes *under* both pinned groups rather than stopping short of them. They
+   are two separate elements rather than one shared wrapper on a standing
+   instruction: the worktree control and the collapse control must not share
+   a parent. Positioned edge-to-edge with no gap between them, they still
+   read as one contiguous strip.
+
+   `OverlayScrollbar`'s thumb (see SecondaryPanel.tsx) is a third child of
+   `.panel__tabs`, mounted here rather than inside the strip it tracks
+   because a child of the element that actually scrolls would scroll away
+   with it — this box is `.panel__tabs-strip`'s own size exactly (the strip
+   is `width: 100%; height: 100%` of it, with no padding of its own), so
+   anchoring the thumb here draws the identical rectangle. Rendered *before*
+   the two pinned groups below, on purpose: the same "runs the full width and
+   passes under" the strip's tabs get is what the thumb gets too, rather than
+   being clipped short of the pinned groups' edge, and their own opaque
+   backgrounds are what keeps that from looking broken — painted after it in
+   source order, they cover whatever the thumb draws underneath them the same
+   way they already cover a scrolled tab. */
 
 .panel__tabs {
   flex: none;
@@ -70,34 +83,37 @@
      rather than settling permanently half-covered by it. */
   padding-right: var(--panel-endgroup-w);
 
-  /* A thin, dark-UI scrollbar sized entirely through the WebKit
-     pseudo-elements below. This app only ever renders in WebView2 (Windows)
-     or WebKit (macOS), never Firefox, so there's no standards-track fallback
-     to carry — and there can't be one anyway: Chromium 121+ (and this app's
-     WebView2) makes the standard `scrollbar-width` win over
-     `::-webkit-scrollbar` sizing whenever both are present, ignoring the
-     pseudo-element's `height` entirely and substituting the UA's own fixed
-     "thin" metric instead. Setting `height` here only takes effect because
-     `scrollbar-width`/`scrollbar-color` are absent. Only appears at all when
-     the strip actually overflows; that part is native `overflow-x: auto`
-     behaviour, not anything set here. */
+  /* No native scrollbar at all — `OverlayScrollbar` (src/shell/scrollbar)
+     draws a floating one instead, over the strip rather than reserving a
+     track at its bottom edge. Two rules for the two engines this app
+     renders in, both aimed at the same "hidden" outcome, which is why it's
+     safe to set both together — unlike the old custom-sized thumb this
+     replaced, there's no property here for one to override into a wrong
+     result, only into a redundant one.
+
+     `scrollbar-width: none` is the one that actually hides it in this app's
+     WebView2/Chromium 121+: this strip used to size a *visible* thumb
+     entirely through `::-webkit-scrollbar` pseudo-elements, deliberately
+     leaving `scrollbar-width` unset, because Chromium 121+ makes
+     `scrollbar-width` win over that sizing outright whenever both are
+     present. `.switcher__tabs` set `scrollbar-width: thin` anyway and got a
+     scrollbar in the UA's own fixed metric instead of the sizing it wrote —
+     the inconsistency between the two bars that prompted this component.
+     Now that neither bar draws a native thumb at all, that override is the
+     mechanism doing the hiding rather than something to route around: "none"
+     is exactly the value it needs to win with.
+
+     `::-webkit-scrollbar { display: none }` is the fallback for WebKit/
+     macOS, whose shipped versions can predate `scrollbar-width` support
+     entirely — the older, universally-supported route, kept rather than
+     relied on alone. Only ever relevant when the strip actually overflows;
+     that part is native `overflow-x: auto` behaviour, not anything set
+     here. */
+  scrollbar-width: none;
 }
 
 .panel__tabs-strip::-webkit-scrollbar {
-  height: 5px;
-}
-
-.panel__tabs-strip::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.panel__tabs-strip::-webkit-scrollbar-thumb {
-  background: var(--line-2);
-  border-radius: 3px;
-}
-
-.panel__tabs-strip::-webkit-scrollbar-thumb:hover {
-  background: var(--line-3);
+  display: none;
 }
 
 .panel__tab {

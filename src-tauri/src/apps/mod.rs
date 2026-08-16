@@ -33,10 +33,13 @@ mod files;
 mod home;
 mod trash;
 
+use crate::project;
+use crate::shell_state::ShellState;
 use helve_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::AppHandle;
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
 
 /// One app, as the switcher bar needs to see it.
 ///
@@ -54,12 +57,87 @@ pub struct AppInfo {
     pub url: String,
 }
 
+/// Where a call is happening: which cluster asked, and what that cluster is
+/// working on.
+///
+/// The thing an app's Rust half could not previously know. `app_call` used to
+/// carry an *app* id and nothing else, so Files could ask "what is the open
+/// project" and get one answer for the whole process — which is exactly the
+/// question that stops having a single answer the moment a project belongs to a
+/// cluster. Two Files in two clusters must root at two different folders, and
+/// nothing in a message body could tell them apart.
+///
+/// A struct rather than a bare `Option<PathBuf>` because it is going to grow:
+/// `Cluster::worktree` is carried in the layout already and joins this as
+/// `worktree: Option<WorktreeRef>` when Braden's git work lands. Adding a field
+/// then touches this declaration and [`resolve`](Self::resolve) and nothing
+/// else — where widening a positional parameter would touch every `Dispatch` in
+/// the registry and every call site inside them.
+///
+/// Both fields are `Option`, and both `None` is an ordinary state rather than a
+/// failure: a call can arrive with no instance id (the shell's own menu
+/// actions), from an instance whose tab has just closed, or from a cluster
+/// nobody has pointed at a project yet. Each app decides what it can still do —
+/// Files falls back to the stack root, Home draws the pick-a-project state.
+#[derive(Debug, Clone, Default)]
+pub struct CallContext {
+    /// The cluster the calling surface is in. What Home *writes* a project to.
+    pub cluster_id: Option<String>,
+    /// That cluster's project, already checked against the disk. What Files
+    /// *reads* a root from.
+    pub project: Option<PathBuf>,
+}
+
+impl CallContext {
+    /// Work out where a call is coming from.
+    ///
+    /// `instance_id` is resolved against the pane trees — an instance is in
+    /// whichever cluster's tree holds its id, and no second field records that,
+    /// so there is exactly one answer. It is the trustworthy input: the shell
+    /// resolves it from `event.source` against its own map of mounted iframes
+    /// (`ToolWindow.tsx`), never from anything a frame asserts about itself.
+    ///
+    /// `cluster_id` is the fallback, and it is for the shell's own calls — File
+    /// > Open…, which is a title-bar menu item rather than a frame's request.
+    /// The shell knows which cluster its window is showing and has no instance
+    /// to name. It loses to a resolved instance deliberately: where both are
+    /// present, the one derived from the frame is the one that cannot be stale.
+    pub fn resolve(app: &AppHandle, instance_id: Option<&str>, cluster_id: Option<&str>) -> Self {
+        let resolved = instance_id
+            .and_then(|id| app.state::<ShellState>().cluster_of_instance(id))
+            .or_else(|| cluster_id.map(str::to_owned));
+
+        let project = resolved.as_deref().and_then(|id| project::cluster_path(app, id));
+
+        Self {
+            cluster_id: resolved,
+            project,
+        }
+    }
+
+    /// The cluster to write a project into, or the refusal to hand back.
+    ///
+    /// Home's four opening methods all need one, and none of them has anything
+    /// sensible to do without it: "open this folder" with no cluster to open it
+    /// in is not a smaller version of the action, it is a different one. The
+    /// message names the state rather than the code path, because the only way
+    /// to reach it is a surface whose cluster closed underneath it.
+    pub fn require_cluster(&self) -> Result<&str, RpcError> {
+        self.cluster_id.as_deref().ok_or_else(|| {
+            RpcError::new(
+                helve_rpc::INTERNAL_ERROR,
+                "there is no cluster to open a project in — this surface is not in one any more",
+            )
+        })
+    }
+}
+
 /// An app's Rust half: the function every `invoke` from its frontend lands in.
 ///
 /// `helve/hello` never reaches one of these. The shell answers the handshake
 /// itself in `ToolWindow.tsx` — it is the side that knows the session, and an
 /// app that had to reimplement the reply could get it wrong.
-type Dispatch = fn(&AppHandle, &str, Option<Value>) -> Result<Value, RpcError>;
+type Dispatch = fn(&AppHandle, &CallContext, &str, Option<Value>) -> Result<Value, RpcError>;
 
 struct Registered {
     id: &'static str,
@@ -106,8 +184,120 @@ pub fn list() -> Vec<AppInfo> {
 
 /// Whether an id names an app rather than a tool. `tool_frontend::resolve`
 /// asks this first, so the two id spaces resolve through one door.
+///
+/// **[`TERMINAL_ID`] answers `false` here, and that is deliberate.** A terminal
+/// is offered in the same menu as an app now (see [`openables`]) but it is not
+/// one, and this function is what four separate things ask before deciding what
+/// an id *is*: whether to mount a frontend, whether to look for a tool checkout,
+/// whether a preset slot is valid, and which `SurfaceKind` to mint. Widening it
+/// would send a terminal down every one of those paths, and each of them ends at
+/// a frontend URL that does not exist.
 pub fn is_app(id: &str) -> bool {
     REGISTRY.iter().any(|a| a.id == id)
+}
+
+// --- what you can open ------------------------------------------------------
+
+/// The type name a terminal surface carries where an app surface carries its app
+/// id — in `SurfaceInstance::app_id`'s position, and in an [`Openable`].
+///
+/// A name rather than a registry entry. It is here, beside `REGISTRY`, because
+/// it has to be *excluded* from things far from here (`is_app`, `roster`, the
+/// `call` dispatch) and a constant those can be checked against is better than
+/// three copies of a string literal.
+pub const TERMINAL_ID: &str = "terminal";
+
+/// What kind of thing an [`Openable`] is, which is the same as saying *how the
+/// shell opens it*.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenableKind {
+    /// Mint an instance and mount its frontend. `id` names a `REGISTRY` entry.
+    App,
+    /// Spawn a pty and put it in a pane. `id` is [`TERMINAL_ID`], which names no
+    /// registry entry and never will.
+    Terminal,
+}
+
+/// One row in the Apps menu.
+///
+/// **Note what is not on it: a `url`.** That is the whole reason this is not
+/// [`AppInfo`]. A terminal has no frontend — no Vite entry point, no iframe, no
+/// origin — it is an xterm canvas the shell draws itself, bound to a pty by id.
+/// Giving it an empty or invented URL would put a blank iframe behind every
+/// terminal and break the thing that actually renders it, because
+/// `state/toolFrontend.ts` resolves a mountable URL straight off the app list.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Openable {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub kind: OpenableKind,
+}
+
+/// Everything the Apps menu can open: every app, then a terminal.
+///
+/// ## Why this is a second list and not a wider `REGISTRY`
+///
+/// `REGISTRY`'s definition of an app is precise and load-bearing — a frontend
+/// that is an entry point of this repo's own Vite build, and a Rust half in this
+/// module reached over transport B. A terminal has neither. It has no frontend
+/// to serve, no `Dispatch` to route an `invoke` to, and a `SurfaceKind` of its
+/// own. An entry in `REGISTRY` with an absent URL and an absent dispatch would
+/// not be an app with two holes in it; it would be a different kind of thing
+/// wearing an app's struct, and every consumer of `REGISTRY` would need a new
+/// branch to say so.
+///
+/// Three of those consumers make the cost concrete, and all three are silent
+/// failures rather than compile errors:
+///
+///   * [`roster`] is what boot blocks on until each app reports a painted
+///     frame. A terminal has no frame to report, so a terminal in the roster is
+///     a splash screen that waits out its full timeout on **every launch**.
+///   * [`is_app`] gates `tool_frontend::resolve`, and a `true` there sends
+///     something looking for a frontend down a path that has none.
+///   * [`call`] would find a row with no dispatch to call.
+///
+/// So the union happens here, in one function, and nowhere else. It is in this
+/// file rather than in the frontend because the menu's list has always come from
+/// Rust — an app added to `REGISTRY` appears in both menu surfaces without a
+/// second edit in a file whose author would have no reason to look — and that
+/// property is worth keeping even for the one row that will never be in
+/// `REGISTRY`.
+///
+/// The terminal comes last, after the apps, because the apps are the things this
+/// build is *about* and the ordering should not shuffle when one is added.
+pub fn openables() -> Vec<Openable> {
+    REGISTRY
+        .iter()
+        .map(|a| Openable {
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            kind: OpenableKind::App,
+        })
+        .chain(std::iter::once(Openable {
+            id: TERMINAL_ID,
+            name: "Terminal",
+            // Says *where it lands*, because that is the one thing that is not
+            // obvious: the panel already has a "+" that makes a terminal, and
+            // this makes a different one. See `commands::open_terminal_in_pane`.
+            description: "A shell in a pane of this cluster, rather than in the panel.",
+            kind: OpenableKind::Terminal,
+        }))
+        .collect()
+}
+
+/// What a new instance of `id` is called, before its own frontend renames the
+/// tab. Falls back to the id, which is what a surface with no registry entry
+/// would have shown anyway and is better than an untitled tab.
+pub fn display_name(id: &str) -> String {
+    REGISTRY
+        .iter()
+        .find(|a| a.id == id)
+        .map(|a| a.name.to_string())
+        .unwrap_or_else(|| id.to_string())
 }
 
 /// Every app's id and display name, for boot.
@@ -141,14 +331,26 @@ pub fn entry_url(id: &str) -> String {
 }
 
 /// Route one `invoke` from an app's frontend to that app's Rust half.
-pub fn call(app: &AppHandle, id: &str, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
+///
+/// `id` still names the *app*, because that is what decides which code answers:
+/// `apps::REGISTRY` has one entry for Files however many Files are open, and
+/// none of them holds per-instance state. What the instance decides is not
+/// which handler runs but *where* it runs — see [`CallContext`], which the
+/// caller has already resolved.
+pub fn call(
+    app: &AppHandle,
+    context: &CallContext,
+    id: &str,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value, RpcError> {
     let Some(registered) = REGISTRY.iter().find(|a| a.id == id) else {
         return Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no app with id `{id}`"),
         ));
     };
-    (registered.call)(app, method, params)
+    (registered.call)(app, context, method, params)
 }
 
 #[cfg(test)]
@@ -189,5 +391,51 @@ mod tests {
     #[test]
     fn an_unknown_app_id_is_method_not_found_rather_than_a_panic() {
         assert!(!is_app("nonesuch"));
+    }
+
+    // --- the terminal is offered like an app and is not one ------------------
+
+    #[test]
+    fn everything_in_the_registry_is_offered_plus_a_terminal() {
+        let offered: Vec<&str> = openables().iter().map(|o| o.id).collect();
+        for app in REGISTRY {
+            assert!(offered.contains(&app.id), "{} is not offered", app.id);
+        }
+        assert_eq!(
+            offered.last(),
+            Some(&TERMINAL_ID),
+            "the terminal comes last, after the apps"
+        );
+        assert_eq!(offered.len(), REGISTRY.len() + 1);
+    }
+
+    /// The boot roster is what the splash blocks on until each app reports a
+    /// painted frame. A terminal has no frame to report, so a terminal in here
+    /// is a launch that waits out the full timeout every single time.
+    #[test]
+    fn the_terminal_is_not_in_the_boot_roster() {
+        assert!(
+            !roster().iter().any(|(id, _)| *id == TERMINAL_ID),
+            "boot would wait for a paint that can never come"
+        );
+    }
+
+    /// `is_app` gates `tool_frontend::resolve`, the `SurfaceKind` an instance is
+    /// minted with, and whether a preset slot is valid. A `true` here would send
+    /// a terminal looking for a frontend URL it does not have.
+    #[test]
+    fn the_terminal_is_not_an_app_however_it_is_offered() {
+        assert!(!is_app(TERMINAL_ID));
+    }
+
+    /// A terminal has no Rust half. Reaching the dispatcher with its id has to
+    /// be an ordinary method-not-found, not a panic and not the wrong row.
+    #[test]
+    fn calling_the_terminal_id_is_method_not_found() {
+        let registered = REGISTRY.iter().find(|a| a.id == TERMINAL_ID);
+        assert!(
+            registered.is_none(),
+            "`call` finds no row, so it answers METHOD_NOT_FOUND like any unknown id"
+        );
     }
 }

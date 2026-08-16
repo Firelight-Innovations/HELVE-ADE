@@ -358,6 +358,7 @@ mod tests {
                     id: "cluster-1".to_string(),
                     name: "auth".to_string(),
                     tree,
+                    project: Some(r"C:\code\auth".to_string()),
                     worktree: None,
                 }],
                 active_cluster_id: Some("cluster-1".to_string()),

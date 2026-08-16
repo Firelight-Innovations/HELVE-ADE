@@ -1,10 +1,14 @@
-//! Where HELVE remembers which project you had open, across launches.
+//! Where HELVE remembers the projects you have opened, across launches.
 //!
-//! This is the first thing in the orchestrator that writes to disk. Everything
-//! else it knows it re-derives at boot — the stack snapshot is a scan, the shell
-//! layout starts from `Default`, a terminal dies with its process. That was fine
-//! while nothing had to survive a restart. "Open HELVE and land back where you
-//! were" is the first thing that does.
+//! This is the first thing in the orchestrator that wrote to disk. Everything
+//! else it knew it re-derived at boot — the stack snapshot is a scan, a terminal
+//! dies with its process. That was fine while nothing had to survive a restart.
+//! "Open HELVE and land back where you were" was the first thing that did.
+//!
+//! What survives here now is the **Recent list only**. Which project is open is
+//! a fact about a *cluster* (see `crate::project`'s module doc) and lives in
+//! `layout.json` with the rest of the layout; the history of every project this
+//! machine has opened is not a fact about any one of them, so it stays here.
 //!
 //! It lives in the OS's config directory for this app, not in the repo and not
 //! beside any project. It is about *this machine's* history with projects, which
@@ -37,10 +41,28 @@ const FILE: &str = "projects.json";
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Stored {
-    /// The project that was open when HELVE last closed, if any. Restored at
-    /// launch — this is the field the whole module exists for.
+    /// **Vestigial: the migration's only input.** Nothing writes this any more.
+    ///
+    /// It was the global "the project that was open when HELVE last closed", the
+    /// field this module was built around. A project belongs to a cluster now,
+    /// so the authority moved to `Cluster::project` in `layout.json`.
+    ///
+    /// Kept rather than deleted, and the choice is worth stating because
+    /// deleting it is the tidier-looking option. It is kept because there is a
+    /// real user with a real `projects.json` — Braden's — holding a path this
+    /// build would otherwise throw away on its first save, and the upgraded
+    /// session would come back with an empty workspace and no way to find out
+    /// why. `project::take_migration_seed` reads it exactly once, moves it onto
+    /// the first cluster, and writes `None` back; from then on it serializes as
+    /// `null` and costs one line in a JSON file.
+    ///
+    /// It is not kept as a fallback for "no cluster has a project". That state
+    /// is legal and ordinary — a new cluster, or one whose project was closed —
+    /// and treating it as a cue to reopen something would make Close Project
+    /// undo itself on the next launch.
     pub open: Option<PathBuf>,
-    /// Most recently opened first.
+    /// Most recently opened first. Global, across every cluster and window: this
+    /// is the machine's history with projects, not a property of a workspace.
     pub recents: Vec<Recent>,
 }
 
@@ -76,9 +98,10 @@ impl Stored {
 
     pub fn forget(&mut self, path: &Path) {
         self.recents.retain(|r| r.path != path);
-        // A forgotten project that happens to be the open one stays open. The
-        // Recent list is a history, and editing history is not the same act as
-        // closing what is in front of you.
+        // A forgotten project that some cluster happens to have open stays open
+        // there. The Recent list is a history, and editing history is not the
+        // same act as closing what is in front of you — in this window or in
+        // any other.
     }
 }
 

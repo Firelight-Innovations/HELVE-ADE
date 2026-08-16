@@ -24,6 +24,17 @@
   display: flex;
   align-items: stretch;
   height: 100%;
+  /* Positioning context for `OverlayScrollbar`'s thumb (see ClusterBar.tsx),
+     not for anything of this bar's own. It is not the thumb's own box —
+     `.switcher__tabs` below is, since it's the element that scrolls and the
+     thumb has to *not* be its child to avoid scrolling away with it — but
+     `.switcher__tabs` is always this row's first child with no padding of
+     its own on either side, so the two boxes share a left edge, a top and a
+     bottom regardless of how much of the row's width the tabs are currently
+     claiming. Anchoring here instead of adding a wrapper purpose-built for
+     it leaves the tab strip's own flex/shrink rules — the ones the comment
+     below is about — untouched. */
+  position: relative;
 }
 
 /* Scrolls rather than overflowing.
@@ -33,26 +44,33 @@
  * the health badge and the search slot off the right edge of the window, where
  * neither could be clicked or scrolled back to. Clusters are user-created and
  * user-named, so "enough tabs" is now a normal afternoon rather than a corner
- * case. Same 5px treatment the terminal panel's strip uses. */
+ * case. */
 .switcher__tabs {
   display: flex;
   align-items: stretch;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+
+  /* No native scrollbar — `OverlayScrollbar` draws a floating one instead
+     (see the `position: relative` comment on `.switcher` above, and
+     OverlayScrollbar.tsx for the component itself). This used to be the
+     inconsistent one of the two bars: it set `scrollbar-width: thin` where
+     the terminal panel's strip left that unset and sized a visible thumb
+     through the WebKit pseudo-elements below instead, and Chromium 121+
+     makes `scrollbar-width` win over that sizing whenever both are present
+     — so this bar drew the UA's own fixed "thin" metric while the panel drew
+     what it actually asked for. Both bars now set `scrollbar-width: none`
+     for the same reason panel.css gives in full: it's the value that
+     override needs to hide the scrollbar rather than substitute a UA
+     default for it, and it's paired with `::-webkit-scrollbar { display:
+     none }` below to cover WebKit/macOS builds old enough to not implement
+     `scrollbar-width` at all. */
+  scrollbar-width: none;
 }
 
 .switcher__tabs::-webkit-scrollbar {
-  height: 5px;
-}
-
-.switcher__tabs::-webkit-scrollbar-thumb {
-  background: var(--line);
-}
-
-.switcher__tabs::-webkit-scrollbar-track {
-  background: transparent;
+  display: none;
 }
 
 /* The whole row, out of the way, while the search field is expanded — the field
@@ -149,13 +167,16 @@
 }
 
 /* A tab is a name and a close button, and nothing else — no version, no status
-   chip, no per-cluster colour. */
+   chip, no per-cluster colour. Left padding was 16px to seat a leading marker
+   dot that no longer exists; 12px is the plain-text inset, a couple of px
+   past the right side's 8px since raw text sitting flush on an edge reads
+   tighter than a control does. */
 .switcher__tab {
   flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px 0 16px;
+  padding: 0 8px 0 12px;
   border: none;
   border-right: 1px solid var(--line);
   background: transparent;
@@ -192,7 +213,18 @@
   padding: 2px 4px;
 }
 
-/* Revealed on hover or focus, so a row of clusters is not a row of ×s. */
+/* Revealed on hover or focus, so a row of clusters is not a row of ×s.
+
+   The open cluster used to be exempt and keep its × up unconditionally. That
+   was backwards twice over: it is the chip most often on screen, so its × was
+   the one most often in the way, and it made a cluster chip dismiss unlike the
+   app chips sitting in the same row — two kinds of thing where there is only
+   one. The reveal below is `.switcher__member-close`'s, to the property.
+
+   `pointer-events` is toggled with the opacity and is not decoration. This
+   button holds its 15px of layout whether or not it is drawn, so left clickable
+   at `opacity: 0` it is an invisible target over the right end of every chip —
+   a click meant to select a cluster closing it instead. */
 .switcher__tab-close {
   display: flex;
   align-items: center;
@@ -204,13 +236,15 @@
   padding: 0;
   color: var(--text-dim-3);
   opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s linear;
   cursor: pointer;
 }
 
 .switcher__tab:hover .switcher__tab-close,
-.switcher__tab:focus-within .switcher__tab-close,
-.switcher__tab--active .switcher__tab-close {
+.switcher__tab:focus-within .switcher__tab-close {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .switcher__tab-close:hover {
@@ -248,26 +282,9 @@
    the thing on screen; the thing on screen is now a *member*, and giving both
    the chip and its members the top depth would leave nothing to distinguish
    "this cluster is open" from "this app is showing". That is said instead by
-   the accent band over the whole group, the filled dot, and the weight below. */
+   the accent band over the whole group and the weight below. */
 .switcher__tab--active {
   background: transparent;
-}
-
-/* Chrome gives each group a colour. A cluster has none in the model, and
-   inventing a palette would be inventing design tokens, so the marker is the
-   one accent already in the system: filled when the group is open, hollow when
-   it is collapsed. */
-.switcher__tab-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px var(--text-dim-3);
-}
-
-.switcher__tab-dot[data-open] {
-  background: var(--accent);
-  box-shadow: none;
 }
 
 /* How many tabs are folded up inside a collapsed chip. Only on collapsed ones:
@@ -329,6 +346,96 @@
   /* It lies over the top 2px of the chip and every member, and while it travels
      between groups it is transformed clear of its own box entirely. Decoration
      must not eat a click meant for a tab. */
+  pointer-events: none;
+}
+
+/* --- a pane group ---------------------------------------------------------
+   One box per pane of the open cluster's tree, holding that pane's tabs. A
+   pane with one surface in it adds nothing but this box; a pane with several
+   is marked, because that is when there is something to mark.
+
+   ## What was here before, and why it did not work
+
+   The first version of this marked a group with a 2px grey band along the
+   bottom of the row and shortened the dividers between its members from full
+   height to 16px. On screen that was indistinguishable from two ordinary
+   chips side by side: the band merged into the bar's own bottom hairline, and
+   a divider that only changes height while keeping its colour is not a
+   difference anyone reads at a glance. It was rendering the whole time — the
+   fault was that it said nothing, not that it was absent.
+
+   That mattered more than a cosmetic miss, because this marking is the only
+   thing in the window that says two surfaces share a pane. Without it,
+   clicking between them looks exactly like one app *replacing* another, which
+   is what it was reported as.
+
+   ## What it is now
+
+   The cluster group's own mechanism, reused rather than a second invention: a
+   fill spanning the tabs that belong to the region (`.switcher__group-fill`
+   above). They cannot be confused, because they differ in every variable at
+   once and they nest rather than overlap:
+
+     a cluster group   --surface-gap, *darker* than the bar, square, full
+                       height, an accent band along its top, and always
+                       introduced by a named chip
+     a pane group      --surface-2, *lighter* than the bar, rounded, inset from
+                       the bar's edges, no band, and never named
+
+   Both are existing tokens; nothing here is a colour the handoff does not
+   contain. The depth ladder still reads: a showing member paints `--bg`, the
+   darkest thing in the row, and against this tray it now has more contrast
+   than it had against the bar, not less — so "which of these two is on
+   screen" is easier to see inside a group than outside one. */
+
+.switcher__pane {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  /* Positioning context for whatever framer has popped out of the flow on its
+     way out of this group. */
+  position: relative;
+}
+
+/* The tray. Inset top and bottom so it reads as a thing sitting *in* the row
+   rather than another division of it, which is also what gives the corners
+   somewhere to be — a radius on a full-height box would be cut by the bar's
+   own edges. `overflow: hidden` is what makes the radius mean anything: a
+   showing member paints an opaque `--bg` across its whole box, and unclipped
+   it would square the tray's corners off again from the inside. */
+.switcher__pane--grouped {
+  margin: 4px 0;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* Inside a group the seams *between* its members stop being the row's
+   full-height dividers, and the group's own trailing seam goes too — the tray
+   edge is already the boundary, and a hairline on top of it would draw the
+   group's end twice.
+
+   The border is made transparent rather than removed, so each box keeps its
+   1px and nothing in the row reflows — the same reasoning `.switcher__member`
+   gives for having moved its border from one edge to the other. The rects
+   `dropZones.ts` measures are unchanged. */
+.switcher__pane--grouped .switcher__member {
+  border-right-color: transparent;
+}
+
+/* The divider itself: `--line-2` rather than `--line`, and inset, so it reads
+   as an internal rule on the tray rather than as one more seam in the row. It
+   sits on the transparent border above, so the two members stay exactly where
+   they were. */
+.switcher__pane--grouped .switcher__member + .switcher__member::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--line-2);
   pointer-events: none;
 }
 

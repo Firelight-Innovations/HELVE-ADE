@@ -150,25 +150,54 @@ export function useDrag(label: string, activeClusterId: string | null) {
           setDrag({ payload: s.payload, x: ev.clientX, y: ev.clientY, target });
         };
 
-        const onUp = (ev: PointerEvent) => {
+        /**
+         * End the gesture and stop listening. Shared by the release and the
+         * cancel, which differ only in whether anything is committed.
+         *
+         * Returns the session the caller should act on, or `null` when this
+         * event is not ours to act on — a stray pointer, or a press that never
+         * cleared the threshold and was therefore a click.
+         */
+        const finish = (ev: PointerEvent): Session | null => {
           const s = sessionRef.current;
           sessionRef.current = null;
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
-          window.removeEventListener("pointercancel", onUp);
+          window.removeEventListener("pointercancel", onCancel);
 
           // Cleared before the commit rather than after. The pointer is already
           // up, some commits resolve asynchronously, and nothing about ending
           // the gesture should wait on or race one.
           setDrag(null);
-          if (!s || ev.pointerId !== s.pointerId || !s.began) return;
+          if (!s || ev.pointerId !== s.pointerId || !s.began) return null;
+          return s;
+        };
 
+        const onUp = (ev: PointerEvent) => {
+          const s = finish(ev);
+          if (!s) return;
           commit(s.payload, resolve(s.payload, ev.clientX, ev.clientY), label, activeClusterId);
+        };
+
+        // A cancel is *not* a release, and treating it as one was a real hazard
+        // rather than a tidiness point. `pointercancel` fires when something
+        // else takes the gesture over — the OS starting a window drag, the
+        // capture element going away, a touch turning into a scroll — and it
+        // carries the coordinates of wherever the pointer was when that
+        // happened, which is not where the user meant to let go. Committing on
+        // it dropped the payload at that stale point, and for a cluster that is
+        // *silent*: `resolve` turns every target but `detach` into `none`, so a
+        // cancel anywhere over a pane or the tab row did nothing at all and left
+        // nothing behind to look at. A cancelled gesture puts the thing back
+        // where it was, which is what the user will read the disappearing ghost
+        // as meaning anyway.
+        const onCancel = (ev: PointerEvent) => {
+          finish(ev);
         };
 
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
-        window.addEventListener("pointercancel", onUp);
+        window.addEventListener("pointercancel", onCancel);
       },
     }),
     [label, activeClusterId, rawX, rawY],
@@ -219,6 +248,26 @@ function resolve(payload: DragPayload, x: number, y: number): DropTarget {
 }
 
 /**
+ * Every backend call a release makes goes through here.
+ *
+ * These used to be bare `void invoke(...)`, and a rejected one went nowhere at
+ * all — `void` on a promise discards the rejection as deliberately as it
+ * discards the value. That is survivable for a call that cannot fail and
+ * indefensible for these: a drop is the one gesture in the shell with no visible
+ * confirmation when it succeeds, so a drop that fails and a drop that worked
+ * look identical, and the first thing anyone would want on being told "dragging
+ * a cluster out does nothing" is whether the backend was even asked. It is a
+ * console line rather than anything on screen because a refused drop is not a
+ * state the user has to act on — the thing they dragged is still exactly where
+ * it was — but there has to be *something*.
+ */
+function attempt(what: string, work: Promise<unknown>): void {
+  void work.catch((e: unknown) => {
+    console.error(`helve: ${what} failed`, e);
+  });
+}
+
+/**
  * Act on a release.
  *
  * Split out of the handler so the mapping from target to call is one readable
@@ -236,15 +285,24 @@ function commit(
   switch (target.kind) {
     case "strip":
       if (activeClusterId) {
-        void moveInstance(payload.instanceId, activeClusterId, target.paneId, target.index);
+        attempt(
+          `moving ${payload.instanceId} into ${target.paneId}`,
+          moveInstance(payload.instanceId, activeClusterId, target.paneId, target.index),
+        );
       }
       return;
 
     case "pane":
       if (target.edge) {
-        void splitPane(target.paneId, target.edge, payload.instanceId, target.before);
+        attempt(
+          `splitting ${target.paneId} for ${payload.instanceId}`,
+          splitPane(target.paneId, target.edge, payload.instanceId, target.before),
+        );
       } else if (activeClusterId) {
-        void moveInstance(payload.instanceId, activeClusterId, target.paneId, null);
+        attempt(
+          `moving ${payload.instanceId} into ${target.paneId}`,
+          moveInstance(payload.instanceId, activeClusterId, target.paneId, null),
+        );
       }
       return;
 
@@ -254,7 +312,12 @@ function commit(
       // and there is nothing sensible for it to do with a Files. Refusing
       // silently leaves the tab where it was, which is what a cancelled drag
       // should look like.
-      if (payload.kind === "terminal") void moveTerminal(payload.instanceId, label);
+      if (payload.kind === "terminal") {
+        attempt(
+          `moving ${payload.instanceId} into ${label}'s panel`,
+          moveTerminal(payload.instanceId, label),
+        );
+      }
       return;
 
     case "detach":
@@ -270,7 +333,10 @@ function commit(
       // The call is still made, because it is the only way to distinguish "over
       // no HELVE window" from "over one, outside its targets" in the log when
       // this behaviour is revisited.
-      void windowAtCursor().then(() => detachInstance(payload.instanceId));
+      attempt(
+        `detaching ${payload.instanceId} into a window of its own`,
+        windowAtCursor().then(() => detachInstance(payload.instanceId)),
+      );
       return;
 
     case "none":
@@ -307,9 +373,23 @@ function commit(
  *   that missed the bar on purpose.
  */
 function commitCluster(payload: ClusterDrag, target: DropTarget, label: string): void {
-  if (target.kind !== "detach") return;
+  if (target.kind !== "detach") {
+    // The one branch in the whole gesture that is meant to do nothing, and
+    // therefore the one that is impossible to tell apart from the gesture being
+    // broken. "Dragging a cluster out does nothing" was reported against a build
+    // where this line did not exist, and answering it meant reading every step
+    // of the path from the chip to `windows::create` because there was no way to
+    // find out from the outside which of them had declined. `debug` rather than
+    // `warn`: declining is correct here, and it should not read as a fault in a
+    // console someone is using for something else.
+    console.debug(`helve: cluster ${payload.clusterId} released over ${target.kind}, staying put`);
+    return;
+  }
 
-  void windowAtCursor().then((over) =>
-    detachCluster(payload.clusterId, over && over !== label ? over : null),
+  attempt(
+    `dropping ${payload.clusterId} out of ${label}`,
+    windowAtCursor().then((over) =>
+      detachCluster(payload.clusterId, over && over !== label ? over : null),
+    ),
   );
 }

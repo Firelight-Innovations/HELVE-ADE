@@ -92,6 +92,38 @@ export function listApps(): Promise<AppInfo[]> {
   return invoke<AppInfo[]>("list_apps");
 }
 
+/** Mirrors `apps::OpenableKind`. How the shell opens the thing, in one word. */
+export type OpenableKind = "app" | "terminal";
+
+/**
+ * Mirrors `apps::Openable` — one row in the Apps menu.
+ *
+ * **Note what is missing next to `AppInfo`: a `url`.** That absence is the
+ * entire reason this is a separate type, and it is load-bearing rather than
+ * tidy. A terminal has no frontend — no Vite entry point, no iframe, no origin —
+ * it is an xterm canvas the shell draws itself, bound to a pty by id. And
+ * `state/toolFrontend.ts` resolves a *mountable URL* by looking an id up in the
+ * `AppInfo` list, so a terminal in that list with an empty `url` would mount a
+ * blank iframe over every terminal in the window.
+ *
+ * So the two lists stay apart: `AppInfo` is "things with a frontend", this is
+ * "things you can open". `kind` is what the caller routes on.
+ */
+export interface Openable {
+  id: string;
+  name: string;
+  description: string;
+  kind: OpenableKind;
+}
+
+/**
+ * Everything the Apps menu offers: every app, then a terminal. Compiled in, so
+ * — like `listApps` — this is worth asking exactly once.
+ */
+export function listOpenables(): Promise<Openable[]> {
+  return invoke<Openable[]>("list_openables");
+}
+
 /**
  * Forward one `invoke` from an app's iframe to that app's Rust half.
  *
@@ -101,8 +133,85 @@ export function listApps(): Promise<AppInfo[]> {
  * carries `{ code, message, data? }`, the JSON-RPC error object the bridge
  * turns back into a `HelveRpcError`.
  */
-export function appCall(id: string, method: string, params?: unknown): Promise<unknown> {
-  return invoke<unknown>("app_call", { id, method, params });
+export function appCall(
+  id: string,
+  method: string,
+  params?: unknown,
+  scope?: CallScope,
+): Promise<unknown> {
+  return invoke<unknown>("app_call", {
+    id,
+    instanceId: scope?.instanceId ?? null,
+    clusterId: scope?.clusterId ?? null,
+    method,
+    params,
+  });
+}
+
+/**
+ * Which surface a call is on behalf of — mirrors `apps::CallContext`'s two
+ * inputs.
+ *
+ * `id` above names the app, which is the code that answers. This names *where*
+ * it is answered: Rust resolves the instance to the cluster whose pane tree
+ * holds it, and that cluster to its project. Two Files in two clusters are
+ * indistinguishable without it, and both would root at whichever project
+ * answered first.
+ *
+ * `instanceId` is what `ToolWindow` passes, and it is the trustworthy one — the
+ * shell resolves it from `event.source` against its own map of mounted iframes,
+ * never from anything a frame asserts about itself.
+ *
+ * `clusterId` is for the shell's own calls, which are not a frame's request at
+ * all: File > Open… is a title-bar menu item with no instance behind it, and
+ * the window it was clicked in knows perfectly well which cluster it is
+ * showing. It loses to a resolved instance where both are given.
+ */
+export interface CallScope {
+  instanceId?: string;
+  clusterId?: string;
+}
+
+/**
+ * Mirrors `project::ProjectInfo` — one project, as the shell needs to see it.
+ *
+ * Only the fields the shell itself reads. Home's own frontend takes the whole
+ * thing over transport B and has its own copy of the shape; this is the title
+ * bar's much smaller need.
+ */
+export interface ProjectInfo {
+  name: string;
+  path: string;
+}
+
+/**
+ * One cluster's project, for the title bar.
+ *
+ * The shell's own read, where it used to borrow Home's `home/state`. That
+ * method answers the *calling surface's* cluster, which is the wrong scope
+ * here: the bar names whichever cluster the window is showing, and that changes
+ * with a click on a chip rather than with anything a frame does.
+ *
+ * `null` for a cluster with no project, for a `clusterId` naming nothing, and
+ * for a window showing no cluster at all. The bar draws the same thing for all
+ * three, so a richer answer would be a distinction with nowhere to show.
+ */
+export function clusterProject(clusterId: string | null): Promise<ProjectInfo | null> {
+  return invoke<ProjectInfo | null>("cluster_project", { clusterId });
+}
+
+/**
+ * Point a cluster at a project, or at nothing, without going through Home.
+ *
+ * The primitive under Home's methods, which are the ones a person reaches —
+ * those raise a picker, touch the Recent list, and initialize a folder that
+ * needs it. Nothing in the shell calls this today; it is registered because
+ * the layout has to be able to say so on its own, and because a cluster's
+ * project being settable only from inside an app frame would be a strange
+ * place for the authority to live.
+ */
+export function setClusterProject(clusterId: string, path: string | null): Promise<void> {
+  return invoke("set_cluster_project", { clusterId, path });
 }
 
 /**

@@ -41,14 +41,64 @@ export type DropZone =
   | { kind: "pane"; paneId: string }
   | {
       kind: "strip";
-      paneId: string;
-      /** Measured on demand, because a strip scrolls and its tabs move. */
-      tabRects: () => DOMRect[];
+      /**
+       * Which pane a release at this x lands in, and that pane's own tab rects.
+       *
+       * A function of the position rather than a fixed `paneId`, and that is a
+       * bug fix rather than a generalisation. This used to be
+       * `paneId: dropPaneId` — the *focused* pane — for a release anywhere over
+       * the row, so releasing a tab directly on top of a chip belonging to some
+       * other pane moved that tab **into the focused pane**. `commit`'s `strip`
+       * branch calls `moveInstance`, so that was a real write to the tree that
+       * persisted: the pane you were pointing at was ignored and its occupant
+       * was replaced by whatever you had hold of.
+       *
+       * It hid for as long as it did because it is invisible in the case it is
+       * reached most: when the tab is already in the focused pane, "move it into
+       * the focused pane" is a reorder that changes nothing. It only misbehaves
+       * across panes, which was a rare arrangement until opening an app started
+       * making one.
+       *
+       * The row is still one zone spanning the whole bar — see the call site for
+       * why anything narrower is dangerous — and it still answers with the
+       * focused pane over the parts of it that are not any pane's tabs. Which
+       * region a point falls in is the bar's own question about its own markup,
+       * so the bar answers it; this module goes on knowing nothing about how the
+       * row is drawn.
+       *
+       * Measured on demand, because the row scrolls and a stale rect puts the
+       * caret in the wrong gap the moment it does.
+       */
+      at: (x: number) => { paneId: string; tabRects: DOMRect[] };
     }
   | { kind: "panel" };
 
+/**
+ * A registration holds the zone's **ref**, not the zone.
+ *
+ * This was `zone: DropZone`, a value copied in at attach time, and the copy was
+ * a bug with teeth. `useDropZone` returns a ref callback with a stable identity
+ * — deliberately, see below — so React attaches it once and never calls it
+ * again for as long as the element lives. A pane's element outlives far more
+ * than a pane: `PaneTree` renders `<Pane>` with no key, so switching clusters
+ * hands the same DOM node a leaf from a different tree, React reconciles by
+ * position, and the ref is not re-invoked. The registry went on answering with
+ * the pane id the element had when it first mounted, which after one cluster
+ * switch names a pane in a cluster that is not on screen.
+ *
+ * What that produced: dropping a tab on a pane's edge resolved to a `pane`
+ * target whose `paneId` belonged to another cluster, so `split_pane` either
+ * split something invisible or found nothing at all — either way, no split
+ * where the user aimed. Reordering in the cluster bar kept working throughout,
+ * because the bar's `paneId` comes from `dropPaneId` and its ref is an inline
+ * arrow that React re-attaches on every render. That asymmetry is what made the
+ * fault look like "splitting is broken" rather than "the registry is stale".
+ *
+ * Holding the ref instead means a zone is read at the moment it is hit-tested
+ * and is therefore never older than the render that last set it.
+ */
 interface Registered {
-  zone: DropZone;
+  zone: { readonly current: DropZone };
   el: HTMLElement;
 }
 
@@ -65,7 +115,7 @@ const EDGE_FRACTION = 0.25;
 
 let zones: Registered[] = [];
 
-function add(zone: DropZone, el: HTMLElement): void {
+function add(zone: { readonly current: DropZone }, el: HTMLElement): void {
   zones = [...zones.filter((z) => z.el !== el), { zone, el }];
 }
 
@@ -82,26 +132,56 @@ function remove(el: HTMLElement): void {
  * be honoured.
  */
 export function hitTest(x: number, y: number): DropTarget {
-  for (const { zone, el } of zones) {
+  for (const { zone: held, el } of zones) {
+    const zone = held.current;
     if (zone.kind !== "strip") continue;
     if (!within(el.getBoundingClientRect(), x, y)) continue;
-    return { kind: "strip", paneId: zone.paneId, index: insertionIndex(zone.tabRects(), x) };
+    // The pane is resolved from where the pointer is, not from which pane
+    // happens to be focused. See `DropZone`'s `at` for what the second one cost.
+    const hit = zone.at(x);
+    return { kind: "strip", paneId: hit.paneId, index: insertionIndex(hit.tabRects, x) };
   }
 
-  for (const { zone, el } of zones) {
+  for (const { zone: held, el } of zones) {
+    const zone = held.current;
     if (zone.kind !== "pane") continue;
     const rect = el.getBoundingClientRect();
     if (!within(rect, x, y)) continue;
     return { kind: "pane", paneId: zone.paneId, ...edgeOf(rect, x, y) };
   }
 
-  for (const { zone, el } of zones) {
-    if (zone.kind !== "panel") continue;
+  for (const { zone: held, el } of zones) {
+    if (held.current.kind !== "panel") continue;
     if (within(el.getBoundingClientRect(), x, y)) return { kind: "panel" };
   }
 
   // Over no registered zone. Releasing here makes a window.
   return { kind: "detach" };
+}
+
+/**
+ * The rectangle a pane is drawn on right now, or `null` if it is not on screen.
+ *
+ * Not a drag concern, and it lives here anyway because this registry is already
+ * the one thing in the shell that knows which element is which pane — the same
+ * fact `hitTest` walks, asked by id instead of by point. The alternative was a
+ * second lookup somewhere else reaching for `.pane` by class name, which is
+ * exactly the arrangement this module's header exists to describe replacing.
+ *
+ * Measured on the spot rather than cached, for the reason the strip zone's
+ * `tabRects` gives: a divider drag and an OS window resize both move these
+ * without going through React, so a stored rect is wrong as often as not.
+ *
+ * The caller is `panes/splitOnOpen.ts`, which turns this into the axis a newly
+ * opened surface splits along. Reading it goes through the held ref, so it is
+ * never older than the render that last set it — see `Registered`.
+ */
+export function paneRect(paneId: string): DOMRect | null {
+  for (const { zone: held, el } of zones) {
+    const zone = held.current;
+    if (zone.kind === "pane" && zone.paneId === paneId) return el.getBoundingClientRect();
+  }
+  return null;
 }
 
 /**
@@ -111,6 +191,12 @@ export function hitTest(x: number, y: number): DropTarget {
  * An unstable ref callback makes React detach and reattach on every render,
  * which here would mean deregistering and reregistering the zone continuously —
  * and a drag sampling the registry mid-render would see it missing.
+ *
+ * That stability is exactly why the ref itself has to be what gets registered,
+ * rather than the zone it currently holds. A callback React only ever calls once
+ * cannot be the thing that keeps a registration current, and reading
+ * `latest.current` inside it only ever captured the first value. See
+ * `Registered`.
  */
 export function useDropZone(zone: DropZone): (el: HTMLElement | null) => void {
   const held = useRef<HTMLElement | null>(null);
@@ -120,7 +206,7 @@ export function useDropZone(zone: DropZone): (el: HTMLElement | null) => void {
   return useCallback((el: HTMLElement | null) => {
     if (held.current) remove(held.current);
     held.current = el;
-    if (el) add(latest.current, el);
+    if (el) add(latest, el);
   }, []);
 }
 

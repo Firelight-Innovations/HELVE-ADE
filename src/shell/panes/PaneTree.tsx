@@ -16,6 +16,13 @@ import "./panes.css";
  * can disagree about which one is active, and the second row was never telling
  * anyone anything the first could not.
  *
+ * That bar now draws a pane holding several surfaces as one grouped region,
+ * which is worth naming here because it is the thing a reader of the paragraph
+ * above will suspect has quietly come back. It has not: there is still exactly
+ * one row and every surface still appears in it exactly once. What the bar
+ * gained is grouping that mirrors this tree — not a second listing of it, and
+ * nothing this component renders. `ClusterBar.tsx` has the argument in full.
+ *
  * **The surfaces.** Every pane is an empty content box and reports its element
  * up through `onHostChange`; `ToolWindow` positions the actual iframes over
  * those boxes from a flat list that never reorders.
@@ -42,7 +49,13 @@ import "./panes.css";
  */
 export interface PaneTreeProps {
   tree: PaneNode;
-  /** The pane a new surface lands in, drawn with the active-pane outline. */
+  /**
+   * The pane an open acts on, drawn with the active-pane outline.
+   *
+   * "Acts on" rather than "lands in": opening an app splits this pane along its
+   * longer axis and puts the new surface in the half that produces, rather than
+   * stacking it in here as a tab. See `panes/splitOnOpen.ts`.
+   */
   focusedPaneId: string | null;
   onFocusPane: (paneId: string) => void;
   /** Commits a divider drag. One weight per child, summing to 1. */

@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Menu } from "../contract";
 import { popover } from "../motion";
-import MenuItemList from "./MenuItemList";
+import MenuItemList, { inMenuSurface } from "./MenuItemList";
 import Hamburger from "./icons/Hamburger";
 
 export default function HamburgerMenu({ menus }: { menus: Menu[] }) {
@@ -33,6 +33,10 @@ export default function HamburgerMenu({ menus }: { menus: Menu[] }) {
     if (!open) return;
 
     const onPointerDown = (e: PointerEvent) => {
+      // A submenu is portalled out of this subtree, so `contains` calls a click
+      // inside it a click outside the menu. See `inMenuSurface`, and `MenuBar`'s
+      // copy of this guard for what missing it costs.
+      if (inMenuSurface(e.target)) return;
       if (!rootRef.current?.contains(e.target as Node)) closeAll();
     };
     const onKeyDown = (e: KeyboardEvent) => {

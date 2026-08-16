@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
   Cluster,
@@ -11,6 +11,7 @@ import type {
 import { instant, instantOut, snap } from "../motion";
 import { useDropZone } from "../drag/dropZones";
 import { Close, Plus, Search, WarningTriangle } from "../../ui/Icon";
+import OverlayScrollbar from "../scrollbar/OverlayScrollbar";
 import HealthPopover, { type UnhealthyTool } from "./HealthPopover";
 import AddAppButton, { type AppsMenuHandlers } from "./AddAppButton";
 import "./switcher.css";
@@ -38,6 +39,37 @@ import "./switcher.css";
  * draws lifted. With a split, that is more than one member at once, which is
  * honest — there really is more than one surface visible.
  *
+ * ## Pane groups, which are not the pane strips coming back
+ *
+ * A pane holding several surfaces draws as one grouped region here — a raised
+ * tray with thin dividers between its members, so pane membership is something
+ * you read rather than something you have to click to find out. It is worth
+ * being explicit that this does **not** undo the paragraph above, because it
+ * looks at a glance like it might.
+ *
+ * It is also the only thing in the window that says two surfaces share a pane,
+ * which is why the first attempt at it being too faint to see was not a
+ * cosmetic miss: with nothing marking the pane, clicking from one of its
+ * members to the other reads as one app replacing another rather than as a
+ * pane showing its other tab. `switcher.css` has what changed and why.
+ *
+ * The lesson from the pane strips was not "never show which pane a tab is in".
+ * It was that the same surface must not be *listed twice*, because two listings
+ * are two things that can disagree about which one is active. This is still
+ * exactly one row, and every surface still appears in it exactly once; the row
+ * has gained grouping that mirrors the pane tree, not a second copy of anything.
+ * There is nothing here that can disagree with anything else, because there is
+ * nothing else.
+ *
+ * A pane group must also not be mistakable for a *cluster* group, which is the
+ * outer box this one nests in. Both are drawn in the same visual language on
+ * purpose — a region marked by a fill spanning the tabs that belong to it — and
+ * they differ in every variable of it at once: the cluster's fill is darker
+ * than the bar, square, full height, banded in accent along its top, and always
+ * introduced by a named chip; a pane's is lighter, rounded, inset from the bar's
+ * edges, unbanded, and never named. They nest rather than overlap. See
+ * `switcher.css`.
+ *
  * The terminal panel keeps its `+`, its worktree toggle and its collapse
  * chevron. Those operate the *region*; they are not tabs, and none of them names
  * a session.
@@ -63,7 +95,7 @@ export interface ClusterBarProps {
    *
    * The row lists several panes' tabs at once, so "insert here" has to name a
    * pane before it can mean anything. The focused pane is the answer for the
-   * same reason it is the answer for the Apps menu: it is the one the user was
+   * same reason it is the pane the Apps menu splits: it is the one the user was
    * last working in. With no split there is only ever one pane and the question
    * does not arise.
    */
@@ -83,8 +115,8 @@ export interface ClusterBarProps {
    *
    * Separate from `dragHandleFor` because it moves a different kind of thing to
    * a different kind of place — a member is a tab and lands in a pane, a cluster
-   * is not a tab and lands on a *window*. Only offered while this window has
-   * more than one cluster; see the call site.
+   * is not a tab and lands on a *window*. Offered on every chip, the last one
+   * included; the call site says why that stopped being conditional.
    */
   dragHandleForCluster?: (cluster: Cluster) => DragHandleProps | undefined;
   /**
@@ -182,20 +214,57 @@ export default function ClusterBar({
   // relying on it means a drag that lands nowhere the day that ordering is not
   // what someone assumed. There is nothing to move here.
   //
-  // The rects it measures are only the drop pane's own tabs. The row lists
-  // several panes at once and the terminals are not in the tree at all, so an
-  // index counted over all of them would name a position that does not exist in
-  // the pane the drop actually lands in.
+  // The rects it measures are only *one* pane's tabs. The row lists several
+  // panes at once and the terminals are not in the tree at all, so an index
+  // counted over all of them would name a position that does not exist in the
+  // pane the drop actually lands in.
+  //
+  // **Which** pane is the fix. This used to hand the registry a fixed
+  // `paneId: dropPaneId` — the focused pane — so a release anywhere over this
+  // row resolved to the focused pane whatever it was pointing at, and
+  // `commit`'s `strip` branch moved the dragged tab there. Landing on a chip
+  // belonging to another pane therefore pulled that tab out of its pane and
+  // into the focused one, replacing what the focused pane was showing. It was
+  // invisible whenever the tab was already in the focused pane, because then the
+  // move is a reorder that changes nothing, which is why it survived until
+  // opening an app started routinely producing a second pane to click across.
+  //
+  // Now the pane is read off the group under the pointer. The row groups its
+  // chips by pane and marks each group with `data-pane-group` for exactly this,
+  // so the answer is the one the eye is already being given.
   const rowRef = useRef<HTMLDivElement | null>(null);
   const rowZone = useDropZone({
     kind: "strip",
-    paneId: dropPaneId ?? "",
     // Measured on demand, not cached: this row scrolls, and a stale rect puts
     // the caret in the wrong gap the moment it does.
-    tabRects: () =>
-      Array.from(
-        rowRef.current?.querySelectorAll<HTMLElement>(`[data-pane="${dropPaneId}"]`) ?? [],
-      ).map((el) => el.getBoundingClientRect()),
+    at: (x: number) => {
+      const row = rowRef.current;
+      const groups = row?.querySelectorAll<HTMLElement>("[data-pane-group]") ?? [];
+      for (const group of groups) {
+        const box = group.getBoundingClientRect();
+        if (x < box.left || x >= box.right) continue;
+        return {
+          paneId: group.dataset.paneGroup ?? "",
+          tabRects: Array.from(group.querySelectorAll<HTMLElement>("[data-pane]")).map((el) =>
+            el.getBoundingClientRect(),
+          ),
+        };
+      }
+      // Not over any pane's tabs — the empty stretch past the last chip, a
+      // cluster chip, the `+`. The focused pane is the only answer available
+      // and it is the right one: with nothing pointed at, "where you were
+      // working" is what the drop means. This is also why the zone still spans
+      // the whole row rather than stopping at the groups, which is the part
+      // that must not change — a release an inch wide of the tabs would
+      // otherwise resolve to `detach` and silently open an OS window.
+      const focused = dropPaneId ?? "";
+      return {
+        paneId: focused,
+        tabRects: Array.from(
+          row?.querySelectorAll<HTMLElement>(`[data-pane="${focused}"]`) ?? [],
+        ).map((el) => el.getBoundingClientRect()),
+      };
+    },
   });
 
   // Dismiss like every other popover in the shell: a click outside, or Escape.
@@ -241,17 +310,40 @@ export default function ClusterBar({
   // to the group box, and a group is `flex: none` in this row, so the collapse
   // cannot squeeze it — its members keep their widths and overflow with the
   // rest. The rect the band derives from is the same either way.
-  const surfaces = members.filter((m) => m.paneId !== null);
   const terminals = members.filter((m) => m.paneId === null);
 
-  // Where the insertion caret goes, counted over the drop pane's tabs alone —
-  // which is what `hitTest` measured, so the two agree by construction. A member
-  // belonging to some other pane is drawn but never carries a caret.
-  const caret = dropTarget?.kind === "strip" && dropTarget.paneId === dropPaneId ? dropTarget.index : null;
-  const inDropPane = new Map<string, number>();
-  for (const member of surfaces) {
-    if (member.paneId === dropPaneId) inDropPane.set(member.id, inDropPane.size);
-  }
+  // The surfaces, one entry per pane, in layout order.
+  //
+  // `members` already arrives pane by pane in layout order (see `WindowRoot`),
+  // so a pane's tabs are contiguous and a `Map` keyed by pane id preserves both
+  // orders without sorting anything. Grouping is a *rendering* concern and stops
+  // here: the flat list this is derived from is untouched, and `ToolWindow`'s
+  // surface list — the one that must never reorder, because reordering a mounted
+  // iframe reloads the app inside it — has never been this list at all.
+  const paneGroups = useMemo(() => {
+    const byPane = new Map<string, ClusterMember[]>();
+    for (const member of members) {
+      if (member.paneId === null) continue;
+      const held = byPane.get(member.paneId);
+      if (held) held.push(member);
+      else byPane.set(member.paneId, [member]);
+    }
+    return [...byPane].map(([paneId, group]) => ({ paneId, members: group }));
+  }, [members]);
+
+  // Where the insertion caret goes: in the group the drop target *names*, at the
+  // index it names, counted over that group's own tabs — which is exactly what
+  // `hitTest` measured through `at` above, so the two agree by construction.
+  //
+  // The target's pane, not the focused pane. This used to compare against
+  // `dropPaneId` and draw nothing unless they matched, which was consistent with
+  // the zone answering `dropPaneId` for everything; now that the zone answers
+  // with the pane under the pointer, comparing against the focused pane would
+  // hide the caret for every drop that is about to land somewhere else — the
+  // drag would show no indication of where it was going right up until it went
+  // there.
+  const caretPane = dropTarget?.kind === "strip" ? dropTarget.paneId : null;
+  const caretIndex = dropTarget?.kind === "strip" ? dropTarget.index : null;
 
   return (
     <div className="switcher">
@@ -305,17 +397,29 @@ export default function ClusterBar({
                 cluster={cluster}
                 active={active}
                 count={active ? null : memberCount(cluster.id)}
-                // A window must always have at least one cluster: closing the
-                // last one would leave a window with no layout, no panel and no
-                // way to make either. So the affordance is absent rather than
-                // present and refusing.
-                closable={clusters.length > 1}
-                // Dragged out only on that same condition, and refused in Rust
-                // on it too. The last cluster leaving would empty its window
-                // exactly as closing it would, so the chip simply stops being a
-                // drag source — a gesture that can be started and never
-                // completed is worse than one that is not offered.
-                dragHandle={clusters.length > 1 ? dragHandleForCluster?.(cluster) : undefined}
+                // Always closable, including the last one. A window with no
+                // cluster is a real state now — it draws the same kind of empty
+                // screen a cluster with no apps does, and the panel below is
+                // untouched because a panel belongs to the window rather than to
+                // whatever cluster happens to be open above it.
+                closable
+                // Always draggable too, including the last one, and that is a
+                // change worth naming because this line used to read
+                // `clusters.length > 1 ? … : undefined`.
+                //
+                // The rationale for the gate was that emptying a window is
+                // something you should have to *ask* for, and a drag onto
+                // another monitor only names a destination. `move_cluster_pure`
+                // refused on the same reasoning, so the handle was hidden rather
+                // than offered and refused. What that produced was a window with
+                // one cluster — the commonest window there is — where the whole
+                // multi-monitor gesture was simply missing, with nothing on
+                // screen to say it existed or why it did not apply. That is a
+                // worse failure than the side effect it was avoiding, and the
+                // side effect is one the line above already permits by another
+                // route. Both are gone; see `move_cluster_pure` in
+                // `shell_state.rs`.
+                dragHandle={dragHandleForCluster?.(cluster)}
                 onSelect={onSelect}
                 onClose={onClose}
                 onRename={onRename}
@@ -340,31 +444,43 @@ export default function ClusterBar({
                     transition={snap}
                     {...fade}
                   >
-                    {/* Plain `sync`, deliberately, where everything else in this
-                        file pops. A popped tab keeps its box and its
-                        `data-pane`, and the strip drop zone measures exactly
-                        that attribute with `querySelectorAll` on every pointer
-                        move — so a surface that popped would go on offering a
-                        rectangle to the caret arithmetic for as long as it took
+                    {/* One child per pane rather than one per surface, which is
+                        what makes pane membership readable — see this file's
+                        header on why that is not the per-pane tab strips coming
+                        back. The member tabs themselves are one level down, in
+                        `PaneGroup`.
+
+                        Plain `sync`, deliberately, where everything else in this
+                        file pops. A popped group keeps its box and every
+                        `data-pane` in it, and the strip drop zone measures
+                        exactly that attribute with `querySelectorAll` on every
+                        pointer move — so a pane that popped would go on offering
+                        rectangles to the caret arithmetic for as long as it took
                         to fade. Left in the flow, it is gone from the row the
                         moment it is gone from the model, and the gap closing
                         behind it is the `layout` on its neighbours. */}
                     <AnimatePresence initial={false}>
-                      {surfaces.map((member) => (
-                        <MemberTab
-                          key={member.id}
-                          member={member}
-                          caretBefore={caret !== null && caret === inDropPane.get(member.id)}
+                      {paneGroups.map((group) => (
+                        <PaneGroup
+                          key={group.paneId}
+                          paneId={group.paneId}
+                          members={group.members}
+                          caret={group.paneId === caretPane ? caretIndex : null}
                           onSelect={onSelectMember}
                           onClose={onCloseMember}
-                          dragHandle={dragHandleFor?.(member)}
+                          dragHandleFor={dragHandleFor}
                         />
                       ))}
                     </AnimatePresence>
-                    {/* Past the last tab. Its own element rather than a trailing
-                        style on the last tab, so dropping at the end reads the
-                        same as dropping anywhere else. */}
-                    {caret === inDropPane.size && <span className="switcher__caret" />}
+                    {/* The target pane has no tabs of its own to hang a caret
+                        on, so there is no group for it to have gone in. An empty
+                        focused pane is an ordinary state — close a pane's last
+                        tab in a split and you are in it — and a drag over the row
+                        with no caret anywhere reads as a drag that will land
+                        nowhere. */}
+                    {caretIndex === 0 && !paneGroups.some((g) => g.paneId === caretPane) && (
+                      <span className="switcher__caret" />
+                    )}
 
                     {/* "Open an app here", at the end of the open cluster's app
                         tabs — and inside this box rather than beside it, which
@@ -459,6 +575,13 @@ export default function ClusterBar({
         </motion.button>
       </div>
 
+      {/* Not a child of `.switcher__tabs` above — see the `position: relative`
+          comment on `.switcher` in switcher.css for why this is anchored on
+          the row instead, and how it still lands on exactly the tab strip's
+          own rectangle despite that. `rowRef` already points at the strip;
+          reused rather than given a second ref for the same element. */}
+      <OverlayScrollbar targetRef={rowRef} />
+
       <div className={`switcher__spacer${searchExpanded ? " switcher__spacer--collapsed" : ""}`} />
 
       {!searchExpanded && unhealthy.length > 0 && (
@@ -494,6 +617,100 @@ export default function ClusterBar({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One pane's tabs, drawn as one region.
+ *
+ * A pane holding a single surface renders exactly as it always did — a bare tab
+ * in the row, with this box adding nothing to it but a wrapper. Only a pane
+ * holding *more than one* takes the grouped treatment: a raised, rounded tray
+ * with thin internal dividers instead of the full-height seams the rest of the
+ * row uses. That asymmetry is the point. Every pane looking like a group
+ * would make the marking meaningless, since with no splits every surface is
+ * alone in its pane; marking only the pane that is actually stacking something
+ * means the decoration appears exactly when it has something to say.
+ *
+ * The wrapper is here even for a single member, though, and that is a
+ * reconciliation decision rather than a visual one. Rendering the lone member
+ * bare and the grouped ones wrapped would mean the wrapper appearing around a
+ * tab the moment a second one joined its pane — React reconciles children by
+ * position, so a tab that gained a parent element would unmount and remount, and
+ * a remounted tab is one that fades out and back in for a change that did not
+ * touch it.
+ *
+ * What does not survive is a tab dragged *between* two panes: it leaves one
+ * group and joins another, which is a remount whatever this does, so it
+ * crossfades where it used to slide. Accepted knowingly — the gesture already
+ * has a ghost under the cursor saying where the tab is going, and the far more
+ * common move, reordering within a pane, still slides because the tab stays in
+ * the same group. Nothing about a *surface* is at risk either way; the surfaces
+ * are a flat list in `ToolWindow` and this file has never held one.
+ *
+ * `caret` is the insertion index within *this* pane, or `null` when the drag is
+ * aimed elsewhere. It is the drop target's own index unchanged, because the
+ * registry measures a pane's tabs and this component draws exactly those.
+ */
+function PaneGroup({
+  paneId,
+  members,
+  caret,
+  onSelect,
+  onClose,
+  dragHandleFor,
+}: {
+  paneId: string;
+  members: ClusterMember[];
+  caret: number | null;
+  onSelect: (member: ClusterMember) => void;
+  onClose: (member: ClusterMember) => void;
+  dragHandleFor?: (member: ClusterMember) => DragHandleProps | undefined;
+}) {
+  const grouped = members.length > 1;
+
+  return (
+    // `layout="position"` and opacity-only, the rule every child of this row
+    // obeys: `.switcher__tabs` is a horizontal scroll container, and anything
+    // that animated its width or travelled sideways on the way out would extend
+    // the scroll range for the length of the exit and flash a scrollbar under
+    // the tabs. The transitions are the shared ones from `motion.ts`; a
+    // component in this row writing its own is a bug.
+    <motion.div
+      layout="position"
+      transition={snap}
+      {...fade}
+      className={grouped ? "switcher__pane switcher__pane--grouped" : "switcher__pane"}
+      // Read back by the strip drop zone to answer "which pane is under the
+      // pointer" — the question that used to be answered with "the focused one"
+      // regardless of where the pointer was. On every group, grouped or not: a
+      // pane with one tab is just as droppable as a pane with three, and the
+      // marking is structural rather than decorative. It carries no `data-pane`
+      // and no `data-tab`, so the per-tab measurement inside it is unaffected.
+      data-pane-group={paneId}
+    >
+      {/* `sync`, for the reason the group list above gives: an exiting tab must
+          leave the `data-pane` measurement the moment it leaves the model. */}
+      <AnimatePresence initial={false}>
+        {members.map((member, i) => (
+          <MemberTab
+            key={member.id}
+            member={member}
+            caretBefore={caret === i}
+            onSelect={onSelect}
+            onClose={onClose}
+            dragHandle={dragHandleFor?.(member)}
+          />
+        ))}
+      </AnimatePresence>
+
+      {/* Past this pane's last tab, and inside this pane's box — which is the
+          whole difference from where this used to be drawn. A trailing caret at
+          the end of *every* surface would sit after some other pane's tabs
+          whenever the focused pane was not the last one in the tree, promising
+          an insertion somewhere the drop would not go. */}
+      {caret === members.length && <span className="switcher__caret" />}
+    </motion.div>
   );
 }
 
@@ -580,12 +797,6 @@ function ClusterTab({
       onPointerDown={editing ? undefined : dragHandle?.onPointerDown}
       style={editing ? undefined : dragHandle?.style}
     >
-      {/* The chip's marker. Chrome gives each group a colour; a cluster has no
-          colour in the model and inventing eight of them would be inventing
-          eight design tokens, so this is the one accent dot, filled when the
-          group is open and hollow when it is not. */}
-      <span className="switcher__tab-dot" data-open={active || undefined} aria-hidden="true" />
-
       {editing ? (
         <input
           className="switcher__tab-input"

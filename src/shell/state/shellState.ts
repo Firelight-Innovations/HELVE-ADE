@@ -150,17 +150,34 @@ export function windowLabel(): string {
 /**
  * Open a new instance of an app. Resolves to its *instance* id.
  *
- * `pane_id` omitted means the active cluster's first pane, which is what the
- * Apps menu wants — someone asking for another Files has no opinion about which
- * pane receives it.
+ * `paneId` names the pane the open is **relative to**, not the pane the surface
+ * lands in; omitted, it falls back to the active cluster's first pane. That
+ * distinction is the change: this used to say "omitted means the first pane,
+ * which is what the Apps menu wants — someone asking for another Files has no
+ * opinion about which pane receives it", and the Apps menu now very much has
+ * one. Opening puts the new surface in a pane of its *own*, splitting the
+ * focused one, because dropping it in as another tab looked on screen like it
+ * had replaced what was there.
+ *
+ * `dir` is the axis to split that pane along, measured from the rendered
+ * rectangle by `panes/splitOnOpen.ts` — Rust stores fractions and cannot work it
+ * out. Omitted, nothing splits and the surface arrives as a tab, which is what
+ * the callers with nothing on screen to measure want. The rules that decline a
+ * split even when a direction is given live in `PaneNode::open_into`.
  */
 export function openInstance(
   label: string,
   appId: string,
   paneId?: string,
+  dir?: SplitDir,
 ): Promise<string> {
-  if (isFake()) return fake.openInstance(label, appId, paneId);
-  return invoke<string>("open_instance", { label, appId, paneId: paneId ?? null });
+  if (isFake()) return fake.openInstance(label, appId, paneId, dir);
+  return invoke<string>("open_instance", {
+    label,
+    appId,
+    paneId: paneId ?? null,
+    dir: dir ?? null,
+  });
 }
 
 export function closeInstance(instanceId: string): Promise<void> {
@@ -243,11 +260,16 @@ export function detachInstance(instanceId: string): Promise<void> {
  * A cluster can be moved into another window where a single tab cannot, and the
  * asymmetry is deliberate — see `commitCluster` in `drag/useDrag.tsx`.
  *
- * Refused, with nothing changed, when it is the last cluster in its window: a
- * window with no cluster has no layout and no panel. The bar hides the drag
- * affordance on the same condition, so the refusal should be unreachable by
- * pointer; it is enforced in Rust anyway, because an invariant that only the
- * interface remembers is one broadcast away from being forgotten.
+ * The last cluster in a window may be moved out, leaving that window with none
+ * and drawing `NoClustersState` beside a terminal panel that is untouched — the
+ * panel belongs to the window rather than to any cluster. This was refused until
+ * recently, on both sides, which meant the bar hid the chip's drag handle
+ * whenever a window held one cluster and the gesture went missing exactly where
+ * someone would reach for it. See `move_cluster_pure` in `shell_state.rs`.
+ *
+ * Rejects when no window holds `clusterId` — it was closed between the release
+ * and this call. The drag layer reports that rather than dropping it; a detach
+ * that quietly does nothing is the hardest failure here to see from outside.
  */
 export function detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
   if (isFake()) return fake.detachCluster(clusterId, toLabel);

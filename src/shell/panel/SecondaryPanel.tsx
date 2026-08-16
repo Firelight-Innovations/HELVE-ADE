@@ -53,7 +53,7 @@
  * it just no longer decides when to show it.
  */
 import { AnimatePresence, motion } from "framer-motion";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   groupTerminalTabs,
   type DragHandleProps,
@@ -64,6 +64,7 @@ import {
 import { useDropZone } from "../drag/dropZones";
 import { Close, ChevronLeft, ChevronRight, GitBranch, Plus } from "../../ui/Icon";
 import { snap } from "../motion";
+import OverlayScrollbar from "../scrollbar/OverlayScrollbar";
 import CloseConfirm from "./CloseConfirm";
 import "./panel.css";
 
@@ -147,13 +148,23 @@ export default function SecondaryPanel({
   dragHandleFor,
   dropActive = false,
 }: SecondaryPanelProps) {
-  if (collapsed) {
-    return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
-  }
-
+  // Every hook first, and the collapse checked after them. This component used
+  // to return `CollapsedStrip` above these three, which is a hook count that
+  // changes with a prop — React throws "rendered fewer hooks than expected" and
+  // tears down the tree the first time Ctrl+B is pressed. It survived only
+  // because nothing had collapsed the panel yet.
+  //
+  // `useDropZone` in particular must not be skipped: it is what unregisters the
+  // panel's drop zone, and a panel that collapsed without running it would have
+  // left a zone pointing at an element that is no longer drawn.
   const panelZone = useDropZone({ kind: "panel" });
   const onWorktree = activeTabId === WORKTREE_TAB;
   const tabs = groupTerminalTabs(sessions);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+
+  if (collapsed) {
+    return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
+  }
 
   return (
     // Registered as a drop zone so a terminal dragged out into the layout can
@@ -168,7 +179,7 @@ export default function SecondaryPanel({
           drag layer's concern; this row's own height is unaffected either
           way. */}
       <div className="panel__tabs">
-        <div className="panel__tabs-strip">
+        <div className="panel__tabs-strip" ref={stripRef}>
           {tabs.map((tab) => (
             <SessionTab
               key={tab.id}
@@ -184,6 +195,12 @@ export default function SecondaryPanel({
             <Plus />
           </button>
         </div>
+
+        {/* Not a child of the strip above — see the header comment in
+            panel.css on why `.panel__tabs` is the box this has to be
+            anchored in instead, and why it's rendered before the two pinned
+            groups below rather than after. */}
+        <OverlayScrollbar targetRef={stripRef} />
 
         {/* Two pinned groups, each its own parent — not one wrapper holding
             both. The worktree tab and the collapse button must not share a

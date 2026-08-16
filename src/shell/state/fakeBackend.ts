@@ -17,13 +17,16 @@
  * in the shipped app reads it: `isFake()` is false unless the query is present,
  * and a packaged build has no way to set it.
  */
-import type { AppInfo, ResolvedTool, StackSnapshot } from "../../bindings";
+import type { AppInfo, CallScope, Openable, ResolvedTool, StackSnapshot } from "../../bindings";
 import type {
   Cluster,
   GitControl,
   GitFileChange,
   GitStatus,
+  LayoutPreset,
   PaneNode,
+  PresetNode,
+  PresetSlot,
   SplitDir,
   SurfaceInstance,
 } from "../contract";
@@ -139,12 +142,57 @@ export function fakeApps(): AppInfo[] {
   ];
 }
 
+/**
+ * `apps::openables`, restated — every app, then a terminal.
+ *
+ * A separate fixture from `fakeApps` because it is a separate list in Rust, for
+ * the reason `bindings.ts`'s `Openable` sets out: an app has a frontend URL and
+ * a terminal has none, and the shell resolves a *mountable* address by looking
+ * an id up in the app list. A fixture that merged the two here would mount a
+ * blank iframe over every terminal under `?fake=1` and nowhere else, which is
+ * the worst kind of disagreement — one that only shows up in the packaged app.
+ *
+ * Derived from `fakeApps()` rather than written out again, so the one list that
+ * *is* a copy of a Rust table stays the only one.
+ */
+export function fakeOpenables(): Openable[] {
+  return [
+    ...fakeApps().map((app) => ({
+      id: app.id,
+      name: app.name,
+      description: app.description,
+      kind: "app" as const,
+    })),
+    {
+      id: "terminal",
+      name: "Terminal",
+      description: "A shell in a pane of this cluster, rather than in the panel.",
+      kind: "terminal" as const,
+    },
+  ];
+}
+
 // --- the fake project store --------------------------------------------------
 //
 // Home is the first app worth answering under `?fake=1`. It is what the shell
 // opens on, its layout is the thing most worth measuring in a browser, and every
 // state it can be in — a project open, none open, a recent whose folder has gone
 // — is a *layout*, which is exactly what this fixture exists to make reachable.
+//
+// **A project belongs to a cluster here exactly as it does in Rust.** The open
+// project is not a variable in this section; it is `Cluster.project` on the
+// windows further down, read and written through the two helpers below. That is
+// not fidelity for its own sake: the whole feature is that two clusters hold two
+// projects, and a fixture with one global would make the one thing worth
+// clicking through unclickable while still rendering something plausible. This
+// file's own history is the argument — a hardcoded dock list that *looked* right
+// hid a real empty-switcher bug for as long as it existed.
+//
+// Every method below therefore takes the same `scope` the real `app_call` takes,
+// and resolves it the way `apps::CallContext::resolve` does: an instance id
+// wins, resolved against the pane trees; an explicit cluster id is the fallback
+// for the shell's own calls; neither means no cluster, and no cluster means the
+// same refusals Rust gives.
 //
 // Files used to be left rejecting, on the argument that a fake filesystem is a
 // much larger lie than a fake list of four projects — it would have to invent
@@ -160,6 +208,23 @@ export function fakeApps(): AppInfo[] {
 // looking healthier — the exact failure that hid the empty switcher bar. They
 // reject, and Home draws the error path it would draw for any other refusal.
 
+/**
+ * Where the file tree further down says each project starts.
+ *
+ * Declared here, above the Recent list that names them, rather than beside the
+ * tree they describe — a `const` is not hoisted, and the list is a top-level
+ * array evaluated at module load.
+ *
+ * **There are two, and the second exists for one reason.** A project belongs to
+ * a cluster now, so the thing worth being able to see is two Files side by side
+ * rooted at two different folders — and that is not visible in a fixture with
+ * one tree in it, however faithfully every other rule is copied. `borealis` is
+ * deliberately small: its job is to be unmistakably *not* aurora at a glance,
+ * not to exercise the viewers a second time.
+ */
+const AURORA_ROOT = "C:\\projects\\aurora";
+const BOREALIS_ROOT = "C:\\projects\\borealis";
+
 interface FakeProject {
   name: string;
   path: string;
@@ -173,9 +238,15 @@ interface FakeProject {
 const HOUR = 3_600_000;
 
 let fakeProjects: FakeProject[] = [
+  // The two with a file tree behind them (see `AURORA_ROOT` and
+  // `BOREALIS_ROOT`). They are first in the list because they are the two rows
+  // worth clicking: open one into each cluster and the two Files beside each
+  // other root at two different trees, which is the whole feature and is
+  // otherwise not visible in a browser at all. Every other row below exercises
+  // a *Home* state and has no tree, which `fakeDefaultRoot` explains.
   {
-    name: "Torn Apart",
-    path: "C:\\Users\\bjsea\\Documents\\games\\Torn Apart",
+    name: "Aurora",
+    path: AURORA_ROOT,
     id: "0000000000000001a1b2c3d4e5f60001",
     initialized: true,
     exists: true,
@@ -183,9 +254,18 @@ let fakeProjects: FakeProject[] = [
     modified: Date.now() - HOUR,
   },
   {
-    name: "ACRE Turbulence",
-    path: "C:\\Users\\bjsea\\Documents\\games\\ACRE Turbulence",
+    name: "Borealis",
+    path: BOREALIS_ROOT,
     id: "0000000000000002a1b2c3d4e5f60002",
+    initialized: true,
+    exists: true,
+    lastOpened: Date.now() - 5 * HOUR,
+    modified: Date.now() - 3 * HOUR,
+  },
+  {
+    name: "Torn Apart",
+    path: "C:\\Users\\bjsea\\Documents\\games\\Torn Apart",
+    id: "0000000000000003a1b2c3d4e5f60003",
     initialized: true,
     exists: true,
     lastOpened: Date.now() - 3 * 24 * HOUR,
@@ -205,7 +285,7 @@ let fakeProjects: FakeProject[] = [
   {
     name: "Old Jam Entry",
     path: "D:\\jam\\Old Jam Entry",
-    id: "0000000000000004a1b2c3d4e5f60004",
+    id: "0000000000000005a1b2c3d4e5f60005",
     initialized: false,
     exists: false,
     lastOpened: Date.now() - 200 * 24 * HOUR,
@@ -213,40 +293,102 @@ let fakeProjects: FakeProject[] = [
   },
 ];
 
-let fakeOpen: string | null = null;
+/**
+ * Which cluster a call is on behalf of. Mirrors `apps::CallContext::resolve`,
+ * including the precedence.
+ *
+ * The instance wins because in Rust it is the trustworthy input — the shell
+ * resolved it from `event.source` against its own map of mounted iframes, where
+ * an explicit cluster id is something a caller stated. Faking the precedence
+ * the other way round would let this fixture succeed on calls the backend
+ * answers differently, which is the direction of disagreement this file is
+ * least willing to have.
+ */
+function fakeClusterOf(scope?: CallScope): string | null {
+  const fromInstance = scope?.instanceId
+    ? (fakeWindows
+        .flatMap((w) => w.clusters)
+        .find((c) => paneTabsOf(c.tree).includes(scope.instanceId as string))?.id ?? null)
+    : null;
+  return fromInstance ?? scope?.clusterId ?? null;
+}
 
-function fakeProjectState() {
+/** The path a cluster is pointed at. `null` for no cluster and for a cluster
+ *  with no project alike, which is what `project::cluster_path` answers too. */
+function fakeClusterProjectPath(clusterId: string | null): string | null {
+  if (clusterId === null) return null;
+  return fakeWindows.flatMap((w) => w.clusters).find((c) => c.id === clusterId)?.project ?? null;
+}
+
+/** Point a cluster at a project, or at nothing — `ShellState::
+ *  set_cluster_project`, and it republishes both broadcasts for the same
+ *  reason Rust emits `shell:state` *and* `project:changed`: the layout changed
+ *  and so did the project on it. */
+function setFakeClusterProject(clusterId: string, path: string | null): void {
+  fakeWindows = fakeWindows.map((w) => ({
+    ...w,
+    clusters: w.clusters.map((c) => (c.id === clusterId ? { ...c, project: path } : c)),
+  }));
+  publishFakeShellState();
+  publishFakeProject(clusterId);
+}
+
+/**
+ * `home/state`'s payload for one cluster: that cluster's project as `open`, and
+ * everyone's history as `recents`. The two scopes the real model has.
+ */
+function fakeProjectState(clusterId: string | null) {
+  const path = fakeClusterProjectPath(clusterId);
   return {
-    open: fakeProjects.find((p) => p.path === fakeOpen) ?? null,
+    open: fakeProjects.find((p) => p.path === path) ?? null,
     recents: fakeProjects,
   };
 }
 
-// The real backend emits `project:changed` on every open and close, and the
-// title bar is now a subscriber to it (`state/project.ts`). A browser has no
-// Tauri event system, so this is the same stand-in the fake shell state uses: a
-// subscriber list, published from the mutating cases below.
+// The real backend emits `project:changed` on every open and close, stamped
+// with the cluster it is about, and the title bar is a subscriber to it
+// (`state/project.ts`). A browser has no Tauri event system, so this is the
+// same stand-in the fake shell state uses: a subscriber list, published from the
+// mutating cases below.
 //
 // Without it the bar would name whatever was open when the window mounted —
 // which under `?fake=1` is nothing — and stay that way however many projects
 // were opened from Home. That is a fixture disagreeing with the backend in the
 // direction of looking *emptier* rather than healthier, but it is still the
 // kind of disagreement that makes a real regression unnoticeable here.
+//
+// **Each subscriber names the cluster it cares about, and hears about no
+// other.** That is the filter Rust puts on the wire and `ToolWindow` and the
+// title bar both apply; a fixture that told every subscriber about every change
+// would make the one bug this feature exists to prevent — a switch in cluster A
+// renaming the bar that is showing cluster B — invisible in the only place it
+// can be clicked through.
 type FakeProjectListener = (open: { name: string; path: string } | null) => void;
-const fakeProjectListeners = new Set<FakeProjectListener>();
+const fakeProjectListeners = new Map<FakeProjectListener, string | null>();
 
-function publishFakeProject() {
-  const open = fakeProjectState().open;
-  const value = open ? { name: open.name, path: open.path } : null;
-  for (const cb of fakeProjectListeners) cb(value);
+function publishFakeProject(clusterId: string) {
+  for (const [cb, watching] of fakeProjectListeners) {
+    if (watching !== clusterId) continue;
+    const open = fakeProjectState(clusterId).open;
+    cb(open ? { name: open.name, path: open.path } : null);
+  }
 }
 
-/** Mirrors a `project:changed` subscription, plus the initial read the shell
- *  does with `home/state` — one call covers both, because in a fixture they
- *  cannot disagree. */
-export function subscribeFakeProject(cb: FakeProjectListener): () => void {
-  fakeProjectListeners.add(cb);
-  const open = fakeProjectState().open;
+/**
+ * Mirrors a `project:changed` subscription scoped to one cluster, plus the
+ * initial `cluster_project` read — one call covers both, because in a fixture
+ * they cannot disagree.
+ *
+ * A `null` cluster subscribes to nothing and reports nothing, which is a window
+ * with no clusters: there is no project to name, and no event that could ever
+ * be about it.
+ */
+export function subscribeFakeClusterProject(
+  clusterId: string | null,
+  cb: FakeProjectListener,
+): () => void {
+  fakeProjectListeners.set(cb, clusterId);
+  const open = fakeProjectState(clusterId).open;
   cb(open ? { name: open.name, path: open.path } : null);
   return () => {
     fakeProjectListeners.delete(cb);
@@ -292,41 +434,74 @@ function rpcError(code: number, message: string, data?: unknown) {
  * See the note above for what Home answers and why its pickers do not, and the
  * file-tree section below for the same about `files/*`.
  */
-export async function fakeAppCall(method: string, params?: unknown): Promise<unknown | undefined> {
+export async function fakeAppCall(
+  method: string,
+  params?: unknown,
+  scope?: CallScope,
+): Promise<unknown | undefined> {
   const path = (params as { path?: string } | undefined)?.path;
+  const cluster = fakeClusterOf(scope);
 
   await settle();
 
   switch (method) {
     case "home/state":
-      return { ...fakeProjectState(), version: "0.1.0" };
+      return { ...fakeProjectState(cluster), version: "0.1.0" };
 
     // The three that end in Rust's `project::open` or `project::close` also
     // publish, because those two are what emit `project:changed`. `forget`
-    // deliberately does not — it touches the history and never the open project
-    // — so it does not here either.
+    // deliberately does not — it touches the history and never any cluster's
+    // project — so it does not here either.
+    //
+    // All three go through `requireFakeCluster` first, matching
+    // `CallContext::require_cluster`: opening a project with no cluster to open
+    // it into is not a smaller version of the action, it is a different one,
+    // and the backend refuses it. A fixture that quietly succeeded would make
+    // the refusal unreachable in the one browser an agent gets.
     case "home/open-recent":
-      if (fakeProjects.some((p) => p.path === path && p.exists)) fakeOpen = path ?? null;
-      publishFakeProject();
-      return fakeProjectState();
+      requireFakeCluster(cluster);
+      if (fakeProjects.some((p) => p.path === path && p.exists)) {
+        setFakeClusterProject(cluster as string, path ?? null);
+      }
+      return fakeProjectState(cluster);
 
     case "home/initialize-project":
+      requireFakeCluster(cluster);
       fakeProjects = fakeProjects.map((p) => (p.path === path ? { ...p, initialized: true } : p));
-      fakeOpen = path ?? fakeOpen;
-      publishFakeProject();
-      return fakeProjectState();
+      if (path !== undefined) setFakeClusterProject(cluster as string, path);
+      return fakeProjectState(cluster);
 
+    // No cluster required: the Recent list is global, and forgetting works
+    // whether or not the caller is in a cluster. The scope only decides whose
+    // open project the answer reports.
     case "home/forget-recent":
       fakeProjects = fakeProjects.filter((p) => p.path !== path);
-      return fakeProjectState();
+      return fakeProjectState(cluster);
 
     case "home/close-project":
-      fakeOpen = null;
-      publishFakeProject();
-      return fakeProjectState();
+      requireFakeCluster(cluster);
+      setFakeClusterProject(cluster as string, null);
+      return fakeProjectState(cluster);
 
     default:
-      return filesCall(method, params);
+      return filesCall(method, params, cluster);
+  }
+}
+
+/**
+ * `CallContext::require_cluster`, message and all — the refusal Home's four
+ * opening methods give a surface whose cluster has closed underneath it.
+ *
+ * Copied rather than paraphrased for the reason the whole file gives about the
+ * not-UTF-8 and stale-write messages: a fixture whose refusals read differently
+ * from the backend's teaches whoever hits one to go looking in the wrong place.
+ */
+function requireFakeCluster(clusterId: string | null): void {
+  if (clusterId === null) {
+    throw rpcError(
+      HelveErrorCode.InternalError,
+      "there is no cluster to open a project in — this surface is not in one any more",
+    );
   }
 }
 
@@ -354,11 +529,14 @@ export async function fakeAppCall(method: string, params?: unknown): Promise<unk
 // was full here and empty in the packaged app.
 //
 // The tree claims to be Windows because this is Windows: backslash-separated
-// absolute paths under `C:\projects\aurora`, with the drive root above it so
-// that "up" out of the project has somewhere real to go.
-
-/** Where `files/root` says the tree starts. */
-const AURORA_ROOT = "C:\\projects\\aurora";
+// absolute paths under `C:\projects\`, with the drive root above so that "up"
+// out of either project has somewhere real to go.
+//
+// It holds **two** projects — see `AURORA_ROOT` and `BOREALIS_ROOT`, which are
+// declared up in the project-store section because the Recent list names them
+// and that list is evaluated at module load. That they are needed in both
+// places is the point: the two fixtures are one model now, not a project list
+// beside an unrelated file tree.
 
 /**
  * `MAX_READ_BYTES` from `files.rs`, restated.
@@ -560,6 +738,18 @@ function buildTree(): Map<string, FakeNode> {
     file(joinPath(pkg, "index.js"), `module.exports = require("./lib/${name}.js");\n`);
   }
 
+  // The second project. Small on purpose — see the note by `BOREALIS_ROOT`. It
+  // sits beside aurora under the same `C:\projects`, so "up" from either lands
+  // somewhere that lists both, which is how you can see at a glance that these
+  // are two trees and not one tree drawn twice.
+  const bore = (...parts: string[]) => parts.reduce(joinPath, BOREALIS_ROOT);
+  dir(BOREALIS_ROOT);
+  file(bore("README.md"), BOREALIS_README_MD);
+  file(bore("Cargo.toml"), BOREALIS_CARGO_TOML);
+  dir(bore("src"));
+  file(bore("src", "main.rs"), BOREALIS_MAIN_RS);
+  file(bore("src", "shader.wgsl"), BOREALIS_SHADER_WGSL);
+
   return nodes;
 }
 
@@ -570,11 +760,35 @@ function packageJsonFor(name: string): string {
 // --- serving the eight methods ------------------------------------------------
 
 /**
+ * Where Files roots when nobody has said otherwise — the port of
+ * `files::default_root`.
+ *
+ * The calling cluster's project first, which is the whole of what changed: two
+ * Files in two clusters ask this same function and get two answers. The
+ * fallback is `AURORA_ROOT`, standing in for Rust's "the directory holding the
+ * running manifest" — there is no manifest here, and what matters is that a
+ * cluster with no project still has *somewhere* to browse rather than an error.
+ *
+ * A project path that is not a directory in this tree also falls back, and that
+ * is not laziness: the Recent list holds four rows that exercise Home's own
+ * states — a folder that was never initialized, one whose drive is gone — and
+ * none of them has a file tree behind it. Opening one of those points the
+ * cluster at it, Home says so, and Files browses the fallback. The real backend
+ * behaves the same way for a project whose folder has been deleted since.
+ */
+function fakeDefaultRoot(clusterId: string | null): string {
+  const project = fakeClusterProjectPath(clusterId);
+  if (project !== null && fileTree().get(project)?.kind === "dir") return project;
+  return AURORA_ROOT;
+}
+
+/**
  * The `files/*` half of `fakeAppCall`. `undefined` for anything else, so the
  * Home switch above can fall through to here and still refuse what neither
  * store knows.
  */
-function filesCall(method: string, params?: unknown): unknown | undefined {
+function filesCall(method: string, params?: unknown, clusterId: string | null = null): unknown | undefined {
+  const root = fakeDefaultRoot(clusterId);
   const p = (params ?? {}) as {
     path?: unknown;
     text?: unknown;
@@ -586,18 +800,19 @@ function filesCall(method: string, params?: unknown): unknown | undefined {
 
   switch (method) {
     case "files/root":
-      return { path: AURORA_ROOT, name: baseNameOf(AURORA_ROOT) };
+      return { path: root, name: baseNameOf(root) };
 
     // Absent and null both mean "wherever you'd start me", as `resolve_path`
     // has it; every other method requires a path, as `required_path` has it.
+    // "Wherever" is this cluster's project — see `fakeDefaultRoot`.
     case "files/list":
-      return listAt(p.path === undefined || p.path === null ? AURORA_ROOT : requiredPath(p.path));
+      return listAt(p.path === undefined || p.path === null ? root : requiredPath(p.path));
 
     case "files/stat":
       return statAt(requiredPath(p.path));
 
     case "files/read":
-      return readAt(requiredPath(p.path));
+      return readAt(p.path === undefined || p.path === null ? root : requiredPath(p.path));
 
     case "files/read-bytes":
       return readBytesAt(requiredPath(p.path));
@@ -637,7 +852,7 @@ function filesCall(method: string, params?: unknown): unknown | undefined {
       return treeSizeAt(requiredPath(p.path));
 
     case "trash/list":
-      return trashListing();
+      return trashListing(root);
 
     case "trash/restore":
       return trashRestoreAt(requiredString(p.id, "id"));
@@ -1171,9 +1386,13 @@ interface FakeTrashEntry {
 let fakeTrash: FakeTrashEntry[] = [];
 let fakeTrashSerial = 0;
 
-function trashListing(): unknown {
+function trashListing(root: string): unknown {
   return {
-    root: AURORA_ROOT,
+    // The scope the real backend enforces: `trash/list` reports the Recycle Bin
+    // for the root Files is showing, and that root is now the calling cluster's
+    // project. Passed in rather than read from a constant, so the two panes of
+    // one Files surface cannot disagree about which project they are in.
+    root,
     // Newest first, which is the order Rust sorts into. The frontend explicitly
     // does not re-sort, so a fixture handing back insertion order would make the
     // list look right here and wrong against the backend.
@@ -1422,6 +1641,72 @@ node_modules/
 dist/
 *.log
 .DS_Store
+`;
+
+// --- the second project -------------------------------------------------------
+//
+// Four files, and they are four rather than forty on purpose. This tree exists
+// so that a Files in one cluster is visibly not the Files in the other; every
+// rule about listing, reading, writing and windowing is already exercised by
+// aurora above, and a second copy of all of it would be a second thing to keep
+// in agreement with `files.rs` for no extra coverage.
+//
+// The contents still say what project this is, so a screenshot of one cluster
+// cannot be mistaken for a screenshot of the other.
+
+const BOREALIS_README_MD = `# Borealis
+
+The *second* fixture project, and the reason there are two.
+
+A project belongs to a cluster, so the thing worth being able to see in a
+browser is two Files side by side rooted at two different folders. Open Aurora
+in one cluster and Borealis in the other from Home's Recent list, then switch
+chips: the title bar renames and this tree replaces that one.
+
+If both panes show the same files, the per-cluster wiring is broken — most
+likely the instance id is not reaching \`app_call\`, or \`project:changed\` is
+being relayed to frames outside the cluster it names.
+`;
+
+const BOREALIS_CARGO_TOML = `[package]
+name = "borealis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = "23"
+winit = "0.30"
+`;
+
+const BOREALIS_MAIN_RS = `//! Borealis — the second fixture project.
+
+fn main() {
+    let sky = Sky::at_latitude(68.4);
+    println!("{} bands", sky.bands().count());
+}
+
+struct Sky {
+    latitude: f32,
+}
+
+impl Sky {
+    fn at_latitude(latitude: f32) -> Self {
+        Self { latitude }
+    }
+
+    fn bands(&self) -> impl Iterator<Item = f32> + '_ {
+        (0..12).map(move |i| self.latitude + i as f32 * 0.25)
+    }
+}
+`;
+
+const BOREALIS_SHADER_WGSL = `@group(0) @binding(0) var<uniform> time: f32;
+
+@fragment
+fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let band = sin(uv.y * 12.0 + time) * 0.5 + 0.5;
+    return vec4<f32>(0.1, 0.6 * band, 0.4 + 0.4 * band, 1.0);
+}
 `;
 
 const CI_YML = `name: ci
@@ -1958,6 +2243,11 @@ let fakeTerminalSerial = 3;
  * The seed is chosen to make that exercisable on sight: two clusters, so
  * switching is visible, and a row split in the first, so dividers and
  * cross-pane drags have somewhere to go.
+ *
+ * The two clusters hold **two different projects**, which is the newest thing
+ * worth seeing here. Switching between them retitles the bar and re-roots the
+ * Files in each — and a fixture where both pointed at the same folder would
+ * render exactly as it does today whether the per-cluster wiring worked or not.
  */
 let fakeInstances: SurfaceInstance[] = [
   { id: "home-1", appId: "home", kind: "app", title: "Home" },
@@ -1982,12 +2272,17 @@ let fakeWindows: WindowPlacement[] = [
             { kind: "leaf", id: "pane-2", tabs: ["files-1"], activeTab: "files-1" },
           ],
         },
+        project: AURORA_ROOT,
         worktree: null,
       },
       {
         id: "cluster-2",
-        name: "auth",
+        name: "borealis",
         tree: { kind: "leaf", id: "pane-3", tabs: ["files-2"], activeTab: "files-2" },
+        // A different project from the one above, which is the point. Click
+        // between the two chips: the title bar changes name and `files-2` shows
+        // a different tree from `files-1`.
+        project: BOREALIS_ROOT,
         worktree: null,
       },
     ],
@@ -2077,15 +2372,69 @@ export function subscribeFakeShellState(cb: (snapshot: ShellSnapshot) => void): 
  * makes the new tab survive a cluster switch here the same way it does for real.
  */
 export function fakeAddTerminal(title: string): string {
-  fakeTerminalSerial += 1;
-  const id = `term-fake-${fakeTerminalSerial}`;
-  const label = fakeWindows[0]?.label ?? "main";
-  fakeTerminals = [...fakeTerminals, { id, title, windowLabel: label, agentFinished: false, groupId: null }];
+  const { id, label } = mintFakeTerminal(title);
   // `ShellState::add_terminal` selects what it just opened, so the panel is
   // showing the terminal the "+" produced rather than the one before it.
   fakeWindows = fakeWindows.map((w) => (w.label === label ? { ...w, activeTerminal: id } : w));
   publishFakeShellState();
   return id;
+}
+
+/** A session in the list and nothing else — no selection, no publish. The two
+ *  routes below decide those for themselves, exactly as Rust's two do. */
+function mintFakeTerminal(title: string): { id: string; label: string } {
+  fakeTerminalSerial += 1;
+  const id = `term-fake-${fakeTerminalSerial}`;
+  const label = fakeWindows[0]?.label ?? "main";
+  fakeTerminals = [
+    ...fakeTerminals,
+    { id, title, windowLabel: label, agentFinished: false, groupId: null },
+  ];
+  return { id, label };
+}
+
+/**
+ * Mirrors `ShellState::add_terminal_in_pane`: a session published with its id
+ * *already* in the active cluster's tree.
+ *
+ * Being in a tree is the whole of what makes it a pane terminal rather than a
+ * panel one — a terminal is in a panel unless its id appears in a tree, and no
+ * second field records which, by design.
+ *
+ * **One publish, and the panel's selection is deliberately not touched.** Add it
+ * to the panel first and move it after and you get what Rust's doc comment
+ * describes: the panel jumps to a terminal that is about to leave it, then
+ * `reseatActiveTerminals` repairs the selection to whichever panel terminal
+ * happens to be first — so opening a terminal in a pane would change which
+ * terminal the panel is showing. A fixture that reproduced that would be
+ * teaching the bug.
+ *
+ * `paneId` falling back to the cluster's first pane matches `active_pane`,
+ * including its forgiveness of a pane id from a layout that has since changed.
+ */
+export function fakeAddTerminalInPane(paneId?: string, dir?: SplitDir): string {
+  const active = activeClusterId();
+  const cluster = active === null ? undefined : findCluster(active);
+  // No cluster, no tree, nowhere for a pane terminal to go. Rust refuses this
+  // outright (`active_pane` answers `None`); here the panel is the honest
+  // fallback, since the session has to be somewhere a tab can be seen.
+  if (!cluster || active === null) return fakeAddTerminal("shell");
+
+  const target =
+    paneId !== undefined && hasPane(cluster.tree, paneId) ? paneId : firstPaneId(cluster.tree);
+
+  const split = mintSplitIds(dir);
+  const { id } = mintFakeTerminal("shell");
+  eachCluster((c) =>
+    c.id === active ? { ...c, tree: openIntoNode(c.tree, target, id, null, split) } : c,
+  );
+  publishFakeShellState();
+  return id;
+}
+
+/** Whether this tree holds a pane with that id. Port of `PaneNode::pane_of_id`. */
+function hasPane(node: PaneNode, paneId: string): boolean {
+  return node.kind === "leaf" ? node.id === paneId : node.children.some((c) => hasPane(c, paneId));
 }
 
 /** Mirrors `ShellState::group_with` — see its doc comment for the rule this
@@ -2299,6 +2648,61 @@ function splitPaneNode(
   };
 }
 
+/**
+ * How many panes a tree draws. Port of `PaneNode::pane_count`, and the number
+ * `MAX_AUTO_PANES` below is counted against.
+ */
+function paneCount(node: PaneNode): number {
+  return node.kind === "leaf" ? 1 : node.children.reduce((n, c) => n + paneCount(c), 0);
+}
+
+/** Whether `paneId` names a leaf holding nothing. Port of `pane_is_empty`. */
+function paneIsEmpty(node: PaneNode, paneId: string): boolean {
+  return node.kind === "leaf"
+    ? node.id === paneId && node.tabs.length === 0
+    : node.children.some((c) => paneIsEmpty(c, paneId));
+}
+
+/**
+ * The ceiling on the automatic split. Mirrors `layout::MAX_AUTO_PANES`, which
+ * is where the number is argued for — four, because a 2×2 grid is the largest
+ * arrangement that still reads as several things rather than a mosaic.
+ */
+const MAX_AUTO_PANES = 4;
+
+/**
+ * Where a newly opened surface goes. Port of `PaneNode::open_into`, and the
+ * whole reason it is a port rather than a second implementation: `?fake=1` is
+ * how this shell is looked at without a backend, so a fixture that stacked
+ * where Rust splits would make the browser a liar about the one behaviour
+ * somebody is checking. The rule, its two refusals and the ceiling are all
+ * documented on the Rust side; this only has to agree with them.
+ */
+function openIntoNode(
+  node: PaneNode,
+  paneId: string,
+  instanceId: string,
+  index: number | null,
+  split: { dir: SplitDir; splitId: string; newPaneId: string } | null,
+): PaneNode {
+  if (split && paneCount(node) < MAX_AUTO_PANES && !paneIsEmpty(node, paneId)) {
+    return splitPaneNode(node, paneId, split.dir, split.splitId, split.newPaneId, instanceId, false);
+  }
+  return insertTab(node, paneId, instanceId, index);
+}
+
+/**
+ * The two ids a split needs, taken from the same serials Rust takes them from.
+ * `null` when no direction was measured, so nothing is minted for an open that
+ * was never going to split — the same thrift `ShellState::open_instance` shows.
+ */
+function mintSplitIds(dir?: SplitDir): { dir: SplitDir; splitId: string; newPaneId: string } | null {
+  if (!dir) return null;
+  fakeSplitSerial += 1;
+  fakePaneSerial += 1;
+  return { dir, splitId: `split-${fakeSplitSerial}`, newPaneId: `pane-${fakePaneSerial}` };
+}
+
 function setSizesNode(node: PaneNode, splitId: string, sizes: number[]): PaneNode {
   if (node.kind === "leaf") return node;
   if (node.id === splitId) {
@@ -2312,18 +2716,31 @@ function setSizesNode(node: PaneNode, splitId: string, sizes: number[]): PaneNod
 
 /** The no-backend stand-in for every layout mutation in `shellState.ts`. */
 export const fakeLayout = {
-  openInstance(_label: string, appId: string, paneId?: string): Promise<string> {
+  openInstance(_label: string, appId: string, paneId?: string, dir?: SplitDir): Promise<string> {
+    const active = activeClusterId();
+    // No cluster, nowhere to put it — `ShellState::open_instance` returns
+    // `None` here and publishes nothing, so nothing is minted. Refused rather
+    // than half-done: without this the fixture would add the instance to the
+    // flat list and into no tree, leaving a surface that exists and is drawn
+    // nowhere. The Apps menu is disabled in this state, so reaching it means
+    // something else went wrong and should say so.
+    if (active === null) {
+      return Promise.reject(
+        rpcError(HelveErrorCode.InternalError, "there is no cluster in this window to open into"),
+      );
+    }
+
     const ordinal = (fakeInstanceSerials.get(appId) ?? 0) + 1;
     fakeInstanceSerials.set(appId, ordinal);
     const id = `${appId}-${ordinal}`;
     const title = fakeApps().find((a) => a.id === appId)?.name ?? appId;
 
+    const split = mintSplitIds(dir);
     fakeInstances = [...fakeInstances, { id, appId, kind: "app", title }];
-    const active = activeClusterId();
     eachCluster((cluster) => {
       if (cluster.id !== active) return cluster;
       const target = paneId ?? firstPaneId(cluster.tree);
-      return { ...cluster, tree: insertTab(cluster.tree, target, id, null) };
+      return { ...cluster, tree: openIntoNode(cluster.tree, target, id, null, split) };
     });
     publishFakeShellState();
     return Promise.resolve(id);
@@ -2406,6 +2823,12 @@ export const fakeLayout = {
                 id,
                 name,
                 tree: { kind: "leaf", id: `pane-${fakePaneSerial}`, tabs: [], activeTab: null },
+                // No project, matching `ShellState::add_cluster`. Not inherited
+                // from the cluster this was added beside and no picker raised —
+                // the Home that opens below draws the pick-a-project state, and
+                // that state is reachable in a browser only because this is
+                // `null` rather than a convenient guess.
+                project: null,
                 worktree: null,
               },
             ],
@@ -2439,6 +2862,22 @@ export const fakeLayout = {
     return Promise.resolve();
   },
 
+  /**
+   * Close a cluster and everything in its tree — including the last cluster in
+   * a window, which is now allowed.
+   *
+   * `activeClusterId` falls to `null` when there is nothing left to fall to,
+   * and that `null` is the state worth clicking through here: the app area
+   * draws `NoClustersState` and the terminal panel beside it keeps working,
+   * because a panel terminal is the window's and was never in any cluster's
+   * tree. That last part is the one this fixture can actually get wrong, so it
+   * is worth checking by eye — close both chips and the shells must still be
+   * there.
+   *
+   * `detachCluster` below reaches the same state by the other route, and no
+   * longer refuses to move the last cluster out. See `move_cluster_pure` in
+   * `shell_state.rs`.
+   */
   closeCluster(clusterId: string): Promise<void> {
     const gone = findCluster(clusterId);
     const held = gone ? paneTabsOf(gone.tree) : [];
@@ -2469,8 +2908,8 @@ export const fakeLayout = {
   },
 
   /**
-   * Port of `move_cluster_pure` in `shell_state.rs` — read that for the two
-   * refusals and for why the terminals in the tree have to be rewritten.
+   * Port of `move_cluster_pure` in `shell_state.rs` — read that for the one
+   * refusal and for why the terminals in the tree have to be rewritten.
    *
    * One thing here is not a faithful picture, and it cannot be: `?fake=1` has no
    * backend and so no way to open an OS window. A cluster detached to a fresh
@@ -2479,16 +2918,17 @@ export const fakeLayout = {
    * the fixture being broken — for real, a window opens beside it holding
    * exactly that cluster.
    *
-   * What is worth exercising here is the rest of it: that the last cluster in a
-   * window cannot be dragged out, that the bar's chip stops being a drag source
-   * when only one is left, and that the window's selection falls to a survivor
-   * rather than pointing at something that has gone.
+   * What is worth exercising here is the rest of it: that the window's selection
+   * falls to a survivor rather than pointing at something that has gone, and
+   * that a window emptied by dragging its last cluster out draws
+   * `NoClustersState` with its terminal panel intact. That last case used to be
+   * refused here and in Rust; it is not any more, and this fixture has to agree
+   * or clicking through `?fake=1` teaches the wrong rule.
    */
   detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
     const source = fakeWindows.find((w) => w.clusters.some((c) => c.id === clusterId));
-    // A cluster nobody holds, and the last cluster in its window — a window with
-    // none has no layout, no panel and no way to make either.
-    if (!source || source.clusters.length <= 1) return Promise.resolve();
+    // A cluster nobody holds. The only refusal left.
+    if (!source) return Promise.resolve();
     // Already where it was asked to be.
     if (toLabel === source.label) return Promise.resolve();
 
@@ -2584,4 +3024,357 @@ function paneOfTabIn(node: PaneNode, instanceId: string): boolean {
   return node.kind === "leaf"
     ? node.tabs.includes(instanceId)
     : node.children.some((c) => paneOfTabIn(c, instanceId));
+}
+
+// --- layout presets, faked ---------------------------------------------------
+//
+// A port of `src-tauri/src/presets/mod.rs`, and it has to stay one, for the
+// reason the layout section above gives at length: a fake that behaved
+// differently from the backend would teach the wrong behaviour confidently.
+//
+// It earns the duplication the same way that section does. Applying a preset is
+// the single most consequential gesture this feature has — it rearranges a whole
+// cluster in one click — and the rule that makes it safe is that *nothing open
+// is ever closed*. That rule is testable in Rust and clickable only here.
+//
+// Where the Rust file is subtle, it is cited rather than re-explained, so the
+// two cannot drift in reasoning even where they drift in code.
+
+/** Rust's `presets::BUILTIN_PREFIX`. No user preset's id may begin with it. */
+const FAKE_BUILTIN_PREFIX = "builtin:";
+
+/** Rust's `presets::MAX_DEPTH`. */
+const FAKE_MAX_PRESET_DEPTH = 6;
+
+function presetAppPane(appId: string): PresetNode {
+  return { kind: "pane", slots: [{ kind: "app", appId }] };
+}
+
+function presetTerminalPane(): PresetNode {
+  return { kind: "pane", slots: [{ kind: "terminal" }] };
+}
+
+/**
+ * `presets::builtins`, restated — the same three, in the same order, with the
+ * same ids and weights.
+ *
+ * Like `fakeApps` above, this is a copy of a table in another language and is
+ * the one thing in this section that can go stale without anything noticing. It
+ * is a copy anyway because the built-ins are the *whole* of what the menu shows
+ * before anyone has saved anything, and a submenu that was empty here and full
+ * in the packaged app is precisely the disagreement this file exists to avoid.
+ */
+function fakeBuiltinPresets(): LayoutPreset[] {
+  return [
+    {
+      id: `${FAKE_BUILTIN_PREFIX}files-and-terminal`,
+      name: "Files & Terminal",
+      builtin: true,
+      root: {
+        kind: "split",
+        dir: "row",
+        sizes: [0.65, 0.35],
+        children: [presetAppPane("files"), presetTerminalPane()],
+      },
+    },
+    {
+      id: `${FAKE_BUILTIN_PREFIX}two-files`,
+      name: "Two Files",
+      builtin: true,
+      root: {
+        kind: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [presetAppPane("files"), presetAppPane("files")],
+      },
+    },
+    {
+      id: `${FAKE_BUILTIN_PREFIX}files-over-terminal`,
+      name: "Files over Terminal",
+      builtin: true,
+      root: {
+        kind: "split",
+        dir: "column",
+        sizes: [0.7, 0.3],
+        children: [presetAppPane("files"), presetTerminalPane()],
+      },
+    },
+  ];
+}
+
+/**
+ * The user's own, in memory only.
+ *
+ * There is no `presets.json` in a browser and inventing one would be a lie of
+ * the kind this file refuses elsewhere. What survives here is the session, which
+ * is enough to exercise the thing worth exercising: save an arrangement, switch
+ * cluster, apply it, watch what was already open land where the rule says it
+ * should.
+ */
+let fakeUserPresets: LayoutPreset[] = [];
+const fakePresetListeners = new Set<(presets: LayoutPreset[]) => void>();
+
+/** Port of `presets::merge`, including every reason it drops an entry. */
+function mergeFakePresets(): LayoutPreset[] {
+  const out = fakeBuiltinPresets();
+  for (const preset of fakeUserPresets) {
+    if (preset.id.startsWith(FAKE_BUILTIN_PREFIX)) continue;
+    if (!preset.id.trim() || !preset.name.trim()) continue;
+    if (out.some((p) => p.id === preset.id)) continue;
+    if (out.some((p) => p.name.toLowerCase() === preset.name.toLowerCase())) continue;
+    out.push({ ...preset, builtin: false, root: normalizePreset(preset.root, 0) });
+  }
+  return out;
+}
+
+function publishFakePresets(): void {
+  const merged = mergeFakePresets();
+  for (const cb of fakePresetListeners) cb(merged);
+}
+
+/** Port of `PresetNode::normalized`. Read that for what each repair is for. */
+function normalizePreset(node: PresetNode, depth: number): PresetNode {
+  if (node.kind === "pane") {
+    return {
+      kind: "pane",
+      slots: node.slots.filter(
+        (slot) => slot.kind === "terminal" || fakeApps().some((a) => a.id === slot.appId),
+      ),
+    };
+  }
+
+  if (depth >= FAKE_MAX_PRESET_DEPTH) {
+    const first = node.children[0];
+    return first ? normalizePreset(first, depth) : { kind: "pane", slots: [] };
+  }
+
+  const children: PresetNode[] = [];
+  const sizes: number[] = [];
+  node.children.forEach((raw, i) => {
+    const child = normalizePreset(raw, depth + 1);
+    if (child.kind === "pane" && child.slots.length === 0) return;
+    children.push(child);
+    sizes.push(node.sizes[i] ?? 1 / node.children.length);
+  });
+
+  if (children.length === 0) return { kind: "pane", slots: [] };
+  if (children.length === 1) return children[0];
+  // Through the same `normalize` the live tree uses, so a preset cannot
+  // describe a split the layout engine would refuse to draw.
+  return { ...node, children, sizes: normalize(sizes) };
+}
+
+// No port of `PresetNode::pane_count` / `split_count`. Rust needs them because
+// it mints its ids from `Counters` before taking the state lock — see
+// `ShellState::apply_preset` — and there is no lock here, so `planPreset` takes
+// the next serial as it reaches each node.
+
+/** What a tab id is, as a slot. Port of `shell_state::resolve_slot`. */
+function fakeSlotOfTab(id: string): PresetSlot | null {
+  const instance = fakeInstances.find((i) => i.id === id);
+  if (instance) return { kind: "app", appId: instance.appId };
+  return fakeTerminals.some((t) => t.id === id) ? { kind: "terminal" } : null;
+}
+
+function sameSlot(a: PresetSlot | null, b: PresetSlot): boolean {
+  if (a === null) return false;
+  if (a.kind === "terminal" || b.kind === "terminal") return a.kind === b.kind;
+  return a.appId === b.appId;
+}
+
+/** Port of `presets::capture`: the shape, the apps, and none of the ids. */
+function capturePreset(node: PaneNode): PresetNode {
+  const raw: PresetNode =
+    node.kind === "leaf"
+      ? {
+          kind: "pane",
+          slots: node.tabs
+            .map(fakeSlotOfTab)
+            .filter((slot): slot is PresetSlot => slot !== null),
+        }
+      : {
+          kind: "split",
+          dir: node.dir,
+          sizes: [...node.sizes],
+          children: node.children.map(capturePreset),
+        };
+  return normalizePreset(raw, 0);
+}
+
+interface FakeGap {
+  paneId: string;
+  /** `null` when appending lands it in the right place. See `presets::Gap`. */
+  index: number | null;
+  slot: PresetSlot;
+}
+
+/**
+ * Port of `presets::plan`, and **the rule is the point**: a surface matching a
+ * slot moves into it, a slot with nothing to fill it comes back as a gap, and
+ * everything else lands in the last pane. Nothing is ever closed.
+ */
+function planPreset(
+  root: PresetNode,
+  existing: { id: string; fills: PresetSlot | null }[],
+): { tree: PaneNode; gaps: FakeGap[] } {
+  const claimed = new Set<string>();
+  const gaps: FakeGap[] = [];
+
+  const build = (node: PresetNode): PaneNode => {
+    if (node.kind === "split") {
+      fakeSplitSerial += 1;
+      const id = `split-${fakeSplitSerial}`;
+      return { kind: "split", id, dir: node.dir, sizes: [...node.sizes], children: node.children.map(build) };
+    }
+
+    fakePaneSerial += 1;
+    const paneId = `pane-${fakePaneSerial}`;
+    const tabs: string[] = [];
+    node.slots.forEach((slot, index) => {
+      const match = existing.find((e) => !claimed.has(e.id) && sameSlot(e.fills, slot));
+      if (match) {
+        claimed.add(match.id);
+        tabs.push(match.id);
+        return;
+      }
+      gaps.push({ paneId, index: node.slots.length > 1 ? index : null, slot });
+    });
+    return { kind: "leaf", id: paneId, tabs, activeTab: tabs[0] ?? null };
+  };
+
+  const tree = build(root);
+
+  // Written straight into the last leaf rather than through `insertTab`, which
+  // would make each leftover the pane's active tab in turn — the tab a pane
+  // shows should be the one the preset asked for.
+  const leftovers = existing.filter((e) => !claimed.has(e.id)).map((e) => e.id);
+  if (leftovers.length > 0) {
+    const last = lastLeafOf(tree);
+    last.tabs = [...last.tabs, ...leftovers];
+    last.activeTab ??= leftovers[0];
+  }
+
+  return { tree, gaps };
+}
+
+function lastLeafOf(node: PaneNode): Extract<PaneNode, { kind: "leaf" }> {
+  if (node.kind === "leaf") return node;
+  const last = node.children[node.children.length - 1];
+  return last ? lastLeafOf(last) : { kind: "leaf", id: node.id, tabs: [], activeTab: null };
+}
+
+/** The no-backend stand-in for `state/presets.ts`. */
+export const fakePresets = {
+  /** Mirrors `useLayoutPresets`: the current list now, then every change. */
+  subscribe(cb: (presets: LayoutPreset[]) => void): () => void {
+    fakePresetListeners.add(cb);
+    cb(mergeFakePresets());
+    return () => {
+      fakePresetListeners.delete(cb);
+    };
+  },
+
+  /**
+   * Mirrors `commands::save_preset`, refusals included.
+   *
+   * The built-in name check is copied rather than paraphrased for the reason
+   * this file gives about the not-UTF-8 and stale-write messages: a fixture
+   * whose refusals read differently from the backend's teaches whoever hits one
+   * to go looking in the wrong place. It rejects with a bare string, which is
+   * what Rust's `AppError` serializes to and what the name field renders.
+   */
+  save(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return Promise.reject("a preset needs a name to be found by");
+    }
+    const clash = fakeBuiltinPresets().find(
+      (b) => b.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (clash) {
+      return Promise.reject(
+        `"${clash.name}" is one of HELVE's own presets, so it cannot be replaced — pick another name`,
+      );
+    }
+
+    const active = activeClusterId();
+    const cluster = active === null ? undefined : findCluster(active);
+    if (!cluster) return Promise.reject("this window has no cluster to save the arrangement of");
+
+    const root = capturePreset(cluster.tree);
+    const existing = fakeUserPresets.find(
+      (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (existing) {
+      // Saving over a name replaces it, and keeps its id — the only way this
+      // build has of editing a preset. See `presets::save`.
+      fakeUserPresets = fakeUserPresets.map((p) =>
+        p === existing ? { ...p, name: trimmed, root } : p,
+      );
+    } else {
+      fakeUserPresets = [
+        ...fakeUserPresets,
+        { id: mintFakePresetId(trimmed), name: trimmed, builtin: false, root },
+      ];
+    }
+
+    publishFakePresets();
+    return Promise.resolve();
+  },
+
+  /**
+   * Mirrors `commands::apply_preset`: rearrange in one step, then fill the gaps
+   * through the same doors everything else opens surfaces through.
+   *
+   * The terminal case is the one worth watching here. A terminal in a pane *is*
+   * a session whose id appears in a tree — there is no second representation —
+   * so this opens one into the panel and then moves it into the pane, which is
+   * exactly what dragging its tab there does.
+   */
+  async apply(presetId: string): Promise<void> {
+    const preset = mergeFakePresets().find((p) => p.id === presetId);
+    if (!preset) return Promise.reject(`no preset with id \`${presetId}\``);
+
+    const active = activeClusterId();
+    const cluster = active === null ? undefined : findCluster(active);
+    if (active === null || !cluster) {
+      return Promise.reject("this window has no cluster to apply a preset to");
+    }
+
+    const existing = paneTabsOf(cluster.tree).map((id) => ({ id, fills: fakeSlotOfTab(id) }));
+    const { tree, gaps } = planPreset(preset.root, existing);
+
+    eachCluster((c) => (c.id === active ? { ...c, tree } : c));
+    publishFakeShellState();
+
+    const label = fakeWindows[0]?.label ?? "main";
+    for (const gap of gaps) {
+      if (gap.slot.kind === "app") {
+        const id = await fakeLayout.openInstance(label, gap.slot.appId, gap.paneId);
+        // Only a pane holding more than one slot can need this; see
+        // `presets::Gap.index`.
+        if (gap.index !== null) {
+          await fakeLayout.moveInstance(id, active, gap.paneId, gap.index);
+        }
+      } else {
+        const id = fakeAddTerminal("bash");
+        await fakeLayout.moveInstance(id, active, gap.paneId, gap.index);
+      }
+    }
+  },
+};
+
+/** Port of `presets::mint_id`: a slug of the name, numbered if it is taken. */
+function mintFakePresetId(name: string): string {
+  let slug = "";
+  for (const ch of name) {
+    if (/[a-zA-Z0-9]/.test(ch)) slug += ch.toLowerCase();
+    else if (!slug.endsWith("-")) slug += "-";
+  }
+  const base = slug.replace(/^-+|-+$/g, "") || "preset";
+  const taken = fakeUserPresets.map((p) => p.id);
+  if (!taken.includes(base)) return base;
+  for (let n = 2; ; n += 1) {
+    if (!taken.includes(`${base}-${n}`)) return `${base}-${n}`;
+  }
 }
