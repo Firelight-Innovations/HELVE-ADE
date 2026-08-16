@@ -151,7 +151,8 @@ for (const key of Object.keys(fileExtensions)) {
  */
 const SURROUNDING_UNDERSCORES = /^__(.+)__$/;
 const LEADING_DECORATION = /^[._-]+/;
-const bareForm = (name) => name.replace(SURROUNDING_UNDERSCORES, "$1").replace(LEADING_DECORATION, "");
+const bareForm = (name) =>
+  name.replace(SURROUNDING_UNDERSCORES, "$1").replace(LEADING_DECORATION, "");
 
 const bareFolderNames = new Set(Object.keys(folderNames).filter((name) => bareForm(name) === name));
 const keptAliases = [];
@@ -165,11 +166,13 @@ for (const name of Object.keys(folderNames)) {
     continue;
   }
   if (folderNames[bare] !== folderNames[name]) {
-    throw new Error(`folder alias ${name} -> ${folderNames[name]} disagrees with ${bare} -> ${folderNames[bare]}`);
+    throw new Error(
+      `folder alias ${name} -> ${folderNames[name]} disagrees with ${bare} -> ${folderNames[bare]}`,
+    );
   }
   if (folderNamesExpanded[bare] !== folderNamesExpanded[name]) {
     throw new Error(
-      `folder alias ${name} opens to ${folderNamesExpanded[name]}, but ${bare} opens to ${folderNamesExpanded[bare]}`
+      `folder alias ${name} opens to ${folderNamesExpanded[name]}, but ${bare} opens to ${folderNamesExpanded[bare]}`,
     );
   }
 
@@ -190,7 +193,9 @@ const defaults = {
 // theme has the defaults above and no per-name root overrides — so there is no
 // table to emit, only the two defaults.
 
-const svgFiles = [...new Set([...referenced].map((key) => basename(definitions[key].iconPath)))].sort();
+const svgFiles = [
+  ...new Set([...referenced].map((key) => basename(definitions[key].iconPath))),
+].sort();
 
 rmSync(outIcons, { recursive: true, force: true });
 mkdirSync(outIcons, { recursive: true });
@@ -198,7 +203,9 @@ for (const svg of svgFiles) copyFileSync(join(sourceIcons, svg), join(outIcons, 
 
 /** One entry per line is 12,000 lines nobody reads; one line is a 130 KB line no editor enjoys. */
 function literal(table) {
-  const entries = Object.entries(table).map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`);
+  const entries = Object.entries(table).map(
+    ([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`,
+  );
   const lines = [];
   let line = "";
   for (const entry of entries) {
@@ -254,12 +261,12 @@ writeFileSync(outManifest, source, "utf8");
 const bytes = svgFiles.reduce((sum, svg) => sum + readFileSync(join(outIcons, svg)).byteLength, 0);
 console.log(
   `file icons: ${svgFiles.length} of ${Object.keys(definitions).length} SVGs copied ` +
-    `(${(bytes / 1024).toFixed(0)} KB) to public/icons/material/`
+    `(${(bytes / 1024).toFixed(0)} KB) to public/icons/material/`,
 );
 console.log(
   `  ${Object.keys(fileNames).length} file names, ${Object.keys(fileExtensions).length} extensions, ` +
     `${Object.keys(folderNames).length} folders ` +
-    `(${aliasesDropped} decorated aliases stripped, ${keptAliases.length} kept verbatim)`
+    `(${aliasesDropped} decorated aliases stripped, ${keptAliases.length} kept verbatim)`,
 );
 console.log(`  manifest: ${(Buffer.byteLength(source) / 1024).toFixed(0)} KB`);
 if (keptAliases.length > 0) console.log(`  aliases with no bare form: ${keptAliases.join(", ")}`);

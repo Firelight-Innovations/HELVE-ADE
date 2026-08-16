@@ -137,20 +137,18 @@ function TerminalDeck(
       })}
 
       {isSplit &&
-        activeSessions
-          .slice(1)
-          .map((session, i) => (
-            <div
-              key={`divider-${session.id}`}
-              className="terminal__divider"
-              style={
-                {
-                  "--pane-index": i + 1,
-                  "--pane-count": activeSessions.length,
-                } as React.CSSProperties
-              }
-            />
-          ))}
+        activeSessions.slice(1).map((session, i) => (
+          <div
+            key={`divider-${session.id}`}
+            className="terminal__divider"
+            style={
+              {
+                "--pane-index": i + 1,
+                "--pane-count": activeSessions.length,
+              } as React.CSSProperties
+            }
+          />
+        ))}
     </div>
   );
 }

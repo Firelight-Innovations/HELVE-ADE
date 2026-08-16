@@ -3,7 +3,5 @@
   "identifier": "splash",
   "description": "Capability for the splash window. Tauri v2 scopes capabilities per window label — `default.json` only targets [\"main\"], so without this the splash webview would have no permissions at all, including the `listen` permission it needs to receive boot progress events. Kept separate (and deliberately minimal, just `core:default`) because the splash never calls a plugin command like `opener:*`; it only listens for `boot:status` and invokes our own `finish_boot` command, which — being one of our own `#[tauri::command]` functions rather than a plugin command — needs no permission entry at all.",
   "windows": ["splash"],
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": ["core:default"]
 }
