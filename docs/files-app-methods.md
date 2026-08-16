@@ -9,11 +9,7 @@ methods rather than part of the protocol.
 The implementation is `src-tauri/src/apps/files.rs` and
 `src-tauri/src/apps/trash.rs`. The frontend's own wrappers are
 `apps/files/ui/src/rpc.ts`, which is the only file in the app that spells a
-method name. `src/shell/state/fakeBackend.ts` answers all of these under
-`?fake=1`, deliberately including their refusals. The one exception is
-`files/save-as`, which opens a native dialog: there is no OS there to open one,
-so it refuses with that as the reason rather than inventing a path — the same
-posture the fixture takes towards Home's folder pickers.
+method name.
 
 Times are **milliseconds since the Unix epoch** throughout. Paths are absolute
 and in whatever form the host OS produced.

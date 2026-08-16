@@ -751,8 +751,7 @@ export type PaneNode =
 // arranged in.
 //
 // Nothing in the shell draws a preset's shape today; the menu draws its name.
-// The tree is typed here anyway because it crosses the wire, and because the
-// `?fake=1` fixture has to apply one without a backend.
+// The tree is typed here anyway because it crosses the wire.
 
 /** Mirrors `presets::PresetSlot`. A terminal is not an app id — see below. */
 export type PresetSlot = { kind: "app"; appId: string } | { kind: "terminal" };

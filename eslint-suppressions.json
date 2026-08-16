@@ -36,24 +36,11 @@
   },
   "src/shell/search/searchSource.ts": {
     "no-restricted-imports": {
-      "count": 2
+      "count": 1
     }
   },
   "src/shell/search/useLocatorTree.ts": {
     "no-restricted-imports": {
-      "count": 1
-    }
-  },
-  "src/shell/state/apps.ts": {
-    "no-restricted-imports": {
-      "count": 1
-    }
-  },
-  "src/shell/state/fakeBackend.ts": {
-    "no-restricted-imports": {
-      "count": 2
-    },
-    "no-useless-escape": {
       "count": 1
     }
   },
@@ -109,7 +96,7 @@
   },
   "src/shell/toolwindow/ToolWindow.tsx": {
     "no-restricted-imports": {
-      "count": 11
+      "count": 10
     }
   }
 }

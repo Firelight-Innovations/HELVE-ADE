@@ -85,8 +85,8 @@ export function useGitStatus(control: GitControl, clusterId: string | null): Git
  * Tauri serialises `AppError` across the bridge, so a rejection here is
  * usually already the `Display` string ("git commit failed: nothing to
  * commit…") rather than an `Error`. Both shapes are handled because only one
- * of them survives the boundary and the other is what the fake backend and any
- * genuine frontend bug would throw.
+ * of them survives the boundary and the other is what a genuine frontend bug
+ * would throw.
  */
 export function gitMessage(reason: unknown): string {
   if (typeof reason === "string") return reason;

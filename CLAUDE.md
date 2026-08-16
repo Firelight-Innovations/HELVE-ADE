@@ -10,7 +10,10 @@ shared — anything else holding it fails the whole run rather than degrading.
 same app from port 1430, and `strictPort` is off for that mode, so a second and third agent step up
 to 1431 and 1432 instead of colliding. Read the port Vite prints; don't assume 1430.
 
-Append `?fake=1` to run the shell with no Tauri backend — see `src/shell/state/fakeBackend.ts`.
+There is no way to run the shell without a Tauri backend under it. `pnpm dev:agent` serves the same
+files, so the shell mounts and its layout can be measured, but every call into Rust fails — no
+stack, no apps, no terminals, no project. The `?fake=1` fixture that used to answer those calls has
+been removed; anything that needs a real backend goes to Braden.
 
 **Never run `pnpm app`, `pnpm dev`, or `tauri dev`** unless you are Braden. Two failure modes, both
 seen repeatedly:
@@ -24,9 +27,36 @@ another agent's; ask instead.
 
 ## Verification
 
-`pnpm build` (which runs `tsc` first) and `cargo check --manifest-path src-tauri/Cargo.toml` are the
-two checks every change must pass. Chrome measurements go through the `mcp__claude-in-chrome__*`
-tools against `pnpm dev:agent`.
+**Every commit and every pull request must pass all four checks. No exceptions, and none of them
+are advisory.** One command runs the lot:
+
+```sh
+pnpm verify     # build -> test -> lint -> format:check
+```
+
+| Check | Command | Covers |
+|---|---|---|
+| Build | `pnpm build` | runs `tsc` first, so this covers types |
+| Tests | `pnpm test` | 28 vitest + 212 `cargo test`, all currently passing |
+| Lint | `pnpm lint` | ESLint, clippy, comment density |
+| Format | `pnpm format:check` | Prettier and rustfmt; `pnpm format` applies |
+
+`pnpm test` is both halves — `pnpm test:js` for the workspace packages, `pnpm test:rust` for
+`cargo test --workspace`. Run the whole thing before you claim a change is done. A build that
+compiles is not a change that works.
+
+**A failing test is never fixed by deleting or skipping the test.** If a test is genuinely wrong,
+say so and explain why in the commit message rather than quietly removing it. Per STANDARDS.md §8,
+a bug fix arrives with the test that would have caught it — that is the one test rule described as
+non-negotiable.
+
+The three lint baselines (`eslint-suppressions.json`, `clippy-baseline.json`,
+`comment-baseline.json`) grandfather violations that predate the linters. They are ratchets: they
+may shrink and may not grow. **Never run `pnpm baseline` to make a check pass** — it regenerates
+all three and would absorb your new violation, which is the exact thing they exist to prevent. Fix
+the code instead.
+
+Chrome measurements go through the `mcp__claude-in-chrome__*` tools against `pnpm dev:agent`.
 
 A minimized or occluded Chrome window reports `document.visibilityState === "hidden"`, and in that
 state `requestAnimationFrame` never fires and `getBoundingClientRect()` silently returns **stale**

@@ -335,10 +335,6 @@
     "ratio": 0.512,
     "maxRun": 31
   },
-  "src/shell/state/fakeBackend.ts": {
-    "ratio": 0.3144,
-    "maxRun": 49
-  },
   "src/shell/state/git.ts": {
     "ratio": 0.4833,
     "maxRun": 25

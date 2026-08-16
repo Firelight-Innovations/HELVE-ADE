@@ -838,7 +838,7 @@ export default function WindowRoot({
       .then(setFullscreenState)
       .catch(() => {
         /* No window to ask. The menu item still toggles; it just starts by
-           claiming the window is not full screen, which under `?fake=1` it
+           claiming the window is not full screen, which in a plain browser it
            is not. */
       });
   }, []);
@@ -889,9 +889,7 @@ export default function WindowRoot({
 
   // Home is where a project is opened, so File > Open… is Home's
   // `home/open-project` — the same native folder picker its own button raises,
-  // rather than a second path to the same dialog. Called through `callApp`, so
-  // `?fake=1` refuses it the way it refuses every other picker instead of
-  // pretending a folder was chosen.
+  // rather than a second path to the same dialog.
   //
   // Scoped to this window's active cluster, and it has to be said explicitly
   // here where a frame's call says it by being a frame. This is a title-bar
@@ -1363,8 +1361,8 @@ export default function WindowRoot({
  * Why Zoom In or Zoom Out cannot go any further, or `undefined`.
  *
  * Two reasons, and they are different kinds of thing: there is no webview to
- * scale at all (a browser under `?fake=1`), or the ladder has run out in that
- * direction. The second is what keeps the item honest at the ends — clicking
+ * scale at all (the shell drawn in a plain browser), or the ladder has run out
+ * in that direction. The second is what keeps the item honest at the ends — clicking
  * Zoom In at 250% would otherwise look like a click that did nothing.
  */
 function zoomBlocked(zoom: number, direction: 1 | -1): string | undefined {
