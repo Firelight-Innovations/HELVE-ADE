@@ -87,9 +87,21 @@ pnpm verify
 | Lint | `pnpm lint` | ESLint, clippy, comment density |
 | Format | `pnpm format:check` | Prettier and rustfmt |
 
-Each half is available on its own when you want a faster loop:
+While iterating, `pnpm verify:fast` runs the same four checks in roughly half
+the time (17s against 33s). It swaps `pnpm build` for `pnpm typecheck` — the
+three workspace packages plus `tsc`, without `vite build` or the icon
+generation step. Bundling alone is 21 of the full run's 33 seconds.
+
+**Use it for the inner loop, not as the last check before you commit.** Skipping
+the bundle skips the only check that catches a new app missing its entry in
+`vite.config.ts` (see `STANDARDS.md` §3 — it fails *silently*), an asset
+referenced from CSS or HTML that does not resolve, or anything that type-checks
+but cannot be bundled. None of those are type errors.
+
+Each half is available on its own when you want a narrower loop still:
 
 ```sh
+pnpm typecheck    # workspace packages + tsc, no bundle
 pnpm test:js      # vitest across the workspace packages
 pnpm test:rust    # cargo test --workspace
 pnpm lint:js      # ESLint only

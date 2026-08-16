@@ -299,6 +299,11 @@ Before a pull request is ready:
    | `pnpm lint` | ESLint, clippy, comment density (§10) |
    | `pnpm format:check` | Prettier and rustfmt |
 
+   `pnpm verify:fast` runs the same four checks in about half the time by
+   skipping `vite build`. It is for iterating, not for signing off — the bundle
+   is what catches a new app missing its `vite.config.ts` entry (§3), which
+   fails silently and is not a type error.
+
 2. New modules have doc comments; new decisions have their rejected alternative
    recorded.
 3. If it touches `docs/tool-protocol.md`, `src/bindings.ts`, or

@@ -45,6 +45,27 @@ pnpm verify     # build -> test -> lint -> format:check
 `cargo test --workspace`. Run the whole thing before you claim a change is done. A build that
 compiles is not a change that works.
 
+### While you are iterating, use `pnpm verify:fast`
+
+```sh
+pnpm verify:fast    # 17s, vs 33s for the full pnpm verify
+```
+
+It swaps `pnpm build` for `pnpm typecheck`, which builds the three workspace packages and runs
+`tsc` but skips `vite build` and `generate:icons`. `vite build` alone is 21 of the full run's 33
+seconds, and `generate:icons` wipes and rewrites 1115 files in `public/icons/material/` — two
+agents running it at once race and produce a phantom failure.
+
+**`verify:fast` is for the inner loop only. The last run before you commit must be the full
+`pnpm verify`.** Skipping the bundle means skipping the one check that catches:
+
+- a new app missing its entry in `vite.config.ts` — STANDARDS.md §3 warns that this is the one
+  piece that cannot be inferred, and the app *silently* does not build;
+- assets referenced from CSS or HTML that fail to resolve;
+- anything that type-checks but cannot be bundled, such as a bad dynamic import.
+
+None of those are type errors, so `tsc` passing tells you nothing about them.
+
 **A failing test is never fixed by deleting or skipping the test.** If a test is genuinely wrong,
 say so and explain why in the commit message rather than quietly removing it. Per STANDARDS.md §8,
 a bug fix arrives with the test that would have caught it — that is the one test rule described as
