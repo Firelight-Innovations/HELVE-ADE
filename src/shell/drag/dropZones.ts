@@ -41,9 +41,35 @@ export type DropZone =
   | { kind: "pane"; paneId: string }
   | {
       kind: "strip";
-      paneId: string;
-      /** Measured on demand, because a strip scrolls and its tabs move. */
-      tabRects: () => DOMRect[];
+      /**
+       * Which pane a release at this x lands in, and that pane's own tab rects.
+       *
+       * A function of the position rather than a fixed `paneId`, and that is a
+       * bug fix rather than a generalisation. This used to be
+       * `paneId: dropPaneId` — the *focused* pane — for a release anywhere over
+       * the row, so releasing a tab directly on top of a chip belonging to some
+       * other pane moved that tab **into the focused pane**. `commit`'s `strip`
+       * branch calls `moveInstance`, so that was a real write to the tree that
+       * persisted: the pane you were pointing at was ignored and its occupant
+       * was replaced by whatever you had hold of.
+       *
+       * It hid for as long as it did because it is invisible in the case it is
+       * reached most: when the tab is already in the focused pane, "move it into
+       * the focused pane" is a reorder that changes nothing. It only misbehaves
+       * across panes, which was a rare arrangement until opening an app started
+       * making one.
+       *
+       * The row is still one zone spanning the whole bar — see the call site for
+       * why anything narrower is dangerous — and it still answers with the
+       * focused pane over the parts of it that are not any pane's tabs. Which
+       * region a point falls in is the bar's own question about its own markup,
+       * so the bar answers it; this module goes on knowing nothing about how the
+       * row is drawn.
+       *
+       * Measured on demand, because the row scrolls and a stale rect puts the
+       * caret in the wrong gap the moment it does.
+       */
+      at: (x: number) => { paneId: string; tabRects: DOMRect[] };
     }
   | { kind: "panel" };
 
@@ -110,7 +136,10 @@ export function hitTest(x: number, y: number): DropTarget {
     const zone = held.current;
     if (zone.kind !== "strip") continue;
     if (!within(el.getBoundingClientRect(), x, y)) continue;
-    return { kind: "strip", paneId: zone.paneId, index: insertionIndex(zone.tabRects(), x) };
+    // The pane is resolved from where the pointer is, not from which pane
+    // happens to be focused. See `DropZone`'s `at` for what the second one cost.
+    const hit = zone.at(x);
+    return { kind: "strip", paneId: hit.paneId, index: insertionIndex(hit.tabRects, x) };
   }
 
   for (const { zone: held, el } of zones) {

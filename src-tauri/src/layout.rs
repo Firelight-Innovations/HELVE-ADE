@@ -943,6 +943,69 @@ mod tests {
         assert!(!tree.activate_tab("nonesuch"), "an absent instance is not activated");
     }
 
+    /// Activating a tab in a pane you are **not** focused on touches that pane
+    /// and nothing else.
+    ///
+    /// The bug this pins was not here — the tree walk was always right, and the
+    /// fault was in the cluster bar handing the drag layer the *focused* pane as
+    /// the drop target for a release anywhere over the row, so a press that
+    /// jittered past the drag threshold on a chip in another pane moved that tab
+    /// into the focused pane through `move_instance`. What made it hard to see is
+    /// that it is invisible whenever the two panes coincide.
+    ///
+    /// So this asserts the property the whole gesture rests on, from the side
+    /// that can be tested exhaustively: an activation is a pure change of *which
+    /// tab is showing*, in the one pane that holds it. Nothing moves between
+    /// panes, no other pane's showing tab changes, and the shape of the tree is
+    /// untouched — which is also what keeps the surfaces in `ToolWindow` where
+    /// they are, since each one is positioned from the pane its id resolves to.
+    #[test]
+    fn activating_a_tab_in_another_pane_leaves_every_other_pane_alone() {
+        let mut tree = PaneNode::Leaf {
+            id: "p1".to_string(),
+            tabs: vec!["files-1".into(), "term-1".into()],
+            active_tab: Some("term-1".to_string()),
+        };
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "files-2", false);
+        // The user is working in p2; p1 is the pane they are not looking at.
+        let before = tree.clone();
+
+        assert!(tree.activate_tab("files-1"), "the tab is in this tree");
+
+        let PaneNode::Split { children, dir, sizes, .. } = &tree else {
+            panic!("activating must not reshape the tree");
+        };
+        assert_eq!(*dir, SplitDir::Row);
+        assert_eq!(sizes.len(), 2);
+        assert_eq!(children.len(), 2, "no pane appeared or vanished");
+
+        let PaneNode::Leaf { tabs, active_tab, .. } = &children[0] else {
+            panic!("expected p1 to still be a leaf");
+        };
+        assert_eq!(
+            tabs,
+            &["files-1".to_string(), "term-1".to_string()],
+            "the activated tab did not move panes, and neither did its neighbour"
+        );
+        assert_eq!(active_tab.as_deref(), Some("files-1"), "its own pane switched");
+
+        let PaneNode::Leaf { tabs, active_tab, .. } = &children[1] else {
+            panic!("expected p2 to still be a leaf");
+        };
+        assert_eq!(tabs, &["files-2".to_string()], "the focused pane's contents are untouched");
+        assert_eq!(
+            active_tab.as_deref(),
+            Some("files-2"),
+            "the focused pane goes on showing what it was showing"
+        );
+
+        // And the counterpart: a tab that is already showing is a no-op, so
+        // clicking the chip you are already looking at cannot disturb anything.
+        let mut again = before.clone();
+        assert!(again.activate_tab("term-1"));
+        assert_eq!(again, before, "re-activating the showing tab changes nothing");
+    }
+
     #[test]
     fn a_pane_id_can_be_checked_against_the_tree_that_would_hold_it() {
         let mut tree = leaf_with("p1", &["a"]);

@@ -354,79 +354,88 @@
    pane with one surface in it adds nothing but this box; a pane with several
    is marked, because that is when there is something to mark.
 
-   The marking reuses the cluster group's language above rather than inventing
-   a second one — a region is a band spanning the tabs that belong to it — and
-   differs from it in both of that language's variables at once, so the two can
-   never be confused: the cluster's band is `--accent` along the *top*, this
-   one is a grey hairline weight along the *bottom*. They also nest, never
-   overlap: every pane group is inside exactly one cluster group, and only a
-   cluster group is introduced by a named chip.
+   ## What was here before, and why it did not work
 
-   No fill of its own, deliberately. The bar's three depths (see this file's
-   header) are already spoken for — the row, the open cluster, and a showing
-   tab — and a fourth shade between the last two would have to be a colour the
-   handoff does not contain, which is the one thing tokens.css forbids. */
+   The first version of this marked a group with a 2px grey band along the
+   bottom of the row and shortened the dividers between its members from full
+   height to 16px. On screen that was indistinguishable from two ordinary
+   chips side by side: the band merged into the bar's own bottom hairline, and
+   a divider that only changes height while keeping its colour is not a
+   difference anyone reads at a glance. It was rendering the whole time — the
+   fault was that it said nothing, not that it was absent.
+
+   That mattered more than a cosmetic miss, because this marking is the only
+   thing in the window that says two surfaces share a pane. Without it,
+   clicking between them looks exactly like one app *replacing* another, which
+   is what it was reported as.
+
+   ## What it is now
+
+   The cluster group's own mechanism, reused rather than a second invention: a
+   fill spanning the tabs that belong to the region (`.switcher__group-fill`
+   above). They cannot be confused, because they differ in every variable at
+   once and they nest rather than overlap:
+
+     a cluster group   --surface-gap, *darker* than the bar, square, full
+                       height, an accent band along its top, and always
+                       introduced by a named chip
+     a pane group      --surface-2, *lighter* than the bar, rounded, inset from
+                       the bar's edges, no band, and never named
+
+   Both are existing tokens; nothing here is a colour the handoff does not
+   contain. The depth ladder still reads: a showing member paints `--bg`, the
+   darkest thing in the row, and against this tray it now has more contrast
+   than it had against the bar, not less — so "which of these two is on
+   screen" is easier to see inside a group than outside one. */
 
 .switcher__pane {
   flex: none;
   display: flex;
   align-items: stretch;
   min-width: 0;
-  /* Positioning context for the bracket below, and for whatever framer has
-     popped out of the flow on its way out of this group. */
+  /* Positioning context for whatever framer has popped out of the flow on its
+     way out of this group. */
   position: relative;
 }
 
-/* The bracket. Bottom rather than top, where the cluster's accent band sits,
-   and it lands on the bar's own bottom hairline — reading as a short heavier
-   segment of it under exactly the tabs that share a pane. Last child, so paint
-   order puts it over the positioned tabs without a z-index, and inert for the
-   reason the cluster band gives: decoration must not eat a click meant for a
-   tab. */
-.switcher__pane-rule {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--line-2);
-  pointer-events: none;
+/* The tray. Inset top and bottom so it reads as a thing sitting *in* the row
+   rather than another division of it, which is also what gives the corners
+   somewhere to be — a radius on a full-height box would be cut by the bar's
+   own edges. `overflow: hidden` is what makes the radius mean anything: a
+   showing member paints an opaque `--bg` across its whole box, and unclipped
+   it would square the tray's corners off again from the inside. */
+.switcher__pane--grouped {
+  margin: 4px 0;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
 }
 
-/* Inside a group, the seams *between* its members stop being the row's
-   full-height dividers. The tabs read as one run with thin rules in it rather
-   than as neighbours that happen to be adjacent, which is the whole of what
-   "these two are in one pane" has to say.
+/* Inside a group the seams *between* its members stop being the row's
+   full-height dividers, and the group's own trailing seam goes too — the tray
+   edge is already the boundary, and a hairline on top of it would draw the
+   group's end twice.
 
-   The border is made transparent rather than removed, so the box keeps its
+   The border is made transparent rather than removed, so each box keeps its
    1px and nothing in the row reflows — the same reasoning `.switcher__member`
    gives for having moved its border from one edge to the other. The rects
-   `dropZones.ts` measures are unchanged.
-
-   `:last-of-type` rather than `:last-child`: a group's last children are a
-   `span` caret and a `span` bracket, so `:last-child` would never match a tab
-   and every member would lose its trailing seam, including the one that closes
-   the group off from the next. Both decorations are spans and every member is
-   a div, so `of-type` is exact. */
+   `dropZones.ts` measures are unchanged. */
 .switcher__pane--grouped .switcher__member {
   border-right-color: transparent;
 }
 
-.switcher__pane--grouped .switcher__member:last-of-type {
-  border-right-color: var(--line);
-}
-
-/* The thin divider itself: inset top and bottom so it reads as an internal
-   rule rather than as another full-height seam, and sitting on the transparent
-   border above so the two members stay exactly where they were. */
+/* The divider itself: `--line-2` rather than `--line`, and inset, so it reads
+   as an internal rule on the tray rather than as one more seam in the row. It
+   sits on the transparent border above, so the two members stay exactly where
+   they were. */
 .switcher__pane--grouped .switcher__member + .switcher__member::before {
   content: "";
   position: absolute;
   left: -1px;
-  top: 10px;
-  bottom: 10px;
+  top: 6px;
+  bottom: 6px;
   width: 1px;
-  background: var(--line);
+  background: var(--line-2);
   pointer-events: none;
 }
 
