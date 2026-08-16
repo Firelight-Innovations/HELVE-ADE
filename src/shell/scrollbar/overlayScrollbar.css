@@ -1,0 +1,66 @@
+/*
+ * The overlay scrollbar's thumb. See OverlayScrollbar.tsx for what draws it,
+ * when, and why the element with `overflow-x: auto` cannot be this file's
+ * concern.
+ */
+
+.overlay-scrollbar__thumb {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 5px;
+  /* Square ends, unlike the native thumbs this replaces (panel.css and
+     switcher.css both gave theirs a border-radius) — the visual spec calls
+     this out by name ("like VS Code"). No radius is set here at all, rather
+     than set to 0; the two read identically and the absence is the more
+     honest way to say "there was never one to round off". */
+  /* Translucent over the existing `--line-2` token rather than an invented
+     opaque colour, so a chip this overlaps stays faintly readable through
+     it — `--line-2` is exactly what the panel's native thumb painted solid
+     before this component existed. `color-mix` rather than a hand-picked
+     `rgba` keeps this tied to the token itself, so it moves if the token
+     ever does; 65% is past every wash already in tokens.css
+     (`--accent-wash` and friends top out at 8%) because those were tuned as
+     background fills behind text, and a scrollbar thumb has to keep reading
+     as a thumb at rest, not just as a hover tint. */
+  background: color-mix(in srgb, var(--line-2) 65%, transparent);
+
+  /* A control, not just decoration — draggable, the way the two native
+     scrollbars it replaced were. `auto` only on this element and nothing
+     wraps it: there is no separate track box in the DOM at all (see
+     OverlayScrollbar.tsx — the whole element is absent, not merely
+     click-through, whenever the strip isn't overflowing or the thumb isn't
+     shown), so a click anywhere the thumb *isn't* drawn always reaches
+     whatever chip is under it. Clicking the empty track on purpose — VS
+     Code jumps the thumb to that position — is deliberately not built: the
+     track is 5px tall and sits directly over clickable chips, and a stray
+     click there stealing a chip's activation is a worse bug than a missing
+     jump-to-position convenience. */
+  pointer-events: auto;
+  /* Not `grab` at rest. A tab's own drag handle (`useDrag.tsx`'s
+     `tabHandle`) already puts `cursor: grab` on every chip's hover state to
+     mean "drag this tab out to move it" — this thumb sits directly over the
+     bottom edge of those same chips, and giving it the identical cursor on
+     hover would make "about to scroll" and "about to pull this tab out"
+     look like the same affordance right up until a drag actually started.
+     Left at the plain pointer instead, and only switched to `grabbing`
+     below once a drag is genuinely underway — a state that can't be
+     confused with anything else, because nothing else is happening at the
+     same time. */
+  cursor: default;
+  /* Dragging a 5px bar is an easy gesture to also read as "select this
+     text" or start a native image-style drag; both are switched off rather
+     than merely a matter of `preventDefault` in the handler, since a
+     selection can still start on the pointerdown that precedes it running. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Set by OverlayScrollbar.tsx for the duration of a drag. The one point in
+   the gesture where `grabbing` is unambiguous — see the `cursor: default`
+   comment above for why the resting state can't use its `grab` counterpart
+   — and the one visual confirmation a drag is live that doesn't depend on
+   `scrollLeft` having actually moved yet. */
+.overlay-scrollbar__thumb[data-dragging] {
+  cursor: grabbing;
+}

@@ -5,6 +5,24 @@
 //! that module's `Result<ProjectSnapshot>` into the JSON-RPC shape an app's
 //! frontend receives. The rules about what a project is live there, not here.
 //!
+//! ## Every method here is scoped to the cluster that called it
+//!
+//! A project belongs to a cluster (see `crate::project`'s module doc), and Home
+//! is opened *inside* one — so picking a folder here points **this** cluster at
+//! it and touches no other. That is the whole of the per-cluster feature from
+//! the user's side: two Home surfaces in two clusters, two projects, at once.
+//!
+//! The cluster is never taken from the request body. It is [`CallContext`],
+//! resolved by the shell from the frame the message arrived on and then by Rust
+//! from the pane tree holding that instance — the same identity rule
+//! `ToolWindow` applies to everything else a frame sends. A `clusterId` in
+//! `params` would be a claim, and a Home in cluster A could make it about
+//! cluster B.
+//!
+//! `home/forget-recent` is the one exception, and only half of one: the Recent
+//! list is global, so forgetting is global too. It still reports back the
+//! calling cluster's own open project, because that is what Home redraws with.
+//!
 //! ## Where the dialogs live, and why here
 //!
 //! `crate::project` never opens a dialog. It takes paths and touches the
@@ -18,6 +36,7 @@
 //! unchanged snapshot when the user backs out, because a JSON-RPC error would
 //! make the frontend draw a failure for something the user did on purpose.
 
+use crate::apps::CallContext;
 use crate::error::AppError;
 use crate::project::{self, ProjectSnapshot};
 use crate::state::AppState;
@@ -26,19 +45,34 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
+pub fn call(
+    app: &AppHandle,
+    context: &CallContext,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value, RpcError> {
     match method {
-        "home/state" => state(app),
+        "home/state" => state(app, context),
 
-        "home/new-project" => match pick(app, "Choose a folder for the new project") {
-            Some(dir) => shape(project::create(app, &dir).map_err(rpc)?),
-            None => state(app),
-        },
+        // The cluster is required *before* the picker goes up, not after. A
+        // dialog raised for a cluster that is no longer there would take a
+        // folder choice and then have nowhere to put it, which is a worse
+        // failure than declining to ask.
+        "home/new-project" => {
+            let cluster = context.require_cluster()?;
+            match pick(app, "Choose a folder for the new project") {
+                Some(dir) => shape(project::create(app, &dir, cluster).map_err(rpc)?),
+                None => state(app, context),
+            }
+        }
 
-        "home/open-project" => match pick(app, "Open a HELVE project") {
-            Some(dir) => shape(project::open(app, &dir).map_err(rpc)?),
-            None => state(app),
-        },
+        "home/open-project" => {
+            let cluster = context.require_cluster()?;
+            match pick(app, "Open a HELVE project") {
+                Some(dir) => shape(project::open(app, &dir, cluster).map_err(rpc)?),
+                None => state(app, context),
+            }
+        }
 
         // Stubbed on purpose. Cloning is a git operation with progress, auth
         // prompts and a partial-checkout failure mode, and this repo already has
@@ -50,12 +84,23 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
             "cloning is not built yet — clone the repository yourself, then use Open Project",
         )),
 
-        "home/open-recent" => shape(project::open(app, &path_param(params.as_ref())?).map_err(rpc)?),
-        "home/initialize-project" => {
-            shape(project::initialize(app, &path_param(params.as_ref())?).map_err(rpc)?)
-        }
-        "home/forget-recent" => shape(project::forget(app, &path_param(params.as_ref())?)),
-        "home/close-project" => shape(project::close(app)),
+        "home/open-recent" => shape(
+            project::open(app, &path_param(params.as_ref())?, context.require_cluster()?)
+                .map_err(rpc)?,
+        ),
+        "home/initialize-project" => shape(
+            project::initialize(app, &path_param(params.as_ref())?, context.require_cluster()?)
+                .map_err(rpc)?,
+        ),
+        // No `require_cluster`: forgetting is an edit to the global history and
+        // works whether or not the caller is in a cluster. The context only
+        // decides whose open project the returned snapshot reports.
+        "home/forget-recent" => shape(project::forget(
+            app,
+            &path_param(params.as_ref())?,
+            context.cluster_id.as_deref(),
+        )),
+        "home/close-project" => shape(project::close(app, context.require_cluster()?)),
 
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
@@ -69,8 +114,11 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
 /// One method rather than one per region, because the alternative is a page that
 /// renders three times as three calls land, and there is nothing here expensive
 /// enough for that to buy anything.
-fn state(app: &AppHandle) -> Result<Value, RpcError> {
-    let mut value = shape(project::snapshot(app))?;
+///
+/// `open` is this cluster's project and `recents` is everyone's, which is not an
+/// inconsistency in the payload but the two scopes the model actually has.
+fn state(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let mut value = shape(project::snapshot(app, context.cluster_id.as_deref()))?;
 
     // The stack's version, for the heading. All that is left of the component
     // list Home used to draw — the shell's warning badge is where stack health

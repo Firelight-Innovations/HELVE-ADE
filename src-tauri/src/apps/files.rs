@@ -2,12 +2,18 @@
 //! one back.
 //!
 //! Every method that names a file takes an absolute path. `files/list` and
-//! `files/read` accept none and fall back to the root of the checkout the
-//! running manifest was found in, which `files/root` reports directly; that
-//! fallback is the only place this module has an opinion about *where* the user
-//! is, and everything else is the frontend's to decide and pass in. The methods
-//! that change something — write, reveal, open — refuse a missing path instead
-//! of defaulting, because none of them has a harmless thing to do to the root.
+//! `files/read` accept none and fall back to the project of the cluster the
+//! calling surface is in, which `files/root` reports directly; that fallback is
+//! the only place this module has an opinion about *where* the user is, and
+//! everything else is the frontend's to decide and pass in. The methods that
+//! change something — write, reveal, open — refuse a missing path instead of
+//! defaulting, because none of them has a harmless thing to do to the root.
+//!
+//! "The cluster the calling surface is in" is the whole of what changed when a
+//! project stopped being global. Two Files side by side in two clusters root at
+//! two different folders, and neither of them holds any state saying so: the
+//! answer comes in with the call, as `CallContext`, resolved from the frame the
+//! message arrived on. This module still holds no per-instance state at all.
 //!
 //! Nothing here decides what a file *is*. There is no MIME sniffing and no
 //! content type — `kind` is the filesystem's own dir/file/other and stops there.
@@ -28,6 +34,7 @@
 //! renders paths a *tool* chose, the check belongs at that seam, and it needs to
 //! be written knowing that is what it is for.
 
+use crate::apps::CallContext;
 use crate::state::AppState;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -60,12 +67,17 @@ const MAX_READ_BYTES: u64 = 256 * 1024;
 /// mean different things and must not be a glance apart.
 const MAX_READ_BYTES_BINARY: u64 = 32 * 1024 * 1024;
 
-pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
+pub fn call(
+    app: &AppHandle,
+    context: &CallContext,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value, RpcError> {
     match method {
-        "files/root" => root(app),
-        "files/list" => list(app, params.as_ref()),
+        "files/root" => root(app, context),
+        "files/list" => list(app, context, params.as_ref()),
         "files/stat" => Ok(stat_at(&required_path(params.as_ref())?)),
-        "files/read" => read(app, params.as_ref()),
+        "files/read" => read(app, context, params.as_ref()),
         "files/read-bytes" => {
             read_bytes_within(&required_path(params.as_ref())?, MAX_READ_BYTES_BINARY)
         }
@@ -81,7 +93,7 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
         // scoping rule it enforces is the whole of its design and deserves to be
         // read on its own. Dispatched from here because it is the Files app's
         // surface — one app, one `call`.
-        method if method.starts_with("trash/") => super::trash::call(app, method, params),
+        method if method.starts_with("trash/") => super::trash::call(app, context, method, params),
 
         "files/reveal" => reveal(app, params.as_ref()),
         "files/open-external" => open_external(app, params.as_ref()),
@@ -100,8 +112,8 @@ pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Valu
 /// this app start", asked once, and the listing is "what is in here", asked on
 /// every expand. A frontend that had to list the root to learn its name would be
 /// reading a directory in order to read a string.
-fn root(app: &AppHandle) -> Result<Value, RpcError> {
-    let path = default_root(app)?;
+fn root(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let path = default_root(app, context)?;
     Ok(json!({
         "path": path.display().to_string(),
         "name": base_name(&path),
@@ -129,8 +141,8 @@ struct Entry {
 }
 
 /// One directory's immediate children.
-fn list(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
-    let dir = resolve_path(app, params)?;
+fn list(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    let dir = resolve_path(app, context, params)?;
 
     let reader = std::fs::read_dir(&dir).map_err(|e| {
         RpcError::new(
@@ -176,8 +188,8 @@ fn list(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
 }
 
 /// One text file's contents, up to [`MAX_READ_BYTES`].
-fn read(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
-    let path = resolve_path(app, params)?;
+fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    let path = resolve_path(app, context, params)?;
 
     let metadata = std::fs::metadata(&path).map_err(|e| {
         RpcError::new(
@@ -1241,12 +1253,16 @@ fn required_path(params: Option<&Value>) -> Result<PathBuf, RpcError> {
     }
 }
 
-/// The `path` param, or the checkout root when it is absent.
-fn resolve_path(app: &AppHandle, params: Option<&Value>) -> Result<PathBuf, RpcError> {
+/// The `path` param, or this cluster's root when it is absent.
+fn resolve_path(
+    app: &AppHandle,
+    context: &CallContext,
+    params: Option<&Value>,
+) -> Result<PathBuf, RpcError> {
     match params.and_then(|p| p.get("path")) {
         Some(Value::String(raw)) => Ok(PathBuf::from(raw)),
         // Absent or explicitly null both mean "wherever you'd start me".
-        None | Some(Value::Null) => default_root(app),
+        None | Some(Value::Null) => default_root(app, context),
         Some(other) => Err(RpcError::new(
             INVALID_PARAMS,
             format!("path must be a string, got {other}"),
@@ -1254,26 +1270,32 @@ fn resolve_path(app: &AppHandle, params: Option<&Value>) -> Result<PathBuf, RpcE
     }
 }
 
-/// Where Files opens when nobody has said otherwise: the open project, or the
-/// directory holding the running manifest when nothing is open.
+/// Where Files opens when nobody has said otherwise: **this cluster's** project,
+/// or the directory holding the running manifest when the cluster has none.
 ///
 /// The project wins because Files exists to browse the thing being worked on,
-/// and once there is a project that is what it is. The manifest directory is the
-/// honest fallback rather than a placeholder — with no project open, the stack
-/// checkout is the only tree the orchestrator knows anything about.
+/// and once there is a project that is what it is. Which project is the caller's
+/// cluster's, never a process-wide one — a Files in the cluster working on
+/// `aurora` and a Files in the cluster working on `borealis` are two surfaces
+/// asking the same question and entitled to two answers.
 ///
-/// Not the process's working directory in either case, which is `src-tauri/`
-/// under `tauri dev` and the install directory in a release build — neither is
-/// anywhere the user would recognise.
-pub(super) fn default_root(app: &AppHandle) -> Result<PathBuf, RpcError> {
-    if let Some(project) = crate::project::open_path(app) {
+/// The manifest directory is the honest fallback rather than a placeholder —
+/// with no project on this cluster, the stack checkout is the only tree the
+/// orchestrator knows anything about. Not the process's working directory in
+/// either case, which is `src-tauri/` under `tauri dev` and the install
+/// directory in a release build; neither is anywhere the user would recognise.
+pub(super) fn default_root(
+    app: &AppHandle,
+    context: &CallContext,
+) -> Result<PathBuf, RpcError> {
+    if let Some(project) = context.project.clone() {
         return Ok(project);
     }
 
     let snapshot = app.state::<AppState>().get().ok_or_else(|| {
         RpcError::new(
             INTERNAL_ERROR,
-            "no project is open and the stack has not been scanned yet, so there is no default directory",
+            "this cluster has no project and the stack has not been scanned yet, so there is no default directory",
         )
     })?;
 

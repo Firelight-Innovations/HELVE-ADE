@@ -38,9 +38,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { popover } from "../motion";
-import MenuItemList from "../titlebar/MenuItemList";
+import MenuItemList, { inMenuSurface } from "../titlebar/MenuItemList";
 import { appsMenu, type AppsMenuHandlers } from "../titlebar/TitleBar";
-import { ChevronRight, Plus } from "../../ui/Icon";
+import { Plus } from "../../ui/Icon";
 import "./addapp.css";
 
 /**
@@ -93,12 +93,26 @@ export default function AddAppButton({ apps }: { apps: AppsMenuHandlers }) {
       // item, and the `click` would then land on nothing.
       if (anchorRef.current?.contains(target)) return;
       if (menuRef.current?.contains(target)) return;
+      // And the same again one level deeper: a row in this menu can open a
+      // submenu, which is portalled to `document.body` for the same clipping
+      // reason this menu is and so is in neither box above. See `inMenuSurface`.
+      if (inMenuSurface(target)) return;
       setOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
     const onDetached = () => setOpen(false);
+    // The scroll listener below is capture-phase and so hears *every* scroll in
+    // the document, including one inside this menu's own portalled submenu —
+    // which, with enough saved presets, is a surface that scrolls. Closing the
+    // menu because someone scrolled the list they were reading is the opposite
+    // of what "a scroll invalidates the measurement" was guarding against; the
+    // measurement this menu depends on is the row's, and that has not moved.
+    const onScroll = (e: Event) => {
+      if (inMenuSurface(e.target)) return;
+      setOpen(false);
+    };
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -106,13 +120,13 @@ export default function AddAppButton({ apps }: { apps: AppsMenuHandlers }) {
     window.addEventListener("resize", onDetached);
     // Capture, because the scroll that matters is `.switcher__tabs`'s own and a
     // scroll event does not bubble.
-    document.addEventListener("scroll", onDetached, true);
+    document.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("blur", onDetached);
       window.removeEventListener("resize", onDetached);
-      document.removeEventListener("scroll", onDetached, true);
+      document.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
@@ -149,17 +163,23 @@ export default function AddAppButton({ apps }: { apps: AppsMenuHandlers }) {
         aria-expanded={open}
         // Said in full, because there is a second `+` a few tabs to the right
         // that makes a whole new cluster. Neither label may be just "Add".
-        aria-label="Open an app in this cluster"
-        title="Open an app in this cluster"
+        //
+        // "Open something", not "open an app": the menu offers a terminal
+        // alongside the apps now (see `apps::openables`) and a submenu of
+        // layout presets under them, and a label naming only apps would be
+        // describing a third of what the button does.
+        aria-label="Open something in this cluster"
+        title="Open something in this cluster"
         onClick={toggle}
       >
+        {/* No disclosure caret any more — this used to carry a rotated
+            `ChevronRight` to say "this opens a menu, the cluster `+` just
+            acts". What separates the two now: this button sits inside the
+            open cluster's accent-banded fill, the cluster `+` sits outside
+            it; this one rests at the dimmer `--text-dim-3` where the cluster
+            `+` rests at `--text-dim` and is wider; and the two have distinct
+            aria-labels for anyone not reading either signal. */}
         <Plus size={11} />
-        {/* A disclosure caret, rotated a quarter turn in CSS rather than drawn
-            as a second icon. It is the one thing that separates this button from
-            the cluster `+`: that one acts on the click, this one asks a
-            question first, and a caret is how every other menu in this shell
-            says so. */}
-        <ChevronRight size={9} className="addapp__caret" />
       </button>
 
       {createPortal(

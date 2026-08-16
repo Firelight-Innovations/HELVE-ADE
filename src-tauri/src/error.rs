@@ -80,6 +80,27 @@ pub enum AppError {
     /// `std::error::Error`, which a `String` does not.
     #[error("terminal `{id}` failed: {reason}")]
     Pty { id: String, reason: String },
+
+    /// A preset name that cannot be used: blank, or one of the compiled-in
+    /// built-ins'. Carries the whole sentence rather than the offending name,
+    /// because the two cases have nothing in common but the field they are shown
+    /// under — the menu prints this verbatim beneath the name field, and a
+    /// caller that had to assemble the sentence would be a second author of it.
+    #[error("{0}")]
+    PresetName(String),
+
+    /// A preset id that names nothing. Not an impossible state: the menu was
+    /// drawn from a list that `presets.json` could have been edited out from
+    /// under, in this window or another one.
+    #[error("no preset with id `{0}` — it may have been removed since the menu was opened")]
+    UnknownPreset(String),
+
+    /// Every cluster in the window has been closed, so there is no arrangement
+    /// to save and nowhere to apply one. The menu disables both items for
+    /// exactly this, the same way the Apps menu does; this is the backend
+    /// refusing rather than trusting that it did.
+    #[error("this window has no cluster to {0}")]
+    NoCluster(&'static str),
 }
 
 /// Tauri sends a command's error across the IPC boundary into JavaScript, so the

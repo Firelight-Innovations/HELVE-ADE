@@ -13,6 +13,7 @@ mod error;
 mod git;
 mod layout;
 mod manifest;
+mod presets;
 mod project;
 mod pty;
 mod shell_state;
@@ -59,29 +60,45 @@ pub fn run() {
         // this holds OS handles and reader threads that must never be cloned or
         // sent anywhere near the frontend.
         .manage(PtySessions::default())
-        // Which project is open, and the ones opened before it. The only state
-        // in the orchestrator that outlives the process — see `project::store`
-        // for where it is written and why that is the first thing here to touch
-        // the disk at all.
+        // The Recent list: every project this machine has opened. *Not* which
+        // one is open — that belongs to a cluster and travels in `layout.json`
+        // with the rest of the layout, so that two windows can be working on
+        // two projects at once. See `project`'s module doc for the split, and
+        // `project::store` for why this was the first thing here to touch the
+        // disk at all.
         .manage(ProjectState::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
                 // Where a window is, so it can be put back there next launch.
                 // Recorded without broadcasting or writing — these fire on
-                // every frame of a drag. `close_window` and the next real
-                // mutation are what commit them; see `ShellState::set_geometry`.
+                // every frame of a drag. `windows::request_close`, below, and
+                // the next real mutation are what commit them; see
+                // `ShellState::set_geometry`.
                 WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                     if let Some(geometry) = windows::geometry_of(window) {
                         app.state::<ShellState>().set_geometry(window.label(), geometry);
                     }
                 }
+                // A window has been asked to close — by our own titlebar's ×,
+                // by Alt+F4, by the taskbar, or by the OS shutting down
+                // gracefully. All of them reach this event identically; see
+                // `windows::request_close` for why that matters and what it
+                // does before letting the close proceed.
+                WindowEvent::CloseRequested { .. } => {
+                    windows::request_close(app, &app.state::<ShellState>(), window.label());
+                }
                 // A window closing on purpose must not strand what was inside
-                // it, so its clusters go back to the main window. This does
-                // nothing unless the close came through `close_window` — at
-                // shutdown `Destroyed` fires for every window, and reclaiming
-                // then would collapse the whole session and save the wreckage
-                // as the layout to restore. See `ShellState::closing`.
+                // it, so its clusters go back to the main window. `CloseRequested`
+                // above now does that fold before the window actually closes, so
+                // by the time `Destroyed` lands here the marker it left is
+                // already consumed and this is normally a no-op. It stays as a
+                // fallback for a window the OS destroys directly, skipping
+                // `CloseRequested` — which is also why it must never reclaim
+                // unconditionally: at a shutdown that destroys every window that
+                // way, `Destroyed` fires for every one of them, and a reclaim
+                // that trusted it would collapse the whole session and save the
+                // wreckage as the layout to restore. See `ShellState::closing`.
                 WindowEvent::Destroyed => {
                     windows::reclaim(app, &app.state::<ShellState>(), window.label());
                 }
@@ -96,11 +113,13 @@ pub fn run() {
         // its own thread. `AppHandle` is cheap to clone by design — it's a
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
-            // Before anything else that wants to know where the user is. The
-            // launch terminal below opens *inside* the restored project, and the
-            // Files app takes it as its default directory — so a restore that
-            // ran after either of those would leave them pointing at the stack
-            // root for the rest of the session.
+            // Before the layout, because `restore_session` reads the old global
+            // open project out of this store to migrate it onto a cluster. The
+            // launch terminal below opens *inside* whatever cluster the main
+            // window ends up showing, and the Files app takes its cluster's
+            // project as its default directory — so a restore that ran after
+            // either of those would leave them pointing at the stack root for
+            // the rest of the session.
             project::restore(app.handle());
 
             let handle = app.handle().clone();
@@ -159,6 +178,11 @@ pub fn run() {
             commands::set_active_cluster,
             commands::rename_cluster,
             commands::close_cluster,
+            commands::set_cluster_project,
+            commands::cluster_project,
+            commands::list_presets,
+            commands::save_preset,
+            commands::apply_preset,
             commands::new_window,
             commands::detach_cluster,
             commands::detach_instance,
@@ -166,6 +190,7 @@ pub fn run() {
             commands::set_window_geometry,
             commands::close_window,
             commands::create_terminal,
+            commands::open_terminal_in_pane,
             commands::close_terminal,
             commands::split_terminal,
             commands::terminal_attach,
@@ -178,6 +203,7 @@ pub fn run() {
             commands::set_engine_state,
             commands::tool_frontend,
             commands::list_apps,
+            commands::list_openables,
             commands::app_call,
             git::git_status,
             git::git_diff,
@@ -210,8 +236,9 @@ fn apps_on_screen(app: &tauri::AppHandle) -> Vec<(String, String)> {
 
 /// Put the shell back the way it was left.
 ///
-/// Runs after `project::restore`, because the cluster a first launch seeds is
-/// named after the open project and there is no name to use before that.
+/// Runs after `project::restore`, because both branches below need the old
+/// global open project: one to name the cluster a first launch seeds, the other
+/// to migrate it onto the cluster that used to be showing it.
 ///
 /// Two things deliberately do *not* come back. A pty dies with the process, so
 /// a restored terminal tab gets a fresh shell rather than a dead one — a tab
@@ -238,6 +265,8 @@ fn restore_session(app: &tauri::AppHandle) {
         engine: shell_state::EngineState::Idle,
     });
 
+    migrate_global_project(app, &shell);
+
     // Geometry first, windows second. `main` already exists — it is declared in
     // tauri.conf.json — so it is moved rather than built; everything else is
     // built at the position it should already be in, because creating a window
@@ -262,6 +291,42 @@ fn restore_session(app: &tauri::AppHandle) {
     }
 
     respawn_terminals(app, &shell);
+    project::retitle(app);
+}
+
+/// **The one-time migration** from the old global open project to a cluster.
+///
+/// Before this change, "the open project" was one value for the whole process,
+/// stored in `projects.json`. Braden has a live session on disk right now, so a
+/// build that simply started reading `Cluster::project` would open to a
+/// workspace with nothing in it and no indication that anything had moved. The
+/// old value is taken and given to the first cluster of the main window — the
+/// one that *was* showing it, since there was only one project to show.
+///
+/// Two things make this run exactly once and no more.
+///
+/// `take_migration_seed` **consumes** the field: it reads the path, writes
+/// `None` back, and saves. So the source is gone after the first launch of this
+/// build, rather than sitting there waiting to be applied again the next time
+/// somebody closes a project. That is the whole reason it is a take and not a
+/// read — a migration whose input survives it is a migration that re-runs.
+///
+/// The guard is the belt to that braces: a layout where some cluster already
+/// has a project has already been through this, so the seed is still drained
+/// but nothing is overwritten. Without it, a `projects.json` restored from a
+/// backup could reach in and change a project the user had since chosen.
+fn migrate_global_project(app: &tauri::AppHandle, shell: &ShellState) {
+    let Some(seed) = project::take_migration_seed(app) else {
+        return;
+    };
+    if shell.any_cluster_has_a_project() {
+        return;
+    }
+    let Some(cluster_id) = shell.first_cluster_id() else {
+        return;
+    };
+
+    shell.set_cluster_project(app, &cluster_id, Some(seed.display().to_string()));
 }
 
 /// Give every restored terminal tab a live shell.
@@ -270,11 +335,21 @@ fn restore_session(app: &tauri::AppHandle) {
 /// alternative is a tab that draws, accepts focus, and swallows every keystroke
 /// with nothing to send them to — which looks like HELVE being broken rather
 /// than like one shell being unavailable.
+///
+/// Each one respawns in **its own window's** project, resolved at this moment
+/// the same way `commands::terminal_cwd` resolves it for a fresh terminal. A
+/// terminal belongs to a window's panel and not to any cluster, so there is no
+/// project stored with it to restore; what there is instead is the project the
+/// window is pointed at now, which is the same answer opening a terminal there
+/// would give. Two windows on two projects therefore come back with their
+/// shells in the right two directories rather than all of them in one.
 fn respawn_terminals(app: &tauri::AppHandle, shell: &ShellState) {
     let ptys = app.state::<PtySessions>();
-    let cwd = project::open_path(app).unwrap_or_else(|| std::path::PathBuf::from("."));
 
     for terminal in shell.snapshot().terminals {
+        let cwd = project::window_path(app, &terminal.window_label)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
         if let Err(e) = ptys.open(app, &terminal.id, &cwd, 80, 24) {
             eprintln!(
                 "helve: could not restore the shell behind {}: {e}",
@@ -290,16 +365,27 @@ fn respawn_terminals(app: &tauri::AppHandle, shell: &ShellState) {
 /// Home, and nothing else. Not every app: opening a surface the user did not
 /// ask for is the thing this whole feature exists to stop doing, and Home is
 /// the one place a session with no project has anywhere to go from.
+///
+/// The migration applies here too, and it has to. Losing `layout.json` while
+/// keeping `projects.json` is an ordinary way to arrive here — the layout file
+/// is the newer of the two and the one a bad shutdown can truncate — and a
+/// first run that threw the remembered project away would be a data loss with
+/// a plausible-looking cause. The seeded cluster takes it, and takes its name
+/// from it as it always has.
 fn seed_first_run(app: &tauri::AppHandle, shell: &ShellState) {
-    if let Some(name) = project::open_path(app)
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-    {
-        let snapshot = shell.snapshot();
-        if let Some(cluster) = snapshot.windows.first().and_then(|w| w.clusters.first()) {
-            shell.rename_cluster(app, &cluster.id, &name);
+    let seed = project::take_migration_seed(app);
+
+    if let Some(cluster_id) = shell.first_cluster_id() {
+        if let Some(path) = seed.as_deref() {
+            if let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
+                shell.rename_cluster(app, &cluster_id, &name);
+            }
+            shell.set_cluster_project(app, &cluster_id, Some(path.display().to_string()));
         }
     }
 
+    // No pane preference and no split direction: there is one empty pane and
+    // no window drawn yet to have measured it in. See `PaneNode::open_into`.
     shell.open_instance(
         app,
         "main",
@@ -307,5 +393,8 @@ fn seed_first_run(app: &tauri::AppHandle, shell: &ShellState) {
         shell_state::SurfaceKind::App,
         "Home",
         None,
+        None,
     );
+
+    project::retitle(app);
 }

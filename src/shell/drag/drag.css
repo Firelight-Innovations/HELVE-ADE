@@ -48,25 +48,31 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
 }
 
-/* A whole cluster in the air. The tool reading's box, since there is no crop
-   for this gesture and inventing a fourth size would be inventing a token; the
-   gap is the terminal reading's, which is the one the spec gives for a chip
-   with a dot in it. */
-.drag-ghost--cluster {
-  height: 28px;
-  padding: 0 13px;
-  gap: 7px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
-}
+/* A whole cluster in the air. There is no crop for this gesture, so rather
+   than inventing a fourth box it is dimensioned off the real thing being
+   dragged: `.switcher__tab`'s height (the bar's own `--h-switcher`), its
+   padding, and `.switcher__group-fill`'s background — the shade the open
+   cluster sits on. Square corners because the chip has none to round.
+   The accent rule is inset rather than a border-top so it paints over the
+   top like `.switcher__rule` does, without taking 2px out of the content box
+   and shifting the label off-centre.
 
-/* The open chip's marker (`.switcher__tab-dot[data-open]`), same size and same
-   token — this is the chip you are holding, not a new kind of object. */
-.drag-ghost-cluster-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
+   Opacity is the one thing the real chip does not have and the ghost needs:
+   without it, the thing following the cursor reads as the chip itself
+   relocating rather than a preview of where it would land. `.72` was picked
+   over the shared `.92` above by checking both grounds it crosses — legible
+   over the bar's `--surface` and over `--bg`'s app area, where a `.92` chip
+   reads as opaque enough to be mistaken for the real tab having moved. */
+.drag-ghost--cluster {
+  height: var(--h-switcher);
+  padding: 0 8px 0 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--surface-gap);
+  opacity: 0.72;
+  box-shadow:
+    inset 0 2px 0 0 var(--accent),
+    0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
 .drag-ghost--cluster .drag-ghost-label {

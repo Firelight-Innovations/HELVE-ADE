@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
-import type { StackSnapshot } from "../bindings";
+import type { Openable, StackSnapshot } from "../bindings";
 import Frame from "./frame/Frame";
 import {
   appPresentation,
   groupTerminalTabs,
   paneLeaves,
+  paneOfTab,
   paneTabs,
   toolPresentation,
   type ClusterMember,
@@ -21,6 +22,7 @@ import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./tit
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ClusterBar from "./switcher/ClusterBar";
 import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
+import { splitDirOnOpen } from "./panes/splitOnOpen";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import StatusBar from "./statusbar/StatusBar";
 import SearchSlot from "./search/SearchSlot";
@@ -30,8 +32,9 @@ import SourceControlView from "./worktree/SourceControlView";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
-import { callApp, useApps } from "./state/apps";
-import { useOpenProject } from "./state/project";
+import { callApp, useApps, useOpenables } from "./state/apps";
+import { applyPreset, savePreset, useLayoutPresets } from "./state/presets";
+import { useClusterProject } from "./state/project";
 import {
   activateInstance,
   addCluster,
@@ -105,7 +108,13 @@ export default function WindowRoot({
   // possible. Neither owns the other, so the flag sits above both.
   const [searchExpanded, setSearchExpanded] = useState(false);
 
+  // Two lists, and they are not the same question. `apps` is *things with a
+  // frontend* — what `presentationOf` below resolves a mountable surface from —
+  // and `openables` is *things the Apps menu can open*, which is those plus a
+  // terminal. A terminal has no frontend to mount, so it is deliberately absent
+  // from the first; see `bindings.ts`'s `Openable`.
   const apps = useApps();
+  const openables = useOpenables();
 
   // The authoring tools, resolved but **not openable**.
   //
@@ -146,6 +155,10 @@ export default function WindowRoot({
   // effect doing it as well would fight the restore — it would re-open surfaces
   // into a session that had deliberately closed them, every launch.
 
+  // `null` is an ordinary state now, not just the moment before the first
+  // `shell:state`: closing the last cluster in a window leaves it with none.
+  // The app area draws `NoClustersState` for it and the terminal panel — which
+  // is the window's, not any cluster's — carries on working beside it.
   const clusters = placement?.clusters ?? [];
   const activeCluster =
     clusters.find((c) => c.id === placement?.activeClusterId) ?? clusters[0] ?? null;
@@ -164,10 +177,14 @@ export default function WindowRoot({
   // does not; that distinction is about ownership, not about how a tab is drawn,
   // so it is flattened away here where the drawing happens.
   //
-  // `appId` is `"terminal"` — a type name like `files` or `home`, kept out of the
-  // real app registry on purpose. Nothing looks it up: the terminal branch never
-  // asks for a presentation, and the two places that resolve an app id from the
-  // focused surface guard on `kind` first.
+  // `appId` is `"terminal"` — a type name like `files` or `home`, and kept out of
+  // the real app registry on purpose even though the Apps menu now offers one.
+  // `apps::openables` is what puts it in that menu, and it is a *second* list
+  // beside the registry precisely so this id never resolves to a frontend: the
+  // terminal branch of `ToolWindow` never asks for a presentation, `useApps`
+  // does not contain it, and the two places that resolve an app id from the
+  // focused surface guard on `kind` first. Rust holds the same line — `is_app`
+  // answers false for it, and `open_instance` refuses it by name.
   const instances = useMemo(() => {
     const map = new Map((shell?.instances ?? []).map((i) => [i.id, i]));
     for (const t of shell?.terminals ?? []) {
@@ -181,10 +198,10 @@ export default function WindowRoot({
   // somewhere for a surface to go.
   const tree: PaneNode = activeCluster?.tree ?? EMPTY_TREE;
 
-  // Which pane a new surface lands in and which pane's tabs the menus act on.
-  // Local, because "which pane you were last looking at" is a fact about this
-  // screen; kept valid by the effect below rather than by every place a pane can
-  // appear or vanish.
+  // Which pane an open acts on, and which pane's tabs the menus act on. Local,
+  // because "which pane you were last looking at" is a fact about this screen;
+  // kept valid by the effect below rather than by every place a pane can appear
+  // or vanish.
   const [activePaneId, setActivePane] = useState<string | null>(null);
   const paneIds = useMemo(() => paneLeaves(tree).map((l) => l.id), [tree]);
   useEffect(() => {
@@ -192,6 +209,39 @@ export default function WindowRoot({
       setActivePane(paneIds[0] ?? null);
     }
   }, [paneIds, activePaneId]);
+
+  /**
+   * Focus follows what you just opened, into the pane it turned out to be in.
+   *
+   * It has to be chased rather than set, because opening now *makes* a pane and
+   * Rust is what mints its id — all the caller gets back is the instance id, and
+   * the tree that says where it went arrives separately on `shell:state`. So the
+   * id is parked here and the effect below claims it on whichever render the
+   * tree first contains it.
+   *
+   * This was free while opening meant "another tab in the focused pane": the
+   * focused pane was already the right answer and nothing had to move. It is not
+   * free now, and getting it wrong would be quietly bad rather than obviously
+   * bad — the menus, Save, and the Edit target all resolve through
+   * `activeInstanceId`, which is the *focused pane's* active tab. Leaving focus
+   * behind would mean opening an app and then having File > Save act on the one
+   * you opened it beside. It is also what makes the split rule read the way it
+   * should: a third app opened after a second splits the pane the second one is
+   * in, so the arrangement grows where you are looking rather than always
+   * halving the first pane again.
+   */
+  const [openedInstanceId, setOpenedInstance] = useState<string | null>(null);
+  useEffect(() => {
+    if (openedInstanceId === null) return;
+    const pane = paneOfTab(tree, openedInstanceId);
+    // Not yet in the tree: the broadcast for this open has not landed. Nothing
+    // to do but wait — the next one re-runs this. A surface that never arrives
+    // (the open failed) leaves a dead id parked here, which costs one pointless
+    // lookup per tree change until the next open replaces it.
+    if (pane === null) return;
+    setActivePane(pane);
+    setOpenedInstance(null);
+  }, [openedInstanceId, tree]);
 
   // The surface the menus act on: the active tab of the focused pane. Not "the
   // active tab" — with several panes on screen there is no such thing, and
@@ -217,11 +267,79 @@ export default function WindowRoot({
   // to be able to act on either, and the terminal half needs state declared
   // below this point. See `onSelectMember`.
 
+  /**
+   * The Apps menu, and the switcher's `+`.
+   *
+   * The new surface gets a **pane of its own**, splitting the focused pane
+   * along its longer axis. It used to land in the focused pane as another tab,
+   * which on screen looked like it had replaced whatever was already there —
+   * the surface you were looking at went behind the one you just opened, with
+   * nothing about the click to say it would. Stacking two surfaces in one pane
+   * is still very much a thing you can do; it is now something you *ask* for, by
+   * dragging a chip into that pane, rather than the only thing opening does.
+   *
+   * The axis is measured here rather than decided in Rust, and
+   * `panes/splitOnOpen.ts` is where that argument is written down: the tree
+   * stores fractions of a parent, on purpose, so it cannot know which way a pane
+   * is currently drawn. What stops repeated opening from producing slivers, and
+   * what happens once there are four panes, both live in
+   * `PaneNode::open_into` — the rules are one set, in one place, whichever door
+   * an open comes through.
+   */
   const onOpenApp = useCallback(
     (appId: string) => {
-      void openInstance(label, appId, activePaneId ?? undefined);
+      void openInstance(label, appId, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
+        .then(setOpenedInstance)
+        .catch((err: unknown) => console.error("helve: could not open that app:", err));
     },
     [label, activePaneId],
+  );
+
+  /**
+   * A terminal in a **pane of this cluster**, from the Apps menu or the `+`.
+   *
+   * Not the same action as the panel's own `+` a few hundred lines down, and
+   * both are meant to exist. That one makes a terminal in the *window's* panel,
+   * which outlives every cluster switch and is what you want for a shell
+   * watching one worktree while the layout in front of it is about another. This
+   * one makes a terminal that is part of an arrangement — the right-hand pane of
+   * a preset, or wherever you drag it — and closes with the cluster drawing it.
+   * VS Code has both for the same reason; `TerminalControl.createInPane` says
+   * more.
+   *
+   * It cannot go through `openInstance`: an instance is an app or a tool with a
+   * frontend to mount, and a terminal is a pty. Rust refuses that call by name
+   * rather than letting it mint a surface pointing at nothing.
+   *
+   * It splits the focused pane exactly as `onOpenApp` does, and passes the same
+   * measured axis. Terminal sits in the Apps menu among the apps, so a row that
+   * split and a row that stacked would be two behaviours in one list with
+   * nothing on screen to predict which you were about to get.
+   */
+  const onOpenTerminalHere = useCallback(() => {
+    void terminalControl
+      .createInPane(label, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
+      // A session id is a tab id in a tree like any other, so the same
+      // focus-follows-open path above applies to it unchanged.
+      .then(setOpenedInstance)
+      .catch((err: unknown) => console.error("helve: could not open a terminal here:", err));
+  }, [label, activePaneId]);
+
+  /**
+   * The Apps menu's one click handler, for a list that is no longer all apps.
+   *
+   * Routed on `kind` rather than on the id, so nothing here has to know that
+   * `"terminal"` is the string that means "spawn a shell" — Rust says which kind
+   * each row is when it hands the row over, and this switches on that. A row
+   * whose kind this build has never heard of would fall to the app branch and be
+   * refused by the backend, which is the right failure: loud, and in one place.
+   */
+  const onOpenSurface = useCallback(
+    (entry: Openable) => {
+      if (entry.kind === "terminal") onOpenTerminalHere();
+      else onOpenApp(entry.id);
+    },
+    [onOpenApp, onOpenTerminalHere],
   );
 
   const onResizePane = useCallback((splitId: string, sizes: number[]) => {
@@ -374,6 +492,11 @@ export default function WindowRoot({
     if (placement?.activeTerminal) setActivePanelTab(placement.activeTerminal);
   }, [placement?.activeTerminal]);
 
+  // The **panel's** new terminal — its own `+`, View > Show Terminal, and the
+  // Terminal menu's New. Distinct from `onOpenTerminalHere` above, which puts one
+  // in a pane of the cluster; this one belongs to the window and survives every
+  // cluster switch, which is the point of it. Both are meant to exist — see
+  // `TerminalControl.createInPane`.
   const onNewTerminal = useCallback(async () => {
     // 80×24 is a placeholder the emulator overwrites the moment it has measured
     // itself. A pty has to be created with *some* size, and a shell that prints
@@ -727,11 +850,19 @@ export default function WindowRoot({
   // rather than a second path to the same dialog. Called through `callApp`, so
   // `?fake=1` refuses it the way it refuses every other picker instead of
   // pretending a folder was chosen.
+  //
+  // Scoped to this window's active cluster, and it has to be said explicitly
+  // here where a frame's call says it by being a frame. This is a title-bar
+  // menu item: there is no iframe behind it and so no instance for Rust to
+  // resolve, but the window knows exactly which cluster it is showing. Without
+  // the scope the picker would open a project into no cluster at all and be
+  // refused — which is right, but a menu item that can only fail is not.
   const onOpenProject = useCallback(() => {
-    void callApp("home", "home/open-project").catch((err: unknown) =>
-      console.error("helve: File > Open… failed:", err),
-    );
-  }, []);
+    if (activeClusterId === null) return;
+    void callApp("home", "home/open-project", undefined, {
+      clusterId: activeClusterId,
+    }).catch((err: unknown) => console.error("helve: File > Open… failed:", err));
+  }, [activeClusterId]);
 
   // `MenuItem` has no submenu and faking one is out, so Open Recent shows the
   // surface that has the real list. Naming "home" here is the shell knowing
@@ -748,17 +879,89 @@ export default function WindowRoot({
     else onOpenApp("home");
   }, [tree, instances, onOpenApp]);
 
-  // Every app this build ships, as things you can open another of. Built from
-  // the registry rather than a literal list, so an app added in Rust appears
-  // without a second edit here.
+  // Every arrangement this build ships or this machine has saved. Rust merges
+  // the compiled-in built-ins with `presets.json` and broadcasts the answer, so
+  // there is nothing to decide here and nothing that could go stale — a preset
+  // saved in another window arrives on `presets:changed`.
+  const presets = useLayoutPresets();
+
+  const onApplyPreset = useCallback(
+    (presetId: string) => {
+      // Nothing to catch usefully: the two things that can fail are a preset
+      // removed from the file since the menu was drawn and a window whose
+      // clusters have all closed, and the second is what `blocked` below already
+      // disables the row for. Reported rather than swallowed for the first —
+      // a menu row that silently does nothing is the hardest failure here to see
+      // from the outside.
+      void applyPreset(label, presetId).catch((err: unknown) =>
+        console.error("helve: could not apply the preset:", err),
+      );
+    },
+    [label],
+  );
+
+  // Deliberately *not* caught here. The refusals this can produce — a blank
+  // name, a name one of the built-ins holds — are answers to what was just
+  // typed, and the field that typed it is what shows them. See `MenuPrompt`.
+  const onSavePreset = useCallback(
+    (name: string) => savePreset(label, name),
+    [label],
+  );
+
+  // Everything this build can open here, from Rust rather than a literal list,
+  // so a row added in `apps::openables` appears without a second edit here.
+  //
+  // `openables` and not `apps`: a terminal is offered in this menu and is not an
+  // app — it has no frontend to mount, so it is not in the list `ToolWindow`
+  // resolves mountable URLs from. The two lists are deliberately separate; see
+  // `bindings.ts`'s `Openable` for what merging them would break.
   //
   // One object, handed to both surfaces that offer this list — the title bar's
   // Apps menu and the switcher row's add-app button. They also share the
   // function that turns it into menu items (`appsMenu` in `TitleBar.tsx`), so
-  // there is nothing about "which apps exist" that either of them decides.
+  // there is nothing about "what you can open" that either of them decides. The
+  // presets branch rides along for the same reason: hanging it off this object
+  // puts it in both surfaces at once, and `ClusterBar` — which forwards this
+  // straight through to `AddAppButton` without looking inside it — needed no
+  // change at all to gain either.
   const appsHandlers = useMemo(
-    () => ({ available: apps.map((a) => ({ id: a.id, name: a.name })), open: onOpenApp }),
-    [apps, onOpenApp],
+    () => ({
+      available: openables,
+      open: onOpenSurface,
+      // A surface opens into a pane, and a window with no clusters has none —
+      // Rust refuses the open for exactly that reason. Said on the items rather
+      // than left to fail, so the menu never offers something it cannot do.
+      //
+      // It covers the presets too, and it should: applying one rearranges the
+      // active cluster and saving one captures it, so both are refused by the
+      // same absence for the same reason. And the Terminal row, which lands in a
+      // pane like everything else here — the *panel's* `+` is unaffected and
+      // deliberately so, since a panel terminal belongs to the window and a
+      // window with no clusters still has one.
+      blocked:
+        activeClusterId === null
+          ? "This opens into a cluster, and this window has none. Make one with the + in the bar."
+          : undefined,
+      presets: {
+        available: presets,
+        apply: onApplyPreset,
+        save: onSavePreset,
+        // The cluster's own name, which is the name of the thing being
+        // captured. Almost never the right name for the *arrangement* — but it
+        // is a name, pre-selected, so taking it costs Enter and replacing it
+        // costs typing, where an empty field costs typing either way.
+        suggestedName: activeCluster?.name ?? "",
+      },
+    }),
+    [
+      openables,
+      onOpenSurface,
+      activeClusterId,
+      presets,
+      onApplyPreset,
+      onSavePreset,
+      activeCluster?.name,
+    ],
   );
 
   const [engine, setEngine] = useState<EngineState>("idle");
@@ -777,12 +980,19 @@ export default function WindowRoot({
   // unpopulated one would report "no repository" for every cluster.
   const git = useGitStatus(gitControl, activeAppId);
 
-  // The third reader of that one status is the title bar, which names the
-  // branch beside the project. Still one fetch: a title that disagreed with the
-  // status bar about which branch is checked out would be the worse half of the
-  // two-opinions problem `useGitStatus` exists to prevent, because it is the
-  // half that is read at a glance and never questioned.
-  const project = useOpenProject();
+  // What the title bar names, and it is the active *cluster's* project rather
+  // than a process-wide one. That is the whole of what lets two windows on two
+  // monitors say two different things: each asks about the cluster it is
+  // showing, and a project switch in one leaves the other alone.
+  //
+  // The title bar no longer reads `git.status` for its third segment. That was
+  // the branch of the checkout the stack manifest resolved, which was never the
+  // cluster's worktree — it only looked like it while there was one project in
+  // the process. `Cluster.worktree` is the field it names now; nothing
+  // populates it yet, so the segment is absent and the layout is ready for the
+  // git work. `useGitStatus` is still read here by the status bar and the
+  // source-control tab, which are asking its own question and not this one.
+  const project = useClusterProject(activeClusterId);
 
   // The drag layer is the only thing in the shell that spans regions, so it is
   // the only thing that has to be handed down rather than owned locally. The
@@ -858,15 +1068,22 @@ export default function WindowRoot({
             <TitleBar
               kind={kind}
               project={project?.name ?? null}
-              worktree={git.status?.branch ?? null}
+              // The cluster's own worktree, not the stack's branch. A stub that
+              // nothing populates, so this is `null` today and the segment is
+              // dropped — see the note on the title element in `TitleBar.tsx`
+              // for why an approximation would be worse than an absence.
+              worktree={activeCluster?.worktree?.branch ?? null}
               menus={defaultMenus({
                 app,
                 edit,
                 apps: appsHandlers,
                 file: {
                   newWindow: onNewWindow,
-                  openProject: onOpenProject,
-                  openRecent: onOpenRecent,
+                  // Both disabled when this window has no cluster: a project
+                  // opens *into* one, and Home has to be shown *in* one. The
+                  // items say so rather than failing silently.
+                  openProject: activeClusterId === null ? undefined : onOpenProject,
+                  openRecent: activeClusterId === null ? undefined : onOpenRecent,
                   closeWindow: onCloseWindow,
                 },
                 view: {
@@ -952,13 +1169,22 @@ export default function WindowRoot({
             <ToolWindow
               ref={toolRef}
               tree={tree}
+              // Which cluster the tree belongs to. It filters the
+              // `project:changed` relay into the app frames — a switch in
+              // another cluster must not reach them — and `null` is what tells
+              // the empty state that this window has no clusters at all rather
+              // than one with nothing open in it.
+              clusterId={activeClusterId}
+              // Whether that `null` means anything yet. `shell` is null until
+              // the first `shell:state` lands, and until then this window's
+              // cluster list is empty for a reason that has nothing to do with
+              // how many clusters it has.
+              clustersKnown={shell !== null}
               instances={instances}
               presentationOf={presentationOf}
               focusedPaneId={activePaneId}
               onFocusPane={setActivePane}
               onResize={onResizePane}
-              onOpenApp={onOpenApp}
-              onRescan={onRescan}
               dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
             />

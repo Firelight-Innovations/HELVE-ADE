@@ -36,6 +36,7 @@ import { callApp } from "../state/apps";
 import { isFake } from "../state/fakeBackend";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
+import NoClustersState from "./NoClustersState";
 import "./toolwindow.css";
 
 /**
@@ -108,6 +109,27 @@ const ToolWindow = forwardRef<
   {
     /** The active cluster's layout. Every surface's position comes from this. */
     tree: PaneNode;
+    /**
+     * Which cluster that layout belongs to, or `null` when this window is
+     * showing none.
+     *
+     * Two jobs. It filters the `project:changed` relay below — a project switch
+     * in another cluster must not reach the frames in this one. And `null` is
+     * what tells the empty state which of the two it is: a window with no
+     * clusters at all, rather than a cluster with nothing open in it.
+     */
+    clusterId: string | null;
+    /**
+     * Whether `clusterId` is an answer yet.
+     *
+     * `false` until the first `shell:state` lands, and the distinction is not
+     * pedantic: a window that has not heard from the backend has an empty
+     * cluster list for the same reason a window with nothing in it does, and
+     * telling those apart is the difference between "no clusters in this
+     * window" — a claim, and an alarming one on a window that has just opened —
+     * and drawing nothing for the frame it takes to find out.
+     */
+    clustersKnown: boolean;
     /** Every live instance in this cluster, resolvable by id. */
     instances: Map<string, SurfaceInstance>;
     /** How to present the app an instance is an instance of. */
@@ -116,8 +138,6 @@ const ToolWindow = forwardRef<
     focusedPaneId: string | null;
     onFocusPane: (paneId: string) => void;
     onResize: (splitId: string, sizes: number[]) => void;
-    onOpenApp: (appId: string) => void;
-    onRescan: () => void;
     dropTarget?: DropTarget | null;
     /**
      * A frame's declared command set changed — it said `helve/commands`, or it
@@ -130,13 +150,13 @@ const ToolWindow = forwardRef<
 >(function ToolWindow(
   {
     tree,
+    clusterId,
+    clustersKnown,
     instances,
     presentationOf,
     focusedPaneId,
     onFocusPane,
     onResize,
-    onOpenApp,
-    onRescan,
     dropTarget,
     onCommandsChange,
   },
@@ -425,12 +445,21 @@ const ToolWindow = forwardRef<
         return;
       }
 
-      // `callApp` names the app, not the instance: `apps::call` dispatches into
-      // a registry keyed by app id, and `apps/files.rs` holds no per-instance
-      // state at all — every method that names a file takes an absolute path.
-      // That is why two Files needed no backend change; all the per-instance
-      // state is the frontend's, and it stays there.
-      void callApp(frame.appId, method, params)
+      // Both ids, and they answer different questions. `frame.appId` says which
+      // code runs: `apps::call` dispatches into a registry keyed by app id, and
+      // there is one entry for Files however many Files are open.
+      // `frame.id` — the *instance* — says where it runs. That is the half this
+      // used to be unable to send, and the half a per-cluster project needs:
+      // Rust walks the pane trees to find which cluster holds the instance, and
+      // answers `files/list` against that cluster's project. Without it, two
+      // Files side by side in two clusters are indistinguishable in the backend
+      // and both root at whichever project answered first.
+      //
+      // Nothing in the payload is trusted for this. `frame` came out of the map
+      // above, keyed on `event.source`, so the instance id is the shell's own
+      // record of which iframe this is — the same identity rule that decides
+      // whether the message is listened to at all.
+      void callApp(frame.appId, method, params, { instanceId: frame.id })
         .then((result) => respond({ id, result }))
         // Both hosts of `callApp` reject with a `{code, message}` envelope, so
         // the common path is to pass it straight through. Anything else that
@@ -453,6 +482,16 @@ const ToolWindow = forwardRef<
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
+  // Which cluster this window is showing, for the relay below.
+  //
+  // A ref because the Tauri subscription is installed once and must stay
+  // installed. Switching clusters is a frequent, cheap act; tearing down and
+  // re-registering a backend listener on each one would leave a window — real,
+  // if brief — where a project change lands on nothing and a Files never
+  // redraws. Read at delivery time, which is the moment the answer matters.
+  const showing = useRef(clusterId);
+  showing.current = clusterId;
+
   // The third direction: Rust -> shell -> app frame. `project:changed` is the
   // first thing to travel it, and everything below is deliberately generic
   // about the payload — the shell relays, it does not interpret.
@@ -462,6 +501,16 @@ const ToolWindow = forwardRef<
   // requests with an error saying so). Telling it the project changed would be
   // handing it news it has no way to act on, on a channel whose whole value is
   // that everything arriving on it means something.
+  //
+  // **And only frames in the cluster the event names.** The event is broadcast
+  // to every window in the process, and a project belongs to a cluster — so
+  // relaying it unfiltered would tell every Files everywhere that "the project
+  // changed", and each of them would re-root itself at a project it is not in.
+  // That is the exact bug per-cluster projects exist to prevent, reintroduced
+  // on the last hop. The check is against *this window's* active cluster and
+  // that is sufficient rather than approximate: this component mounts surfaces
+  // for the active cluster's tree only, so every frame in `frames` is in that
+  // cluster by construction.
   useEffect(() => {
     // No Tauri event system in a plain browser: an unguarded `listen` rejects
     // on mount under `?fake=1` and takes the fake-backend run with it. Same
@@ -479,6 +528,11 @@ const ToolWindow = forwardRef<
     void (async () => {
       const stop = await listen<unknown>("project:changed", (e) => {
         if (!live) return;
+        // A change in a cluster this window is not showing has no frame here to
+        // act on it, and telling one anyway would be telling it about somebody
+        // else's project. A payload with no cluster on it is dropped for the
+        // same reason: the event's whole contract is that it names one.
+        if (changedCluster(e.payload) !== showing.current) return;
         for (const [win, frame] of frames.current) {
           if (!frame.isApp || frame.origin === null) continue;
           win.postMessage(
@@ -751,7 +805,17 @@ const ToolWindow = forwardRef<
         );
       })}
 
-      {empty && <EmptyState onOpenApp={onOpenApp} onRescan={onRescan} />}
+      {/* Two empty states, not one, because the way out of each is different:
+          an empty cluster wants an app opened into it, an empty window has no
+          cluster for an app to go into and wants one made. `clusterId` is what
+          tells them apart — it is `null` only when this window holds none.
+
+          Neither is drawn until the layout has actually arrived. Both are
+          claims about what is here, and before the first `shell:state` there is
+          nothing to base one on: every window looks empty at that point, so a
+          window opened by a drag would flash "no clusters" on its way to
+          showing the surface that was dropped into it. */}
+      {empty && clustersKnown && (clusterId === null ? <NoClustersState /> : <EmptyState />)}
     </div>
   );
 });
@@ -788,6 +852,21 @@ function sameRects(a: Map<string, PaneRect>, b: Map<string, PaneRect>): boolean 
     }
   }
   return true;
+}
+
+/**
+ * The `clusterId` off a `project:changed` payload, or `null` for anything that
+ * is not one.
+ *
+ * Defensive because the payload is `unknown` at this boundary — it is relayed
+ * without ever being typed. `null` from a malformed event means the relay drops
+ * it, which is the safe direction: a frame told nothing redraws nothing, where
+ * a frame told about the wrong cluster re-roots itself at the wrong project.
+ */
+function changedCluster(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const { clusterId } = payload as { clusterId?: unknown };
+  return typeof clusterId === "string" ? clusterId : null;
 }
 
 /**

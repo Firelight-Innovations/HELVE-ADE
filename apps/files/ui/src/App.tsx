@@ -86,6 +86,13 @@ export default function App() {
    * tabs are left alone rather than closed: a file that is still on disk is
    * still readable, and closing someone's editor because they switched
    * projects would lose work to a guess about intent.
+   *
+   * "The project" means **this surface's cluster's** project. A project belongs
+   * to a cluster, and the shell relays this event only into frames in the
+   * cluster it names — so a switch in the Files on the next monitor does not
+   * reach here. Nothing in this file has to know that: `files/root` below is
+   * answered against whichever cluster this frame is in, resolved by the shell
+   * from the frame itself rather than from anything sent in the call.
    */
   useEffect(
     () =>

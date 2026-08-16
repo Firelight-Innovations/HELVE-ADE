@@ -21,6 +21,25 @@ pub struct StackSnapshot {
     pub tools: Vec<ResolvedTool>,
 }
 
+/// Stack components this build actually resolves and reports health for.
+///
+/// helve.toml pins all seven of Helve's components, because the manifest's job
+/// is to describe the whole stack — but walk the checkouts today and six of
+/// them are a README in an otherwise empty directory. There is no Cargo.toml
+/// or package.json in `forger`, `journeyman`, `turner`, `scrivener`,
+/// `quickener`, or `wright` for `probe_version` to read, so every one of them
+/// would resolve to `Unversioned` and the health popover would carry six
+/// warnings for components nobody can act on, drowning out anything that
+/// might actually be worth seeing.
+///
+/// This is the filter that keeps that from happening: a tool id not listed
+/// here is dropped before `resolve_one` ever runs, so it is never probed and
+/// never produces a `ResolvedTool` at all — not a warning the frontend has to
+/// know to hide, nothing to resolve. helve.toml keeps every pin regardless, so
+/// no information about the stack's shape is lost; when a component gets past
+/// a README, giving it health tracking back is exactly one id added here.
+const ENABLED_TOOLS: &[&str] = &[];
+
 pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapshot> {
     let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     let checkout_root = normalize(&manifest_dir.join(&manifest.stack.checkout_root));
@@ -32,6 +51,7 @@ pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapsho
     let tools = manifest
         .tools
         .iter()
+        .filter(|spec| ENABLED_TOOLS.contains(&spec.id.as_str()))
         .map(|spec| resolve_one(spec, &checkout_root))
         .collect::<Result<Vec<_>>>()?;
 
@@ -171,7 +191,18 @@ mod tests {
         let snapshot =
             resolve(&path, &manifest).expect("every pinned version should be valid semver");
 
-        assert!(!snapshot.tools.is_empty(), "manifest declares no tools");
+        assert!(!manifest.tools.is_empty(), "manifest declares no tools");
+        // `snapshot.tools` is `manifest.tools` narrowed by `ENABLED_TOOLS`, not
+        // a straight pass-through — see that constant's doc comment. Asserting
+        // the exact count, rather than just "resolve didn't error", is what
+        // would actually catch the filter silently resolving everything (or
+        // nothing) it shouldn't.
+        let expected = manifest
+            .tools
+            .iter()
+            .filter(|t| ENABLED_TOOLS.contains(&t.id.as_str()))
+            .count();
+        assert_eq!(snapshot.tools.len(), expected, "ENABLED_TOOLS filtering changed");
 
         // Every tool resolves to a path under the checkout root, and ids are unique.
         let mut ids: Vec<&str> = snapshot.tools.iter().map(|t| t.spec.id.as_str()).collect();
@@ -195,5 +226,43 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(probe_version(&dir), None);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// A tool id absent from `ENABLED_TOOLS` never reaches `resolve_one` — it
+    /// has to not appear in the snapshot at all, not appear there tagged
+    /// `Missing` or `Unversioned`. Built against a synthetic manifest, not the
+    /// shipped one, so this stays meaningful regardless of which ids
+    /// `ENABLED_TOOLS` names on a given day.
+    #[test]
+    fn only_allowlisted_tools_reach_the_snapshot() {
+        use crate::manifest::StackInfo;
+        use crate::tool::ToolKind;
+
+        fn spec(id: &str) -> ToolSpec {
+            ToolSpec {
+                id: id.to_string(),
+                name: id.to_string(),
+                kind: ToolKind::DevTool,
+                repo: "https://example.invalid/repo".to_string(),
+                version: "0.1.0".to_string(),
+                description: String::new(),
+                path: None,
+            }
+        }
+
+        let manifest = Manifest {
+            stack: StackInfo {
+                name: "Test".to_string(),
+                version: "0.0.0".to_string(),
+                checkout_root: ".".to_string(),
+            },
+            tools: vec![spec("definitely-not-a-real-tool-id"), spec("also-not-real")],
+        };
+
+        let snapshot = resolve(Path::new("helve.toml"), &manifest).expect("resolves");
+        assert!(
+            snapshot.tools.is_empty(),
+            "neither synthetic id is on ENABLED_TOOLS, so neither should resolve"
+        );
     }
 }

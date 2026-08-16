@@ -42,16 +42,22 @@
 //! is not a live gap, but the code is gated to match rather than failing to
 //! compile there.
 
+use crate::apps::CallContext;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-pub fn call(app: &AppHandle, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
+pub fn call(
+    app: &AppHandle,
+    context: &CallContext,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value, RpcError> {
     match method {
-        "trash/list" => list(app),
-        "trash/restore" => restore(app, params.as_ref()),
-        "trash/purge" => purge(app, params.as_ref()),
+        "trash/list" => list(app, context),
+        "trash/restore" => restore(app, context, params.as_ref()),
+        "trash/purge" => purge(app, context, params.as_ref()),
 
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
@@ -83,9 +89,12 @@ fn required_id(params: Option<&Value>) -> Result<String, RpcError> {
 ///
 /// Deliberately `files::default_root` and not a second opinion — "the trash for
 /// this project" has to mean the trash for the tree beside it, or the two panes
-/// would disagree about what project the user is in.
-fn scope_root(app: &AppHandle) -> Result<PathBuf, RpcError> {
-    super::files::default_root(app)
+/// would disagree about what project the user is in. Now that a project is the
+/// cluster's, that agreement is bought by passing the *same* [`CallContext`]
+/// down: the trash pane and the tree beside it are the same Files surface, so
+/// they resolve the same cluster and cannot come apart.
+fn scope_root(app: &AppHandle, context: &CallContext) -> Result<PathBuf, RpcError> {
+    super::files::default_root(app, context)
 }
 
 /// Whether `path` is inside `root` — the scoping predicate, used everywhere.
@@ -293,8 +302,8 @@ mod platform {
         not(target_os = "android")
     )
 ))]
-fn list(app: &AppHandle) -> Result<Value, RpcError> {
-    let root = scope_root(app)?;
+fn list(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let root = scope_root(app, context)?;
     let mut items = platform::scoped(&root)?;
     items.sort_by(|a, b| b.time_deleted.cmp(&a.time_deleted));
 
@@ -313,7 +322,7 @@ fn list(app: &AppHandle) -> Result<Value, RpcError> {
         not(target_os = "android")
     )
 )))]
-fn list(_app: &AppHandle) -> Result<Value, RpcError> {
+fn list(_app: &AppHandle, _context: &CallContext) -> Result<Value, RpcError> {
     Err(RpcError::new(
         INTERNAL_ERROR,
         "this platform provides no way to list or restore items from the trash",
@@ -321,14 +330,14 @@ fn list(_app: &AppHandle) -> Result<Value, RpcError> {
 }
 
 /// Put one item back where it came from. Refuses rather than overwriting.
-fn restore(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
-    let root = scope_root(app)?;
+fn restore(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    let root = scope_root(app, context)?;
     platform::restore_one(&root, &required_id(params)?)
 }
 
 /// Destroy one item for good. There is no recovering from this one.
-fn purge(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
-    let root = scope_root(app)?;
+fn purge(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    let root = scope_root(app, context)?;
     platform::purge_one(&root, &required_id(params)?)
 }
 

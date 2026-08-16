@@ -15,12 +15,38 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TerminalBusy, TerminalControl, TerminalTransport } from "../contract";
-import { fakeAddTerminal, fakeCloseTerminal, fakeGroupWith, fakeSetTitle, isFake } from "./fakeBackend";
+import {
+  fakeAddTerminal,
+  fakeAddTerminalInPane,
+  fakeCloseTerminal,
+  fakeGroupWith,
+  fakeSetTitle,
+  isFake,
+} from "./fakeBackend";
 
 export const terminalControl: TerminalControl = {
   create(windowLabel, cols, rows) {
     if (isFake()) return fakeControl.create(windowLabel, cols, rows);
     return invoke<string>("create_terminal", { label: windowLabel, cols, rows });
+  },
+
+  createInPane(windowLabel, paneId, dir) {
+    if (isFake()) return fakeControl.createInPane(windowLabel, paneId, dir);
+    // No `cols`/`rows`. The panel's `create` passes an 80×24 first guess
+    // because the caller has a deck to size it against; a pane terminal is
+    // mounted by `ToolWindow` over a rectangle nobody has measured at the
+    // moment of asking, so guessing here would be inventing a number rather
+    // than reporting one. Rust uses the same 80×24 placeholder, and the
+    // emulator corrects it the instant it has measured itself.
+    //
+    // `dir` is the one thing that *is* measured before the call, and it is a
+    // different measurement: the pane being split is already on screen, where
+    // the pane being opened is not. See `panes/splitOnOpen.ts`.
+    return invoke<string>("open_terminal_in_pane", {
+      label: windowLabel,
+      paneId: paneId ?? null,
+      dir: dir ?? null,
+    });
   },
 
   split(sourceId, cols, rows) {
@@ -221,6 +247,13 @@ const fakeControl: TerminalControl = {
     // reactive store `useShellState` subscribes to is what makes a fake
     // session show up as a real tab instead of nowhere at all.
     return Promise.resolve(fakeAddTerminal("shell"));
+  },
+  createInPane(_windowLabel, paneId, dir) {
+    // Same store, then straight into the tree — which is the whole of what
+    // makes it a *pane* terminal rather than a panel one, here exactly as in
+    // Rust. Without the second half the fake would put it in the panel and the
+    // Apps menu's Terminal row would look like it opened the wrong thing.
+    return Promise.resolve(fakeAddTerminalInPane(paneId, dir));
   },
   split(sourceId) {
     const id = fakeAddTerminal("shell");

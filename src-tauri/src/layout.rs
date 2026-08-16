@@ -35,6 +35,27 @@ use serde::{Deserialize, Serialize};
 /// enough to still be a grab target.
 const MIN_SIZE: f32 = 0.05;
 
+/// How many panes one cluster may be split into by *opening* something.
+///
+/// Opening an app gives it a pane of its own (see [`PaneNode::open_into`]), and
+/// left unbounded that turns six clicks in the Apps menu into six slivers, each
+/// too narrow to be the thing it was opened to be. So the automatic split stops
+/// here and the fifth surface stacks into the focused pane as a tab instead —
+/// the behaviour every open used to have, kept as the endpoint rather than as
+/// the rule.
+///
+/// Four because a 2×2 grid is the largest arrangement that still reads as
+/// "several things at once" rather than as a mosaic, and because the split rule
+/// reaches it in the shape you would draw by hand: two columns, then one of them
+/// halved, then the other.
+///
+/// **Only the automatic split is capped.** Dragging a tab onto a pane's edge
+/// goes through `split_pane` directly and is not bounded by this, deliberately:
+/// that gesture names a pane, an edge and a side, so it is a decision rather
+/// than a guess, and a cap on it would refuse a layout the user explicitly drew.
+/// A guess is what deserves a conservative ceiling.
+pub const MAX_AUTO_PANES: usize = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SplitDir {
@@ -98,6 +119,20 @@ impl PaneNode {
         matches!(self, PaneNode::Leaf { tabs, .. } if tabs.is_empty())
     }
 
+    /// Whether `pane_id` names a leaf in this tree.
+    ///
+    /// The question `split_with_instance` has to ask *before* it starts moving
+    /// tabs about: a drop can name a pane that is no longer anywhere, and a
+    /// mutation that has already emptied the dragged tab out of its old home by
+    /// the time it finds that out has destroyed something on the strength of an
+    /// address it never checked.
+    pub fn holds_pane(&self, pane_id: &str) -> bool {
+        match self {
+            PaneNode::Leaf { id, .. } => id == pane_id,
+            PaneNode::Split { children, .. } => children.iter().any(|c| c.holds_pane(pane_id)),
+        }
+    }
+
     /// Every tab in the tree, in layout order. Used to answer "is this instance
     /// still on screen anywhere", which is what decides whether closing a pane
     /// should also dispose of what was in it.
@@ -136,6 +171,18 @@ impl PaneNode {
         }
     }
 
+    /// Whether this tree holds a pane with that id.
+    ///
+    /// Asked before a caller's preferred pane is honoured, so a pane id left
+    /// over from a layout that has since changed falls back to the first pane
+    /// instead of addressing nothing — see `ShellState::active_pane`.
+    pub fn pane_of_id(&self, pane_id: &str) -> bool {
+        match self {
+            PaneNode::Leaf { id, .. } => id == pane_id,
+            PaneNode::Split { children, .. } => children.iter().any(|c| c.pane_of_id(pane_id)),
+        }
+    }
+
     /// The first pane in layout order. Where a new instance goes when the
     /// caller has no opinion about which pane should receive it.
     pub fn first_pane_id(&self) -> &str {
@@ -148,6 +195,82 @@ impl PaneNode {
                 children.first().map_or(id.as_str(), PaneNode::first_pane_id)
             }
         }
+    }
+
+    /// How many panes this tree draws. What [`MAX_AUTO_PANES`] is counted
+    /// against, and the only measurement of a layout Rust can make honestly —
+    /// see [`open_into`](Self::open_into) on why the *direction* of a split is
+    /// not one of them.
+    pub fn pane_count(&self) -> usize {
+        match self {
+            PaneNode::Leaf { .. } => 1,
+            PaneNode::Split { children, .. } => children.iter().map(PaneNode::pane_count).sum(),
+        }
+    }
+
+    /// Whether `pane_id` names a leaf that is holding nothing.
+    ///
+    /// `false` for a pane that is not in this tree at all, which is the answer
+    /// [`open_into`](Self::open_into) needs: an unknown pane must not be split,
+    /// and letting it fall through to `insert_tab` is what turns it into the
+    /// `false` the caller already knows how to report.
+    fn pane_is_empty(&self, pane_id: &str) -> bool {
+        match self {
+            PaneNode::Leaf { id, tabs, .. } => id == pane_id && tabs.is_empty(),
+            PaneNode::Split { children, .. } => children.iter().any(|c| c.pane_is_empty(pane_id)),
+        }
+    }
+
+    /// Where a newly opened surface goes: a **pane of its own**, or a tab.
+    ///
+    /// This reverses what opening used to do. Every open dropped the new surface
+    /// into the focused pane as another tab, which on screen looked like it had
+    /// *replaced* whatever was there — the one thing that pane was already
+    /// showing went behind the new one. Opening now splits, and stacking two
+    /// surfaces into one pane is something you ask for by dragging a chip into
+    /// that pane, never something an open does to you on the way past.
+    ///
+    /// `split` carries the direction the caller measured, plus the two ids a
+    /// split needs. **The direction has to come from the caller**, and that is
+    /// the load-bearing part of this signature. The rule is "split the focused
+    /// pane along its longer axis", so a wide pane gains a right-hand column and
+    /// a tall one gains a bottom row, which keeps repeated opening from slicing
+    /// one axis into slivers. Longer *in pixels*, though: `sizes` here are
+    /// fractions of a parent, deliberately (the window is resizable and a layout
+    /// in pixels would restore wrongly onto another monitor), so a tree of
+    /// fractions cannot say which way a pane is currently drawn. Nothing in this
+    /// module may guess at it. The frontend measures the rendered pane at the
+    /// moment of the gesture and passes the answer in; `None` means it had
+    /// nothing to measure and asks for the old tab behaviour.
+    ///
+    /// Two things refuse the split even when a direction was measured:
+    ///
+    ///   * **An empty pane.** The first app in a fresh cluster fills the single
+    ///     pane it was given. Splitting it would leave an empty half beside the
+    ///     app, which is a gap rather than a layout.
+    ///   * **[`MAX_AUTO_PANES`].** Past the ceiling the surface stacks into the
+    ///     focused pane, exactly as every open used to. See that constant for
+    ///     why the cap is on this path and not on the drag gesture.
+    ///
+    /// `index` is only consulted on the tab path — a split has one tab in the
+    /// new pane and no strip position to argue about.
+    pub fn open_into(
+        &mut self,
+        pane_id: &str,
+        instance_id: &str,
+        index: Option<usize>,
+        split: Option<(SplitDir, &str, &str)>,
+    ) -> bool {
+        if let Some((dir, split_id, new_pane_id)) = split {
+            if self.pane_count() < MAX_AUTO_PANES && !self.pane_is_empty(pane_id) {
+                // `before: false` — the new pane takes the right-hand or lower
+                // side. Opening reads left-to-right, top-to-bottom, and the
+                // gesture that gets to choose a side is the drag, which knows
+                // which edge was aimed at.
+                return self.split_pane(pane_id, dir, split_id, new_pane_id, instance_id, false);
+            }
+        }
+        self.insert_tab(pane_id, instance_id, index)
     }
 
     fn find_leaf_mut(&mut self, pane_id: &str) -> Option<&mut PaneNode> {
@@ -383,6 +506,11 @@ impl PaneNode {
 
 /// Scale the weights to sum to 1, with no pane below [`MIN_SIZE`].
 ///
+/// `pub(crate)` for one caller outside this module: `presets` normalizes the
+/// weights of a saved arrangement through this rather than through a second
+/// implementation of it, so a preset cannot describe a split the layout engine
+/// would refuse to draw.
+///
 /// The order matters and is the whole subtlety here. Clamping first and scaling
 /// afterwards is the obvious version and it is wrong: the scale divides every
 /// weight by a total greater than one, which pushes a weight that was *just*
@@ -394,7 +522,7 @@ impl PaneNode {
 /// the early return, the slack above the floor always exceeds the deficit below
 /// it, so every donor stays above the floor and the total lands back on exactly
 /// 1.
-fn normalize(sizes: &mut [f32]) {
+pub(crate) fn normalize(sizes: &mut [f32]) {
     let n = sizes.len();
     if n == 0 {
         return;
@@ -491,6 +619,24 @@ mod tests {
         };
         assert_eq!(children[0].id(), "p2", "the new pane leads when `before`");
         assert_eq!(children[1].id(), "p1");
+    }
+
+    /// What `split_with_instance` checks before it starts moving tabs about.
+    /// Getting a `false` here is the difference between refusing a drop and
+    /// deleting what was dropped — see that function's doc comment.
+    #[test]
+    fn holds_pane_finds_a_leaf_at_any_depth_and_nothing_else() {
+        let mut tree = leaf_with("p1", &["files-1"]);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "files-2", false);
+
+        assert!(tree.holds_pane("p1"), "the pane that was split");
+        assert!(tree.holds_pane("p2"), "and the one the split produced");
+        assert!(!tree.holds_pane("s1"), "a split's own id is not a pane");
+        assert!(!tree.holds_pane("nonesuch"));
+        assert!(
+            !leaf_with("p1", &[]).holds_pane("p2"),
+            "a lone leaf answers only for itself"
+        );
     }
 
     #[test]
@@ -621,6 +767,100 @@ mod tests {
         assert_eq!(tabs, &["b".to_string(), "c".to_string(), "a".to_string()]);
     }
 
+    // --- opening into a pane ------------------------------------------------
+
+    /// The first app in a fresh cluster fills the pane it was given. A split
+    /// here would put an empty half beside it, which is a gap, not a layout.
+    #[test]
+    fn the_first_surface_in_an_empty_cluster_does_not_split_anything() {
+        let mut tree = leaf_with("p1", &[]);
+        assert!(tree.open_into("p1", "files-1", None, Some((SplitDir::Row, "s1", "p2"))));
+
+        assert_eq!(tree, leaf_with("p1", &["files-1"]));
+    }
+
+    #[test]
+    fn opening_into_an_occupied_pane_gives_the_new_surface_its_own() {
+        let mut tree = leaf_with("p1", &["files-1"]);
+        assert!(tree.open_into("p1", "files-2", None, Some((SplitDir::Row, "s1", "p2"))));
+
+        let PaneNode::Split { dir, children, .. } = &tree else {
+            panic!("opening beside something should have produced a split");
+        };
+        assert_eq!(*dir, SplitDir::Row);
+        assert_eq!(children[0].id(), "p1", "the new pane takes the trailing side");
+        assert_eq!(children[1].id(), "p2");
+    }
+
+    /// The direction is the caller's and is used verbatim — this module has no
+    /// pixels to derive it from. See `open_into`'s doc comment.
+    #[test]
+    fn the_measured_direction_is_the_one_the_split_takes() {
+        let mut tree = leaf_with("p1", &["files-1"]);
+        tree.open_into("p1", "files-2", None, Some((SplitDir::Column, "s1", "p2")));
+
+        let PaneNode::Split { dir, .. } = &tree else {
+            panic!("expected a split");
+        };
+        assert_eq!(*dir, SplitDir::Column, "a tall pane gains a bottom row");
+    }
+
+    /// No measurement, no split: the caller had nothing on screen to measure
+    /// and asked for the old behaviour rather than a guessed axis.
+    #[test]
+    fn opening_without_a_direction_stacks_as_a_tab() {
+        let mut tree = leaf_with("p1", &["files-1"]);
+        assert!(tree.open_into("p1", "files-2", None, None));
+
+        let PaneNode::Leaf { tabs, active_tab, .. } = &tree else {
+            panic!("a tab must not have produced a split");
+        };
+        assert_eq!(tabs, &["files-1".to_string(), "files-2".to_string()]);
+        assert_eq!(active_tab.as_deref(), Some("files-2"), "an opened tab is shown");
+    }
+
+    /// The ceiling, and what happens at it: the surface stacks into the focused
+    /// pane instead of producing a fifth sliver.
+    #[test]
+    fn opening_stops_splitting_at_the_pane_ceiling() {
+        let mut tree = leaf_with("p1", &["a"]);
+        for (i, (pane, split, fresh)) in [("p1", "s1", "p2"), ("p2", "s2", "p3"), ("p3", "s3", "p4")]
+            .into_iter()
+            .enumerate()
+        {
+            let dir = if i % 2 == 0 { SplitDir::Row } else { SplitDir::Column };
+            assert!(tree.open_into(pane, &format!("t{i}"), None, Some((dir, split, fresh))));
+        }
+        assert_eq!(tree.pane_count(), MAX_AUTO_PANES, "four opens, four panes");
+
+        // The fifth. It lands in p4 as a tab rather than halving it again.
+        assert!(tree.open_into("p4", "fifth", None, Some((SplitDir::Row, "s4", "p5"))));
+        assert_eq!(tree.pane_count(), MAX_AUTO_PANES, "no fifth pane");
+        assert_eq!(tree.pane_of_tab("fifth"), Some("p4"), "stacked where it was opened");
+    }
+
+    /// The cap is on *opening*. A drag that names a pane and an edge is a
+    /// decision rather than a guess, and `split_pane` goes on obeying it.
+    #[test]
+    fn the_ceiling_does_not_apply_to_a_dragged_split() {
+        let mut tree = leaf_with("p1", &["a"]);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "b", false);
+        tree.split_pane("p2", SplitDir::Column, "s2", "p3", "c", false);
+        tree.split_pane("p3", SplitDir::Row, "s3", "p4", "d", false);
+        assert_eq!(tree.pane_count(), 4);
+
+        assert!(tree.split_pane("p4", SplitDir::Column, "s4", "p5", "e", false));
+        assert_eq!(tree.pane_count(), 5, "an explicit drop is never refused for shape");
+    }
+
+    #[test]
+    fn opening_into_a_pane_that_is_not_there_changes_nothing() {
+        let mut tree = leaf_with("p1", &["a"]);
+        let before = tree.clone();
+        assert!(!tree.open_into("nonesuch", "b", None, Some((SplitDir::Row, "s1", "p2"))));
+        assert_eq!(tree, before, "an unknown pane is reported, never invented");
+    }
+
     #[test]
     fn set_sizes_refuses_a_count_that_does_not_match_the_children() {
         let mut tree = leaf_with("p1", &["a"]);
@@ -701,6 +941,17 @@ mod tests {
         };
         assert_eq!(active_tab.as_deref(), Some("b"));
         assert!(!tree.activate_tab("nonesuch"), "an absent instance is not activated");
+    }
+
+    #[test]
+    fn a_pane_id_can_be_checked_against_the_tree_that_would_hold_it() {
+        let mut tree = leaf_with("p1", &["a"]);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "b", false);
+
+        assert!(tree.pane_of_id("p1"));
+        assert!(tree.pane_of_id("p2"), "a pane nested under a split still counts");
+        assert!(!tree.pane_of_id("s1"), "a split is not a pane");
+        assert!(!tree.pane_of_id("nonesuch"));
     }
 
     #[test]

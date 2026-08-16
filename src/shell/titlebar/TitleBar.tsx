@@ -11,7 +11,8 @@
  * colour and the bottom hairline. Setting either here would be two owners of
  * one property.
  */
-import type { Menu, WindowKind } from "../contract";
+import type { Openable } from "../../bindings";
+import type { LayoutPreset, Menu, MenuItem, WindowKind } from "../contract";
 import { BrandGlyph } from "../../ui/Icon";
 import MenuBar from "./MenuBar";
 import HamburgerMenu from "./HamburgerMenu";
@@ -26,10 +27,14 @@ export default function TitleBar({
   menus,
 }: {
   kind: WindowKind;
-  /** The open project's name, or `null` when none is open. */
+  /** The **active cluster's** project name, or `null` when that cluster has
+   *  none — or when this window has no cluster at all. A project belongs to a
+   *  cluster, so this is what lets two windows name two projects at once. */
   project: string | null;
-  /** The checked-out branch, or `null` when the project is not a repository —
-   *  see the note on the title element below for why it is the branch. */
+  /** The active cluster's worktree branch, or `null`. `Cluster.worktree` is a
+   *  stub nothing populates, so this is `null` today and the segment is dropped
+   *  — see the note on the title element below for why an approximation from
+   *  the stack's git status would be worse than an absence. */
   worktree: string | null;
   /** Built by `defaultMenus()`, wired against `WindowRoot`'s state and the
    *  active app frame. Rebuilt on every render, because half the items read
@@ -65,11 +70,19 @@ export default function TitleBar({
           branch switched in a terminal) and both of which decide what every
           other action in this window will touch.
 
-          The worktree is the checked-out branch, from the same single
-          `useGitStatus` the status bar and the source-control tab read.
-          `Cluster.worktree` is the field this will eventually name, but it is a
-          stub nothing populates, and a title bound to it would be empty
-          forever.
+          Both segments name the **active cluster's** own facts, which is what
+          lets two windows on two monitors show two projects at once. The
+          project comes from `useClusterProject`, asked about whichever cluster
+          this window is showing.
+
+          The worktree is `Cluster.worktree`, and today that is a **placeholder
+          shape rather than a live value**: nothing populates the field yet, so
+          the segment is simply absent and the layout is right for the day it
+          is not. It used to draw `useGitStatus`'s branch — the checkout the
+          *stack manifest* resolved, which was never this cluster's worktree and
+          only looked like it while there was one project in the process.
+          Naming the wrong branch beside the right project is worse than naming
+          none, so it waits for the git work rather than approximating.
 
           Segments with no answer are dropped rather than drawn as a placeholder
           or an em-dash. With nothing open this reads "HELVE Engine", which is
@@ -146,15 +159,22 @@ export interface CommandHandlers {
 export interface FileMenuHandlers {
   /** Open an empty window. `undefined` disables the item. */
   newWindow?: () => void;
-  /** Native folder picker, through Home's `home/open-project`. */
-  openProject(): void;
+  /**
+   * Native folder picker, through Home's `home/open-project`.
+   *
+   * `undefined` when this window has no cluster to open a project *into* —
+   * every cluster in it has been closed. A project belongs to a cluster, so
+   * with none there is nowhere for the answer to go, and the backend refuses
+   * the call for exactly that reason. Better to say so on the item than to
+   * raise a picker whose result has nowhere to land.
+   */
+  openProject?: () => void;
   /**
    * Show Home, whose Recent list is the real thing being asked for.
    *
-   * `undefined` when Home is not docked in this window — a detached window
-   * holds one tool, and it is usually not Home. `MenuItem` has no submenu, and
-   * the handoff is explicit that faking one is not an option; this is the other
-   * branch it offers. See the note on the item itself.
+   * `undefined` when there is no cluster to show it in. `MenuItem` has no
+   * submenu, and the handoff is explicit that faking one is not an option; this
+   * is the other branch it offers. See the note on the item itself.
    */
   openRecent?: () => void;
   closeWindow(): void;
@@ -198,14 +218,70 @@ export interface TerminalMenuHandlers {
 /**
  * The Apps menu: what this build ships, as things you can open another of.
  *
- * `available` comes from the app registry rather than being written out here, so
- * an app added in `apps::REGISTRY` appears in the menu without a second edit in
- * a file whose author would have no reason to look.
+ * `available` comes from Rust rather than being written out here, so an app
+ * added in `apps::REGISTRY` appears in the menu without a second edit in a file
+ * whose author would have no reason to look.
+ *
+ * **A terminal is one of the rows, and it is not an app.** It has no frontend to
+ * mount and no Rust half to call, so it comes from `apps::openables` — the union
+ * of the registry and a terminal — rather than from the app list, which carries
+ * a mountable URL that a terminal cannot have. `Openable.kind` is what `open`
+ * routes on, which is why the whole entry is handed back rather than just its
+ * id: the menu should not have to know which magic string means "spawn a shell".
  */
 export interface AppsMenuHandlers {
-  available: { id: string; name: string }[];
-  /** Opens a new instance. Always available — there is no "already open". */
-  open: (appId: string) => void;
+  available: Openable[];
+  /** Opens a new one. There is no "already open" to disable it for. */
+  open: (entry: Openable) => void;
+  /**
+   * Why nothing here can be opened right now, or `undefined` when it can.
+   *
+   * One reason exists and it is not about any app: a surface opens into a
+   * *pane*, and a window whose clusters have all been closed has none. The
+   * backend refuses such an open, so without this every entry would be a live
+   * item that silently does nothing — which is the one thing the menu is not
+   * allowed to do (see `MenuItem.disabled`).
+   *
+   * A single string for the whole list rather than a predicate per app,
+   * because the obstacle is the window's and every app hits it identically.
+   *
+   * It disables the presets below too, and correctly: applying one and saving
+   * one are both about the cluster this window is showing, and a window with no
+   * cluster has nothing to rearrange and nothing to capture.
+   */
+  blocked?: string;
+  /** The presets branch. See [`PresetsMenuHandlers`]. */
+  presets: PresetsMenuHandlers;
+}
+
+/**
+ * The Presets submenu: apply one, or save the arrangement you are looking at.
+ *
+ * Carried on `AppsMenuHandlers` rather than as a menu of its own, and that is
+ * the decision worth stating. `appsMenu()` is the single definition that feeds
+ * both the title bar's Apps menu and the switcher row's `+` — so hanging presets
+ * off it puts them in both surfaces at once, with nothing to keep in sync, and
+ * puts "apply an arrangement" directly under "open one more app". Those are the
+ * same question at two scales, and the `+` at the end of a cluster's own tabs is
+ * exactly where someone stands when they ask either one.
+ *
+ * It also means `ClusterBar` needs no change at all: it already forwards one
+ * `AppsMenuHandlers` from `WindowRoot` to `AddAppButton` without inspecting it.
+ */
+export interface PresetsMenuHandlers {
+  /** The merged list from Rust: the built-ins, then the user's own. */
+  available: LayoutPreset[];
+  /** Rearranges the active cluster. Never closes anything — see `presets::plan`. */
+  apply: (presetId: string) => void;
+  /**
+   * Capture the active cluster under this name.
+   *
+   * Rejects with a sentence to show under the field — a blank name, or one of
+   * the built-ins'. The menu shows it and stays open; see `MenuPrompt`.
+   */
+  save: (name: string) => Promise<void>;
+  /** What the name field starts with. The cluster's own name. */
+  suggestedName: string;
 }
 
 /**
@@ -221,20 +297,94 @@ export interface AppsMenuHandlers {
  *
  * Apps sits between Edit and View, where a menu about *what is open* reads more
  * naturally than one buried under File. Every entry opens a new instance; none
- * of them is ever disabled, because "already open" stopped being a state an app
- * can be in.
+ * is disabled for being open already, because "already open" stopped being a
+ * state an app can be in. They are disabled together, or not at all, when the
+ * window has nowhere to put one — see `AppsMenuHandlers.blocked`.
  *
- * A flat list, not a submenu. `MenuItem` has none and faking one is out — the
- * same rule Open Recent obeys two menus up.
+ * The apps themselves are a flat list, and that has not changed: every entry
+ * does one thing, and nesting a one-item branch under each would be a caret to
+ * click before the click that opens anything.
+ *
+ * **Presets are the exception, and they are why `MenuItem` has a `submenu` at
+ * all.** There are three built-ins and however many the user saves, they are a
+ * column of names, and flattened in here they would put "open one more Files"
+ * and "rearrange this entire cluster" in one undifferentiated list where a
+ * mis-click between neighbours does something very different from what was
+ * meant. Open Recent went the other way for a reason that does not apply here —
+ * what it had to show was a path, a date, and whether the folder still exists,
+ * which is a surface rather than a list.
  */
 export function appsMenu(apps: AppsMenuHandlers): Menu {
   return {
     label: "Apps",
-    items: apps.available.map((entry) => ({
-      label: `New ${entry.name}`,
-      onSelect: () => apps.open(entry.id),
-    })),
+    items: [
+      ...apps.available.map((entry) => ({
+        label: entry.name,
+        onSelect: () => apps.open(entry),
+        disabled: apps.blocked !== undefined,
+        // The registry's own description, which for most rows says nothing the
+        // label does not. It earns its place on the Terminal row, where there
+        // *is* something non-obvious to say: the panel below already has a `+`
+        // that makes a terminal, and this makes a different one.
+        hint: apps.blocked ?? entry.description,
+      })),
+      {
+        label: "Presets",
+        separatorBefore: true,
+        submenu: presetItems(apps.presets, apps.blocked),
+        disabled: apps.blocked !== undefined,
+        hint:
+          apps.blocked ??
+          "Arrangements you can drop onto this cluster: which panes, and what goes in each.",
+      },
+    ],
   };
+}
+
+/**
+ * The rows inside Presets: every preset, then the one that makes another.
+ *
+ * The built-ins come first because Rust merges them first, and the separator
+ * before the user's own is drawn only when there *are* any — a separator with
+ * nothing under it is a line that promises a section.
+ *
+ * Save is last and behind its own separator, because it is the only row here
+ * that does not rearrange anything. It carries the prompt rather than raising a
+ * dialog; see `MenuPrompt` for why not `window.prompt`.
+ */
+function presetItems(presets: PresetsMenuHandlers, blocked?: string): MenuItem[] {
+  const firstUser = presets.available.findIndex((preset) => !preset.builtin);
+
+  return [
+    ...presets.available.map((preset, i) => ({
+      label: preset.name,
+      onSelect: () => presets.apply(preset.id),
+      separatorBefore: i === firstUser && i > 0,
+      disabled: blocked !== undefined,
+      hint:
+        blocked ??
+        (preset.builtin
+          ? undefined
+          : // Worth saying on a user's own rows and not on the built-ins':
+            // someone who saved this five minutes ago knows what is in it,
+            // and what they may not know is that applying it will not throw
+            // away whatever else is open.
+            "Rearranges this cluster. Nothing open is closed — anything the preset does not mention moves to the last pane."),
+    })),
+    {
+      label: "Save Current Layout…",
+      separatorBefore: true,
+      disabled: blocked !== undefined,
+      hint: blocked ?? "Captures this cluster's panes and which app is in each.",
+      prompt: {
+        label: "Save this cluster's panes, and which app is in each, as a preset.",
+        placeholder: "Preset name",
+        initialValue: presets.suggestedName,
+        confirmLabel: "Save",
+        onSubmit: presets.save,
+      },
+    },
+  ];
 }
 
 /** Everything the five wired menus act on. */
@@ -317,7 +467,16 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
               ? "This window cannot open another."
               : undefined,
         },
-        { label: "Open…", accelerator: "Ctrl+O", onSelect: file.openProject },
+        {
+          label: "Open…",
+          accelerator: "Ctrl+O",
+          onSelect: file.openProject,
+          disabled: file.openProject === undefined,
+          hint:
+            file.openProject === undefined
+              ? "A project opens into a cluster, and this window has none. Make one with the + in the bar."
+              : undefined,
+        },
         {
           // `MenuItem` has no submenu, and the handoff forbids faking one. Of
           // the two branches it offers, this is the second: the item shows
@@ -329,7 +488,7 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
           disabled: file.openRecent === undefined,
           hint:
             file.openRecent === undefined
-              ? "The Home app is not in this window."
+              ? "There is no cluster in this window to show Home in."
               : "Opens Home, which lists every recent project.",
         },
         command("Save", app, APP_COMMAND.save, {

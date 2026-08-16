@@ -247,8 +247,41 @@ export interface TerminalBusy {
  * already has one, and the two could disagree.
  */
 export interface TerminalControl {
-  /** Resolves once the shell is actually running and the session has an id. */
+  /**
+   * A terminal in this **window's panel**. Resolves once the shell is actually
+   * running and the session has an id.
+   *
+   * The panel's own `+`, and the default. A panel terminal belongs to the
+   * window rather than to any cluster, so it survives every cluster switch —
+   * see `TerminalSessionState.windowLabel` for why that is the point of it.
+   */
   create(windowLabel: string, cols: number, rows: number): Promise<string>;
+  /**
+   * A terminal in a **pane of the active cluster**, from the Apps menu or the
+   * switcher's `+`.
+   *
+   * The second of two legitimate ways to make a terminal, and it looks like a
+   * contradiction of the first until you notice they answer different
+   * questions: `create` is *what am I watching*, and outlives the cluster;
+   * this is *what am I working in*, and is part of an arrangement — the
+   * right-hand pane of a "Files & Terminal" preset, or whatever someone drags
+   * there by hand. It closes with its cluster because it is drawn inside it.
+   * Both exist in VS Code for the same reason, as the panel and an editor-area
+   * terminal.
+   *
+   * There is still only one thing in the application that spawns a shell:
+   * Rust opens the session the usual way and then moves its id into the tree,
+   * which is precisely what dragging a terminal's tab into a pane does. See
+   * `commands::open_terminal_into_pane`.
+   *
+   * `paneId` names the pane this open is *relative to*; omitted, it is the
+   * active cluster's first. `dir` splits that pane along the given axis and
+   * gives the terminal a pane of its own — the same treatment opening an app
+   * gets, because Terminal is a row in the same menu. Omitted, it arrives as a
+   * tab in the named pane. See `panes/splitOnOpen.ts` for where the axis comes
+   * from and `PaneNode::open_into` for when the split is declined.
+   */
+  createInPane(windowLabel: string, paneId?: string, dir?: SplitDir): Promise<string>;
   /**
    * Open a second pty and fold it into `sourceId`'s tab — the second half of
    * "split terminal", the first half being `open_terminal` on the Rust side
@@ -457,6 +490,48 @@ export interface MenuItem {
    * items that do not need one.
    */
   hint?: string;
+  /**
+   * Rows that open to the side, behind a caret.
+   *
+   * There was none of this until presets arrived, and the two menus that wanted
+   * one before — File > Open Recent, and the Apps list itself — both went the
+   * other way deliberately, because what they had to show was richer than a
+   * column of labels. A preset is exactly a column of labels: a name, and
+   * clicking it does the thing. Flattening them into the Apps menu instead would
+   * put "open one more Files" and "rearrange this whole cluster" in one
+   * undifferentiated list, which is the reason a submenu exists at all.
+   *
+   * A row with a `submenu` has no `onSelect` and does not close the menu when
+   * clicked — it opens. `disabled` still applies, and disables the whole branch.
+   */
+  submenu?: MenuItem[];
+  /**
+   * A row that asks for one line of text before it acts.
+   *
+   * The alternative was `window.prompt`, which is a modal the shell does not
+   * control, does not style, and — being synchronous — blocks the webview that
+   * every iframe in the window is a child of. This is the same surface the menu
+   * is already drawing, with the list swapped for a field.
+   */
+  prompt?: MenuPrompt;
+}
+
+/**
+ * One line of text, asked for inside the menu that will act on it.
+ *
+ * `onSubmit` rejects with something to *show* rather than something to log: the
+ * refusals it can produce — a blank name, a name one of the built-in presets
+ * already holds — are answers to what was just typed, and belong under the field
+ * that typed it. The menu stays open on a rejection and closes on success.
+ */
+export interface MenuPrompt {
+  /** Above the field. A sentence, not a word: this is the only explanation. */
+  label: string;
+  placeholder?: string;
+  /** Pre-filled and selected, so a suggested name can be taken with Enter. */
+  initialValue?: string;
+  confirmLabel: string;
+  onSubmit: (value: string) => Promise<void>;
 }
 
 export interface Menu {
@@ -514,6 +589,48 @@ export type PaneNode =
   | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
   | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
 
+// ---------------------------------------------------------------------------
+// Layout presets — an arrangement, and which app belongs in each pane
+// ---------------------------------------------------------------------------
+//
+// Mirrors `src-tauri/src/presets/mod.rs`, and the distinction that module is
+// built around survives the crossing: a `PaneNode` is made of *identities* —
+// pane ids, split ids, instance ids, all minted per session — and a `PresetNode`
+// is the same shape with every one of them removed. What is left is a direction,
+// the weights, and in each pane the **app ids** that belong there, because a
+// type is the only thing about an arrangement that outlives the session it was
+// arranged in.
+//
+// Nothing in the shell draws a preset's shape today; the menu draws its name.
+// The tree is typed here anyway because it crosses the wire, and because the
+// `?fake=1` fixture has to apply one without a backend.
+
+/** Mirrors `presets::PresetSlot`. A terminal is not an app id — see below. */
+export type PresetSlot =
+  | { kind: "app"; appId: string }
+  | { kind: "terminal" };
+
+/** Mirrors `presets::PresetNode`. Discriminated on `kind`, like `PaneNode`. */
+export type PresetNode =
+  | { kind: "split"; dir: SplitDir; sizes: number[]; children: PresetNode[] }
+  | { kind: "pane"; slots: PresetSlot[] };
+
+/** Mirrors `presets::LayoutPreset`. */
+export interface LayoutPreset {
+  /** Stable across renames — what the menu sends back when a row is clicked. */
+  id: string;
+  name: string;
+  /**
+   * Compiled into the build rather than read from `presets.json`.
+   *
+   * Computed by Rust and never trusted from the file, so this is a fact about
+   * where the preset came from and not a claim the file made. The menu uses it
+   * to separate the two groups; a built-in cannot be replaced or deleted.
+   */
+  builtin: boolean;
+  root: PresetNode;
+}
+
 /** Mirrors `shell_state::WorktreeRef`. A stub — nothing reads it yet. */
 export interface WorktreeRef {
   path: string;
@@ -521,13 +638,15 @@ export interface WorktreeRef {
 }
 
 /**
- * One tab in the switcher bar: a layout and its worktree.
+ * One tab in the switcher bar: a layout, the project it is about, and its
+ * worktree.
  *
  * A cluster is one thing being worked on. Switching cluster tabs swaps the pane
- * tree — and only that. The panel beside it does not change, because the
- * terminals in it are the *window's*: a shell watching one worktree is exactly
- * the thing you want still in front of you while you move between the clusters
- * working on others. See `TerminalSessionState.windowLabel`.
+ * tree *and the project underneath it* — and only those. The panel beside it
+ * does not change, because the terminals in it are the *window's*: a shell
+ * watching one worktree is exactly the thing you want still in front of you
+ * while you move between the clusters working on others. See
+ * `TerminalSessionState.windowLabel`.
  *
  * A terminal that has been dragged into the layout is a different matter. It is
  * a tab in `tree` like any other surface, drawn in the pane area, and the panel
@@ -538,6 +657,22 @@ export interface Cluster {
   id: string;
   name: string;
   tree: PaneNode;
+  /**
+   * The folder this cluster's work is in, as an absolute path, or `null` for a
+   * cluster nobody has pointed at one yet.
+   *
+   * The project is the cluster's and not the process's, which is what lets two
+   * windows on two monitors show two projects at once. Every app surface in
+   * this cluster resolves against it — Files roots its tree here, Home names it
+   * as the open project — and Rust does that resolution, from the instance id
+   * the shell passes with each `invoke`. Nothing in the frontend has to carry
+   * a project down to a surface.
+   *
+   * A *path*, not a name. The name the title bar draws comes from
+   * `clusterProject`, because a project's name is its manifest's when it has
+   * one and only the backend has read that.
+   */
+  project: string | null;
   worktree: WorktreeRef | null;
 }
 

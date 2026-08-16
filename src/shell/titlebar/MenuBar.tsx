@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Menu } from "../contract";
 import { popover } from "../motion";
-import MenuItemList from "./MenuItemList";
+import MenuItemList, { inMenuSurface } from "./MenuItemList";
 
 export default function MenuBar({ menus }: { menus: Menu[] }) {
   const [openLabel, setOpenLabel] = useState<string | null>(null);
@@ -21,6 +21,13 @@ export default function MenuBar({ menus }: { menus: Menu[] }) {
     if (openLabel === null) return;
 
     const onPointerDown = (e: PointerEvent) => {
+      // A submenu is portalled to `document.body`, so it is not inside this
+      // component's subtree and `contains` says "outside" about a click that is
+      // very much inside this menu. Missing it would unmount the submenu on the
+      // pointerdown of the click meant to choose an item, and the `click` would
+      // land on nothing — the same failure `AddAppButton` documents for its own
+      // portalled surface. See `inMenuSurface`.
+      if (inMenuSurface(e.target)) return;
       if (!rootRef.current?.contains(e.target as Node)) setOpenLabel(null);
     };
     const onKeyDown = (e: KeyboardEvent) => {

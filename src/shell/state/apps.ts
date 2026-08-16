@@ -12,9 +12,16 @@
  * are still resolving; the switcher simply gains its app tabs a frame later.
  */
 import { useEffect, useState } from "react";
-import { appCall, listApps, type AppInfo } from "../../bindings";
+import {
+  appCall,
+  listApps,
+  listOpenables,
+  type AppInfo,
+  type CallScope,
+  type Openable,
+} from "../../bindings";
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
-import { isFake, fakeAppCall, fakeApps } from "./fakeBackend";
+import { isFake, fakeAppCall, fakeApps, fakeOpenables } from "./fakeBackend";
 
 export function useApps(): AppInfo[] {
   const [apps, setApps] = useState<AppInfo[]>([]);
@@ -43,12 +50,58 @@ export function useApps(): AppInfo[] {
 }
 
 /**
+ * Everything the Apps menu can open: every app, then a terminal.
+ *
+ * A second hook beside `useApps` rather than a wider version of it, and the two
+ * are not redundant — they answer different questions and only one of them
+ * carries a URL. `useApps` is *things with a frontend*, and it is what
+ * `ToolWindow` resolves a mountable address from; this is *things you can open*,
+ * and a terminal is one of those without being one of those. `bindings.ts`'s
+ * `Openable` has the full reasoning, including what an empty `url` would break.
+ *
+ * Empty until it answers, like `useApps` above: the menu gains its rows a frame
+ * later, and no state in the interface is reachable only while it is resolving.
+ */
+export function useOpenables(): Openable[] {
+  const [openables, setOpenables] = useState<Openable[]>([]);
+
+  useEffect(() => {
+    if (isFake()) {
+      setOpenables(fakeOpenables());
+      return;
+    }
+
+    let live = true;
+    void listOpenables()
+      .then((result) => live && setOpenables(result))
+      // An empty Apps menu is the symptom, and it looks exactly like a feature
+      // that was never wired up — so it is reported rather than swallowed, for
+      // the reason `useApps` gives about its own failure.
+      .catch((err: unknown) => console.error("helve: could not list openables:", err));
+
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return openables;
+}
+
+/**
  * Relay one app frame's `invoke` to its Rust half.
  *
  * Rejects with a `{ code, message }` envelope in both directions — the same
  * shape `app_call` fails with on the Rust side, so the caller (`ToolWindow`)
  * has one thing to put in a `response` message rather than two error
  * vocabularies to tell apart.
+ *
+ * `scope` says which surface is asking, which is what decides *which project*
+ * the call is answered against now that a project belongs to a cluster. It is
+ * the caller's to supply and not this function's to guess: `ToolWindow` knows
+ * the instance because it resolved the message's `event.source`, and the title
+ * bar's menu items know the cluster their window is showing. Omitting it is
+ * allowed and means "no cluster" — every app already handles that, since it is
+ * the same state as a cluster nobody has opened anything in.
  *
  * Under `?fake=1` an app's frontend still mounts and still completes its
  * handshake, because both of those are the shell's own work. What it cannot do
@@ -65,9 +118,14 @@ export function useApps(): AppInfo[] {
  * and a fixture that looked healthier than the backend is the exact failure
  * that once hid an empty switcher bar.
  */
-export async function callApp(id: string, method: string, params?: unknown): Promise<unknown> {
+export async function callApp(
+  id: string,
+  method: string,
+  params?: unknown,
+  scope?: CallScope,
+): Promise<unknown> {
   if (isFake()) {
-    const fixture = await fakeAppCall(method, params);
+    const fixture = await fakeAppCall(method, params, scope);
     if (fixture !== undefined) return fixture;
 
     throw {
@@ -75,5 +133,5 @@ export async function callApp(id: string, method: string, params?: unknown): Pro
       message: `${method}: no backend (browser mode)`,
     };
   }
-  return appCall(id, method, params);
+  return appCall(id, method, params, scope);
 }

@@ -18,18 +18,23 @@
    dimmer resting colour. There is a second `+` further along this row that
    makes a whole new cluster, and the two must not be mistaken for each other.
 
-   What separates them is the caret. That `+` acts the moment it is clicked;
-   this one opens a list, and a disclosure caret is how the rest of this shell
-   says so. Position helps too — this sits inside the open group's fill and
-   under its accent band, the cluster `+` sits outside both — but position is
-   the weaker signal of the two and is not carrying the distinction alone. */
+   There used to be a disclosure caret next to the plus, carrying the
+   distinction on its own: that `+` acts the moment it is clicked, this one
+   opens a list, and a caret said so. With the caret gone, three signals are
+   left to do that job together: position — this sits inside the open group's
+   fill and under its accent band, `.switcher__newbtn` sits outside both;
+   resting colour — `--text-dim-3` here against `--text-dim` there; and the
+   aria-labels, for anyone reading neither. */
 
 .addapp {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px;
+  justify-content: center;
+  /* Even padding, not the asymmetric `gap`-plus-padding a plus-and-caret pair
+     needed: one glyph centers on equal left/right space, where the old pair
+     needed the second glyph's width folded in to land visually centered. */
+  padding: 0 9px;
   border: none;
   background: transparent;
   color: var(--text-dim-3);
@@ -47,12 +52,6 @@
 .addapp[data-open] {
   color: var(--text);
   background: var(--surface-2);
-}
-
-/* Rotated rather than drawn as a second icon: `ChevronRight` is the shell's
-   only chevron and a menu opens downward. */
-.addapp__caret {
-  transform: rotate(90deg);
 }
 
 /* --- the menu -------------------------------------------------------------
