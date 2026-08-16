@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import type { EngineState } from "../contract";
+import type { EngineState, GitStatus } from "../contract";
 import { ENGINE_LABEL, ENGINE_TOKEN } from "../contract";
 import { Sliders } from "../../ui/Icon";
 import SettingsPopover from "./SettingsPopover";
@@ -8,20 +8,26 @@ import "./statusbar.css";
 
 export interface StatusBarProps {
   engine: EngineState;
-  /** `null` renders nothing in the branch slot — no worktree attached. */
-  branch: { name: string; ahead: number; behind: number } | null;
+  /**
+   * One status, read for both the branch line and the diff-stat readout
+   * beside it — the same handle the source-control view reads, cluster-scoped
+   * (see `useGitStatus` in `WindowRoot.tsx`). `null` renders neither slot: no
+   * repository for the active cluster, or the fetch has not landed yet.
+   */
+  git: GitStatus | null;
   githubOk: boolean;
 }
 
 /**
- * Left to right: engine status, a spacer, the branch line, GitHub status,
- * then settings. The bar's own height is `.frame__statusbar`'s — this
- * component only lays out its contents and never touches that box.
+ * Left to right: engine status, a spacer, the branch line, the diff-stat
+ * readout, GitHub status, then settings. The bar's own height is
+ * `.frame__statusbar`'s — this component only lays out its contents and never
+ * touches that box.
  *
  * Settings is the shell's only entry point for it: there is no left rail,
  * and settings moved here when the rail was removed.
  */
-export default function StatusBar({ engine, branch, githubOk }: StatusBarProps) {
+export default function StatusBar({ engine, git, githubOk }: StatusBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsWrapRef = useRef<HTMLDivElement>(null);
 
@@ -53,7 +59,9 @@ export default function StatusBar({ engine, branch, githubOk }: StatusBarProps) 
 
       <div className="statusbar__spacer" />
 
-      {branch !== null && <span className="statusbar__branch">{branchText(branch)}</span>}
+      {git !== null && <span className="statusbar__branch">{branchText(git)}</span>}
+
+      {git !== null && filesTouched(git) > 0 && <DiffStat status={git} />}
 
       <div className="statusbar__github">
         {/* The handoff only draws GitHub healthy (--ok). --err is this
@@ -91,7 +99,48 @@ export default function StatusBar({ engine, branch, githubOk }: StatusBarProps) 
  * prints the bare branch name, on the read that a branch evenly caught up
  * with its remote is the less useful thing to call out in a status bar.
  */
-function branchText(branch: { name: string; ahead: number; behind: number }): string {
-  if (branch.ahead === 0 && branch.behind === 0) return branch.name;
-  return `${branch.name} · ↑${branch.ahead} ↓${branch.behind}`;
+function branchText(status: { branch: string; ahead: number; behind: number }): string {
+  if (status.ahead === 0 && status.behind === 0) return status.branch;
+  return `${status.branch} · ↑${status.ahead} ↓${status.behind}`;
+}
+
+/**
+ * How many distinct files this status touches, for the diff-stat readout's
+ * `· M files`.
+ *
+ * Not `staged.length + unstaged.length`: a file that is staged and then
+ * edited again appears once in each list (see the doc comment on
+ * `GitFileChange` in `contract.ts`), and counting it twice would make this
+ * number disagree with what `git status` itself would call one changed file.
+ * The de-dupe is by `path` — the field every `GitFileChange` command takes
+ * back as an argument, and so the one guaranteed to identify "the same file"
+ * across both lists.
+ */
+function filesTouched(status: GitStatus): number {
+  return new Set([...status.staged, ...status.unstaged].map((f) => f.path)).size;
+}
+
+/**
+ * `+142 -63 · 9 files` — additions and deletions in the same green/red the
+ * spec's token table already assigns an added/deleted file (`--ok`/`--err`
+ * in tokens.css), the file count left in the bar's ordinary dim text rather
+ * than a third colour. Coloured inline, the same way the engine and GitHub
+ * dots above set their own `background` — this is the one other place in the
+ * bar a value picks its own colour instead of taking the row's.
+ *
+ * Only ever mounted by the caller once `filesTouched(status) > 0` — a status
+ * bar is not the place to spend width saying "no changes".
+ */
+function DiffStat({ status }: { status: GitStatus }) {
+  const files = filesTouched(status);
+  return (
+    <span className="statusbar__diffstat">
+      <span style={{ color: "var(--ok)" }}>+{status.insertions}</span>{" "}
+      <span style={{ color: "var(--err)" }}>-{status.deletions}</span>
+      <span className="statusbar__diffstat-files">
+        {" "}
+        · {files} {files === 1 ? "file" : "files"}
+      </span>
+    </span>
+  );
 }

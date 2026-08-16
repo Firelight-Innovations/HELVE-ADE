@@ -215,6 +215,130 @@ export function setClusterProject(clusterId: string, path: string | null): Promi
 }
 
 /**
+ * Where a cluster's work is happening on disk. Mirrors `shell_state::
+ * WorktreeRef`.
+ *
+ * The *binding* — a pointer a cluster stores at a checkout — as distinct from
+ * [`GitWorktree`], which is what git reports about the checkout itself. A
+ * worktree exists whether or not a cluster is pointed at it, and a cluster
+ * holding this is claiming one of them, not describing it.
+ *
+ * Re-exported from `shell/contract.ts`, which is where the shell reads it; it
+ * is declared here because this is the file that mirrors Rust, and `contract`
+ * imports from `bindings` rather than the other way round.
+ */
+export interface WorktreeRef {
+  path: string;
+  /** `null` for a detached HEAD — a state HELVE never creates but can find. */
+  branch: string | null;
+}
+
+/**
+ * One entry from `git worktree list`. Mirrors `git::GitWorktree`.
+ *
+ * See [`WorktreeRef`] for the distinction between this and what a cluster
+ * stores.
+ */
+export interface GitWorktree {
+  /** Absolute, in the form git prints it — forward slashes, even on Windows. */
+  path: string;
+  /** Short name, `refs/heads/` already stripped. `null` for a detached HEAD. */
+  branch: string | null;
+  head: string;
+  /** The primary checkout — the project folder itself, which git lists first. */
+  isMain: boolean;
+  locked: boolean;
+}
+
+/**
+ * One commit, as the graph draws it. Mirrors `git::GitCommit`.
+ *
+ * `parents` is what makes this a graph rather than a list — the frontend works
+ * out lanes and connectors from it, because where a line bends is a layout
+ * question and answering it in Rust would push a rendering decision through the
+ * IPC boundary.
+ */
+export interface GitCommit {
+  sha: string;
+  /** Git's own abbreviation, length-adjusted per repository to stay unambiguous. */
+  short: string;
+  summary: string;
+  author: string;
+  /** Author time, Unix **seconds** — not milliseconds. Multiply before `new Date`. */
+  when: number;
+  /** Empty for a root commit, one normally, two or more for a merge. */
+  parents: string[];
+  /** Local branch names pointing here, `refs/heads/` already stripped. */
+  refs: string[];
+}
+
+/**
+ * The repository's local branches as one graph, newest first.
+ *
+ * Local only: remote-tracking refs would multiply the rows to draw history
+ * nobody in this window is working on, and the drift that does matter already
+ * shows as ahead/behind on the status. An empty array covers "no project", "not
+ * a repository" and "no commits yet" alike.
+ *
+ * `limit` is a hard row cap rather than a page size — there is no cursor here,
+ * and a graph is a thing you scan rather than page through.
+ */
+export function gitGraph(clusterId: string, limit: number): Promise<GitCommit[]> {
+  return invoke<GitCommit[]>("git_graph", { clusterId, limit });
+}
+
+
+/**
+ * Every worktree of a cluster's repository, the project's own checkout first.
+ *
+ * Cluster-scoped rather than path-scoped for the same reason the source control
+ * commands are tool-scoped: the frontend never names a directory for the
+ * backend to run `git` in. An empty array covers all three of "no project",
+ * "project is not a repository", and "a repository with no extra worktrees" —
+ * the graph draws the same thing for each, so separating them would be a
+ * distinction with nowhere to show.
+ */
+export function gitWorktrees(clusterId: string): Promise<GitWorktree[]> {
+  return invoke<GitWorktree[]>("git_worktrees", { clusterId });
+}
+
+/**
+ * Cut a branch from the current HEAD, check it out into a new worktree beside
+ * the project, and point the cluster at it.
+ *
+ * Rejects rather than overwrites when the name is taken, so a caller can offer
+ * the error verbatim — the backend's messages are written to be read by whoever
+ * typed the name.
+ */
+export function gitWorktreeCreate(clusterId: string, name: string): Promise<WorktreeRef> {
+  return invoke<WorktreeRef>("git_worktree_create", { clusterId, name });
+}
+
+/**
+ * Discard a cluster's worktree and return it to working in its project. The
+ * branch and its commits survive; only the checkout on disk goes.
+ *
+ * `force` overrides git's refusal to remove a worktree holding uncommitted
+ * changes. Do not pass `true` without having asked the user: that refusal is
+ * the last thing between a click and work that exists in no other copy.
+ */
+export function gitWorktreeRemove(clusterId: string, force: boolean): Promise<void> {
+  return invoke("git_worktree_remove", { clusterId, force });
+}
+
+/**
+ * Drop a cluster's worktree binding if the checkout behind it is gone, and
+ * report what it is bound to afterwards.
+ *
+ * Worth calling on a cluster switch and after anything that could have removed
+ * a directory from outside HELVE. Cheap — a `is_dir` check, and a git spawn
+ * only in the case where the answer turns out to be "gone".
+ */
+export function gitWorktreeReconcile(clusterId: string): Promise<WorktreeRef | null> {
+  return invoke<WorktreeRef | null>("git_worktree_reconcile", { clusterId });
+}
+
+/**
  * Tell the backend that a first-party app's UI has drawn its first meaningful
  * frame.
  *

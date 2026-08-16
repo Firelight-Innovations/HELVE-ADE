@@ -4,6 +4,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -13,7 +14,7 @@ import type { DropTarget, PaneNode, SurfaceInstance, ToolPresentation } from "..
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
 import PaneTree from "../panes/PaneTree";
 import XTermView from "../terminal/XTermView";
-import { setInstanceTitle } from "../state/shellState";
+import { activateInstance, openInstance, setInstanceTitle } from "../state/shellState";
 import { terminalControl, terminalTransport } from "../state/terminals";
 // The wire types come from the bridge package's source by relative path rather
 // than from `@helve/bridge` itself. The root package does depend on that
@@ -25,18 +26,27 @@ import type {
   CommandMessage,
   EventMessage,
   HelloMessage,
+  PublishedTopic,
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
 } from "../../../packages/bridge/src/protocol";
+// Values, not just types, from the same module — the reserved event names both
+// sides of the sideways channel have to agree on. Safe for the same reason the
+// types above are: `protocol.ts` is two constants and a handful of type guards
+// with no module-level side effect, where `client.ts` reaches for
+// `window.parent` at load.
+import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "../../../packages/bridge/src/protocol";
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
 import { appPainted } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
 import { isFake } from "../state/fakeBackend";
+import { windowLabel } from "../state/shellState";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
 import NoClustersState from "./NoClustersState";
+import { registerToolWindow, unregisterToolWindow } from "./toolWindowRegistry";
 import "./toolwindow.css";
 
 /**
@@ -76,6 +86,27 @@ import "./toolwindow.css";
  * A command never travels through Rust. Both ends are already in this browser,
  * and a round trip through the backend would buy nothing but a chance for the
  * two to disagree about which frame is active.
+ *
+ * ## Frames talking to each other
+ *
+ * The fourth direction, and the newest: `helve/open` and `helve/publish` let
+ * one frame reach another *sideways*, through this component, without either
+ * of them learning the other exists. File Explorer sends `helve/open` naming
+ * the app kind `viewer`; the shell finds or opens one in that cluster and
+ * delivers the payload as an `OPENED_EVENT`. File Viewer publishes which file
+ * it is showing; the shell retains that and relays it to its cluster-mates,
+ * replaying it to any frame that mounts later.
+ *
+ * The shell routes both without understanding either. An `appId` is matched
+ * against the layout and a `topic` is a `Map` key — no payload is inspected, no
+ * intent is enumerated, and adding a fifth thing two apps want to say to each
+ * other is not an edit to this file. That is the same discipline `helve/
+ * commands` is built on, and it is what keeps the shell from accumulating a
+ * table of every app's vocabulary.
+ *
+ * These also never travel through Rust, for the reason a command does not: both
+ * frames are in this browser, and the layout that decides *which* frame is a
+ * fact this component already holds.
  *
  * The shell does not know what any command *means*, and must not: it holds a
  * set of strings per frame, sends one when a menu item is chosen, and greys out
@@ -195,6 +226,12 @@ const ToolWindow = forwardRef<
     >
   >(new Map());
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
+
+  // A stable mirror of `readyIds` for `sendEventWhenReady` below, which is
+  // registered into a module-scoped map once and has to keep reading the
+  // current answer rather than the one that was current when it was created.
+  const readyIdsRef = useRef(readyIds);
+  readyIdsRef.current = readyIds;
 
   // Where each pane's content sits, in this container's coordinates.
   //
@@ -318,6 +355,16 @@ const ToolWindow = forwardRef<
     // still offering Save for a surface that has unmounted would be offering to
     // post into a window that no longer exists.
     if (frame) report.current?.(frame.id, []);
+
+    // And it publishes nothing. Retained topics are what a late-mounting frame
+    // is told on handshake (see `topics` below), so a value left behind by a
+    // surface that has closed would be replayed to the next one as though it
+    // were current — an Explorer highlighting a row for a file no Viewer has
+    // open, because the Viewer that had it open is gone.
+    if (!frame) return;
+    for (const [topic, held] of topics.current) {
+      if (held.from === frame.id) topics.current.delete(topic);
+    }
   }, []);
 
   useImperativeHandle(
@@ -337,6 +384,135 @@ const ToolWindow = forwardRef<
     }),
     [],
   );
+
+  /**
+   * Post a shell-authored event straight into one instance's frame, bypassing
+   * the `project:changed` relay further down — that one only ever forwards a
+   * Rust broadcast, filtered to the active cluster, where this is a shell-side
+   * request aimed at one instance by id. `sendEventWhenReady` below is what
+   * callers actually reach for; this is just the part of it that knows how to
+   * post.
+   */
+  const deliverEvent = useCallback((instanceId: string, event: string, payload: unknown) => {
+    for (const [win, frame] of frames.current) {
+      if (frame.id !== instanceId || frame.origin === null) continue;
+      win.postMessage(
+        { helve: 1, kind: "event", event, payload } satisfies EventMessage,
+        frame.origin,
+      );
+      return;
+    }
+  }, []);
+
+  /**
+   * Events waiting on a frame that has not said hello yet, keyed by instance —
+   * at most one per instance, since a second request for the same frame
+   * supersedes the first rather than queuing behind it.
+   *
+   * The gap this covers is real, not theoretical: `openInstance` (see
+   * `state/shellState.ts`) resolves with an id the moment Rust has minted
+   * one, well before `ToolMount` below has even mounted the iframe for it, let
+   * alone completed its hello/ready handshake. A caller that posted
+   * immediately would be posting to a frame whose `origin` is still `null` —
+   * silently absorbed by `deliverEvent`'s own guard, and gone for good.
+   *
+   * Nothing ever prunes an entry whose instance closes before its frame
+   * becomes ready — a small, bounded leak (one object per abandoned open)
+   * rather than a cancellation path this has no signal to drive.
+   */
+  const pendingEvents = useRef<Map<string, { event: string; payload: unknown }>>(new Map());
+
+  const sendEventWhenReady = useCallback(
+    (instanceId: string, event: string, payload: unknown) => {
+      if (readyIdsRef.current.has(instanceId)) {
+        deliverEvent(instanceId, event, payload);
+        return;
+      }
+      pendingEvents.current.set(instanceId, { event, payload });
+    },
+    [deliverEvent],
+  );
+
+  // Flush whatever was waiting the moment its frame joins `readyIds`.
+  useEffect(() => {
+    for (const [instanceId, msg] of pendingEvents.current) {
+      if (!readyIds.has(instanceId)) continue;
+      pendingEvents.current.delete(instanceId);
+      deliverEvent(instanceId, msg.event, msg.payload);
+    }
+  }, [readyIds, deliverEvent]);
+
+  /**
+   * The last value published under each topic, and which instance published it.
+   *
+   * This is what makes `helve/publish` *retained* rather than a bare relay, and
+   * the retention is the point: a File Viewer publishes which file it is
+   * showing once, when it changes. An Explorer opened a minute later would
+   * otherwise have no way to learn that until the user clicked something else,
+   * so the tree would sit with nothing highlighted while a file was plainly
+   * open beside it. Replaying on handshake removes that window entirely, and it
+   * removes the temptation to fix it by having every publisher re-announce on a
+   * timer.
+   *
+   * Scoped to the cluster this window is showing, which is why it is cleared
+   * below when that changes rather than keyed by cluster: `ToolWindow` mounts
+   * surfaces for the active cluster's tree alone, so every frame in `frames` is
+   * in that cluster by construction and a second cluster's topics could never
+   * have a frame here to be delivered to.
+   */
+  const topics = useRef<Map<string, PublishedTopic>>(new Map());
+
+  useEffect(() => {
+    // A cluster's published facts do not travel to the next cluster. Keeping
+    // them would mean a Viewer in cluster A deciding which row an Explorer in
+    // cluster B highlights — the same class of leak the `project:changed`
+    // filter further down exists to prevent, and just as silent.
+    topics.current.clear();
+  }, [clusterId]);
+
+  // The layout and the instances in it, read by `helve/open` to find a target.
+  // Refs for the reason `report` above is one: the message listener is
+  // installed once and must keep reading the current answer rather than the one
+  // that was current when it was registered.
+  const layout = useRef(tree);
+  layout.current = tree;
+  const roster = useRef(instances);
+  roster.current = instances;
+
+  /**
+   * Which surface a `helve/open` should be delivered to: an existing instance
+   * of that app in this cluster, brought forward, or a new one.
+   *
+   * The same rule `onOpenRecent` in `WindowRoot.tsx` applies to Home, and the
+   * same one `openHit.ts` applies to Files — bring the existing one forward
+   * rather than accumulating a second surface for every open. Layout order
+   * decides which, when a cluster has more than one; there is no
+   * most-recently-focused record to prefer instead, and inventing one here
+   * would make the answer depend on state nothing else in the shell keeps.
+   *
+   * A new instance lands as a tab in the active cluster's first pane rather
+   * than splitting toward wherever the user was last looking, for the reason
+   * `openHit.ts` gives: this call has no `activePaneId` to measure from.
+   */
+  const resolveOpenTarget = useCallback(async (appId: string): Promise<string> => {
+    for (const id of paneTabs(layout.current)) {
+      const instance = roster.current.get(id);
+      if (instance && instance.kind !== "terminal" && instance.appId === appId) {
+        void activateInstance(id);
+        return id;
+      }
+    }
+    return openInstance(windowLabel(), appId);
+  }, []);
+
+  // Reachable from outside this component tree, by window label — see
+  // `toolWindowRegistry.ts`'s header for why this exists instead of a prop.
+  const bridge = useMemo(() => ({ sendEventWhenReady }), [sendEventWhenReady]);
+  useEffect(() => {
+    const label = windowLabel();
+    registerToolWindow(label, bridge);
+    return () => unregisterToolWindow(label);
+  }, [bridge]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -372,6 +548,28 @@ const ToolWindow = forwardRef<
         };
         source.postMessage(reply, origin);
         frame.origin = origin;
+
+        // Everything this frame's cluster-mates have already published, before
+        // it says anything itself. A frame that mounts late is otherwise blind
+        // to every fact that settled before it arrived — see `topics` above.
+        //
+        // Its own entries are skipped, which only matters for a frame that
+        // reloaded: it published under this instance id before, and handing its
+        // own claim back to it as news would be the shell telling an app
+        // something the app is the authority on.
+        for (const [topic, held] of topics.current) {
+          if (held.from === frame.id) continue;
+          source.postMessage(
+            {
+              helve: 1,
+              kind: "event",
+              event: `${TOPIC_EVENT_PREFIX}${topic}`,
+              payload: held,
+            } satisfies EventMessage,
+            origin,
+          );
+        }
+
         setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
         return;
       }
@@ -431,6 +629,91 @@ const ToolWindow = forwardRef<
         frame.commands = new Set(declaredCommands(params));
         respond({ id, result: null });
         report.current?.(frame.id, [...frame.commands]);
+        return;
+      }
+
+      // --- the sideways channel -------------------------------------------
+      //
+      // Both of these are host business in the same sense `helve/commands` is,
+      // and they sit above the `isApp` refusal for the same reason: neither
+      // asks anything of a core. `helve/open` is a question about the *layout*
+      // — which surface of a given kind is in this cluster — and only the shell
+      // can answer it. `helve/publish` is a frame making a claim about itself
+      // and asking that its neighbours hear it.
+      //
+      // A tool may use both, and that is deliberate rather than an oversight.
+      // The promise `apps/README.md` and `apps/mod.rs` both make is that an app
+      // can become a tool later, or a tool be absorbed, without its interface
+      // code changing — a channel only first-party code could speak on would
+      // break that on the day it mattered. What bounds it is that a frame can
+      // only ever reach its own cluster, can only name a *kind* of app rather
+      // than a surface, and hands over a payload the receiving app is free to
+      // ignore. Per-tool permissions are a later pass; see the `[permissions]`
+      // table in `docs/tool-protocol.md` §1, reserved and unenforced today.
+      if (method === "helve/open") {
+        const target = openRequest(params);
+        if (!target) {
+          respond({
+            id,
+            error: {
+              code: HelveErrorCode.InvalidParams,
+              message: "helve/open needs an `appId` string",
+            },
+          });
+          return;
+        }
+        void resolveOpenTarget(target.appId)
+          .then((instanceId) => {
+            // Queued if that frame has not finished its handshake, which is the
+            // common case for the branch that just opened one — see
+            // `sendEventWhenReady`.
+            sendEventWhenReady(instanceId, OPENED_EVENT, target.payload);
+            respond({ id, result: { instanceId } });
+          })
+          .catch((err: unknown) =>
+            respond({
+              id,
+              error: { code: HelveErrorCode.InternalError, message: String(err) },
+            }),
+          );
+        return;
+      }
+
+      if (method === "helve/publish") {
+        const published = publishRequest(params);
+        if (!published) {
+          respond({
+            id,
+            error: {
+              code: HelveErrorCode.InvalidParams,
+              message: "helve/publish needs a `topic` string",
+            },
+          });
+          return;
+        }
+
+        const held: PublishedTopic = { value: published.value, from: frame.id };
+        topics.current.set(published.topic, held);
+        respond({ id, result: null });
+
+        // Every other frame in the cluster, publisher excluded. Excluded rather
+        // than filtered on the receiving side because a publisher hearing its
+        // own announcement back is the shape that produces loops: a subscriber
+        // that republishes anything derived from what it hears would ping-pong
+        // with itself, and no amount of care in one app prevents it from the
+        // other end.
+        for (const [win, other] of frames.current) {
+          if (other.id === frame.id || other.origin === null) continue;
+          win.postMessage(
+            {
+              helve: 1,
+              kind: "event",
+              event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
+              payload: held,
+            } satisfies EventMessage,
+            other.origin,
+          );
+        }
         return;
       }
 
@@ -900,6 +1183,40 @@ function declaredCommands(params: unknown): string[] {
   const list = (params as { commands?: unknown }).commands;
   if (!Array.isArray(list)) return [];
   return list.filter((entry): entry is string => typeof entry === "string");
+}
+
+/**
+ * The `appId` and `payload` off a `helve/open` request, or `null` if there is
+ * no usable app id.
+ *
+ * Only `appId` is validated. The payload is opaque by design — it is the app's
+ * vocabulary, not the protocol's, and the shell checking its shape would mean
+ * the shell knowing what an open *means* for each app it can route to. That is
+ * exactly the coupling `helve/commands` was designed to avoid, and it would
+ * make every new intent an edit to this file.
+ */
+function openRequest(params: unknown): { appId: string; payload: unknown } | null {
+  if (typeof params !== "object" || params === null) return null;
+  const { appId, payload } = params as { appId?: unknown; payload?: unknown };
+  if (typeof appId !== "string" || appId === "") return null;
+  return { appId, payload };
+}
+
+/**
+ * The `topic` and `value` off a `helve/publish` request, or `null` for anything
+ * without a usable topic.
+ *
+ * `value` is deliberately unchecked, including when it is `undefined` —
+ * publishing "there is nothing" is a real thing to say, and the honest way for
+ * a Viewer with no tab open to report its active path. Narrowing that to a
+ * refusal would leave the last real value retained and make an empty editor
+ * indistinguishable from one nobody had heard from.
+ */
+function publishRequest(params: unknown): { topic: string; value: unknown } | null {
+  if (typeof params !== "object" || params === null) return null;
+  const { topic, value } = params as { topic?: unknown; value?: unknown };
+  if (typeof topic !== "string" || topic === "") return null;
+  return { topic, value };
 }
 
 /**

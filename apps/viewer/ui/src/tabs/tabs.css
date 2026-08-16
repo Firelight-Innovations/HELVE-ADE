@@ -30,11 +30,12 @@
   min-width: 0;
   /* Scrolls rather than wraps or shrinks: a tab narrower than its name is not
      a tab. `overflow-y` is pinned to hidden so the horizontal scrollbar cannot
-     make the strip taller than the row it is drawing. */
+     make the strip taller than the row it is drawing. The scrollbar itself is
+     unstyled here — this strip takes the app-wide default (`app.css`) rather
+     than the thin/`--line-2` treatment that used to be hand-rolled on this
+     one selector. */
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-2) transparent;
 }
 
 .tabs__tab {

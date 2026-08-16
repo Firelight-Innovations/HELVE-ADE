@@ -59,6 +59,34 @@ body {
   overflow: hidden;
 }
 
+/* --- the default scrollbar -------------------------------------------------
+ * Every app renders in its own iframe document, so the shell's copy of this
+ * rule (`src/styles.css`) never reaches in here — each app needs its own.
+ * Shared rather than duplicated per app for the same reason the rest of this
+ * file is: it says how a Helve app looks, once. See `src/styles.css` for the
+ * full rationale (this is that rule, unchanged) and `overlayScrollbar.css`
+ * for the values it copies.
+ *
+ * In particular: `scrollbar-width` is deliberately absent. Setting it beside
+ * the pseudo-element sizing below does not reinforce it — on Chromium 121+ it
+ * wins over it and substitutes the UA's own rounded, fixed-width thumb,
+ * discarding both values this look is defined by. `src/styles.css` has the
+ * whole account, including the time this repo already shipped that bug. */
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line-2) 65%, transparent);
+  border-radius: 0;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* --- the pane's own header ------------------------------------------------
    One line: what this app is, and the state of its connection to the host.
    Deliberately quiet — the switcher tab above it has already said the name. */

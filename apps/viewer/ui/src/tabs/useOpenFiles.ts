@@ -43,6 +43,12 @@ import type { Notice, NoticeAction } from "../NoticeBar";
 import type { OpenFile } from "../viewer/registry";
 import type { TextModel, EditorViewState } from "../viewer/monaco";
 import { baseName, extensionOf, stat, write } from "../rpc";
+import { publish } from "@helve/bridge";
+import { FILE_SAVED, type FileSaved } from "../topics";
+
+/** Bumped for every `FILE_SAVED`, so no two are equal and the bridge's dedup
+ *  cannot swallow a second save of the same file. See `FileSaved`. */
+let savedSeq = 0;
 
 /**
  * A question the tab strip must put to the user before something irreversible
@@ -800,6 +806,12 @@ export function useOpenFiles(): OpenFiles {
       saved: (path, mtime) => {
         writeDirty(path, false);
         patch(path, { mtime, notice: null });
+        // The one place a write is known to have landed, whichever route it
+        // came in by — Ctrl+S, the close prompt, a viewer's own save button.
+        // The Explorer re-asks git on it, so the row goes yellow the moment
+        // the file does.
+        savedSeq += 1;
+        publish(FILE_SAVED, { path, seq: savedSeq } satisfies FileSaved);
       },
     };
     return () => {

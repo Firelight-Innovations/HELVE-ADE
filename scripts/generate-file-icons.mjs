@@ -1,11 +1,12 @@
 /**
- * Build the Files explorer's icon set out of `material-icon-theme`.
+ * Build the shared icon set out of `material-icon-theme`, for the Files
+ * explorer and the shell's search locator pane.
  *
  * The package ships 1250 SVGs and a lookup manifest. This script keeps only
- * what the explorer can actually reach, and writes two things:
+ * what those callers can actually reach, and writes two things:
  *
- *   public/icons/material/*.svg                    — the referenced SVGs
- *   apps/files/ui/src/icons/manifest.generated.ts  — flattened lookup tables
+ *   public/icons/material/*.svg               — the referenced SVGs
+ *   packages/file-icons/src/manifest.generated.ts  — flattened lookup tables
  *
  * Both are gitignored. The npm package is the source of truth; nothing here is
  * vendored into the tree.
@@ -17,7 +18,7 @@
  * anything else dropped in is gone at the next `pnpm build` with no copy to
  * restore. That is why HELVE's own hand-drawn icons live in the sibling
  * `public/icons/helve/`, which is tracked and which nothing deletes. See the
- * header of `apps/files/ui/src/icons/materialIcons.ts`, which resolves the two
+ * header of `packages/file-icons/src/index.ts`, which resolves the two
  * sets in that order.
  *
  * ## Why `public/` rather than the module graph
@@ -51,7 +52,7 @@ const packageRoot = dirname(require.resolve("material-icon-theme/package.json"))
 const sourceIcons = join(packageRoot, "icons");
 
 const outIcons = join(repoRoot, "public", "icons", "material");
-const outManifest = join(repoRoot, "apps", "files", "ui", "src", "icons", "manifest.generated.ts");
+const outManifest = join(repoRoot, "packages", "file-icons", "src", "manifest.generated.ts");
 
 const manifest = generateManifest({ activeIconPack: "" });
 
@@ -218,7 +219,7 @@ const source = `/**
  *
  * Each table maps a lowercased name to an SVG basename under
  * \`public/icons/material/\`; the theme's definition-key indirection is already
- * resolved. Read this through \`materialIcons.ts\`, which knows the lookup order.
+ * resolved. Read this through \`index.ts\`, which knows the lookup order.
  */
 
 export const defaultIcons = {

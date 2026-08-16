@@ -26,4 +26,4 @@ pnpm-debug.log*
 # `scripts/generate-file-icons.mjs`. Checking in 1115 SVGs and a 400 KB lookup
 # table would be vendoring a package the manifest already declares.
 /public/icons/material/
-/apps/files/ui/src/icons/manifest.generated.ts
+/packages/file-icons/src/manifest.generated.ts

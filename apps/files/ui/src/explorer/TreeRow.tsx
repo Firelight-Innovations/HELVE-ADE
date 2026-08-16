@@ -19,7 +19,8 @@
  * a question about `useTree.ts`.
  */
 import type { Row } from "./useTree";
-import { fileIconUrl, folderIconUrl } from "../icons/materialIcons";
+import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
+import { decorate, GIT_KIND_LETTER, GIT_KIND_TOKEN, type GitDecoration } from "./gitStatus";
 
 /** Pixels of indent per level. Small: the chevron and icon already read as
  *  structure, and VS Code's tree earns its density by not over-stepping.
@@ -37,6 +38,7 @@ export default function TreeRow({
   id,
   cursor,
   open,
+  git,
   onActivate,
   onKeep,
   onContextMenu,
@@ -48,6 +50,9 @@ export default function TreeRow({
   cursor: boolean;
   /** This row's file is the one showing in the viewer. */
   open: boolean;
+  /** `null` for "no project" or "not a repository" — draw this row exactly
+   *  as if `files/git-status` did not exist. See `gitStatus.ts`. */
+  git: GitDecoration | null;
   onActivate: (row: Row) => void;
   /**
    * The user double-clicked a file: it stops being a preview and stays. Not
@@ -58,6 +63,11 @@ export default function TreeRow({
   onContextMenu: (row: Row, event: React.MouseEvent) => void;
 }) {
   const isDir = row.entry.kind === "dir";
+
+  // Every git rule this row obeys, decided in one place — see `gitStatus.ts`,
+  // which states them. A row draws what it is handed and does not choose
+  // between them here, so "why is this row that colour" is one file's answer.
+  const decoration = decorate(git, row.entry.path, isDir);
 
   return (
     <div
@@ -70,6 +80,10 @@ export default function TreeRow({
       aria-selected={cursor}
       data-cursor={cursor || undefined}
       data-open={open || undefined}
+      // Git is not tracking anything here. Dimmed as a whole row rather than
+      // just the name, so the icon goes with it — a bright folder icon over a
+      // grey `node_modules` would read as half-decorated.
+      data-ignored={decoration.ignored || undefined}
       style={{ paddingLeft: GUTTER + row.depth * INDENT }}
       onClick={() => onActivate(row)}
       onDoubleClick={() => {
@@ -98,12 +112,37 @@ export default function TreeRow({
         draggable={false}
       />
 
-      <span className="explorer__name">{row.entry.name}</span>
+      <span
+        className="explorer__name"
+        // Colour is set inline per row, exactly as `SourceControlView.tsx`
+        // does for the same map — `GIT_KIND_TOKEN` is one of ten CSS custom
+        // properties, not a fixed set of classes, so there is no static class
+        // per kind for this to pick between.
+        style={decoration.kind ? { color: GIT_KIND_TOKEN[decoration.kind] } : undefined}
+      >
+        {row.entry.name}
+      </span>
 
-      {/* A directory that would not list. Said on the row rather than as a
-          line of its own, so the flat array stays one entry per tree node and
-          the keyboard never lands on something it cannot open. */}
-      {row.error && <span className="explorer__tag">unreadable</span>}
+      {/* The "unreadable" tag and the git badge share one slot at the row's
+          trailing edge, so at most one row ever pays for the extra element —
+          most rows have neither. */}
+      {(row.error || decoration.badge) && (
+        <span className="explorer__end">
+          {/* A directory that would not list. Said on the row rather than as
+              a line of its own, so the flat array stays one entry per tree
+              node and the keyboard never lands on something it cannot
+              open. */}
+          {row.error && <span className="explorer__tag">unreadable</span>}
+          {decoration.badge && (
+            <span
+              className="explorer__gitBadge"
+              style={{ color: GIT_KIND_TOKEN[decoration.badge] }}
+            >
+              {GIT_KIND_LETTER[decoration.badge]}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MotionConfig } from "framer-motion";
+import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { Openable, StackSnapshot } from "../bindings";
 import Frame from "./frame/Frame";
 import {
   appPresentation,
+  clusterRoot,
   groupTerminalTabs,
   paneLeaves,
   paneOfTab,
@@ -17,7 +18,7 @@ import {
   type TerminalTabGroup,
   type WindowKind,
 } from "./contract";
-import { snap } from "./motion";
+import { searchBarHoldMs, snap } from "./motion";
 import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/TitleBar";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ClusterBar from "./switcher/ClusterBar";
@@ -26,9 +27,13 @@ import { splitDirOnOpen } from "./panes/splitOnOpen";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import StatusBar from "./statusbar/StatusBar";
 import SearchSlot from "./search/SearchSlot";
+import SearchOverlay from "./search/SearchOverlay";
+import { useSearchSession } from "./search/useSearchSession";
+import { useSearchBarHold } from "./search/useSearchBarHold";
+import { openHitInFiles } from "./search/openHit";
 import { useDrag } from "./drag/useDrag";
 import { useKeyboard } from "./keys/useKeyboard";
-import SourceControlView from "./worktree/SourceControlView";
+import WorktreePanel from "./worktree/WorktreePanel";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { idleEngineStatus } from "./stubs/engineStatus";
@@ -51,7 +56,7 @@ import {
   windowLabel,
 } from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
-import { gitControl } from "./state/git";
+import { gitControl, worktreeControl } from "./state/git";
 import { isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
 
 /**
@@ -108,6 +113,12 @@ export default function WindowRoot({
   // possible. Neither owns the other, so the flag sits above both.
   const [searchExpanded, setSearchExpanded] = useState(false);
 
+  // The same flag, held open across the overlay's exit, and the only thing the
+  // switcher bar is given. Search opens and closes in two beats — field first
+  // then overlay, overlay first then field — and the bar is the half that
+  // cannot express "wait" as an animation. See `useSearchBarHold`.
+  const searchBarExpanded = useSearchBarHold(searchExpanded, searchBarHoldMs);
+
   // Two lists, and they are not the same question. `apps` is *things with a
   // frontend* — what `presentationOf` below resolves a mountable surface from —
   // and `openables` is *things the Apps menu can open*, which is those plus a
@@ -163,6 +174,42 @@ export default function WindowRoot({
   const activeCluster =
     clusters.find((c) => c.id === placement?.activeClusterId) ?? clusters[0] ?? null;
   const activeClusterId = activeCluster?.id ?? null;
+
+  // The search field and the search overlay are two regions in two different
+  // bands of the frame, reading one query. That state lives here because this
+  // is already where `searchExpanded` and the active cluster are resolved, and
+  // because a cluster's project *is* the search root — switching clusters
+  // therefore re-scopes search on its own, with nothing to keep in sync.
+  //
+  // A cluster sitting on a worktree works *in* that directory — its terminals
+  // spawn there and its agents edit there — so search has to follow it, or it
+  // answers about a different copy of the code than the one on screen. The rule
+  // is deliberately not written out here: one function, owned by the side that
+  // knows when a worktree is stale, is the difference between one precedence
+  // and two that drift apart.
+  const searchRoot = activeCluster ? clusterRoot(activeCluster) : null;
+  const search = useSearchSession(searchRoot, activeClusterId);
+
+  // Open one result in Files. Search closes first and the open runs unawaited,
+  // so the overlay's exit and the Files frame's mount overlap rather than queue
+  // — `openHitInFiles` queues its own delivery until that frame says it is
+  // ready, so nothing is lost by not waiting for it here.
+  const openSearchHit = useCallback(
+    (path: string) => {
+      setSearchExpanded(false);
+      void openHitInFiles(path, activeClusterId);
+    },
+    [activeClusterId],
+  );
+
+  // Enter opens whatever the cursor is on, which is the one case where the
+  // caller genuinely has no path to hand over — the keyboard's whole position
+  // *is* `focus`.
+  const onSubmitSearch = useCallback(() => {
+    const path = search.focus?.path;
+    if (path === undefined) return;
+    openSearchHit(path);
+  }, [search.focus, openSearchHit]);
 
   // Resolvable by id: what any tab id in any tree resolves to. Every surface in
   // every cluster, not just the active one — a drag can name a tab in a cluster
@@ -253,14 +300,6 @@ export default function WindowRoot({
   }, [tree, activePaneId]);
 
   const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
-
-  // The *app* in the focused pane, or null when what is in it is a terminal.
-  //
-  // A terminal's `appId` is a type name, not an entry in the app registry, so
-  // anything that resolves a checkout or a presentation from it has to stop
-  // here rather than ask about an app that does not exist.
-  const activeAppId =
-    activeInstance && activeInstance.kind !== "terminal" ? activeInstance.appId : null;
 
   // Selecting and closing a tab live further down, with the terminals — the one
   // bar lists surfaces and terminals together, so the handlers it is given have
@@ -973,12 +1012,34 @@ export default function WindowRoot({
   // answer, not a second opinion. It also has to outlive the tab: the panel
   // keeps `worktreeView` mounted but hidden, and a status owned by the view
   // would still be re-fetched on every remount of it.
-  // Keyed on the active surface's *app* id, which is what `gitControl` resolves
-  // a checkout from. Following the cluster's own worktree is the right answer
-  // and is where this goes next — `Cluster.worktree` is already carried for it —
-  // but that field is a stub in this work, and pointing a live git view at an
-  // unpopulated one would report "no repository" for every cluster.
-  const git = useGitStatus(gitControl, activeAppId);
+  // Keyed on the active *cluster*. This is the "where this goes next" the
+  // previous note here promised, and it turned out to be load-bearing rather
+  // than a refinement: keyed on the active app id, this handle could not
+  // succeed. `activeAppId` is `null` for any focused terminal, and a non-null
+  // one resolved through `git.rs`'s `repo()`, which searches
+  // `StackSnapshot.tools` — a different id space from the shell's apps, and one
+  // `discovery.rs`'s `ENABLED_TOOLS = &[]` leaves empty for every project. So
+  // every call came back `UnknownTool` and both readers of this handle drew an
+  // error where the branch and the change list should have been.
+  //
+  // `Cluster.worktree` is populated now, and `gitControl` resolves a cluster
+  // through `project::cluster_path`, which follows the worktree when there is
+  // one and the project when there is not.
+  const git = useGitStatus(gitControl, activeClusterId);
+
+  // Which branch the graph should mark as *this* cluster's.
+  //
+  // It has to be resolved here rather than inside the panel, and not for
+  // convenience: `WorktreeControl.list` returns every worktree of the
+  // repository with nothing in it saying which one this cluster is working in.
+  // That binding is `Cluster.worktree`, which lives in shell state and arrives
+  // on `shell:state` — so the panel could only guess, and guessing wrong means
+  // highlighting somebody else's branch as yours.
+  //
+  // Falling back to the status's branch covers the cluster working in its
+  // project folder rather than a worktree: there is still a checked-out branch
+  // to mark, it just is not one this cluster has to itself.
+  const activeBranch = activeCluster?.worktree?.branch ?? git.status?.branch ?? null;
 
   // What the title bar names, and it is the active *cluster's* project rather
   // than a process-wide one. That is the whole of what lets two windows on two
@@ -1159,9 +1220,17 @@ export default function WindowRoot({
               apps={appsHandlers}
               healthOf={stackTools}
               onRescan={onRescan}
-              searchExpanded={searchExpanded}
+              // The held flag, not the live one: the bar is the second beat on
+              // the way out and must not give the chips their room back until
+              // the overlay above has finished leaving.
+              searchExpanded={searchBarExpanded}
               searchSlot={
-                <SearchSlot expanded={searchExpanded} onExpandedChange={setSearchExpanded} />
+                <SearchSlot
+                  expanded={searchBarExpanded}
+                  onExpandedChange={setSearchExpanded}
+                  session={search}
+                  onSubmit={onSubmitSearch}
+                />
               }
             />
           ),
@@ -1227,7 +1296,13 @@ export default function WindowRoot({
                 />
               }
               worktreeView={
-                <SourceControlView control={gitControl} toolId={activeAppId} git={git} />
+                <WorktreePanel
+                  clusterId={activeClusterId}
+                  worktreeControl={worktreeControl}
+                  gitControl={gitControl}
+                  git={git}
+                  activeBranch={activeBranch}
+                />
               }
               // The same handle a pane's tab gets. A terminal and an app surface
               // drag identically, which is what lets a panel terminal be dropped
@@ -1247,12 +1322,36 @@ export default function WindowRoot({
             />
           ),
           overlay: drag.overlay,
+          // Mounted only while open, so a window nobody has searched in never
+          // pays for the overlay's tree — and so closing search genuinely
+          // discards its results rather than hiding them, which is what makes
+          // reopening it a fresh search rather than a stale one.
+          //
+          // `AnimatePresence` keeps that true: it holds the subtree for exactly
+          // as long as the exit animation runs and then unmounts it for real.
+          // The wrapper is always rendered so it can observe the child leaving;
+          // an empty one costs nothing and renders no DOM.
+          splitOverlay: (
+            <AnimatePresence>
+              {searchExpanded && (
+                <SearchOverlay
+                  session={search}
+                  root={searchRoot}
+                  clusterId={activeClusterId}
+                  onOpen={openSearchHit}
+                />
+              )}
+            </AnimatePresence>
+          ),
           statusBar: (
-            <StatusBar
-              engine={engine}
-              branch={git.status && { name: git.status.branch, ahead: git.status.ahead, behind: git.status.behind }}
-              githubOk={!error}
-            />
+            // The whole status, one object, rather than a branch picked out and
+            // a line-change total fetched beside it. Now that `git` asks about
+            // the cluster, `git.status.branch` *is* the cluster's branch — the
+            // same string `activeBranch` resolves, because both follow the
+            // worktree — so passing the handle whole removes a second reading
+            // of a question already answered, and the totals cannot drift out
+            // of step with the change lists they are totals of.
+            <StatusBar engine={engine} git={git.status} githubOk={!error} />
           ),
         }}
       />

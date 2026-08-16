@@ -101,6 +101,13 @@ pub enum AppError {
     /// refusing rather than trusting that it did.
     #[error("this window has no cluster to {0}")]
     NoCluster(&'static str),
+
+    /// A search that could not run at all — an unusable regex pattern, or the
+    /// blocking worker it ran on panicked. See `search.rs`. Not used for an
+    /// ordinary empty result: a cluster with no project searches to an empty
+    /// list, not an error.
+    #[error("{0}")]
+    Search(String),
 }
 
 /// Tauri sends a command's error across the IPC boundary into JavaScript, so the

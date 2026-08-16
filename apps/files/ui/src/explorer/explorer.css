@@ -1,15 +1,15 @@
 /*
  * The tree: its header, its filter, its rows, and its right-click menu.
  *
- * The pane it sits in is `apps/files/ui/src/files.css` — that file owns the
- * split, the divider and the viewer host, and nothing here repeats them. The
- * divider's own styling lives there too; `Splitter.tsx` writes the behaviour
- * against classes this file never sees.
+ * The pane it sits in is `apps/files/ui/src/files.css`, which owns almost
+ * nothing now: the tree *is* this app, so what used to be a three-region layout
+ * is one region filling the frame. The divider and the viewer host went to the
+ * shell and to `apps/viewer/ui/` respectively when Files became two apps.
  *
  * Every colour is `src/tokens.css`. There is not a hex in this file and there
  * may not be: an app inventing its own palette is visibly not the same product
  * the moment it sits beside the shell. The one carve-out anywhere in Files is
- * the Material file icons, argued for in `icons/materialIcons.ts` — and those
+ * the Material file icons, argued for in `packages/file-icons/src/index.ts` — and those
  * arrive as `<img>`, so they never touch this sheet either.
  *
  * No transition and no animation below, on anything. A tree row is one of up
@@ -19,12 +19,16 @@
  */
 
 .explorer {
-  /* The width is a motion value written by the splitter, so the flex algorithm
-     must keep its hands off it in both directions. */
-  flex: 0 0 auto;
+  /* Fills the frame. It used to be `flex: 0 0 auto` against a width the
+     splitter wrote — the tree was one region of three, and the flex algorithm
+     had to keep its hands off a number being animated. There is no splitter and
+     no second region now: how wide the tree is, is how wide its pane is, which
+     is the shell's business and the user's. */
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--surface);
 }
 
@@ -179,6 +183,30 @@
   color: var(--text);
 }
 
+/* Git is ignoring this path — `node_modules`, `dist`, anything a `.gitignore`
+   names. The tree still lists it, because the explorer shows what is on disk
+   and these directories are on disk; it just says, the way VS Code's does,
+   that none of it is work.
+
+   After the hover and cursor rules rather than before, and that ordering is
+   the whole rule: both set `color` at the same specificity this does, so
+   source order is what decides, and an ignored row that brightened under the
+   pointer would be claiming to be tracked for as long as the pointer sat on
+   it. The background still responds, so the row is visibly hoverable without
+   the colour saying anything untrue.
+
+   Colour on the row and opacity only on the icon, rather than opacity on the
+   whole row: opacity would fade the selection background along with the text,
+   and the cursor is exactly as real on an ignored row as anywhere else. */
+.explorer__row[data-ignored],
+.explorer__row[data-ignored]:hover {
+  color: var(--text-dim-3);
+}
+
+.explorer__row[data-ignored] .explorer__icon {
+  opacity: 0.5;
+}
+
 .explorer__chevron {
   flex: 0 0 auto;
   width: 12px;
@@ -258,16 +286,42 @@
   border-color: var(--line-2);
 }
 
+/* Where the "unreadable" tag and the git badge live. One wrapper for both so
+   only one of them ever has to own the margin that pushes this end of the
+   row flush right — see `TreeRow.tsx`, which renders it only for a row that
+   has something to put here. */
+.explorer__end {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 /* A directory that would not list. The row still exists and can still be
    pointed at — it just says why it shows nothing. */
 .explorer__tag {
   flex: 0 0 auto;
-  margin-left: auto;
   padding-left: 8px;
   font-family: var(--mono);
   font-size: 10px;
   line-height: 1;
   color: var(--err);
+}
+
+/* A row's git status: `M`/`A`/`D`/`R`/`?`/`U`. Fixed width rather than sized
+   to the glyph, so a folder of mixed statuses keeps its badges lined up
+   instead of the column ragging with every different letter. Colour is set
+   inline per row from `gitStatus.ts`'s `GIT_KIND_TOKEN`, the same convention
+   `SourceControlView.tsx` uses for the equivalent badge there. */
+.explorer__gitBadge {
+  flex: 0 0 auto;
+  width: 12px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
 }
 
 /* The right-click menu is no longer here. It is opened from the tab strip as

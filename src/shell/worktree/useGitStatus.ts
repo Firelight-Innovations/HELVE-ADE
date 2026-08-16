@@ -10,30 +10,38 @@
  * the user looked at a terminal.
  *
  * There is no watcher behind `GitControl`, so nothing here can push. `refresh`
- * is what the panel calls after every mutation, and a change of `toolId` is
+ * is what the panel calls after every mutation, and a change of `clusterId` is
  * the only other thing that re-asks.
+ *
+ * Keyed on the **cluster**, not on the focused app. It was the latter until the
+ * status bar and the source-control view were found to be showing nothing at
+ * all: `activeAppId` is `null` for any focused terminal, and even a non-null
+ * app id resolved through a tool list that is empty for every project (see the
+ * scope note in `SourceControlView.tsx`). A cluster is also the honest subject
+ * — "which branch am I on" is a property of what you are working on, not of
+ * which pane happens to have focus.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { GitControl, GitStatus } from "../contract";
 
 export interface GitStatusHandle {
-  /** `null` for "no tool", "not a repo", or "the last fetch failed". */
+  /** `null` for "no cluster", "not a repo", or "the last fetch failed". */
   status: GitStatus | null;
   /** True while a fetch is outstanding — the empty state waits for this so it
-   *  doesn't flash between a tool being chosen and its status arriving. */
+   *  doesn't flash between a cluster being chosen and its status arriving. */
   loading: boolean;
   error: string | null;
   refresh: () => void;
 }
 
-export function useGitStatus(control: GitControl, toolId: string | null): GitStatusHandle {
+export function useGitStatus(control: GitControl, clusterId: string | null): GitStatusHandle {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(toolId !== null);
+  const [loading, setLoading] = useState(clusterId !== null);
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
-    if (toolId === null) {
+    if (clusterId === null) {
       setStatus(null);
       setError(null);
       setLoading(false);
@@ -41,12 +49,12 @@ export function useGitStatus(control: GitControl, toolId: string | null): GitSta
     }
 
     // Guards against the answer to a superseded question landing last: switch
-    // tools twice quickly and the first request can still resolve after the
+    // clusters twice quickly and the first request can still resolve after the
     // second, which would leave the panel showing the wrong repo.
     let live = true;
     setLoading(true);
 
-    control.status(toolId).then(
+    control.status(clusterId).then(
       (next) => {
         if (!live) return;
         setStatus(next);
@@ -64,7 +72,7 @@ export function useGitStatus(control: GitControl, toolId: string | null): GitSta
     return () => {
       live = false;
     };
-  }, [control, toolId, nonce]);
+  }, [control, clusterId, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 

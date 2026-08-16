@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { HelveRpcError, invoke, reportPainted } from "@helve/bridge";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
+import WorktreeDialog from "./WorktreeDialog";
 import "./home.css";
 
 /**
@@ -34,6 +35,17 @@ interface Projects {
 type State = Projects & { version?: string | null };
 
 /**
+ * `home/worktree-state`'s reply. Declared here for the same reason `Project`
+ * is: this pane's only coupling to its host is `@helve/bridge` and the shape
+ * of what crosses it.
+ */
+interface WorktreeState {
+  isRepo: boolean;
+  worktree: { path: string; branch: string | null } | null;
+  taken: string[];
+}
+
+/**
  * The three ways a session starts.
  *
  * A table rather than three copies of the same row markup, because the only
@@ -57,6 +69,20 @@ const START: {
     unavailable: "Not built yet. Clone the repository yourself, then use Open Project.",
   },
 ];
+
+/**
+ * Which `run()` methods can hand the user a repository they have not seen
+ * open this session, and so are worth following up with `home/worktree-state`
+ * — see `checkWorktree` below. `home/close-project` and `home/forget-recent`
+ * never open anything, and `home/worktree-create` is dispatched by
+ * `WorktreeDialog` itself rather than through `run`.
+ */
+const WORKTREE_TRIGGERS = new Set([
+  "home/new-project",
+  "home/open-project",
+  "home/open-recent",
+  "home/initialize-project",
+]);
 
 /**
  * The right-hand column, standing in for what will go there.
@@ -93,6 +119,31 @@ export default function App() {
    * what it is waiting for.
    */
   const [pending, setPending] = useState<string | null>(null);
+  /**
+   * Set once a project has just opened into a repo with no worktree yet, and
+   * cleared however the dialog ends — decline, create, or Escape. Holding
+   * only `taken` rather than the whole `WorktreeState`: `worktree` is always
+   * `null` here by construction (see `checkWorktree`), and `isRepo` has
+   * already done its job of deciding whether to show this at all.
+   */
+  const [worktreePrompt, setWorktreePrompt] = useState<{ taken: string[] } | null>(null);
+
+  /**
+   * Ask whether the project that just opened wants a worktree prompt. Fired
+   * after `run()` succeeds at one of `WORKTREE_TRIGGERS`, never awaited by
+   * the caller — this is a follow-up offer sitting on top of an already
+   * successful open, not a step that open is waiting on.
+   */
+  const checkWorktree = useCallback(() => {
+    void invoke<WorktreeState>("home/worktree-state")
+      .then((next) => {
+        if (next.isRepo && next.worktree === null) setWorktreePrompt({ taken: next.taken });
+      })
+      .catch(() => {
+        // Silent on purpose: the project itself opened fine, and a failed
+        // check here just means no offer, not a broken Home.
+      });
+  }, []);
 
   const run = useCallback(
     (method: string, params?: Record<string, unknown>) => {
@@ -110,11 +161,12 @@ export default function App() {
           // stack under it changed version.
           setState((previous) => ({ ...next, version: previous?.version ?? null }));
           setError(null);
+          if (WORKTREE_TRIGGERS.has(method)) checkWorktree();
         })
         .catch((e: unknown) => setError(describe(e)))
         .finally(() => setPending(null));
     },
-    [pending],
+    [pending, checkWorktree],
   );
 
   useEffect(() => {
@@ -269,6 +321,15 @@ export default function App() {
           </section>
         </div>
       </div>
+
+      {worktreePrompt && (
+        <WorktreeDialog
+          projectName={open?.name ?? ""}
+          taken={worktreePrompt.taken}
+          onCancel={() => setWorktreePrompt(null)}
+          onCreated={() => setWorktreePrompt(null)}
+        />
+      )}
     </div>
   );
 }

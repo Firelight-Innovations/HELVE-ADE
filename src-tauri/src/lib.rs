@@ -16,6 +16,7 @@ mod manifest;
 mod presets;
 mod project;
 mod pty;
+mod search;
 mod shell_state;
 mod shell_store;
 mod state;
@@ -67,6 +68,10 @@ pub fn run() {
         // `project::store` for why this was the first thing here to touch the
         // disk at all.
         .manage(ProjectState::default())
+        // The one counter that lets an in-flight content search notice a
+        // newer one has started and abandon itself early. See
+        // `search::SearchState` for why one process-wide counter is enough.
+        .manage(search::SearchState::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -205,11 +210,21 @@ pub fn run() {
             commands::list_apps,
             commands::list_openables,
             commands::app_call,
-            git::git_status,
-            git::git_diff,
-            git::git_stage,
-            git::git_unstage,
-            git::git_commit,
+            git::git_cluster_diff,
+            git::git_cluster_stage,
+            git::git_cluster_unstage,
+            git::git_cluster_commit,
+            git::git_worktrees,
+            git::git_worktree_create,
+            git::git_worktree_remove,
+            git::git_worktree_reconcile,
+            git::git_graph,
+            git::git_divergence,
+            git::git_divergence_diff,
+            git::git_cluster_status,
+            git::git_hunks,
+            git::git_head_text,
+            search::search_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

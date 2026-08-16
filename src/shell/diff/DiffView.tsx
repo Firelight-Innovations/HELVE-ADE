@@ -19,11 +19,22 @@
  * Imported from `monaco-editor/editor/editor.api`, not `.../editor.main` —
  * `editor.main` registers every bundled language, and the IntelliSense
  * infrastructure behind them, as a side effect of import. None of that is
- * needed to show a read-only diff. The cost of that choice: with only
- * `editor.api` pulled in, Monaco has no tokenizer for any language, so
- * `language` below does not yet produce syntax highlighting. It is still
- * accepted as a prop so a caller doesn't have to change when highlighting is
- * wired in later.
+ * needed to show a read-only diff.
+ *
+ * The cost of that choice is that Monaco arrives here knowing no *bundled*
+ * language, so `language` below is honoured for exactly one value: `"toml"`,
+ * registered by the `registerToml` call further down. Every other id resolves
+ * to nothing and renders as plain text — which is the same answer the prop gave
+ * for every id before, so no caller regresses.
+ *
+ * That asymmetry is not an oversight, it is the shape of the fix. TOML is
+ * hand-written (`@helve/monaco-languages`) precisely because Monaco does not
+ * ship it, and a hand-written Monarch grammar can be handed to a bare
+ * `editor.api` instance for free. Every other language would arrive by
+ * importing its own entry under `languages/definitions/`, one lazy chunk each,
+ * and that is a bundle decision for whoever decides a source-control diff should be
+ * fully coloured — not a side effect of teaching this editor the one format
+ * HELVE's own config files are written in.
  *
  * (The short specifier is not a shorthand for the long one: monaco-editor
  * 0.56's `exports` map is `"./*": "./esm/vs/*.js"`, so
@@ -34,6 +45,7 @@
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor/editor/editor.api";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
+import { registerToml } from "@helve/monaco-languages";
 import "./diff.css";
 
 // One worker, wired here rather than in a global entry file — this module
@@ -46,6 +58,15 @@ import "./diff.css";
 self.MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
 };
+
+// TOML, the only language this editor can tokenize — see the file header for
+// why it is the only one and why that is deliberate rather than partial.
+//
+// Idempotent: `search/previewMonaco.ts` calls this too, and that module is
+// shell-side like this one, so both chunks can be live in one JS context and
+// would otherwise register the same id twice against one global registry. The
+// guard lives in `@helve/monaco-languages` so neither caller has to remember.
+registerToml(monaco);
 
 // Defined once at module scope, not per-mount — `defineTheme` writes into
 // Monaco's global theme registry, so redefining it on every DiffView mount
@@ -85,9 +106,11 @@ monaco.editor.defineTheme("helve-dark", {
 export interface DiffViewProps {
   original: string;
   modified: string;
-  /** Passed straight to Monaco's model. See the file header: with only
-   *  `editor.api` imported, this does not yet produce highlighting — it is
-   *  accepted now so callers don't have to change when it does. */
+  /** Passed straight to Monaco's model. See the file header for which ids
+   *  actually tokenize here: `"toml"` does, everything else renders as plain
+   *  text until someone decides this editor should carry Monaco's bundled
+   *  grammars. `@helve/monaco-languages`'s `isTomlPath` is how a caller with a
+   *  path and no Monaco import works out whether to pass it. */
   language?: string;
   /**
    * Two columns, or one with the removals and additions interleaved.

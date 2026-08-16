@@ -33,7 +33,8 @@ a tool be absorbed, without its interface code changing.
 apps/
   shared/app.css        the chrome every app draws inside
   home/ui/              Home's frontend
-  files/ui/             Files' frontend
+  files/ui/             File Explorer's frontend
+  viewer/ui/            File Viewer's frontend
 ```
 
 Each app's Rust half lives in `src-tauri/src/apps/<id>.rs`, and
@@ -86,7 +87,29 @@ An app that never reports is waited on for four seconds, logged, and left
 behind. So forgetting the call costs a slow start, not a hang — but it does cost
 a slow start, which is why it is in this list rather than in a comment.
 
-## The two apps
+## Apps talking to each other
+
+An app's calls go *down* to its Rust half, and for a long time that was the only
+direction there was. Two of them now need to reach each other instead: clicking
+a file in File Explorer has to put it on screen in File Viewer, which is a
+different app, in a different iframe, that the Explorer cannot see and must not
+be able to address.
+
+`helve/open` and `helve/publish` are that, and they are host business — the
+shell routes them, exactly as it answers `helve/painted` and `helve/commands`,
+and it does so without understanding either. An `appId` is matched against the
+layout; a `topic` is a `Map` key. No payload is inspected and no intent is
+enumerated, so two apps can agree on a new thing to say to each other without a
+line changing in `src/shell/`. `docs/tool-protocol.md` §3 is the contract.
+
+The rule that makes it safe is the one every message on this transport already
+follows: the shell resolves *which frame is asking* from `event.source` against
+its own map of mounted iframes, never from anything in the message. An app can
+therefore only ever reach its own cluster, and can only name a **kind** of app
+rather than a particular surface — which surface answers is a fact about the
+layout that only the shell can see.
+
+## The three apps
 
 **Home** (`home/state`, plus the project verbs) — where a session starts: New,
 Open and Clone on the left over a Recent list, tutorials on the right. It is the
@@ -104,7 +127,21 @@ The rules about what a project *is* are not here. They live in
 `src-tauri/src/project/`, which takes paths and never opens a dialog — see the
 README at the repo root.
 
-**Files** (`files/list`, `files/read`) — a directory on the left, the selected
-file's text on the right. No editing, no search, no highlighting, no watching for
-changes on disk; each of those is worth deciding on its own rather than falling
-out of a scaffold. Reads are capped at 256 KiB and say so when they truncate.
+**File Explorer** (`files/list`, `files/root`) — the project's folders and what
+is in them, plus everything that changes the shape of it: create, rename,
+duplicate, delete, trash. It does not show a file's contents. Clicking a row
+asks the shell for a File Viewer in the same cluster (`helve/open`) rather than
+drawing the file itself.
+
+**File Viewer** (`files/read`, `files/write`) — open files in tabs, and what
+each one looks like. Reads are capped at 256 KiB and say so when they truncate.
+Single-clicking a row in the Explorer opens a *preview* tab here, which the next
+single click takes over unless something has been typed into it — VS Code's
+rule, and the reason browsing a folder leaves one tab behind rather than forty.
+
+The two are separate apps sharing **one Rust half** — both registry rows
+dispatch to `apps/files.rs`. There is one filesystem, and `files::call` holds no
+state: every method takes its root from the `CallContext` the caller resolved,
+which is a fact about where the *frame* is placed rather than which app is in
+it. So an Explorer and a Viewer in one cluster resolve the same project, and a
+pair in the next cluster resolve theirs.

@@ -17,10 +17,12 @@ export type {
   HelveErrorPayload,
   IncomingMessage,
   OutgoingMessage,
+  PublishedTopic,
   ReadyMessage,
   RequestMessage,
   Session,
 } from "./protocol.js";
+export { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "./protocol.js";
 export { HelveErrorCode, HelveRpcError } from "./errors.js";
 
 // `Window`'s real `addEventListener` is broader than `WindowLike` needs
@@ -50,6 +52,29 @@ export const onCommand: (cb: (command: string) => void) => () => void = client.o
 
 /** Which menu commands this frontend can carry out **at this moment**. */
 export const declareCommands: (commands: readonly string[]) => void = client.declareCommands;
+
+/**
+ * Put something on screen in another app, in this frame's cluster.
+ *
+ * The one way an app reaches sideways rather than down. It names a *kind* of
+ * app, never an instance — which surface answers is a fact about the layout
+ * that only the shell can see. See `docs/tool-protocol.md` §3.
+ */
+export const openIn: (appId: string, payload?: unknown) => Promise<{ instanceId: string }> =
+  client.openIn;
+
+/**
+ * State a fact about this frame for its cluster-mates to read. Retained, so a
+ * frame that mounts later is told the current value rather than waiting for
+ * the next change.
+ */
+export const publish: (topic: string, value: unknown) => void = client.publish;
+
+/** Listen for what other frames in this cluster publish under `topic`. */
+export const subscribe: (
+  topic: string,
+  cb: (value: unknown, from: string) => void,
+) => () => void = client.subscribe;
 
 export const session: typeof client.session = client.session;
 

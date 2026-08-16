@@ -15,16 +15,26 @@
  * driven from the tab strip for free as a result, and clicking a row does not
  * have to know what a tab is.
  *
- * No motion on anything in the list — see `TreeRow.tsx`'s header, and
- * `src/shell/worktree/WorktreeView.tsx` for the rule both inherit. framer-motion
- * appears here for exactly one thing: the pane's own width, which the splitter
- * writes to during a drag.
+ * No motion anywhere, and no framer-motion import at all — see `TreeRow.tsx`'s
+ * header, and `src/shell/worktree/WorktreeView.tsx` for the rule both inherit.
+ * It used to appear here for exactly one thing, the pane's own width during a
+ * splitter drag; the splitter went with the editor when Files became two apps,
+ * because a pane is the shell's to divide.
  */
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { motion, type MotionStyle, type MotionValue } from "framer-motion";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import ContextMenu, { type DraftKind, type MenuTarget } from "../ContextMenu";
 import DraftRow from "./DraftRow";
 import TreeRow, { GUTTER, INDENT } from "./TreeRow";
+import { useGitStatus } from "./gitStatus";
 import { useTree, type Row } from "./useTree";
 import { ROW_HEIGHT, scrollRowIntoView, useVirtualRows } from "./useVirtualRows";
 import { createDir, createFile, describe, rename, type Root } from "../rpc";
@@ -83,8 +93,6 @@ const Explorer = forwardRef<
   ExplorerHandle,
   {
     root: Root | null;
-  /** Written directly by `Splitter`; never React state. See `Splitter.tsx`. */
-  width: MotionValue<number>;
   /** A change means "drop the cache and re-list whatever is open". */
   reloadNonce: number;
   /** The file showing in the viewer, which may have been opened from a tab. */
@@ -118,7 +126,6 @@ const Explorer = forwardRef<
 >(function Explorer(
   {
     root,
-    width,
     reloadNonce,
     selectedPath,
     onFirstListing,
@@ -157,6 +164,14 @@ const Explorer = forwardRef<
 
   const tree = useTree(root, reloadNonce, filter);
   const { rows, expand, collapse, relist } = tree;
+
+  // Same `reloadNonce` the tree itself re-lists on: whatever counts as "the
+  // project changed underneath us" for the file list counts as it for git
+  // status too, and there is no reason for the two to disagree about when
+  // that is. The root is passed as well, on its own schedule — see
+  // `useGitStatus`, which fetches the far more expensive ignore list once per
+  // project rather than on every one of those refreshes.
+  const git = useGitStatus(root?.path ?? null, reloadNonce);
 
   /**
    * The rows, with the draft field spliced in where its entry will land.
@@ -539,11 +554,11 @@ const Explorer = forwardRef<
       : emptyNote(tree.rootError, tree.ready, rows.length, filter);
 
   return (
-    <motion.div
+    <div
       className="explorer"
       // The row height reaches CSS from the one place it is written down, so
       // `explorer.css` and the windowing arithmetic cannot drift apart.
-      style={{ width, "--explorer-row": `${ROW_HEIGHT}px` } as MotionStyle}
+      style={{ "--explorer-row": `${ROW_HEIGHT}px` } as CSSProperties}
     >
       <div className="explorer__head">
         <span className="app__label explorer__root">
@@ -690,6 +705,7 @@ const Explorer = forwardRef<
               id={rowId(index)}
               cursor={row.entry.path === cursor}
               open={row.entry.path === selectedPath}
+              git={git}
               onActivate={activate}
               onKeep={keep}
               onContextMenu={(target, event) => {
@@ -731,7 +747,7 @@ const Explorer = forwardRef<
           onClose={closeMenu}
         />
       )}
-    </motion.div>
+    </div>
   );
 });
 

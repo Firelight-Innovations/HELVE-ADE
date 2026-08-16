@@ -340,6 +340,146 @@ describe("menu commands", () => {
   });
 });
 
+describe("the sideways channel", () => {
+  it("sends openIn as a helve/open request and resolves with the chosen instance", async () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const promise = client.openIn("viewer", { path: "a.txt", preview: true });
+    expect(parent.postMessage).toHaveBeenLastCalledWith(
+      {
+        helve: 1,
+        kind: "request",
+        id: 1,
+        method: "helve/open",
+        params: { appId: "viewer", payload: { path: "a.txt", preview: true } },
+      },
+      SHELL_ORIGIN,
+    );
+
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "response", id: 1, result: { instanceId: "viewer-1" } },
+    });
+    await expect(promise).resolves.toEqual({ instanceId: "viewer-1" });
+  });
+
+  it("sends a publish, and does not re-send an unchanged value", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    client.publish("files/active-path", { path: "a.txt" });
+    expect(parent.postMessage).toHaveBeenLastCalledWith(
+      {
+        helve: 1,
+        kind: "request",
+        id: 1,
+        method: "helve/publish",
+        params: { topic: "files/active-path", value: { path: "a.txt" } },
+      },
+      SHELL_ORIGIN,
+    );
+
+    const after = (parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length;
+    // A fresh object with the same contents. The natural caller is a React
+    // effect that rebuilds this on every render, so a reference check here
+    // would send a message per keystroke.
+    client.publish("files/active-path", { path: "a.txt" });
+    expect((parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(after);
+
+    client.publish("files/active-path", { path: "b.txt" });
+    expect((parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(after + 1);
+  });
+
+  it("dedupes per topic rather than globally", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const before = (parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length;
+    // Same value, two topics. A single last-value-sent would swallow the
+    // second, and the subscriber to it would never hear anything at all.
+    client.publish("files/active-path", null);
+    client.publish("files/dirty", null);
+    expect((parent.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 2);
+  });
+
+  it("delivers a published topic to subscribe(), unwrapped, and stops on unsubscribe", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const seen: Array<[unknown, string]> = [];
+    const off = client.subscribe("files/active-path", (value, from) => seen.push([value, from]));
+
+    const publish = (path: string) =>
+      dispatch({
+        source: parent,
+        origin: SHELL_ORIGIN,
+        data: {
+          helve: 1,
+          kind: "event",
+          // The prefix is the client's own business — a subscriber names the
+          // bare topic and never sees this.
+          event: "helve:topic/files/active-path",
+          payload: { value: { path }, from: "viewer-1" },
+        },
+      });
+
+    publish("a.txt");
+    expect(seen).toEqual([[{ path: "a.txt" }, "viewer-1"]]);
+
+    off();
+    publish("b.txt");
+    expect(seen).toEqual([[{ path: "a.txt" }, "viewer-1"]]);
+  });
+
+  it("does not confuse a topic with a shell event of the same name", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const asTopic: unknown[] = [];
+    const asEvent: unknown[] = [];
+    client.subscribe("project:changed", (value) => asTopic.push(value));
+    client.on("project:changed", (payload) => asEvent.push(payload));
+
+    // The shell's own push event, unprefixed. An app must not be able to
+    // impersonate this by publishing under the same name.
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "event", event: "project:changed", payload: { clusterId: "c1" } },
+    });
+
+    expect(asEvent).toEqual([{ clusterId: "c1" }]);
+    expect(asTopic).toEqual([]);
+  });
+
+  /** The same trap `declareCommands` has a test for, and `subscribe` is the
+   *  one method here that wraps another — an early draft of it called
+   *  `this.on`, which is `undefined` for every caller of the shorthand. */
+  it("works when its methods are pulled off the client", () => {
+    const { win: self, dispatch } = fakeWindow();
+    const { win: parent } = fakeWindow();
+    const client = createClient({ self, parent });
+    handshake(parent, dispatch);
+
+    const { openIn, publish, subscribe } = client;
+    expect(() => publish("files/dirty", [])).not.toThrow();
+    expect(() => subscribe("files/dirty", () => {})()).not.toThrow();
+    expect(() => void openIn("viewer").catch(() => {})).not.toThrow();
+  });
+});
+
 describe("tauri host", () => {
   function fakeTauri() {
     const invoke = vi.fn().mockResolvedValue("tauri-result");
@@ -377,6 +517,35 @@ describe("tauri host", () => {
     // where the feature simply does not apply.
     await expect(client.invoke("helve/commands", { commands: [] })).resolves.toBeNull();
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("refuses the sideways channel rather than pretending it worked", async () => {
+    const { win: self } = fakeWindow();
+    const { invoke, importTauri } = fakeTauri();
+    const client = createClient({ self, parent: self, importTauri });
+
+    // Refused, not dropped — the difference from `helve/commands` above. There
+    // is no cluster here and no second app to reach, so answering "done" to an
+    // open would leave a frontend believing it had put a file on screen that
+    // nothing anywhere is showing.
+    await expect(client.invoke("helve/open", { appId: "viewer" })).rejects.toBeInstanceOf(
+      HelveRpcError,
+    );
+    await expect(client.invoke("helve/publish", { topic: "t", value: 1 })).rejects.toBeInstanceOf(
+      HelveRpcError,
+    );
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("swallows the refusal for publish, which nobody awaits", () => {
+    const { win: self } = fakeWindow();
+    const { importTauri } = fakeTauri();
+    const client = createClient({ self, parent: self, importTauri });
+
+    // `publish` is fire-and-forget by design, so the rejection above must not
+    // surface as an unhandled promise in a frontend whose only crime was
+    // running under its own Tauri app.
+    expect(() => client.publish("files/dirty", [])).not.toThrow();
   });
 
   it("resolves session() immediately, with no handshake to wait for", async () => {

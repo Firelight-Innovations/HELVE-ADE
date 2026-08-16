@@ -7,3 +7,60 @@
    next to its components, so there is no shared bucket for a rule to end up in
    by accident. */
 @import "./tokens.css";
+
+/* --- the default scrollbar -------------------------------------------------
+ * Every plain scroll container in the shell (the worktree panel, the commit
+ * graph, anything with a bare `overflow: auto`) gets this look unless it
+ * opts out. It is not a new design: it is `src/shell/scrollbar`'s overlay
+ * thumb, the one `ClusterBar` and `SecondaryPanel` already draw, restated as
+ * ordinary browser chrome rather than a hand-measured `motion.div` — see
+ * `overlayScrollbar.css` for the values this copies (5px, no border-radius,
+ * `color-mix(in srgb, var(--line-2) 65%, transparent)`, no track).
+ *
+ * ## `scrollbar-width` is deliberately not set here
+ *
+ * It looks like the modern, standards-first half of the pair and it would
+ * break this rule outright. Chromium 121+ — which is the WebView2 this app
+ * actually renders in — makes `scrollbar-width` win over `::-webkit-scrollbar`
+ * sizing whenever both are present. Setting `thin` alongside the 5px below
+ * does not reinforce it; it silently discards it and substitutes the UA's own
+ * fixed metric, whose thumb is also rounded, and no `border-radius: 0` on the
+ * pseudo-element can reach it. The two things this look is specified by —
+ * 5px, square ends — are exactly the two that would be lost.
+ *
+ * That is not a hypothetical. `.switcher__tabs` set `scrollbar-width: thin`
+ * beside its own pseudo-element sizing and got the UA metric instead of what
+ * it wrote; the visible mismatch between the two tab strips is what prompted
+ * `OverlayScrollbar` to exist at all. `panel.css`'s comment records it in
+ * full. `scrollbar-width: none` is safe in those two files for the reason
+ * given there — hiding is the one outcome both syntaxes agree on, so there is
+ * no wrong result for one to override into, only a redundant one. Sizing is
+ * not like that, so this rule stays on the pseudo-elements alone.
+ *
+ * Both engines this ships in (WebView2 on Windows, WKWebView elsewhere)
+ * support them, so nothing is lost by leaving the standard properties out.
+ * `::-webkit-scrollbar-corner` is included even though nothing here scrolls
+ * both axes today — the one a container that ever does would otherwise show
+ * as a stray opaque square where the two scrollbars meet.
+ *
+ * `*`, not `html`/`body`, so it reaches every scroll container the app ever
+ * grows without this rule having to be extended to find it. A selector this
+ * broad still cannot break `.switcher__tabs` or `.panel__tabs-strip` — the
+ * two strips `OverlayScrollbar` draws over — because both already hide their
+ * native scrollbar with a class selector (`scrollbar-width: none` and
+ * `::-webkit-scrollbar { display: none }`), and a class selector always
+ * outranks a bare `*` on specificity regardless of source order. */
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line-2) 65%, transparent);
+  border-radius: 0;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

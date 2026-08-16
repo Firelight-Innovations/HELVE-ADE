@@ -1,0 +1,70 @@
+/*
+ * File Viewer's own layout: a tab strip, and whatever is showing under it.
+ *
+ * Only what spans regions lives here. The tab strip's rows are in
+ * `tabs/tabs.css`, and each viewer carries its own sheet next to it — which is
+ * not just tidiness: a viewer is behind a dynamic `import()`, so its CSS
+ * becomes a chunk fetched when that format is first opened, and never
+ * otherwise. A single sheet would have put every viewer's styling on the
+ * critical path for a plain text file.
+ *
+ * Colours are `src/tokens.css`. Nothing here may introduce a hex — see the
+ * header of `apps/shared/app.css`.
+ *
+ * This app draws no `.app__head`. The two shared bars above this frame have
+ * already said what it is, and a title row would cost a line of the file.
+ */
+
+.viewerapp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  /* The strip and the editor both refuse to shrink past their content without
+     this — a long path in a tab or a wide line in the editor would otherwise
+     push the pane's own edge off-screen. */
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.viewerapp__empty {
+  margin: auto;
+  padding: 18px;
+}
+
+/* An error from a call that belongs to the app rather than to the editor —
+   `files/root` failing, or a save the tab strip started. Pinned above the strip
+   because neither region owns it. */
+.viewerapp__error {
+  flex: 0 0 auto;
+  margin: 8px 10px 0;
+}
+
+/* --- the viewer host ------------------------------------------------------
+   `viewer/Viewer.tsx`'s wrapper and its two non-content states. What a viewer
+   draws inside this is the viewer's own sheet. Moved here verbatim from the
+   old `apps/files/ui/src/files.css`, where it lived because one app owned both
+   the tree and the editor. */
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.viewer__pending {
+  margin: auto;
+  padding: 18px;
+}
+
+.viewer__failed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  overflow: auto;
+}

@@ -12,8 +12,10 @@ import {
   isHelveMessage,
   isReadyMessage,
   isResponseMessage,
+  TOPIC_EVENT_PREFIX,
   type HelveErrorPayload,
   type IncomingMessage,
+  type PublishedTopic,
   type Session,
 } from "./protocol.js";
 import { HelveErrorCode, HelveRpcError } from "./errors.js";
@@ -79,6 +81,39 @@ export interface Client {
    * to call it is a React effect that runs on every render.
    */
   declareCommands(commands: readonly string[]): void;
+  /**
+   * Ask the shell to put something on screen in a *different* app, in this
+   * frame's own cluster — opening one if the cluster has none, and bringing it
+   * forward if it does.
+   *
+   * The one way an app reaches sideways. It names the kind of app it wants and
+   * hands over an opaque payload; it never names an instance, because which
+   * instance is a fact about the layout that only the shell can see, and an app
+   * that could address one by id could address one in someone else's cluster.
+   *
+   * Resolves with the instance the shell chose, for a caller that wants to know
+   * whether it opened something new. Most callers ignore it.
+   */
+  openIn(appId: string, payload?: unknown): Promise<{ instanceId: string }>;
+  /**
+   * State a fact about this frame, for other apps in its cluster to read.
+   *
+   * The counterpart to `openIn`: that one is an instruction aimed at one app,
+   * this is news any number of apps may care about, and neither publisher nor
+   * subscriber learns the other exists. The Viewer publishes which file it is
+   * showing; the Explorer highlights that row if it happens to be listening,
+   * and nothing breaks in either app when the other is not open.
+   *
+   * The last value published under a topic is retained and replayed to frames
+   * that mount later, so a subscriber is never left waiting for a change to
+   * something that has already settled.
+   *
+   * De-duplicated against the last value sent for the same topic, because the
+   * natural place to call it is a React effect that runs on every render.
+   */
+  publish(topic: string, value: unknown): void;
+  /** Listen for what other frames in this cluster publish under `topic`. */
+  subscribe(topic: string, cb: (value: unknown, from: string) => void): () => void;
   session(): Promise<Session>;
   host(): Host;
 }
@@ -116,6 +151,8 @@ export function createClient(opts: ClientOptions): Client {
   const commandHandlers = new Set<(command: string) => void>();
   /** The last set handed to `declareCommands`, joined, for the dedupe there. */
   let declared: string | null = null;
+  /** The last value published per topic, serialized, for the dedupe in `publish`. */
+  const published = new Map<string, string>();
 
   // Set from the `ready` message's `event.origin` (see the listener below),
   // and used as the exact `targetOrigin` for every post after that. Null
@@ -239,6 +276,28 @@ export function createClient(opts: ClientOptions): Client {
     // frontend that supports menu commands log an error on a host where the
     // feature simply does not apply.
     if (method === "helve/commands") return null as unknown as T;
+    // The sideways channel needs a shell to be sideways *through*: `helve/open`
+    // finds another app in this frame's cluster, and `helve/publish` relays to
+    // the frames beside it. A tool's own Tauri app is one window with one
+    // frontend in it — there is no cluster, no second app, and nobody to
+    // deliver to.
+    //
+    // Refused rather than dropped, and that is the difference from
+    // `helve/commands` above. A dropped declaration costs nothing: the menu bar
+    // it would have greyed out does not exist here either, so accepting it
+    // silently is honest. An open is a user's instruction that something should
+    // now be on screen, and answering "done" to that while nothing happened
+    // would leave a frontend believing it had opened a file it had not.
+    // `helve/publish` is refused alongside it rather than dropped for a smaller
+    // reason: it is fire-and-forget below, so the rejection is swallowed at the
+    // call site, and having the two halves of one feature disagree about
+    // whether this host supports it would be the confusing thing to read.
+    if (method === "helve/open" || method === "helve/publish") {
+      throw new HelveRpcError(
+        HelveErrorCode.MethodNotFound,
+        `${method}: there is no shell here — this frontend is its own window`,
+      );
+    }
     if (method.startsWith("helve/")) {
       throw new HelveRpcError(HelveErrorCode.MethodNotFound, `no such method: ${method}`);
     }
@@ -257,40 +316,46 @@ export function createClient(opts: ClientOptions): Client {
       : invokeTauri<T>(method, params);
   }
 
+  // Named for the same reason `invokeAny` is, and it is not a style choice:
+  // `subscribe` below is a wrapper around this one, and `index.ts` exports
+  // every method of this client *unbound*, so a `this.on` there would find a
+  // `this` of undefined the moment anyone imported the shorthand.
+  function onEvent(event: string, cb: (payload: unknown) => void): () => void {
+    if (host === "helve") {
+      let set = listeners.get(event);
+      if (!set) {
+        set = new Set();
+        listeners.set(event, set);
+      }
+      set.add(cb);
+      return () => set.delete(cb);
+    }
+
+    // No shell to relay events under Tauri — a tool's own core pushes
+    // notifications the same way the rest of this app's Rust side already
+    // does (see bindings.ts / Splash.tsx), so `on` forwards to Tauri's
+    // event system there instead. `listen` is itself async, but `on` must
+    // return synchronously; `cancelled` covers the unsubscribe-before-
+    // registration-resolves race the same way Splash.tsx's cleanup does.
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    importTauri()
+      .then((tauri) => tauri.listen(event, cb))
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch((err) => console.error(err));
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }
+
   return {
     invoke: invokeAny,
 
-    on(event: string, cb: (payload: unknown) => void): () => void {
-      if (host === "helve") {
-        let set = listeners.get(event);
-        if (!set) {
-          set = new Set();
-          listeners.set(event, set);
-        }
-        set.add(cb);
-        return () => set!.delete(cb);
-      }
-
-      // No shell to relay events under Tauri — a tool's own core pushes
-      // notifications the same way the rest of this app's Rust side already
-      // does (see bindings.ts / Splash.tsx), so `on` forwards to Tauri's
-      // event system there instead. `listen` is itself async, but `on` must
-      // return synchronously; `cancelled` covers the unsubscribe-before-
-      // registration-resolves race the same way Splash.tsx's cleanup does.
-      let unlisten: (() => void) | null = null;
-      let cancelled = false;
-      importTauri()
-        .then((tauri) => tauri.listen(event, cb))
-        .then((fn) => {
-          if (cancelled) fn();
-          else unlisten = fn;
-        })
-        .catch((err) => console.error(err));
-      return () => {
-        cancelled = true;
-        unlisten?.();
-      };
-    },
+    on: onEvent,
 
     onCommand(cb: (command: string) => void): () => void {
       // No registration with the host: `declareCommands` is what tells the
@@ -314,6 +379,47 @@ export function createClient(opts: ClientOptions): Client {
       // frontend's own state is unchanged either way. What must not happen is
       // an unhandled rejection from a call nobody awaited.
       void invokeAny("helve/commands", { commands: [...commands] }).catch(() => {});
+    },
+
+    openIn(appId: string, payload?: unknown): Promise<{ instanceId: string }> {
+      return invokeAny<{ instanceId: string }>("helve/open", { appId, payload });
+    },
+
+    publish(topic: string, value: unknown): void {
+      // Compared by serialization rather than by reference, for the same reason
+      // `declareCommands` sorts before joining: the caller assembles this value
+      // fresh on every render, so an identical one is a new object every time
+      // and a reference check would send a message per keystroke.
+      //
+      // A value that will not serialize is treated as always-changed rather
+      // than as an error. It cannot cross `postMessage` intact anyway, so the
+      // send below is what should complain about it, not the dedupe.
+      let key: string;
+      try {
+        key = JSON.stringify(value) ?? "undefined";
+      } catch {
+        key = ` unserializable:${published.size}`;
+      }
+      if (published.get(topic) === key) return;
+      published.set(topic, key);
+      // Fire-and-forget, like `declareCommands`, and swallowed for the same
+      // reason: nothing in this frontend's own state depends on the answer, and
+      // an unhandled rejection from a call nobody awaited is the worse outcome.
+      // Under the Tauri host this rejects every time — see `invokeTauri`.
+      void invokeAny("helve/publish", { topic, value }).catch(() => {});
+    },
+
+    subscribe(topic: string, cb: (value: unknown, from: string) => void): () => void {
+      // Straight through `on`, so a topic behaves exactly like any other event
+      // this bridge delivers — including doing nothing at all under the Tauri
+      // host, where nothing will ever publish. The prefix is applied here and
+      // nowhere else, which is what keeps a topic from being able to name one
+      // of the shell's own events.
+      return onEvent(`${TOPIC_EVENT_PREFIX}${topic}`, (payload) => {
+        const message = payload as PublishedTopic | null;
+        if (typeof message !== "object" || message === null) return;
+        cb(message.value, typeof message.from === "string" ? message.from : "");
+      });
     },
 
     session(): Promise<Session> {

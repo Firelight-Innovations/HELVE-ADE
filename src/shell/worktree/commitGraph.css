@@ -1,0 +1,191 @@
+/*
+ * The commit graph: one row per commit, a lane diagram on the left drawn
+ * with a small inline `<svg>` per row (see `rowSegments` in `CommitGraph.tsx`
+ * for why per-row rather than one tall `<svg>` for the whole list — each row
+ * has to stay renderable on its own as the list scrolls).
+ *
+ * Follows `worktree.css`'s numbers rather than inventing a second scale:
+ * same row padding, same type sizes for a mono/sans split, same
+ * `--accent-wash` selection treatment as `.worktree__row--selected`. No
+ * handoff crop covers this panel yet, so there is nothing to measure against
+ * beyond staying consistent with the tab it will sit next to.
+ */
+
+.commitgraph {
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.commitgraph__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 28px — the GitKraken-style direction's row height, and tall enough to
+     give the bigger `NODE_R`/`NODE_RING_R` nodes below room to breathe
+     against their neighbours above and below. */
+  height: 28px;
+  padding: 0 10px 0 14px;
+  cursor: pointer;
+}
+
+.commitgraph__row:hover {
+  background: var(--surface-2);
+}
+
+.commitgraph__row--selected {
+  background: var(--accent-wash);
+}
+
+/* Native focus ring, not a custom outline: this row is reached by Tab and by
+   the graph's own arrow-key roving (see `CommitGraph`'s `onKeyDown`), and a
+   div with `role="option"` gets no focus affordance of its own otherwise. */
+.commitgraph__row:focus-visible {
+  outline: 1px solid var(--accent-line);
+  outline-offset: -1px;
+}
+
+/* --- the lane diagram -------------------------------------------------- */
+
+.commitgraph__graph {
+  position: relative;
+  flex: none;
+  /* Clipped, not shrunk, once a history has more concurrent lanes than fit —
+     see the comment where this width is set in `CommitRow`. Scaled up from
+     the original 78px by the same factor `LANE_W` grew (14 -> 22), so this
+     clips at the same *number* of lanes as before rather than showing fewer
+     of the now-wider ones. */
+  max-width: 123px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.commitgraph__lines {
+  display: block;
+}
+
+.commitgraph__line {
+  fill: none;
+  /* Thickened from 1.5 — the single biggest lever in reading as
+     "GitKraken" rather than "spreadsheet gridline". */
+  stroke-width: 2.5;
+}
+
+/* The node and its ring are plain circles, not SVG geometry — see the block
+   comment in `CommitRow` for why a `<circle>` inside the row's non-uniformly
+   scaled `<svg>` would render as an ellipse instead. `left`/`width`/`height`/
+   `background`/`border-color` all come from `CommitRow`'s inline style
+   (lane position, `NODE_R`/`NODE_RING_R`, and lane colour), so a size stays
+   defined in exactly one place instead of two copies drifting apart. */
+.commitgraph__node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  /* Same role the old SVG stroke played: separates the dot from a rail that
+     happens to cross close behind it. */
+  border: 1.5px solid var(--bg);
+  pointer-events: none;
+}
+
+.commitgraph__node-ring {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border-width: 1.5px;
+  border-style: solid;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* --- the text columns ---------------------------------------------------
+   Summary takes priority over the meta cluster when the panel is narrow —
+   `flex: 2` against the meta cluster's `flex: 0 1 auto` — because the
+   summary is what makes one commit distinguishable from the next; the sha,
+   author and timestamp are context you can still get by selecting the row. */
+
+.commitgraph__summary {
+  flex: 2 1 auto;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.commitgraph__refs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.commitgraph__ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-dim-3);
+  white-space: nowrap;
+}
+
+.commitgraph__ref--live {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.commitgraph__ref--active {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.commitgraph__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.commitgraph__sha {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim-2);
+}
+
+.commitgraph__author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.commitgraph__when {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim-3);
+}
+
+.commitgraph__quiet {
+  padding: 10px 14px;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim-3);
+}

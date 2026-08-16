@@ -33,7 +33,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import NoticeBar, { type Notice } from "../NoticeBar";
-import { fileIconUrl, folderIconUrl } from "../icons/materialIcons";
+import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
 import {
   describe,
   formatSize,
