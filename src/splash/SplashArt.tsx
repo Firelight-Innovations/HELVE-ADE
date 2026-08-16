@@ -20,7 +20,11 @@ export default function SplashArt({ spinning }: { spinning: boolean }) {
       {/* `{}` rather than `{ rotate: 0 }` while stopped: there's no target
           value to reach, so this just lets the spin freeze wherever it was
           instead of snapping backwards to 0. */}
-      <motion.div className="splash-art__ring" animate={spinning ? { rotate: 360 } : {}} transition={spinArc}>
+      <motion.div
+        className="splash-art__ring"
+        animate={spinning ? { rotate: 360 } : {}}
+        transition={spinArc}
+      >
         <BootArc size={84} />
       </motion.div>
       <BrandGlyph size={34} className="splash-art__mark" />

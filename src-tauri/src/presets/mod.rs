@@ -275,7 +275,10 @@ pub fn merge(user: Vec<LayoutPreset>) -> Vec<LayoutPreset> {
         if out.iter().any(|p| p.id == preset.id) {
             continue;
         }
-        if out.iter().any(|p| p.name.eq_ignore_ascii_case(&preset.name)) {
+        if out
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(&preset.name))
+        {
             eprintln!(
                 "helve: ignoring the preset `{}` — that name is already taken",
                 preset.name
@@ -323,7 +326,10 @@ pub fn save(app: &AppHandle, name: &str, root: PresetNode) -> Result<Vec<LayoutP
             "a preset needs a name to be found by".to_string(),
         ));
     }
-    if let Some(clash) = builtins().iter().find(|b| b.name.eq_ignore_ascii_case(name)) {
+    if let Some(clash) = builtins()
+        .iter()
+        .find(|b| b.name.eq_ignore_ascii_case(name))
+    {
         return Err(AppError::PresetName(format!(
             "\"{}\" is one of HELVE's own presets, so it cannot be replaced — pick another name",
             clash.name
@@ -676,7 +682,10 @@ pub fn plan(root: &PresetNode, existing: &[Existing], ids: &mut Ids) -> (PaneNod
         // and `layout` splits `first_pane_id` from `find_leaf_mut` for exactly
         // this reason. Two walks of a tree with a handful of nodes cost nothing.
         let last = last_pane_id(&tree).to_string();
-        if let Some(PaneNode::Leaf { tabs, active_tab, .. }) = leaf_mut(&mut tree, &last) {
+        if let Some(PaneNode::Leaf {
+            tabs, active_tab, ..
+        }) = leaf_mut(&mut tree, &last)
+        {
             if active_tab.is_none() {
                 *active_tab = Some(leftovers[0].clone());
             }
@@ -767,9 +776,7 @@ fn last_pane_id(node: &PaneNode) -> &str {
         // `last` rather than `[len - 1]`, and the split's own id as the fallback
         // — a childless split is not a state `plan` can build, and a hand-built
         // tree should not be able to panic the backend.
-        PaneNode::Split { id, children, .. } => {
-            children.last().map_or(id.as_str(), last_pane_id)
-        }
+        PaneNode::Split { id, children, .. } => children.last().map_or(id.as_str(), last_pane_id),
     }
 }
 
@@ -780,9 +787,7 @@ fn leaf_mut<'a>(node: &'a mut PaneNode, pane_id: &str) -> Option<&'a mut PaneNod
     match node {
         PaneNode::Leaf { id, .. } if id == pane_id => Some(node),
         PaneNode::Leaf { .. } => None,
-        PaneNode::Split { children, .. } => {
-            children.iter_mut().find_map(|c| leaf_mut(c, pane_id))
-        }
+        PaneNode::Split { children, .. } => children.iter_mut().find_map(|c| leaf_mut(c, pane_id)),
     }
 }
 
@@ -792,7 +797,9 @@ mod tests {
 
     fn ids_for(root: &PresetNode) -> Ids {
         Ids::new(
-            (1..=root.pane_count()).map(|n| format!("pane-{n}")).collect(),
+            (1..=root.pane_count())
+                .map(|n| format!("pane-{n}"))
+                .collect(),
             (1..=root.split_count())
                 .map(|n| format!("split-{n}"))
                 .collect(),
@@ -883,7 +890,10 @@ mod tests {
         }
         .normalized(0);
 
-        let PresetNode::Split { sizes, children, .. } = &root else {
+        let PresetNode::Split {
+            sizes, children, ..
+        } = &root
+        else {
             panic!("expected a split, got {root:?}");
         };
         assert_eq!(children.len(), 2);
@@ -891,7 +901,10 @@ mod tests {
             (sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5,
             "the surviving weights still sum to 1: {sizes:?}"
         );
-        assert!(sizes[1] > sizes[0], "0.3 was the larger of the two survivors");
+        assert!(
+            sizes[1] > sizes[0],
+            "0.3 was the larger of the two survivors"
+        );
     }
 
     #[test]
@@ -1078,7 +1091,10 @@ mod tests {
         let (tree, gaps) = plan(&root, &existing, &mut ids_for(&root));
 
         assert_eq!(tabs_of(&tree), vec![vec!["files-1"], vec!["term-4"]]);
-        assert!(gaps.is_empty(), "no second shell is spawned beside the one open");
+        assert!(
+            gaps.is_empty(),
+            "no second shell is spawned beside the one open"
+        );
     }
 
     #[test]
@@ -1128,7 +1144,11 @@ mod tests {
 
         assert_eq!(tabs_of(&tree), vec![vec!["files-1"]]);
         assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].index, Some(0), "the terminal belongs in front of it");
+        assert_eq!(
+            gaps[0].index,
+            Some(0),
+            "the terminal belongs in front of it"
+        );
     }
 
     #[test]
@@ -1165,12 +1185,23 @@ mod tests {
     fn capturing_a_tree_keeps_its_shape_and_its_apps_and_drops_its_ids() {
         let mut tree = PaneNode::leaf("pane-9");
         tree.insert_tab("pane-9", "files-1", None);
-        tree.split_pane("pane-9", SplitDir::Row, "split-4", "pane-10", "term-1", false);
+        tree.split_pane(
+            "pane-9",
+            SplitDir::Row,
+            "split-4",
+            "pane-10",
+            "term-1",
+            false,
+        );
         tree.set_sizes("split-4", &[0.65, 0.35]);
 
         let captured = capture(&tree, &slot_of_fixture);
 
-        assert_eq!(captured, builtins()[0].root, "the same arrangement, by shape");
+        assert_eq!(
+            captured,
+            builtins()[0].root,
+            "the same arrangement, by shape"
+        );
         let json = serde_json::to_string(&captured).expect("it serializes");
         assert!(!json.contains("pane-9"), "no pane id survives: {json}");
         assert!(!json.contains("term-1"), "no instance id survives: {json}");
@@ -1209,8 +1240,14 @@ mod tests {
     #[test]
     fn the_wire_form_is_tagged_and_camel_cased() {
         let json = serde_json::to_string(&builtins()[0]).expect("serializes");
-        assert!(json.contains(r#""kind":"split""#), "discriminated by `kind`: {json}");
-        assert!(json.contains(r#""kind":"terminal""#), "and so is a slot: {json}");
+        assert!(
+            json.contains(r#""kind":"split""#),
+            "discriminated by `kind`: {json}"
+        );
+        assert!(
+            json.contains(r#""kind":"terminal""#),
+            "and so is a slot: {json}"
+        );
         assert!(json.contains(r#""appId""#), "camelCase on the wire: {json}");
     }
 }

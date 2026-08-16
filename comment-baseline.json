@@ -1,0 +1,422 @@
+{
+  "apps/files/ui/src/App.tsx": {
+    "ratio": 0.5475,
+    "maxRun": 29
+  },
+  "apps/files/ui/src/commands.ts": {
+    "ratio": 0.625,
+    "maxRun": 41
+  },
+  "apps/files/ui/src/ContextMenu.tsx": {
+    "ratio": 0.472,
+    "maxRun": 56
+  },
+  "apps/files/ui/src/explorer/DraftRow.tsx": {
+    "ratio": 0.3465,
+    "maxRun": 24
+  },
+  "apps/files/ui/src/explorer/Explorer.tsx": {
+    "ratio": 0.3734,
+    "maxRun": 23
+  },
+  "apps/files/ui/src/explorer/gitStatus.ts": {
+    "ratio": 0.4897,
+    "maxRun": 30
+  },
+  "apps/files/ui/src/explorer/useTree.ts": {
+    "ratio": 0.4631,
+    "maxRun": 28
+  },
+  "apps/files/ui/src/NoticeBar.tsx": {
+    "ratio": 0.5243,
+    "maxRun": 24
+  },
+  "apps/files/ui/src/rpc.ts": {
+    "ratio": 0.5778,
+    "maxRun": 17
+  },
+  "apps/files/ui/src/topics.ts": {
+    "ratio": 0.6522,
+    "maxRun": 15
+  },
+  "apps/files/ui/src/trash/TrashView.tsx": {
+    "ratio": 0.2536,
+    "maxRun": 33
+  },
+  "apps/files/ui/src/useDelete.ts": {
+    "ratio": 0.3781,
+    "maxRun": 25
+  },
+  "apps/files/ui/src/useInlineName.ts": {
+    "ratio": 0.5362,
+    "maxRun": 22
+  },
+  "apps/viewer/ui/src/App.tsx": {
+    "ratio": 0.5297,
+    "maxRun": 27
+  },
+  "apps/viewer/ui/src/commands.ts": {
+    "ratio": 0.5648,
+    "maxRun": 35
+  },
+  "apps/viewer/ui/src/ContextMenu.tsx": {
+    "ratio": 0.472,
+    "maxRun": 56
+  },
+  "apps/viewer/ui/src/NoticeBar.tsx": {
+    "ratio": 0.5243,
+    "maxRun": 24
+  },
+  "apps/viewer/ui/src/rpc.ts": {
+    "ratio": 0.5778,
+    "maxRun": 17
+  },
+  "apps/viewer/ui/src/tabs/TabStrip.tsx": {
+    "ratio": 0.2861,
+    "maxRun": 34
+  },
+  "apps/viewer/ui/src/tabs/useOpenFiles.ts": {
+    "ratio": 0.4574,
+    "maxRun": 40
+  },
+  "apps/viewer/ui/src/topics.ts": {
+    "ratio": 0.7596,
+    "maxRun": 24
+  },
+  "apps/viewer/ui/src/useDelete.ts": {
+    "ratio": 0.3781,
+    "maxRun": 25
+  },
+  "apps/viewer/ui/src/useInlineName.ts": {
+    "ratio": 0.5362,
+    "maxRun": 22
+  },
+  "apps/viewer/ui/src/viewer/activeEditor.ts": {
+    "ratio": 0.6462,
+    "maxRun": 25
+  },
+  "apps/viewer/ui/src/viewer/blobUrl.ts": {
+    "ratio": 0.4286,
+    "maxRun": 22
+  },
+  "apps/viewer/ui/src/viewer/MermaidViewer.tsx": {
+    "ratio": 0.3046,
+    "maxRun": 26
+  },
+  "apps/viewer/ui/src/viewer/monaco.ts": {
+    "ratio": 0.6048,
+    "maxRun": 42
+  },
+  "apps/viewer/ui/src/viewer/PdfViewer.tsx": {
+    "ratio": 0.3991,
+    "maxRun": 32
+  },
+  "apps/viewer/ui/src/viewer/registry.ts": {
+    "ratio": 0.4685,
+    "maxRun": 24
+  },
+  "apps/viewer/ui/src/viewer/SvgViewer.tsx": {
+    "ratio": 0.4167,
+    "maxRun": 24
+  },
+  "apps/viewer/ui/src/viewer/TextViewer.tsx": {
+    "ratio": 0.4324,
+    "maxRun": 24
+  },
+  "apps/viewer/ui/src/viewer/UnsupportedViewer.tsx": {
+    "ratio": 0.3594,
+    "maxRun": 21
+  },
+  "packages/bridge/src/index.ts": {
+    "ratio": 0.5645,
+    "maxRun": 19
+  },
+  "packages/file-icons/src/index.ts": {
+    "ratio": 0.755,
+    "maxRun": 85
+  },
+  "packages/monaco-languages/src/index.ts": {
+    "ratio": 0.7778,
+    "maxRun": 21
+  },
+  "packages/monaco-languages/src/toml.ts": {
+    "ratio": 0.6321,
+    "maxRun": 69
+  },
+  "scripts/check-comments.mjs": {
+    "ratio": 0.3014,
+    "maxRun": 35
+  },
+  "scripts/clippy-baseline.mjs": {
+    "ratio": 0.2764,
+    "maxRun": 28
+  },
+  "scripts/generate-file-icons.mjs": {
+    "ratio": 0.4852,
+    "maxRun": 41
+  },
+  "src-tauri/src/apps/files.rs": {
+    "ratio": 0.3167,
+    "maxRun": 35
+  },
+  "src-tauri/src/apps/home.rs": {
+    "ratio": 0.4486,
+    "maxRun": 37
+  },
+  "src-tauri/src/apps/mod.rs": {
+    "ratio": 0.5091,
+    "maxRun": 32
+  },
+  "src-tauri/src/apps/trash.rs": {
+    "ratio": 0.3333,
+    "maxRun": 43
+  },
+  "src-tauri/src/boot.rs": {
+    "ratio": 0.5584,
+    "maxRun": 25
+  },
+  "src-tauri/src/commands.rs": {
+    "ratio": 0.5109,
+    "maxRun": 44
+  },
+  "src-tauri/src/git.rs": {
+    "ratio": 0.4551,
+    "maxRun": 33
+  },
+  "src-tauri/src/layout.rs": {
+    "ratio": 0.2545,
+    "maxRun": 33
+  },
+  "src-tauri/src/lib.rs": {
+    "ratio": 0.402,
+    "maxRun": 21
+  },
+  "src-tauri/src/presets/mod.rs": {
+    "ratio": 0.2913,
+    "maxRun": 52
+  },
+  "src-tauri/src/presets/store.rs": {
+    "ratio": 0.3293,
+    "maxRun": 35
+  },
+  "src-tauri/src/project/marker.rs": {
+    "ratio": 0.2881,
+    "maxRun": 30
+  },
+  "src-tauri/src/project/mod.rs": {
+    "ratio": 0.5752,
+    "maxRun": 69
+  },
+  "src-tauri/src/project/store.rs": {
+    "ratio": 0.3881,
+    "maxRun": 25
+  },
+  "src-tauri/src/pty.rs": {
+    "ratio": 0.3801,
+    "maxRun": 30
+  },
+  "src-tauri/src/search.rs": {
+    "ratio": 0.5435,
+    "maxRun": 28
+  },
+  "src-tauri/src/shell_state.rs": {
+    "ratio": 0.3201,
+    "maxRun": 54
+  },
+  "src-tauri/src/shell_store.rs": {
+    "ratio": 0.1987,
+    "maxRun": 31
+  },
+  "src-tauri/src/state.rs": {
+    "ratio": 0.5667,
+    "maxRun": 11
+  },
+  "src-tauri/src/tool_frontend.rs": {
+    "ratio": 0.3554,
+    "maxRun": 21
+  },
+  "src-tauri/src/windows.rs": {
+    "ratio": 0.623,
+    "maxRun": 39
+  },
+  "src/bindings.ts": {
+    "ratio": 0.6398,
+    "maxRun": 19
+  },
+  "src/shell/contract.ts": {
+    "ratio": 0.6784,
+    "maxRun": 25
+  },
+  "src/shell/diff/DiffView.tsx": {
+    "ratio": 0.6446,
+    "maxRun": 44
+  },
+  "src/shell/drag/DragGhost.tsx": {
+    "ratio": 0.5806,
+    "maxRun": 32
+  },
+  "src/shell/drag/dropZones.ts": {
+    "ratio": 0.6652,
+    "maxRun": 36
+  },
+  "src/shell/drag/useDrag.tsx": {
+    "ratio": 0.4958,
+    "maxRun": 27
+  },
+  "src/shell/hostWindow.ts": {
+    "ratio": 0.5625,
+    "maxRun": 14
+  },
+  "src/shell/keys/useKeyboard.ts": {
+    "ratio": 0.5689,
+    "maxRun": 38
+  },
+  "src/shell/motion.ts": {
+    "ratio": 0.679,
+    "maxRun": 23
+  },
+  "src/shell/panel/SecondaryPanel.tsx": {
+    "ratio": 0.3724,
+    "maxRun": 54
+  },
+  "src/shell/panes/PaneTree.tsx": {
+    "ratio": 0.4323,
+    "maxRun": 44
+  },
+  "src/shell/panes/splitOnOpen.ts": {
+    "ratio": 0.8621,
+    "maxRun": 50
+  },
+  "src/shell/scrollbar/OverlayScrollbar.tsx": {
+    "ratio": 0.5949,
+    "maxRun": 65
+  },
+  "src/shell/search/openHit.ts": {
+    "ratio": 0.713,
+    "maxRun": 40
+  },
+  "src/shell/search/previewMonaco.ts": {
+    "ratio": 0.5205,
+    "maxRun": 28
+  },
+  "src/shell/search/PreviewPane.tsx": {
+    "ratio": 0.368,
+    "maxRun": 22
+  },
+  "src/shell/search/query.ts": {
+    "ratio": 0.5017,
+    "maxRun": 44
+  },
+  "src/shell/search/SearchOverlay.tsx": {
+    "ratio": 0.3873,
+    "maxRun": 45
+  },
+  "src/shell/search/SearchSlot.tsx": {
+    "ratio": 0.274,
+    "maxRun": 34
+  },
+  "src/shell/search/searchSource.ts": {
+    "ratio": 0.6069,
+    "maxRun": 20
+  },
+  "src/shell/search/types.ts": {
+    "ratio": 0.7179,
+    "maxRun": 23
+  },
+  "src/shell/search/useLocatorTree.ts": {
+    "ratio": 0.3644,
+    "maxRun": 29
+  },
+  "src/shell/search/useSearchBarHold.ts": {
+    "ratio": 0.6905,
+    "maxRun": 21
+  },
+  "src/shell/state/apps.ts": {
+    "ratio": 0.512,
+    "maxRun": 31
+  },
+  "src/shell/state/git.ts": {
+    "ratio": 0.4833,
+    "maxRun": 25
+  },
+  "src/shell/state/presets.ts": {
+    "ratio": 0.598,
+    "maxRun": 26
+  },
+  "src/shell/state/project.ts": {
+    "ratio": 0.6341,
+    "maxRun": 28
+  },
+  "src/shell/state/shellState.ts": {
+    "ratio": 0.5224,
+    "maxRun": 24
+  },
+  "src/shell/state/toolFrontend.ts": {
+    "ratio": 0.5493,
+    "maxRun": 14
+  },
+  "src/shell/stubs/searchIndex.ts": {
+    "ratio": 0.4792,
+    "maxRun": 22
+  },
+  "src/shell/switcher/AddAppButton.tsx": {
+    "ratio": 0.4688,
+    "maxRun": 36
+  },
+  "src/shell/switcher/ClusterBar.tsx": {
+    "ratio": 0.3678,
+    "maxRun": 63
+  },
+  "src/shell/terminal/TerminalDeck.tsx": {
+    "ratio": 0.3933,
+    "maxRun": 29
+  },
+  "src/shell/terminal/XTermView.tsx": {
+    "ratio": 0.4459,
+    "maxRun": 28
+  },
+  "src/shell/titlebar/MenuItemList.tsx": {
+    "ratio": 0.3866,
+    "maxRun": 44
+  },
+  "src/shell/titlebar/TitleBar.tsx": {
+    "ratio": 0.412,
+    "maxRun": 30
+  },
+  "src/shell/titlebar/useEditTarget.ts": {
+    "ratio": 0.5882,
+    "maxRun": 45
+  },
+  "src/shell/toolwindow/ToolMount.tsx": {
+    "ratio": 0.3854,
+    "maxRun": 21
+  },
+  "src/shell/toolwindow/ToolWindow.tsx": {
+    "ratio": 0.4953,
+    "maxRun": 65
+  },
+  "src/shell/toolwindow/toolWindowRegistry.ts": {
+    "ratio": 0.75,
+    "maxRun": 27
+  },
+  "src/shell/WindowRoot.tsx": {
+    "ratio": 0.4989,
+    "maxRun": 23
+  },
+  "src/shell/worktree/CommitGraph.tsx": {
+    "ratio": 0.309,
+    "maxRun": 27
+  },
+  "src/shell/worktree/SourceControlView.tsx": {
+    "ratio": 0.1662,
+    "maxRun": 29
+  },
+  "src/shell/worktree/useGitStatus.ts": {
+    "ratio": 0.4419,
+    "maxRun": 23
+  },
+  "src/shell/worktree/WorktreePanel.tsx": {
+    "ratio": 0.2629,
+    "maxRun": 30
+  }
+}

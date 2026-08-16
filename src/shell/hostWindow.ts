@@ -8,8 +8,8 @@
  * `titlebar/WindowControls.tsx`, which is where this pattern started; that file
  * now imports `isTauri` from here rather than keeping a second copy of it.
  *
- * Every function here is a no-op under `?fake=1`, and the menu items that reach
- * them are disabled there rather than silently doing nothing — see
+ * Every function here is a no-op in a plain browser, and the menu items that
+ * reach them are disabled there rather than silently doing nothing — see
  * `ViewMenuHandlers.zoomBlocked`.
  */
 import { getCurrentWindow } from "@tauri-apps/api/window";

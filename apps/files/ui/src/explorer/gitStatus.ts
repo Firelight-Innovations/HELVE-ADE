@@ -34,12 +34,7 @@ import { baseName } from "../rpc";
 import { asSavedPath, FILE_SAVED, isAtOrUnder } from "../topics";
 
 export type GitChangeKind =
-  | "modified"
-  | "added"
-  | "deleted"
-  | "renamed"
-  | "untracked"
-  | "conflicted";
+  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
 
 interface GitChange {
   /** Absolute, already resolved by the backend — matches `Entry.path`, so
@@ -139,11 +134,7 @@ const PLAIN: RowDecoration = { ignored: false };
  * How one row draws, given the whole decoration. See this file's header for
  * the four rules; the order below is the precedence between them.
  */
-export function decorate(
-  git: GitDecoration | null,
-  path: string,
-  isDir: boolean,
-): RowDecoration {
+export function decorate(git: GitDecoration | null, path: string, isDir: boolean): RowDecoration {
   if (!git) return PLAIN;
 
   // First, because an ignored path has no status and must not pick one up
@@ -188,10 +179,7 @@ export function decorate(
  * tree should draw exactly as it does with no git support at all, and a
  * caller checking one is checking the other for free.
  */
-export function useGitStatus(
-  rootPath: string | null,
-  reloadNonce: number,
-): GitDecoration | null {
+export function useGitStatus(rootPath: string | null, reloadNonce: number): GitDecoration | null {
   const [result, setResult] = useState<GitStatusResult | null>(null);
   const [ignored, setIgnored] = useState<readonly string[]>([]);
   const [pulse, setPulse] = useState(0);

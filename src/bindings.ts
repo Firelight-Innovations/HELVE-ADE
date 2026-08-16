@@ -287,7 +287,6 @@ export function gitGraph(clusterId: string, limit: number): Promise<GitCommit[]>
   return invoke<GitCommit[]>("git_graph", { clusterId, limit });
 }
 
-
 /**
  * Every worktree of a cluster's repository, the project's own checkout first.
  *

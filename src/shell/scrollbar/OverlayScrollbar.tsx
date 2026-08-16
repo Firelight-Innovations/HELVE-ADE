@@ -126,7 +126,12 @@ const WHEEL_LINE_PX = 16;
  * "already horizontal" and dropped; this container has no vertical overflow
  * for an equal `deltaY` to go to instead.
  */
-function horizontalWheelDelta(el: HTMLElement, deltaX: number, deltaY: number, deltaMode: number): number | null {
+function horizontalWheelDelta(
+  el: HTMLElement,
+  deltaX: number,
+  deltaY: number,
+  deltaMode: number,
+): number | null {
   if (Math.abs(deltaX) > Math.abs(deltaY)) return null;
   if (deltaMode === 1) return deltaY * WHEEL_LINE_PX;
   if (deltaMode === 2) return deltaY * el.clientWidth;
@@ -234,7 +239,10 @@ export default function OverlayScrollbar({ targetRef }: OverlayScrollbarProps) {
     const onWindowPointerMove = (ev: PointerEvent) => {
       if (!rect) return;
       setHovering(
-        ev.clientX >= rect.left && ev.clientX < rect.right && ev.clientY >= rect.top && ev.clientY < rect.bottom,
+        ev.clientX >= rect.left &&
+          ev.clientX < rect.right &&
+          ev.clientY >= rect.top &&
+          ev.clientY < rect.bottom,
       );
     };
     // `pointermove` alone never fires again once the cursor leaves the

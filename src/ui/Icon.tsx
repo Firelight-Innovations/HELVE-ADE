@@ -105,7 +105,11 @@ export function Plus({ size = 13, className }: IconProps) {
 }
 
 /** Marks the worktree tab, and heads the branch row inside it. */
-export function GitBranch({ size = 13, strokeWidth = 2, className }: IconProps & { strokeWidth?: number }) {
+export function GitBranch({
+  size = 13,
+  strokeWidth = 2,
+  className,
+}: IconProps & { strokeWidth?: number }) {
   return (
     <Outline size={size} strokeWidth={strokeWidth} className={className}>
       <circle cx="7" cy="6" r="2" />
@@ -153,7 +157,11 @@ export function Close({ size = 9, className }: IconProps) {
  * pass under rather than through, which means the fill has to be told what it
  * is sitting on.
  */
-export function Sliders({ size = 14, knobFill = "var(--surface)", className }: IconProps & { knobFill?: string }) {
+export function Sliders({
+  size = 14,
+  knobFill = "var(--surface)",
+  className,
+}: IconProps & { knobFill?: string }) {
   return (
     <Outline size={size} className={className}>
       <path d="M4 6h16M4 12h16M4 18h16" />

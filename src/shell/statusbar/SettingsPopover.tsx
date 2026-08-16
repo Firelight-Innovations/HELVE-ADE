@@ -14,7 +14,13 @@ import { popover } from "../motion";
  */
 export default function SettingsPopover() {
   return (
-    <motion.div className="statusbar__popover" variants={popover} initial="initial" animate="animate" exit="exit">
+    <motion.div
+      className="statusbar__popover"
+      variants={popover}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
       <div className="statusbar__popover-header">SETTINGS</div>
       <button type="button" className="statusbar__popover-item">
         Preferences

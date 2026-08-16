@@ -84,7 +84,9 @@ export default function ImageViewer({ file }: ViewerProps) {
         <span>{natural ? `${natural.width} × ${natural.height}` : "—"}</span>
         <span>{file.ext.toUpperCase()}</span>
         <span>{formatSize(state.size)}</span>
-        <span className="image__hint">{actual ? "Actual size" : "Fit to pane"} · click to toggle</span>
+        <span className="image__hint">
+          {actual ? "Actual size" : "Fit to pane"} · click to toggle
+        </span>
       </p>
     </div>
   );

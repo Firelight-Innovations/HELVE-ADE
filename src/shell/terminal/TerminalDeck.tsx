@@ -79,14 +79,20 @@ function TerminalDeck(
 ) {
   const paneRefs = useRef(new Map<string, XTermHandle>());
 
-  useImperativeHandle(ref, () => ({
-    clear: (id) => paneRefs.current.get(id)?.clear(),
-  }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      clear: (id) => paneRefs.current.get(id)?.clear(),
+    }),
+    [],
+  );
 
   // The active tab's members, in `sessions` order. Length 1 for an ordinary
   // tab; length 2+ only when `activeId` names a group with more than one
   // session still in it.
-  const activeSessions = sessions.filter((s) => s.id === activeId || (s.groupId !== null && s.groupId === activeId));
+  const activeSessions = sessions.filter(
+    (s) => s.id === activeId || (s.groupId !== null && s.groupId === activeId),
+  );
   const isSplit = activeSessions.length > 1;
 
   return (
@@ -104,7 +110,10 @@ function TerminalDeck(
             data-focused={focused || undefined}
             style={
               isSplit
-                ? ({ "--pane-index": paneIndex, "--pane-count": activeSessions.length } as React.CSSProperties)
+                ? ({
+                    "--pane-index": paneIndex,
+                    "--pane-count": activeSessions.length,
+                  } as React.CSSProperties)
                 : undefined
             }
             // Clicking anywhere in a pane — not just its xterm textarea —
@@ -129,7 +138,16 @@ function TerminalDeck(
 
       {isSplit &&
         activeSessions.slice(1).map((session, i) => (
-          <div key={`divider-${session.id}`} className="terminal__divider" style={{ "--pane-index": i + 1, "--pane-count": activeSessions.length } as React.CSSProperties} />
+          <div
+            key={`divider-${session.id}`}
+            className="terminal__divider"
+            style={
+              {
+                "--pane-index": i + 1,
+                "--pane-count": activeSessions.length,
+              } as React.CSSProperties
+            }
+          />
         ))}
     </div>
   );

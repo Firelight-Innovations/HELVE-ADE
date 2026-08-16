@@ -261,7 +261,9 @@ export default function App() {
         // has to tell the Viewers to move their tabs. Bumping `treeNonce` here
         // as well would drop the whole cache to show a change one directory
         // already knows about.
-        onRenamed={(from, to) => publish(TREE_CHANGE, { kind: "renamed", from, to } satisfies TreeChange)}
+        onRenamed={(from, to) =>
+          publish(TREE_CHANGE, { kind: "renamed", from, to } satisfies TreeChange)
+        }
         onDelete={del.ask}
       />
 

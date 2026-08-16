@@ -20,9 +20,8 @@ export default function EmptyState() {
         <BrandGlyph size={38} className="toolwindow__empty-glyph" />
         <div className="toolwindow__empty-title">Nothing open here</div>
         <div className="toolwindow__empty-body">
-          Open an app from the Apps menu in the title bar, click the + at the
-          end of this cluster's tabs in the bar above, or drag one in from
-          another cluster.
+          Open an app from the Apps menu in the title bar, click the + at the end of this cluster's
+          tabs in the bar above, or drag one in from another cluster.
         </div>
       </div>
     </div>

@@ -38,7 +38,12 @@ export interface WorktreeDialogProps {
  * the scrim, and the "Work in the project folder" button all take it down
  * having touched nothing.
  */
-export default function WorktreeDialog({ projectName, taken, onCancel, onCreated }: WorktreeDialogProps) {
+export default function WorktreeDialog({
+  projectName,
+  taken,
+  onCancel,
+  onCreated,
+}: WorktreeDialogProps) {
   const [name, setName] = useState(() => suggest(projectName, taken));
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -66,7 +71,9 @@ export default function WorktreeDialog({ projectName, taken, onCancel, onCreated
       // scrim, which a click-driven focus trap would otherwise let it escape
       // to.
       if (e.key === "Tab" && dialogRef.current) {
-        const focusable = dialogRef.current.querySelectorAll<HTMLElement>("input, button:not(:disabled)");
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          "input, button:not(:disabled)",
+        );
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -113,7 +120,13 @@ export default function WorktreeDialog({ projectName, taken, onCancel, onCreated
         if (e.target === e.currentTarget) onCancel();
       }}
     >
-      <div className="home__worktree" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="worktree-title">
+      <div
+        className="home__worktree"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="worktree-title"
+      >
         <h2 className="home__worktree-title" id="worktree-title">
           Work in a separate worktree?
         </h2>
@@ -146,10 +159,19 @@ export default function WorktreeDialog({ projectName, taken, onCancel, onCreated
           />
           {(failure ?? problem) && <p className="home__worktree-error">{failure ?? problem}</p>}
           <div className="home__worktree-actions">
-            <button type="button" className="home__worktree-cancel" disabled={busy} onClick={onCancel}>
+            <button
+              type="button"
+              className="home__worktree-cancel"
+              disabled={busy}
+              onClick={onCancel}
+            >
               Work in the project folder
             </button>
-            <button type="submit" className="home__worktree-submit" disabled={busy || problem !== null}>
+            <button
+              type="submit"
+              className="home__worktree-submit"
+              disabled={busy || problem !== null}
+            >
               {busy ? "Creating…" : "Create worktree"}
             </button>
           </div>
@@ -187,7 +209,8 @@ function validate(name: string, taken: string[]): string | null {
  * triggered this dialog, and nothing here asks the host for anything new.
  */
 function suggest(projectName: string, taken: string[]): string {
-  const base = projectName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+|[.-]+$/g, "") || "worktree";
+  const base =
+    projectName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[.-]+|[.-]+$/g, "") || "worktree";
   let candidate = `${base}-worktree`;
   for (let n = 2; taken.includes(candidate); n += 1) {
     candidate = `${base}-worktree-${n}`;

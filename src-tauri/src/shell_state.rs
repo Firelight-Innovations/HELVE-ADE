@@ -361,7 +361,10 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
 
 impl ShellState {
     pub fn snapshot(&self) -> ShellSnapshot {
-        self.inner.read().expect("shell state lock poisoned").clone()
+        self.inner
+            .read()
+            .expect("shell state lock poisoned")
+            .clone()
     }
 
     /// Replace the whole state — the one door restoring a saved session uses.
@@ -1789,7 +1792,10 @@ fn counters_for(snapshot: &ShellSnapshot) -> Counters {
 
     for instance in &snapshot.instances {
         if let Some(n) = trailing_ordinal(&instance.id) {
-            let slot = counters.instances.entry(instance.app_id.clone()).or_insert(0);
+            let slot = counters
+                .instances
+                .entry(instance.app_id.clone())
+                .or_insert(0);
             *slot = (*slot).max(n);
         }
     }
@@ -1966,14 +1972,20 @@ mod tests {
         ];
         let gid = group_with_pure(&mut terminals, "term-1", "term-3").expect("term-1 exists");
 
-        assert_eq!(gid, "group-term-1", "a third pane joins the group that's already there");
+        assert_eq!(
+            gid, "group-term-1",
+            "a third pane joins the group that's already there"
+        );
         assert_eq!(terminals[2].group_id.as_deref(), Some("group-term-1"));
     }
 
     #[test]
     fn splitting_from_an_unknown_session_assigns_nothing() {
         let mut terminals = vec![session("term-1", None)];
-        assert_eq!(group_with_pure(&mut terminals, "term-missing", "term-1"), None);
+        assert_eq!(
+            group_with_pure(&mut terminals, "term-missing", "term-1"),
+            None
+        );
         assert_eq!(terminals[0].group_id, None);
     }
 
@@ -1987,7 +1999,10 @@ mod tests {
 
         assert_eq!(terminals.len(), 1);
         assert_eq!(terminals[0].id, "term-1");
-        assert_eq!(terminals[0].group_id, None, "a group of one stops being a group");
+        assert_eq!(
+            terminals[0].group_id, None,
+            "a group of one stops being a group"
+        );
     }
 
     #[test]
@@ -1999,7 +2014,10 @@ mod tests {
         close_terminal_pure(&mut terminals, "term-1");
         close_terminal_pure(&mut terminals, "term-2");
 
-        assert!(terminals.is_empty(), "no empty tab and no orphan group left behind");
+        assert!(
+            terminals.is_empty(),
+            "no empty tab and no orphan group left behind"
+        );
     }
 
     #[test]
@@ -2036,7 +2054,11 @@ mod tests {
 
     #[test]
     fn shorten_title_of_empty_string_is_empty() {
-        assert_eq!(shorten_title(""), "", "an empty report has nothing to shorten");
+        assert_eq!(
+            shorten_title(""),
+            "",
+            "an empty report has nothing to shorten"
+        );
     }
 
     // --- id counters, the part a restore gets wrong quietly -----------------
@@ -2139,13 +2161,19 @@ mod tests {
     /// every restart, which is the one failure this feature exists to prevent.
     #[test]
     fn the_whole_snapshot_survives_a_json_round_trip() {
-        let snapshot = snapshot_with(&[("files-1", "files"), ("files-2", "files")], &["pane-1", "pane-2"]);
+        let snapshot = snapshot_with(
+            &[("files-1", "files"), ("files-2", "files")],
+            &["pane-1", "pane-2"],
+        );
 
         let json = serde_json::to_string(&snapshot).expect("a snapshot serializes");
         let back: ShellSnapshot = serde_json::from_str(&json).expect("and reads back");
 
         assert_eq!(back.instances.len(), snapshot.instances.len());
-        assert_eq!(back.windows[0].clusters[0].tree, snapshot.windows[0].clusters[0].tree);
+        assert_eq!(
+            back.windows[0].clusters[0].tree,
+            snapshot.windows[0].clusters[0].tree
+        );
         assert_eq!(back.terminals[0].window_label, "main");
     }
 
@@ -2260,7 +2288,11 @@ mod tests {
         shell.restore(state(vec![window("main", "cluster-1", &[])], Vec::new()));
 
         let first = Some(("cluster-1".to_string(), "pane-1".to_string()));
-        assert_eq!(shell.active_pane("main", None), first, "no opinion means the first pane");
+        assert_eq!(
+            shell.active_pane("main", None),
+            first,
+            "no opinion means the first pane"
+        );
         assert_eq!(
             shell.active_pane("main", Some("pane-99")),
             first,
@@ -2271,7 +2303,11 @@ mod tests {
             first,
             "a pane that is really there is honoured"
         );
-        assert_eq!(shell.active_pane("nonesuch", None), None, "no window, no pane");
+        assert_eq!(
+            shell.active_pane("nonesuch", None),
+            None,
+            "no window, no pane"
+        );
     }
 
     #[test]
@@ -2292,7 +2328,10 @@ mod tests {
     #[test]
     fn a_panel_never_selects_another_windows_terminal() {
         let mut s = state(
-            vec![window("main", "cluster-1", &[]), window("win-1", "cluster-2", &[])],
+            vec![
+                window("main", "cluster-1", &[]),
+                window("win-1", "cluster-2", &[]),
+            ],
             vec![in_window("win-1", "term-1", None)],
         );
         s.windows[0].active_terminal = Some("term-1".to_string());
@@ -2403,7 +2442,10 @@ mod tests {
         let new = &s.windows[1];
         assert_eq!(new.label, "win-1");
         assert_eq!(new.clusters.len(), 1);
-        assert_eq!(new.clusters[0].tree, before, "the tree came across unchanged");
+        assert_eq!(
+            new.clusters[0].tree, before,
+            "the tree came across unchanged"
+        );
         assert_eq!(new.active_cluster_id.as_deref(), Some("cluster-2"));
         assert_eq!(
             s.windows[0].clusters.len(),
@@ -2423,7 +2465,10 @@ mod tests {
 
         assert!(moved(&mut s, "cluster-2", "win-1"));
 
-        assert_eq!(s.terminals[0].window_label, "win-1", "it is on screen there now");
+        assert_eq!(
+            s.terminals[0].window_label, "win-1",
+            "it is on screen there now"
+        );
         assert_eq!(
             s.terminals[1].window_label, "main",
             "the panel's terminal is the window's and does not travel"
@@ -2463,7 +2508,11 @@ mod tests {
         assert!(moved(&mut s, "cluster-2", "win-1"));
 
         assert_eq!(s.windows.len(), 2, "no third window");
-        assert_eq!(s.windows[1].clusters.len(), 2, "it joined the ones already there");
+        assert_eq!(
+            s.windows[1].clusters.len(),
+            2,
+            "it joined the ones already there"
+        );
         assert_eq!(s.windows[1].active_cluster_id.as_deref(), Some("cluster-2"));
     }
 
@@ -2471,9 +2520,16 @@ mod tests {
     fn moving_a_cluster_to_the_window_it_is_already_in_changes_nothing() {
         let mut s = two_clusters(&["files-1"]);
 
-        assert!(moved(&mut s, "cluster-2", "main"), "it is where it was asked to be");
+        assert!(
+            moved(&mut s, "cluster-2", "main"),
+            "it is where it was asked to be"
+        );
         assert_eq!(s.windows.len(), 1);
-        assert_eq!(s.windows[0].clusters.len(), 2, "and it was not moved to the end");
+        assert_eq!(
+            s.windows[0].clusters.len(),
+            2,
+            "and it was not moved to the end"
+        );
         assert_eq!(s.windows[0].clusters[1].id, "cluster-2");
     }
 
@@ -2493,7 +2549,8 @@ mod tests {
             "the second cluster's tree is the one holding it"
         );
         assert_eq!(
-            cluster_of_instance_pure(&s, "files-99"), None,
+            cluster_of_instance_pure(&s, "files-99"),
+            None,
             "an instance nobody holds resolves to no cluster rather than to the first one"
         );
     }

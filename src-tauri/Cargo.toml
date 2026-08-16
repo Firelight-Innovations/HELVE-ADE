@@ -5,6 +5,10 @@ description = "Entry point for the Helve stack — loads and orchestrates the de
 authors = ["Firelight Innovations"]
 edition = "2021"
 
+# Lint levels come from [workspace.lints] in the root Cargo.toml.
+[lints]
+workspace = true
+
 [lib]
 # The binary and the library can't share a name on Windows, hence the `_lib`
 # suffix. `main.rs` is a thin shim that calls into this library, which also lets

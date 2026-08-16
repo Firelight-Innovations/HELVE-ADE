@@ -98,7 +98,10 @@ self.MonacoEnvironment = {
  * its `$schema`. Structural validation still runs; only remote resolution is
  * off.
  */
-jsonDefaults.setDiagnosticsOptions({ ...jsonDefaults.diagnosticsOptions, enableSchemaRequest: false });
+jsonDefaults.setDiagnosticsOptions({
+  ...jsonDefaults.diagnosticsOptions,
+  enableSchemaRequest: false,
+});
 
 /**
  * TOML, which is the one language here that Monaco does not ship at all.
@@ -277,7 +280,7 @@ monaco.editor.defineTheme(THEME, {
     "input.background": "#14161a", // --bg
     "input.foreground": "#e4e7ec", // --text
     "input.border": "#3a404b", // --line-2
-    "focusBorder": "#d98a3f", // --accent
+    focusBorder: "#d98a3f", // --accent
 
     // --- diagnostics (only JSON produces these) --------------------------------
     "editorError.foreground": "#d9635f", // --err

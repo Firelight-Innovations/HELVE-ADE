@@ -36,7 +36,10 @@ const FIXTURE: FixtureEntry[] = [
 ];
 
 function normalize(text: string): string {
-  return text.trim().toLowerCase().replace(/[^a-z0-9]+$/i, "");
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+$/i, "");
 }
 
 export const stubSearchIndex: SearchIndex = {

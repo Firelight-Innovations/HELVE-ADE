@@ -1,0 +1,102 @@
+{
+  "src/shell/drag/useDrag.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/hostWindow.ts": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/panel/SecondaryPanel.tsx": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/panes/PaneTree.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/panes/splitOnOpen.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/search/PreviewPane.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/search/openHit.ts": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/search/searchSource.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/search/useLocatorTree.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/state/git.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/state/presets.ts": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/state/project.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/state/shellState.ts": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/state/terminals.ts": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/state/toolFrontend.ts": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/switcher/AddAppButton.tsx": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/switcher/ClusterBar.tsx": {
+    "no-restricted-imports": {
+      "count": 2
+    }
+  },
+  "src/shell/titlebar/WindowControls.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/toolwindow/ToolMount.tsx": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/shell/toolwindow/ToolWindow.tsx": {
+    "no-restricted-imports": {
+      "count": 10
+    }
+  }
+}

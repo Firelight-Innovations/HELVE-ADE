@@ -154,7 +154,13 @@ function XTermView(
       if (rect.width <= 0 || rect.height <= 0) return;
 
       const dims = fitAddon.proposeDimensions();
-      if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows) || dims.cols <= 0 || dims.rows <= 0) {
+      if (
+        !dims ||
+        !Number.isFinite(dims.cols) ||
+        !Number.isFinite(dims.rows) ||
+        dims.cols <= 0 ||
+        dims.rows <= 0
+      ) {
         return;
       }
       fitAddon.fit();

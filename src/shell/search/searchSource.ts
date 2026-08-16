@@ -19,7 +19,6 @@
  * abort handling needs no changes.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { fakeSearchContent, isFake } from "../state/fakeBackend";
 import { kindOf } from "./kinds";
 import type { SearchHit, SearchKind, SearchMatch } from "./types";
 
@@ -132,20 +131,13 @@ export async function runSearch(request: SearchRequest): Promise<SearchHit[]> {
   // own that a newer search has started — see `SearchState` in `search.rs` —
   // and stops early rather than spending the blocking thread pool on a result
   // this promise has already stopped listening for.
-  // `?fake=1` has no Tauri under it, so `invoke` does not merely fail here — it
-  // is not defined at all. The fixture is raced against the abort signal
-  // exactly like the real call so that the two paths cannot diverge in their
-  // cancellation behaviour, which is the half of this function most likely to
-  // be wrong and least likely to be noticed.
-  const call = isFake()
-    ? fakeSearchContent(clusterId, query, caseSensitive, wholeWord, regex)
-    : invoke<SearchResponse>("search_content", {
-        clusterId,
-        query,
-        caseSensitive,
-        wholeWord,
-        regex,
-      });
+  const call = invoke<SearchResponse>("search_content", {
+    clusterId,
+    query,
+    caseSensitive,
+    wholeWord,
+    regex,
+  });
 
   const response = await Promise.race([call, rejectOnAbort(signal)]);
 

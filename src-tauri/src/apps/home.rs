@@ -86,12 +86,20 @@ pub fn call(
         )),
 
         "home/open-recent" => shape(
-            project::open(app, &path_param(params.as_ref())?, context.require_cluster()?)
-                .map_err(rpc)?,
+            project::open(
+                app,
+                &path_param(params.as_ref())?,
+                context.require_cluster()?,
+            )
+            .map_err(rpc)?,
         ),
         "home/initialize-project" => shape(
-            project::initialize(app, &path_param(params.as_ref())?, context.require_cluster()?)
-                .map_err(rpc)?,
+            project::initialize(
+                app,
+                &path_param(params.as_ref())?,
+                context.require_cluster()?,
+            )
+            .map_err(rpc)?,
         ),
         // No `require_cluster`: forgetting is an edit to the global history and
         // works whether or not the caller is in a cluster. The context only

@@ -32,9 +32,7 @@ import type { CommandHandlers } from "./TitleBar";
 import { APP_COMMAND } from "./TitleBar";
 
 export type EditTarget =
-  | { kind: "app" }
-  | { kind: "field"; element: HTMLElement }
-  | { kind: "none" };
+  { kind: "app" } | { kind: "field"; element: HTMLElement } | { kind: "none" };
 
 /**
  * Where the Edit menu would land, as state.

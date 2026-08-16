@@ -151,7 +151,11 @@ export default function Splash() {
         aria-valuemax={1}
         aria-valuenow={progress}
       >
-        <motion.div className="splash__bar-fill" animate={{ width: `${progress * 100}%` }} transition={snap} />
+        <motion.div
+          className="splash__bar-fill"
+          animate={{ width: `${progress * 100}%` }}
+          transition={snap}
+        />
 
         <div className="splash__bar-row">
           <span className="splash__bar-label">{title}</span>

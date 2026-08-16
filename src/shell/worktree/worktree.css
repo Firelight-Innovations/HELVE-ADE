@@ -297,7 +297,9 @@
   border-radius: 4px;
   background: transparent;
   color: var(--accent);
-  font: 500 11px/1 "IBM Plex Sans", sans-serif;
+  font:
+    500 11px/1 "IBM Plex Sans",
+    sans-serif;
   cursor: pointer;
 }
 
@@ -350,11 +352,15 @@
 }
 
 .worktree__empty-title {
-  font: 500 12.5px/1.3 "IBM Plex Sans", sans-serif;
+  font:
+    500 12.5px/1.3 "IBM Plex Sans",
+    sans-serif;
   color: var(--text-dim);
 }
 
 .worktree__empty-body {
-  font: 400 11px/1.55 "IBM Plex Sans", sans-serif;
+  font:
+    400 11px/1.55 "IBM Plex Sans",
+    sans-serif;
   color: var(--text-dim-3);
 }

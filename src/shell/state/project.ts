@@ -29,7 +29,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { clusterProject } from "../../bindings";
-import { isFake, subscribeFakeClusterProject } from "./fakeBackend";
 
 /** The part of Rust's `ProjectInfo` anything in the shell reads. */
 export interface OpenProject {
@@ -54,13 +53,6 @@ export function useClusterProject(clusterId: string | null): OpenProject | null 
   const [open, setOpen] = useState<OpenProject | null>(null);
 
   useEffect(() => {
-    // `?fake=1` has no Tauri event system, and an unguarded `listen` rejects on
-    // mount — the same guard `ToolWindow` and `state/terminals.ts` carry, for
-    // the same reason. The fixture's own subscription stands in for both the
-    // fetch and the event, so opening a recent project in Home still retitles
-    // the bar in a browser, and only for the cluster it was opened in.
-    if (isFake()) return subscribeFakeClusterProject(clusterId, setOpen);
-
     let live = true;
     let unlisten: (() => void) | undefined;
 

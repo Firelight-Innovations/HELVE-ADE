@@ -41,7 +41,6 @@ import { HelveErrorCode } from "../../../packages/bridge/src/errors";
 import { appPainted } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
-import { isFake } from "../state/fakeBackend";
 import { windowLabel } from "../state/shellState";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
@@ -576,7 +575,10 @@ const ToolWindow = forwardRef<
 
       const { id, method, params } = event.data;
       const respond = (body: Omit<ResponseMessage, "helve" | "kind">) =>
-        source.postMessage({ helve: 1, kind: "response", ...body } satisfies ResponseMessage, origin);
+        source.postMessage(
+          { helve: 1, kind: "response", ...body } satisfies ResponseMessage,
+          origin,
+        );
 
       // `helve/*` belongs to the host, exactly as `hello` above does — this one
       // is a frame saying it has drawn its first meaningful content, and it is
@@ -586,9 +588,8 @@ const ToolWindow = forwardRef<
       // every first-party app has said this, so that the window it hands off to
       // is finished rather than still filling in (see `src-tauri/src/boot.rs`).
       // Only an app's report travels on. A tool is a different repository's code
-      // that boot is not waiting for, and under `?fake=1` there is no backend to
-      // tell and no splash that would care — both still get their answer, since
-      // a frontend that asked and heard nothing back would sit through the
+      // that boot is not waiting for — it still gets its answer, since a
+      // frontend that asked and heard nothing back would sit through the
       // bridge's thirty-second timeout for it.
       // Reported by *app* id, not instance id, because boot's roster is one
       // entry per app — `apps::roster()` waits on Files, however many Files
@@ -597,7 +598,7 @@ const ToolWindow = forwardRef<
       // the splash lifts when each kind of app has drawn once.
       if (method === "helve/painted") {
         respond({ id, result: null });
-        if (frame.isApp && !isFake()) {
+        if (frame.isApp) {
           void appPainted(frame.appId).catch((err: unknown) =>
             console.error(`helve: could not report ${frame.appId} painted:`, err),
           );
@@ -795,12 +796,6 @@ const ToolWindow = forwardRef<
   // for the active cluster's tree only, so every frame in `frames` is in that
   // cluster by construction.
   useEffect(() => {
-    // No Tauri event system in a plain browser: an unguarded `listen` rejects
-    // on mount under `?fake=1` and takes the fake-backend run with it. Same
-    // guard, same reason, as `state/terminals.ts`. Nothing emits `project:
-    // changed` in fake mode, so there is nothing to stand in for here either.
-    if (isFake()) return;
-
     // `listen` is async and an effect's cleanup must be returned synchronously,
     // so the subscription is set up in the background and `live` covers the gap
     // — an unmount before Tauri registers the listener must still end up with

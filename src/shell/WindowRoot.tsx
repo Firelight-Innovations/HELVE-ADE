@@ -147,10 +147,7 @@ export default function WindowRoot({
   // How to present the app an instance is an instance of. A lookup by *app* id,
   // because that is what decides which code to load and what to call it — there
   // is one presentation of Files however many Files are open.
-  const presentations = useMemo(
-    () => new Map(apps.map((a) => [a.id, appPresentation(a)])),
-    [apps],
-  );
+  const presentations = useMemo(() => new Map(apps.map((a) => [a.id, appPresentation(a)])), [apps]);
   const presentationOf = useCallback((appId: string) => presentations.get(appId), [presentations]);
 
   const shell = useShellState();
@@ -612,7 +609,11 @@ export default function WindowRoot({
   // from the title bar. `SecondaryPanel` still renders `CloseConfirm` — the
   // dialog is visually scoped to the panel — it just no longer decides when
   // to show it.
-  const [pendingClose, setPendingClose] = useState<{ id: string; title: string; busy: TerminalBusy } | null>(null);
+  const [pendingClose, setPendingClose] = useState<{
+    id: string;
+    title: string;
+    busy: TerminalBusy;
+  } | null>(null);
   const requestClose = useCallback(
     async (session: TerminalSession) => {
       const busy = await terminalControl.busy(session.id);
@@ -636,7 +637,9 @@ export default function WindowRoot({
   const requestCloseTab = useCallback(
     (tab: TerminalTabGroup) => {
       const target =
-        tab.id === panelTabId ? (tab.sessions.find((s) => s.id === focusedPaneId) ?? tab.sessions[0]) : tab.sessions[0];
+        tab.id === panelTabId
+          ? (tab.sessions.find((s) => s.id === focusedPaneId) ?? tab.sessions[0])
+          : tab.sessions[0];
       void requestClose(target);
     },
     [panelTabId, focusedPaneId, requestClose],
@@ -835,7 +838,7 @@ export default function WindowRoot({
       .then(setFullscreenState)
       .catch(() => {
         /* No window to ask. The menu item still toggles; it just starts by
-           claiming the window is not full screen, which under `?fake=1` it
+           claiming the window is not full screen, which in a plain browser it
            is not. */
       });
   }, []);
@@ -886,9 +889,7 @@ export default function WindowRoot({
 
   // Home is where a project is opened, so File > Open… is Home's
   // `home/open-project` — the same native folder picker its own button raises,
-  // rather than a second path to the same dialog. Called through `callApp`, so
-  // `?fake=1` refuses it the way it refuses every other picker instead of
-  // pretending a folder was chosen.
+  // rather than a second path to the same dialog.
   //
   // Scoped to this window's active cluster, and it has to be said explicitly
   // here where a frame's call says it by being a frame. This is a title-bar
@@ -942,10 +943,7 @@ export default function WindowRoot({
   // Deliberately *not* caught here. The refusals this can produce — a blank
   // name, a name one of the built-ins holds — are answers to what was just
   // typed, and the field that typed it is what shows them. See `MenuPrompt`.
-  const onSavePreset = useCallback(
-    (name: string) => savePreset(label, name),
-    [label],
-  );
+  const onSavePreset = useCallback((name: string) => savePreset(label, name), [label]);
 
   // Everything this build can open here, from Rust rather than a literal list,
   // so a row added in `apps::openables` appears without a second edit here.
@@ -1363,8 +1361,8 @@ export default function WindowRoot({
  * Why Zoom In or Zoom Out cannot go any further, or `undefined`.
  *
  * Two reasons, and they are different kinds of thing: there is no webview to
- * scale at all (a browser under `?fake=1`), or the ladder has run out in that
- * direction. The second is what keeps the item honest at the ends — clicking
+ * scale at all (the shell drawn in a plain browser), or the ladder has run out
+ * in that direction. The second is what keeps the item honest at the ends — clicking
  * Zoom In at 250% would otherwise look like a click that did nothing.
  */
 function zoomBlocked(zoom: number, direction: 1 | -1): string | undefined {
@@ -1373,7 +1371,9 @@ function zoomBlocked(zoom: number, direction: 1 | -1): string | undefined {
   }
   if (nextZoom(zoom, direction) !== zoom) return undefined;
   const at = `${Math.round(zoom * 100)}%`;
-  return direction === 1 ? `Already at the largest size (${at}).` : `Already at the smallest size (${at}).`;
+  return direction === 1
+    ? `Already at the largest size (${at}).`
+    : `Already at the smallest size (${at}).`;
 }
 
 /**

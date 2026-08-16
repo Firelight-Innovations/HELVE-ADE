@@ -1,0 +1,22 @@
+{
+  "crates/helve-rpc/src/codec.rs::missing_docs": 64,
+  "crates/helve-rpc/src/codec.rs::unreachable_pub": 4,
+  "crates/helve-rpc/src/host.rs::clippy::unwrap_used": 16,
+  "crates/helve-rpc/src/host.rs::missing_docs": 18,
+  "crates/helve-rpc/src/tool.rs::missing_docs": 2,
+  "crates/helve-tool-manifest/src/lib.rs::missing_docs": 62,
+  "examples/echo-tool/tests/roundtrip.rs::clippy::expect_used": 2,
+  "src-tauri/src/apps/mod.rs::clippy::doc_lazy_continuation": 6,
+  "src-tauri/src/apps/trash.rs::clippy::unnecessary_sort_by": 2,
+  "src-tauri/src/boot.rs::clippy::expect_used": 2,
+  "src-tauri/src/git.rs::clippy::needless_borrow": 4,
+  "src-tauri/src/lib.rs::clippy::expect_used": 4,
+  "src-tauri/src/project/mod.rs::clippy::expect_used": 10,
+  "src-tauri/src/pty.rs::clippy::expect_used": 20,
+  "src-tauri/src/pty.rs::clippy::unnecessary_lazy_evaluations": 2,
+  "src-tauri/src/shell_state.rs::clippy::expect_used": 64,
+  "src-tauri/src/shell_state.rs::clippy::manual_contains": 4,
+  "src-tauri/src/shell_state.rs::clippy::too_many_arguments": 2,
+  "src-tauri/src/shell_state.rs::dead_code": 2,
+  "src-tauri/src/state.rs::clippy::expect_used": 8
+}

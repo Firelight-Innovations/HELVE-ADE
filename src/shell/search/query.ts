@@ -622,7 +622,10 @@ export function compilePathFilter(parsed: ParsedQuery): (path: string) => boolea
     const name = basenameOf(normalized);
 
     if (excludeGlobs.some((glob) => matchesGlob(glob, normalized, name))) return false;
-    if (includeGlobs.length > 0 && !includeGlobs.some((glob) => matchesGlob(glob, normalized, name))) {
+    if (
+      includeGlobs.length > 0 &&
+      !includeGlobs.some((glob) => matchesGlob(glob, normalized, name))
+    ) {
       return false;
     }
 

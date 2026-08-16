@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createClient, type IncomingWindowMessage, type TauriCore, type WindowLike } from "./client.js";
+import {
+  createClient,
+  type IncomingWindowMessage,
+  type TauriCore,
+  type WindowLike,
+} from "./client.js";
 import { HelveErrorCode, HelveRpcError } from "./errors.js";
 
 const SHELL_ORIGIN = "https://shell.example";
@@ -19,7 +24,13 @@ function fakeWindow(): { win: WindowLike; dispatch: (event: IncomingWindowMessag
 }
 
 function readyMessage(session = { engineEndpoint: null, projectPath: null }) {
-  return { helve: 1 as const, kind: "ready" as const, toolId: "echo", protocol: 1 as const, session };
+  return {
+    helve: 1 as const,
+    kind: "ready" as const,
+    toolId: "echo",
+    protocol: 1 as const,
+    session,
+  };
 }
 
 /** Completes the hello/ready handshake against a client already created
@@ -103,7 +114,11 @@ describe("request/response", () => {
       SHELL_ORIGIN,
     );
 
-    dispatch({ source: parent, origin: SHELL_ORIGIN, data: { helve: 1, kind: "response", id: 1, result: "ok" } });
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { helve: 1, kind: "response", id: 1, result: "ok" },
+    });
     await expect(promise).resolves.toBe("ok");
   });
 
@@ -192,7 +207,11 @@ describe("message filtering", () => {
     const { win: parent } = fakeWindow();
     const client = createClient({ self, parent });
 
-    dispatch({ source: parent, origin: SHELL_ORIGIN, data: { kind: "ready", toolId: "echo", protocol: 1, session: {} } });
+    dispatch({
+      source: parent,
+      origin: SHELL_ORIGIN,
+      data: { kind: "ready", toolId: "echo", protocol: 1, session: {} },
+    });
 
     let settled = false;
     void client.session().then(() => {

@@ -124,7 +124,12 @@ export interface DiffViewProps {
   renderSideBySide?: boolean;
 }
 
-export default function DiffView({ original, modified, language, renderSideBySide = true }: DiffViewProps) {
+export default function DiffView({
+  original,
+  modified,
+  language,
+  renderSideBySide = true,
+}: DiffViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Re-created whenever the text changes rather than fed through

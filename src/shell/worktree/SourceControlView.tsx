@@ -140,14 +140,23 @@ export default function SourceControlView({ control, clusterId, git }: SourceCon
     // `loading` is what keeps this from flashing between a cluster being
     // selected and its status arriving.
     if (loading) return null;
-    return git.error !== null ? <EmptyState kind="error" detail={git.error} /> : <EmptyState kind="not-a-repo" />;
+    return git.error !== null ? (
+      <EmptyState kind="error" detail={git.error} />
+    ) : (
+      <EmptyState kind="not-a-repo" />
+    );
   }
 
   const canCommit = !busy && status.staged.length > 0 && message.trim() !== "";
 
   return (
     <div className="worktree">
-      <BranchRow branch={status.branch} ahead={status.ahead} behind={status.behind} count={changeCount(status)} />
+      <BranchRow
+        branch={status.branch}
+        ahead={status.ahead}
+        behind={status.behind}
+        count={changeCount(status)}
+      />
 
       <div className="worktree__lists">
         <Section
@@ -217,7 +226,12 @@ export default function SourceControlView({ control, clusterId, git }: SourceCon
           disabled={busy}
           onChange={(e) => setMessage(e.target.value)}
         />
-        <button type="button" className="worktree__commit-btn" disabled={!canCommit} onClick={() => void commit()}>
+        <button
+          type="button"
+          className="worktree__commit-btn"
+          disabled={!canCommit}
+          onClick={() => void commit()}
+        >
           Commit
         </button>
       </div>
@@ -361,7 +375,13 @@ function ChangeRow({
  * "Add worktree" button is gone, because there is no command behind it and it
  * was already rendering inert.
  */
-function EmptyState({ kind, detail }: { kind: "no-cluster" | "not-a-repo" | "error"; detail?: string }) {
+function EmptyState({
+  kind,
+  detail,
+}: {
+  kind: "no-cluster" | "not-a-repo" | "error";
+  detail?: string;
+}) {
   const { title, body } =
     kind === "no-cluster"
       ? {

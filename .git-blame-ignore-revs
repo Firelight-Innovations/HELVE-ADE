@@ -1,0 +1,16 @@
+# Commits that changed formatting only, and that `git blame` should look
+# straight through to the commit that last changed the code's meaning.
+#
+# GitHub reads this file automatically. Locally it has to be turned on once:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only add a commit here if it is provably whitespace-only. A commit that
+# mixes formatting with a real change cannot be ignored safely, which is the
+# reason the reformat below was landed on its own.
+
+# Format the tree with rustfmt and Prettier
+6a985b62d607350255d080615da175e2169fd6d1
+
+# Format CSS, JSON and the icon script with Prettier
+7b786edd3fd38e880a0d3ea7a256cfe00ef3b33c

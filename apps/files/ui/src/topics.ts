@@ -43,8 +43,7 @@ export function asSavedPath(value: unknown): string | null {
 
 /** What `TREE_CHANGE` carries. */
 export type TreeChange =
-  | { kind: "renamed"; from: string; to: string }
-  | { kind: "deleted"; path: string };
+  { kind: "renamed"; from: string; to: string } | { kind: "deleted"; path: string };
 
 /** Narrow an `ACTIVE_PATH` payload, which arrives as `unknown`. */
 export function asActivePath(value: unknown): string | null {

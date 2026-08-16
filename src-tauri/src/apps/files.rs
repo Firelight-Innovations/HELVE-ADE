@@ -783,7 +783,10 @@ fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
     let parent = path.parent().ok_or_else(|| {
         RpcError::new(
             INVALID_PARAMS,
-            format!("{} is a root, and a root has no name to change", path.display()),
+            format!(
+                "{} is a root, and a root has no name to change",
+                path.display()
+            ),
         )
     })?;
 
@@ -855,7 +858,10 @@ fn duplicate_at(path: &Path) -> Result<Value, RpcError> {
     let parent = path.parent().ok_or_else(|| {
         RpcError::new(
             INVALID_PARAMS,
-            format!("{} is a root, and a root cannot be duplicated", path.display()),
+            format!(
+                "{} is a root, and a root cannot be duplicated",
+                path.display()
+            ),
         )
     })?;
 
@@ -925,7 +931,10 @@ fn free_copy_path(parent: &Path, name: &str) -> Result<(PathBuf, String), RpcErr
 
     Err(RpcError::new(
         INTERNAL_ERROR,
-        format!("{name} has already been duplicated {MAX_COPY_ATTEMPTS} times in {}", parent.display()),
+        format!(
+            "{name} has already been duplicated {MAX_COPY_ATTEMPTS} times in {}",
+            parent.display()
+        ),
     ))
 }
 
@@ -960,7 +969,10 @@ fn copy_name(name: &str, n: u32) -> String {
 /// Copy one file, refusing rather than overwriting if `to` appeared meanwhile.
 fn copy_file_new(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut source = std::fs::File::open(from)?;
-    let mut destination = std::fs::OpenOptions::new().write(true).create_new(true).open(to)?;
+    let mut destination = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
     std::io::copy(&mut source, &mut destination)?;
     Ok(())
 }
@@ -1152,7 +1164,9 @@ fn tree_size_at(path: &Path) -> Value {
         // failing the count. The number is for a warning, and a warning that
         // refused to appear because one subfolder was locked would be worse
         // than one that is slightly low.
-        let Ok(reader) = std::fs::read_dir(&dir) else { continue };
+        let Ok(reader) = std::fs::read_dir(&dir) else {
+            continue;
+        };
 
         for entry in reader.flatten() {
             if files + dirs >= TREE_SIZE_CAP {
@@ -1267,7 +1281,9 @@ fn validate_component(name: &str) -> Result<(), RpcError> {
         } else {
             format!("{bad:?}")
         };
-        return Err(refuse(format!("{shown} is not allowed in a Windows file name")));
+        return Err(refuse(format!(
+            "{shown} is not allowed in a Windows file name"
+        )));
     }
 
     if name.ends_with(' ') || name.ends_with('.') {
@@ -1410,10 +1426,7 @@ fn required_string(params: Option<&Value>, key: &str) -> Result<String, RpcError
             INVALID_PARAMS,
             format!("{key} must be a string, got {other}"),
         )),
-        None => Err(RpcError::new(
-            INVALID_PARAMS,
-            format!("{key} is required"),
-        )),
+        None => Err(RpcError::new(INVALID_PARAMS, format!("{key} is required"))),
     }
 }
 
@@ -1497,10 +1510,7 @@ fn resolve_path(
 /// orchestrator knows anything about. Not the process's working directory in
 /// either case, which is `src-tauri/` under `tauri dev` and the install
 /// directory in a release build; neither is anywhere the user would recognise.
-pub(super) fn default_root(
-    app: &AppHandle,
-    context: &CallContext,
-) -> Result<PathBuf, RpcError> {
+pub(super) fn default_root(app: &AppHandle, context: &CallContext) -> Result<PathBuf, RpcError> {
     if let Some(project) = context.project.clone() {
         return Ok(project);
     }
@@ -1851,7 +1861,13 @@ mod tests {
     fn a_name_may_not_be_a_path() {
         let dir = TempDir::new("traversal");
 
-        for name in ["../escaped.txt", r"..\escaped.txt", "sub/nested.txt", "..", "."] {
+        for name in [
+            "../escaped.txt",
+            r"..\escaped.txt",
+            "sub/nested.txt",
+            "..",
+            ".",
+        ] {
             let err = match create_at(&dir.0, name, NewEntry::File) {
                 Ok(_) => panic!("{name} must be refused"),
                 Err(err) => err,
@@ -2002,8 +2018,14 @@ mod tests {
         let dir = TempDir::new("renamebad");
         let path = dir.file("notes.md", "the text");
 
-        for name in ["../escaped.md", r"..\escaped.md", "sub/nested.md", "what?.md", "con", "notes."]
-        {
+        for name in [
+            "../escaped.md",
+            r"..\escaped.md",
+            "sub/nested.md",
+            "what?.md",
+            "con",
+            "notes.",
+        ] {
             let err = match rename_at(&path, name) {
                 Ok(_) => panic!("{name} must be refused"),
                 Err(err) => err,
@@ -2061,7 +2083,10 @@ mod tests {
 
         let value = delete_at(&folder).expect("delete");
 
-        assert_eq!(value["kind"], "dir", "the caller has to know it lost a tree");
+        assert_eq!(
+            value["kind"], "dir",
+            "the caller has to know it lost a tree"
+        );
         assert!(!folder.exists());
     }
 
@@ -2107,7 +2132,11 @@ mod tests {
         assert!(!dir);
         assert_eq!(
             path,
-            base.join("src").join("shell").join("foo.ts").display().to_string()
+            base.join("src")
+                .join("shell")
+                .join("foo.ts")
+                .display()
+                .to_string()
         );
         // The point of the assertion above, stated the other way round: no
         // separator from git survives into the result.

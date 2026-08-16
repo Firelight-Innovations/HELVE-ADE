@@ -56,10 +56,7 @@ export default function DragGhost({
   }
 
   return (
-    <motion.div
-      className={`drag-ghost drag-ghost--${payload.kind}`}
-      style={{ left: x, top: y }}
-    >
+    <motion.div className={`drag-ghost drag-ghost--${payload.kind}`} style={{ left: x, top: y }}>
       <span className="drag-ghost-label">{payload.title}</span>
       {payload.kind === "terminal" && payload.agentFinished && <span className="drag-ghost-dot" />}
     </motion.div>

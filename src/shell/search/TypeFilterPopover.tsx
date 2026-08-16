@@ -27,7 +27,13 @@ export default function TypeFilterPopover({
   onToggle: (kind: SearchKind) => void;
 }) {
   return (
-    <motion.div className="search-filter" variants={popover} initial="initial" animate="animate" exit="exit">
+    <motion.div
+      className="search-filter"
+      variants={popover}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
       <div className="search-filter__header">FILTER BY TYPE</div>
       {ALL_KINDS.map((kind) => {
         const checked = selected.includes(kind);

@@ -161,7 +161,10 @@ pub struct ProjectState {
 
 impl ProjectState {
     fn read(&self) -> store::Stored {
-        self.inner.read().expect("project store lock poisoned").clone()
+        self.inner
+            .read()
+            .expect("project store lock poisoned")
+            .clone()
     }
 }
 

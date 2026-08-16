@@ -136,10 +136,9 @@ mod tests {
             "and what the caller falls back to is still a usable menu"
         );
 
-        let newer: Stored = serde_json::from_str(
-            r#"{"presets":[],"sharedWithTheTeam":["something new"]}"#,
-        )
-        .expect("an unknown field must not fail the read");
+        let newer: Stored =
+            serde_json::from_str(r#"{"presets":[],"sharedWithTheTeam":["something new"]}"#)
+                .expect("an unknown field must not fail the read");
         assert!(newer.presets.is_empty());
     }
 

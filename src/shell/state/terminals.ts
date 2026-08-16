@@ -15,23 +15,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TerminalBusy, TerminalControl, TerminalTransport } from "../contract";
-import {
-  fakeAddTerminal,
-  fakeAddTerminalInPane,
-  fakeCloseTerminal,
-  fakeGroupWith,
-  fakeSetTitle,
-  isFake,
-} from "./fakeBackend";
 
 export const terminalControl: TerminalControl = {
   create(windowLabel, cols, rows) {
-    if (isFake()) return fakeControl.create(windowLabel, cols, rows);
     return invoke<string>("create_terminal", { label: windowLabel, cols, rows });
   },
 
   createInPane(windowLabel, paneId, dir) {
-    if (isFake()) return fakeControl.createInPane(windowLabel, paneId, dir);
     // No `cols`/`rows`. The panel's `create` passes an 80×24 first guess
     // because the caller has a deck to size it against; a pane terminal is
     // mounted by `ToolWindow` over a rectangle nobody has measured at the
@@ -50,18 +40,15 @@ export const terminalControl: TerminalControl = {
   },
 
   split(sourceId, cols, rows) {
-    if (isFake()) return fakeControl.split(sourceId, cols, rows);
     return invoke<string>("split_terminal", { id: sourceId, cols, rows });
   },
 
   close(id) {
     forgetTitleState(id);
-    if (isFake()) return fakeControl.close(id);
     void invoke("close_terminal", { id });
   },
 
   busy(id) {
-    if (isFake()) return fakeControl.busy(id);
     // Rust answers `Option<Busy>`, which arrives as the value or `null`. No
     // mapping needed — `null` already means "idle, close it without asking".
     return invoke<TerminalBusy | null>("terminal_busy", { id });
@@ -69,7 +56,6 @@ export const terminalControl: TerminalControl = {
 
   setTitle(id, title) {
     reportTitle(id, title, (id, title) => {
-      if (isFake()) return fakeControl.setTitle(id, title);
       void invoke("set_terminal_title", { id, title });
     });
   },
@@ -143,8 +129,6 @@ interface PtyAttachment {
 
 export const terminalTransport: TerminalTransport = {
   attach(id, onData) {
-    if (isFake()) return fakeTransport.attach(id, onData);
-
     // `listen` is async but `attach` is not, because the caller is a React
     // effect and an effect's cleanup has to be returned synchronously. So the
     // subscription is set up in the background and this flag covers the window
@@ -213,94 +197,10 @@ export const terminalTransport: TerminalTransport = {
   },
 
   write(id, data) {
-    if (isFake()) return fakeTransport.write(id, data);
     void invoke("terminal_write", { id, data });
   },
 
   resize(id, cols, rows) {
-    if (isFake()) return fakeTransport.resize(id, cols, rows);
     void invoke("terminal_resize", { id, cols, rows });
-  },
-};
-
-// --- the fake ---------------------------------------------------------------
-//
-// `?fake=1` runs the whole shell in a plain browser with no Tauri underneath
-// it, which is how the panel's geometry gets measured rather than eyeballed —
-// see `fakeBackend.ts`. A terminal with no bytes in it would measure as an
-// empty box, so this is a small echo shell: enough output to fill a viewport,
-// enough interactivity to prove keystrokes reach the transport and come back.
-//
-// It is not an emulator and does not try to be. No shipped code path reads it.
-
-const fakeListeners = new Map<string, (chunk: string) => void>();
-
-function fakeEmit(id: string, chunk: string) {
-  fakeListeners.get(id)?.(chunk);
-}
-
-const fakeControl: TerminalControl = {
-  create() {
-    // Delegates id-minting and list membership to `fakeBackend.ts` — this
-    // used to hand back an id nothing else ever heard of, which made the
-    // panel's own "+" invisible under `?fake=1`. Routing through the same
-    // reactive store `useShellState` subscribes to is what makes a fake
-    // session show up as a real tab instead of nowhere at all.
-    return Promise.resolve(fakeAddTerminal("shell"));
-  },
-  createInPane(_windowLabel, paneId, dir) {
-    // Same store, then straight into the tree — which is the whole of what
-    // makes it a *pane* terminal rather than a panel one, here exactly as in
-    // Rust. Without the second half the fake would put it in the panel and the
-    // Apps menu's Terminal row would look like it opened the wrong thing.
-    return Promise.resolve(fakeAddTerminalInPane(paneId, dir));
-  },
-  split(sourceId) {
-    const id = fakeAddTerminal("shell");
-    fakeGroupWith(sourceId, id);
-    return Promise.resolve(id);
-  },
-  close(id) {
-    fakeCloseTerminal(id);
-  },
-  busy(id) {
-    // Every third fake session claims to be busy, so the confirmation dialog
-    // and the silent close are both reachable without a real process.
-    const busy = id.endsWith("3");
-    return Promise.resolve(busy ? { process: "npm" } : null);
-  },
-  setTitle(id, title) {
-    // Routed through the same reactive fake store `fakeAddTerminal` and
-    // friends mutate, so a title reported under `?fake=1` renames the tab
-    // for real — proof this wiring works end to end without a real Tauri
-    // backend, the same way split/close are provable under this flag.
-    fakeSetTitle(id, title);
-  },
-};
-
-const fakeTransport: TerminalTransport = {
-  attach(id, onData) {
-    fakeListeners.set(id, onData);
-    // A frame's delay so the caller's emulator has finished mounting; writing
-    // into an xterm that has not been opened yet is dropped silently.
-    const timer = setTimeout(() => {
-      fakeEmit(id, `\x1b[38;5;180mhelve\x1b[0m ${id} — fake shell, no pty\r\n$ `);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      fakeListeners.delete(id);
-    };
-  },
-
-  write(id, data) {
-    // Local echo, with just enough handling to feel like a line editor:
-    // Return moves to a fresh prompt, Backspace rubs a character out.
-    if (data === "\r") fakeEmit(id, "\r\n$ ");
-    else if (data === "\x7f") fakeEmit(id, "\b \b");
-    else fakeEmit(id, data);
-  },
-
-  resize() {
-    /* Nothing to tell. */
   },
 };

@@ -52,17 +52,13 @@ one URL works under the Vite dev server and under Tauri's asset host alike.
 ## Running them
 
 Nothing extra. `pnpm app` serves the apps from the same Vite server it serves the
-shell from, and `pnpm dev:agent` does the same in a plain browser — where
-`?fake=1` mounts the real app frontends and completes the real handshake.
+shell from, and `pnpm dev:agent` does the same in a plain browser.
 
-Their `invoke` calls have no Rust to reach there, so `fakeAppCall` answers a
-chosen few of them from a fixture: Home's read and list methods, so its layout
-can be measured in a browser in each of its states. Everything else — Files, and
-the three actions that open a *native folder picker* — is refused with `-32603`
-and the app renders its failure path. That line is drawn on purpose: a fixture
-that answered a picker would have to invent a folder the user never chose, and a
-fixture disagreeing with the backend in the direction of looking healthier is
-worse than no fixture at all.
+An app mounted in a browser draws itself and completes the `hello`/`ready`
+handshake, because both of those are the shell's own work. What it cannot do is
+reach Rust: there is no backend under a plain browser, so every `invoke` fails
+and the app renders its failure path. A fixture answering those calls used to
+live in `src/shell/state/fakeBackend.ts` and has been removed.
 
 ## Reporting in at startup
 

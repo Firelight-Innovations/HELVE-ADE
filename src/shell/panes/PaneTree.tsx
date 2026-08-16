@@ -81,11 +81,7 @@ export default function PaneTree(props: PaneTreeProps) {
 }
 
 function Node({ node, ...props }: PaneTreeProps & { node: PaneNode }) {
-  return node.kind === "leaf" ? (
-    <Pane leaf={node} {...props} />
-  ) : (
-    <Split split={node} {...props} />
-  );
+  return node.kind === "leaf" ? <Pane leaf={node} {...props} /> : <Split split={node} {...props} />;
 }
 
 // --- splits -----------------------------------------------------------------

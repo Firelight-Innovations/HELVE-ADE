@@ -43,8 +43,8 @@ Rules that follow from it:
    only file that calls `invoke` or `listen`. A component that needs backend data
    calls a typed wrapper there, and if the wrapper does not exist yet, the fix is
    to add one — not to reach past it.
-2. **No region imports another region's source.** The six shell regions are built
-   against `src/shell/contract.ts` and nothing else. They receive what they need
+2. **No region imports another region's source.** The sixteen shell regions are
+   built against `src/shell/contract.ts` and nothing else. They receive what they need
    as props typed there and hand back what they produce the same way. This is
    what lets them be worked on in parallel without growing into each other.
 3. **The protocol crates depend on nothing above them.** `helve-rpc` and
@@ -57,8 +57,9 @@ Rules that follow from it:
    an app be extracted into its own tool repo later, or a tool absorbed into
    this one, without its interface code changing.
 
-Rule 2 is currently upheld by convention. It is the first candidate for
-mechanical enforcement — see `docs/open-source-plan.md`, phase 6.
+Rule 2 is enforced by ESLint (§10), with the 23 imports that already crossed a
+region boundary grandfathered. The region list lives in `eslint.config.js` and
+has to be extended by hand when a directory is added under `src/shell/`.
 
 ---
 
@@ -251,18 +252,31 @@ in a command is logic that cannot be tested without Tauri.
 
 ## 8. Tests
 
-What exists today: `packages/bridge/src/client.test.ts` under vitest,
-`crates/helve-tool-manifest/tests/reference_manifest.rs`, and
-`examples/echo-tool/tests/roundtrip.rs`. The protocol layer is covered because it
-is a published contract.
+**Every commit and every pull request must pass all tests.** `pnpm test` runs
+both halves; `pnpm verify` runs tests alongside the build, the linters and the
+formatters. A failing test is never fixed by deleting or skipping it.
+
+What exists today — 240 tests, all passing:
+
+| Where | Count | Runner |
+|---|---|---|
+| `src-tauri/src/**` | 183 | `cargo test` |
+| `crates/helve-rpc` | 15 | `cargo test` |
+| `crates/helve-tool-manifest` | 11 | `cargo test` |
+| `examples/echo-tool` | 3 | `cargo test` |
+| `packages/bridge` | 28 | vitest |
+
+The protocol layer is covered because it is a published contract. The state
+machines are now covered too: `shell_state.rs` has 35 tests, `layout.rs` has 32,
+`shell_store.rs` has 11.
 
 What is expected going forward:
 
 1. **Anything in `crates/` needs tests.** Other repositories depend on these. A
    change without a test is a change no tool author can trust.
-2. **State machines get unit tests before they grow.** `shell_state.rs` is 2100
-   lines and has none. New state transitions should arrive with `#[cfg(test)]`
-   coverage even while the old ones lack it.
+2. **State machines get unit tests before they grow.** This was aspirational when
+   first written and is now largely true; keep it that way. New state transitions
+   arrive with `#[cfg(test)]` coverage in the same commit.
 3. **Pure functions in the frontend get vitest coverage** — `toolPresentation`,
    `healthOf`, the layout math. Components do not need render tests yet; that is
    a deliberate omission, not an oversight.
@@ -275,31 +289,87 @@ What is expected going forward:
 
 Before a pull request is ready:
 
-1. `pnpm build` passes — it runs `tsc` first, so this covers types.
-2. `cargo check --manifest-path src-tauri/Cargo.toml` passes.
-3. `cargo test` passes.
-4. New modules have doc comments; new decisions have their rejected alternative
+1. **`pnpm verify` passes.** This is the whole mechanical gate, and it is not
+   optional for any commit or pull request. It runs, in order:
+
+   | Step | Covers |
+   |---|---|
+   | `pnpm build` | `tsc` runs first, so this covers types |
+   | `pnpm test` | all 240 tests, both runners (§8) |
+   | `pnpm lint` | ESLint, clippy, comment density (§10) |
+   | `pnpm format:check` | Prettier and rustfmt |
+
+   `pnpm verify:fast` runs the same four checks in about half the time by
+   skipping `vite build`. It is for iterating, not for signing off — the bundle
+   is what catches a new app missing its `vite.config.ts` entry (§3), which
+   fails silently and is not a type error.
+
+2. New modules have doc comments; new decisions have their rejected alternative
    recorded.
-5. If it touches `docs/tool-protocol.md`, `src/bindings.ts`, or
+3. If it touches `docs/tool-protocol.md`, `src/bindings.ts`, or
    `src/shell/contract.ts`, the PR description says so explicitly. Those three
    are contracts other code and other repositories are built against.
 
-Once phase 2 of `docs/open-source-plan.md` lands, items 1 through 3 become CI
-checks and this list shortens to items 4 and 5.
+Item 1 is mechanical and belongs in CI; once that workflow lands
+(`docs/open-source-plan.md` phase 3) this list shortens to items 2 and 3. Until
+then it is on whoever opens the PR, which is why it is one command.
 
 ---
 
-## 10. Rules not yet enforced
+## 10. What is enforced, and how
 
-Stated here so they are not mistaken for current guarantees:
+Formatters and linters are configured. `rustfmt`, Prettier, `clippy` and ESLint
+all run, and `pnpm lint` is the single command that runs the three checks.
 
-- Region isolation (§1.2) is convention only.
-- The `src/bindings.ts` mirroring (§2) is checked by nobody; `tauri-specta` could
-  generate the file once the command surface stops moving.
-- There is no formatter or linter configured. `rustfmt`, `clippy`, ESLint, and
-  Prettier are phase 2.
+| Rule | Enforced by |
+|---|---|
+| §1.1 only `bindings.ts` may call Tauri | ESLint `no-restricted-imports` |
+| §1.2 region isolation | ESLint, one config block per region |
+| §1.4 apps reach the bridge via `@helve/bridge` | ESLint `no-restricted-imports` |
+| §4.1 module doc comments | `missing_docs`, in `crates/*` only |
+| §5 no `unwrap`/`expect` | `clippy::unwrap_used`, `expect_used` |
+| §5 flat public re-exports | `unreachable_pub`, in `crates/*` only |
+| §6.1 no `any` | `@typescript-eslint/no-explicit-any` |
+| §6.3 `type` vs `interface` | `consistent-type-definitions` |
+| §6.5 hooks own state | `react-hooks/rules-of-hooks` |
+| comment concentration | `scripts/check-comments.mjs` |
+
+Two of those are narrower than they look. `missing_docs` and `unreachable_pub`
+are set in `crates/*/src/lib.rs`, not workspace-wide, because both are about a
+*published surface* — what another repository imports and has to understand.
+`src-tauri` has no such surface; its `pub` items exist to cross module
+boundaries inside one binary. Applying them everywhere produced 1115 warnings,
+816 of them against `src-tauri` alone.
+
+### Baselines
+
+Every rule above was switched on against a codebase written without it, so all
+three checks are **ratchets** rather than gates. Existing violations are
+recorded; the check fails when a count goes up, not when it is non-zero.
+
+| File | Holds |
+|---|---|
+| `eslint-suppressions.json` | 43 findings, ESLint's own bulk-suppression format |
+| `clippy-baseline.json` | 298 warnings, per file and lint |
+| `comment-baseline.json` | 106 files above the density caps |
+
+The rule for all three is the same: **a baseline may shrink, and may not grow.**
+Adding a violation to a file that already has some still fails, because the
+count is per file and per rule. After a cleanup pass, `pnpm baseline` rewrites
+all three and the diff shows exactly what was paid down.
+
+Re-baselining to make a check pass is a decision, not a formality. If a new
+violation is genuinely correct, the honest move is usually to change the rule
+and say why here, rather than to widen the baseline silently.
+
+### Still not enforced
+
+- The `src/bindings.ts` mirroring (§2) is checked by nobody; `tauri-specta`
+  could generate the file once the command surface stops moving.
 - Nothing enforces the RPC method naming convention (§7).
+- Prettier and `rustfmt` are not wired to a pre-commit hook, so formatting is
+  checked (`pnpm format:check`) but not applied automatically.
 
-Each of these is a candidate rule for the architecture checker described in
+Each is a candidate rule for the architecture checker in
 `docs/open-source-plan.md`. A rule that can be stated precisely enough to appear
 in this section is a rule that can be mechanized.

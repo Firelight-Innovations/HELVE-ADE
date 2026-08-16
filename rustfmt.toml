@@ -1,0 +1,7 @@
+# rustfmt runs on defaults. Every option below is already rustfmt's default
+# value and is written out only because `edition` is not inferred when rustfmt
+# is invoked directly rather than through `cargo fmt` — editors and pre-commit
+# hooks commonly do the former, and without this they parse the crate as 2015
+# and mangle `dyn`/`async` code.
+edition = "2021"
+max_width = 100

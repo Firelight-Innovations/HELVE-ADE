@@ -357,7 +357,8 @@ export interface TerminalTransport {
 // there is no watcher — the panel re-asks after every mutation and when the
 // shown tool changes, and that is the whole update model.
 
-export type GitChangeKind = "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+export type GitChangeKind =
+  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
 
 /**
  * The single letter git itself would print in a status short-format, which is
@@ -750,13 +751,10 @@ export type PaneNode =
 // arranged in.
 //
 // Nothing in the shell draws a preset's shape today; the menu draws its name.
-// The tree is typed here anyway because it crosses the wire, and because the
-// `?fake=1` fixture has to apply one without a backend.
+// The tree is typed here anyway because it crosses the wire.
 
 /** Mirrors `presets::PresetSlot`. A terminal is not an app id — see below. */
-export type PresetSlot =
-  | { kind: "app"; appId: string }
-  | { kind: "terminal" };
+export type PresetSlot = { kind: "app"; appId: string } | { kind: "terminal" };
 
 /** Mirrors `presets::PresetNode`. Discriminated on `kind`, like `PaneNode`. */
 export type PresetNode =

@@ -93,47 +93,38 @@ const Explorer = forwardRef<
   ExplorerHandle,
   {
     root: Root | null;
-  /** A change means "drop the cache and re-list whatever is open". */
-  reloadNonce: number;
-  /** The file showing in the viewer, which may have been opened from a tab. */
-  selectedPath: string | null;
-  /**
-   * The root has been listed, or has failed to be — the point at which this
-   * pane is showing rows rather than the space where rows will go. `App.tsx`
-   * takes it as Files' first meaningful frame; nothing else reads it, and it
-   * fires once per root.
-   */
-  onFirstListing: () => void;
-  onRefresh: () => void;
-  /**
-   * Show a file. `preview` is the peek a single click asks for; see `open` in
-   * `tabs/useOpenFiles.ts` for what the tab model does with it. The tree still
-   * does not know what a tab is — it only says how deliberate the gesture was.
-   */
-  onOpenFile: (path: string, preview: boolean) => void;
-  /**
-   * A rename landed on disk. The tab model needs this to move any tab that was
-   * pointing at the old path — including tabs *inside* a renamed folder.
-   */
-  onRenamed: (from: string, to: string) => void;
-  /**
-   * Ask whether to delete this entry. The tree does not own the question: one
-   * confirmation at a time for the whole app, and it is `App.tsx` that knows
-   * about open buffers and therefore about what a delete would cost.
-   */
+    /** A change means "drop the cache and re-list whatever is open". */
+    reloadNonce: number;
+    /** The file showing in the viewer, which may have been opened from a tab. */
+    selectedPath: string | null;
+    /**
+     * The root has been listed, or has failed to be — the point at which this
+     * pane is showing rows rather than the space where rows will go. `App.tsx`
+     * takes it as Files' first meaningful frame; nothing else reads it, and it
+     * fires once per root.
+     */
+    onFirstListing: () => void;
+    onRefresh: () => void;
+    /**
+     * Show a file. `preview` is the peek a single click asks for; see `open` in
+     * `tabs/useOpenFiles.ts` for what the tab model does with it. The tree still
+     * does not know what a tab is — it only says how deliberate the gesture was.
+     */
+    onOpenFile: (path: string, preview: boolean) => void;
+    /**
+     * A rename landed on disk. The tab model needs this to move any tab that was
+     * pointing at the old path — including tabs *inside* a renamed folder.
+     */
+    onRenamed: (from: string, to: string) => void;
+    /**
+     * Ask whether to delete this entry. The tree does not own the question: one
+     * confirmation at a time for the whole app, and it is `App.tsx` that knows
+     * about open buffers and therefore about what a delete would cost.
+     */
     onDelete: (target: DeleteTarget) => void;
   }
 >(function Explorer(
-  {
-    root,
-    reloadNonce,
-    selectedPath,
-    onFirstListing,
-    onRefresh,
-    onOpenFile,
-    onRenamed,
-    onDelete,
-  },
+  { root, reloadNonce, selectedPath, onFirstListing, onRefresh, onOpenFile, onRenamed, onDelete },
   ref,
 ) {
   const [filter, setFilter] = useState("");
@@ -569,11 +560,7 @@ const Explorer = forwardRef<
           className="explorer__refresh"
           data-on={view === "trash" || undefined}
           onClick={() => setView(view === "trash" ? "files" : "trash")}
-          title={
-            view === "trash"
-              ? "Back to the file tree"
-              : "Show what this project has deleted"
-          }
+          title={view === "trash" ? "Back to the file tree" : "Show what this project has deleted"}
           aria-label={view === "trash" ? "Show the file tree" : "Show deleted files"}
           aria-pressed={view === "trash"}
         >
@@ -586,11 +573,7 @@ const Explorer = forwardRef<
           // folders, which is the same promise — "show me what is there now" —
           // about whichever list is on screen.
           onClick={() => (view === "trash" ? setTrashNonce((n) => n + 1) : onRefresh())}
-          title={
-            view === "trash"
-              ? "Re-read the Recycle Bin"
-              : "Re-read the folders that are open"
-          }
+          title={view === "trash" ? "Re-read the Recycle Bin" : "Re-read the folders that are open"}
           aria-label={view === "trash" ? "Refresh the deleted list" : "Refresh the file tree"}
         >
           <Refresh />
@@ -615,125 +598,125 @@ const Explorer = forwardRef<
           not occupy. */}
       {view === "files" && (
         <>
-      <input
-        className="explorer__filter"
-        type="search"
-        value={filter}
-        onChange={(event) => setFilter(event.target.value)}
-        placeholder="Filter"
-        aria-label="Filter the loaded folders"
-        spellCheck={false}
-        autoComplete="off"
-      />
+          <input
+            className="explorer__filter"
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter"
+            aria-label="Filter the loaded folders"
+            spellCheck={false}
+            autoComplete="off"
+          />
 
-      {/* Outside the tree, not inside it: a `role="tree"` may only contain
+          {/* Outside the tree, not inside it: a `role="tree"` may only contain
           tree items, and an empty tree with a paragraph in it is neither. */}
-      {note && <p className={`${note.className} explorer__note`}>{note.text}</p>}
+          {note && <p className={`${note.className} explorer__note`}>{note.text}</p>}
 
-      <div
-        ref={scrollRef}
-        className="explorer__scroll"
-        role="tree"
-        aria-label={root ? `${root.name} files` : "Files"}
-        // One tab stop for the whole tree. 4,000 rows must not be 4,000 of
-        // them, which is the entire reason this is `aria-activedescendant`
-        // rather than a roving `tabindex`.
-        tabIndex={0}
-        // Points at a row that is only in the DOM while it is inside the
-        // window. Scrolling far away from the cursor leaves it dangling for as
-        // long as that is true — inherent to windowing, and every keyboard
-        // move scrolls the row it names back into view.
-        aria-activedescendant={cursorIndex >= 0 ? rowId(cursorIndex) : undefined}
-        onKeyDown={onKeyDown}
-        // The blank space below the last row. A row's own handler stops the
-        // event before it gets here, so this only ever fires for a click that
-        // hit no row — which is the click that means "the project itself".
-        onContextMenu={(event) => {
-          if (!root) return;
-          event.preventDefault();
-          setMenu({
-            path: null,
-            createIn: createInFor(null),
-            // The project root is not this app's to rename or delete — it is
-            // the folder the whole tree is anchored on, and `files/root` is the
-            // only thing that decides where that is.
-            name: null,
-            kind: null,
-            x: event.clientX,
-            y: event.clientY,
-          });
-        }}
-      >
-        {/* Two spacers standing in for the rows that are not mounted. Plain
+          <div
+            ref={scrollRef}
+            className="explorer__scroll"
+            role="tree"
+            aria-label={root ? `${root.name} files` : "Files"}
+            // One tab stop for the whole tree. 4,000 rows must not be 4,000 of
+            // them, which is the entire reason this is `aria-activedescendant`
+            // rather than a roving `tabindex`.
+            tabIndex={0}
+            // Points at a row that is only in the DOM while it is inside the
+            // window. Scrolling far away from the cursor leaves it dangling for as
+            // long as that is true — inherent to windowing, and every keyboard
+            // move scrolls the row it names back into view.
+            aria-activedescendant={cursorIndex >= 0 ? rowId(cursorIndex) : undefined}
+            onKeyDown={onKeyDown}
+            // The blank space below the last row. A row's own handler stops the
+            // event before it gets here, so this only ever fires for a click that
+            // hit no row — which is the click that means "the project itself".
+            onContextMenu={(event) => {
+              if (!root) return;
+              event.preventDefault();
+              setMenu({
+                path: null,
+                createIn: createInFor(null),
+                // The project root is not this app's to rename or delete — it is
+                // the folder the whole tree is anchored on, and `files/root` is the
+                // only thing that decides where that is.
+                name: null,
+                kind: null,
+                x: event.clientX,
+                y: event.clientY,
+              });
+            }}
+          >
+            {/* Two spacers standing in for the rows that are not mounted. Plain
             height, so the scrollbar is the size it would have been. */}
-        <div style={{ height: port.padTop }} />
+            <div style={{ height: port.padTop }} />
 
-        {lines.slice(port.start, port.end).map((line, offset) => {
-          const index = port.start + offset;
+            {lines.slice(port.start, port.end).map((line, offset) => {
+              const index = port.start + offset;
 
-          if (line.kind === "draft") {
-            // Unreachable: the line only exists because `draft` does. Narrowing
-            // rather than asserting, so a future change that breaks the pairing
-            // renders nothing instead of throwing inside the tree.
-            if (!draft) return null;
-            return (
-              <DraftRow
-                // Keyed on everything that decides what the field is asking,
-                // so choosing New File and then New Folder in the same place —
-                // or renaming one row and then another — gets a fresh field
-                // rather than one still holding the abandoned answer.
-                key={`draft:${draft.mode}:${draft.path ?? draft.parent}:${draft.kind}`}
-                kind={draft.kind}
-                mode={draft.mode}
-                initialName={draft.initialName}
-                depth={line.depth}
-                id={rowId(index)}
-                indent={INDENT}
-                gutter={GUTTER}
-                busy={creating}
-                onCommit={commitDraft}
-                onCancel={cancelDraft}
-              />
-            );
-          }
+              if (line.kind === "draft") {
+                // Unreachable: the line only exists because `draft` does. Narrowing
+                // rather than asserting, so a future change that breaks the pairing
+                // renders nothing instead of throwing inside the tree.
+                if (!draft) return null;
+                return (
+                  <DraftRow
+                    // Keyed on everything that decides what the field is asking,
+                    // so choosing New File and then New Folder in the same place —
+                    // or renaming one row and then another — gets a fresh field
+                    // rather than one still holding the abandoned answer.
+                    key={`draft:${draft.mode}:${draft.path ?? draft.parent}:${draft.kind}`}
+                    kind={draft.kind}
+                    mode={draft.mode}
+                    initialName={draft.initialName}
+                    depth={line.depth}
+                    id={rowId(index)}
+                    indent={INDENT}
+                    gutter={GUTTER}
+                    busy={creating}
+                    onCommit={commitDraft}
+                    onCancel={cancelDraft}
+                  />
+                );
+              }
 
-          const { row } = line;
-          return (
-            <TreeRow
-              key={row.entry.path}
-              row={row}
-              id={rowId(index)}
-              cursor={row.entry.path === cursor}
-              open={row.entry.path === selectedPath}
-              git={git}
-              onActivate={activate}
-              onKeep={keep}
-              onContextMenu={(target, event) => {
-                event.preventDefault();
-                // Or the scrollport's own handler runs too and replaces this
-                // with the blank-space menu aimed at the root.
-                event.stopPropagation();
-                setCursor(target.entry.path);
-                setMenu({
-                  path: target.entry.path,
-                  // A folder holds new entries; a file's folder does. Resolved
-                  // here rather than in the menu — `row.parent` is the tree's
-                  // fact, not a path this app is entitled to work out for
-                  // itself — and by the same function File > New File uses, so
-                  // the two gestures can never aim at different folders.
-                  createIn: createInFor(target),
-                  name: target.entry.name,
-                  kind: target.entry.kind,
-                  x: event.clientX,
-                  y: event.clientY,
-                });
-              }}
-            />
-          );
-        })}
+              const { row } = line;
+              return (
+                <TreeRow
+                  key={row.entry.path}
+                  row={row}
+                  id={rowId(index)}
+                  cursor={row.entry.path === cursor}
+                  open={row.entry.path === selectedPath}
+                  git={git}
+                  onActivate={activate}
+                  onKeep={keep}
+                  onContextMenu={(target, event) => {
+                    event.preventDefault();
+                    // Or the scrollport's own handler runs too and replaces this
+                    // with the blank-space menu aimed at the root.
+                    event.stopPropagation();
+                    setCursor(target.entry.path);
+                    setMenu({
+                      path: target.entry.path,
+                      // A folder holds new entries; a file's folder does. Resolved
+                      // here rather than in the menu — `row.parent` is the tree's
+                      // fact, not a path this app is entitled to work out for
+                      // itself — and by the same function File > New File uses, so
+                      // the two gestures can never aim at different folders.
+                      createIn: createInFor(target),
+                      name: target.entry.name,
+                      kind: target.entry.kind,
+                      x: event.clientX,
+                      y: event.clientY,
+                    });
+                  }}
+                />
+              );
+            })}
 
-        <div style={{ height: port.padBottom }} />
-      </div>
+            <div style={{ height: port.padBottom }} />
+          </div>
         </>
       )}
 
