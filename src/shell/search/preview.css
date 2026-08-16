@@ -1,0 +1,103 @@
+/*
+ * The preview pane: the overlay's lower-right region, and the box Monaco
+ * fills inside it.
+ *
+ * Same division of labour `apps/files/ui/src/viewer/text.css`'s header
+ * describes for its own pane: Monaco draws itself from the `helve-preview-dark`
+ * theme in `./previewMonaco.ts`, so this sheet gives the editor a correctly
+ * sized box and draws the handful of things Monaco has no opinion about — the
+ * empty/loading/not-text/failed states, and the truncation banner.
+ *
+ * Loaded from `PreviewPane.tsx`, so it arrives with the Monaco chunk and never
+ * on the path of an overlay that has not yet focused a preview.
+ *
+ * Colours are `src/tokens.css`. Nothing here introduces a hex.
+ */
+
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+
+/*
+ * `min-height: 0` is what makes `automaticLayout` measure correctly at all —
+ * a flex child's default `min-height: auto` refuses to shrink below its
+ * content, and Monaco's content is however tall the file is. Without this the
+ * editor grows to the document's length and the pane scrolls instead of the
+ * editor. Same rule, same reason, as `.text__editor` in Files' sheet.
+ */
+.preview-pane__editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/*
+ * Hidden rather than unmounted while a state message is showing, so the one
+ * editor instance `PreviewPane.tsx` mounts stays alive underneath — visibility
+ * rather than `display: none`, because a display-none'd container reports a
+ * zero-size `getBoundingClientRect()`, and Monaco's `automaticLayout` would lay
+ * out against that the moment it next re-measures.
+ */
+.preview-pane__editor--hidden {
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+}
+
+/* --- state messages ---------------------------------------------------------
+   Centred in the pane rather than pinned to a corner: each of these is the
+   whole content of the pane at that moment, not an annotation on top of a
+   file that is otherwise visible — unlike Files' banners, which sit above a
+   file that is still there. */
+
+.preview-pane__message {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text-dim-2);
+}
+
+.preview-pane__message--error {
+  color: var(--err);
+}
+
+/* A truncated read. Not an error — the file is fine, this pane is only
+   willing to show so much of it — so `--text-dim-2` rather than a status
+   colour, matching `.text__banner--note`'s reasoning in Files' sheet. Unlike
+   that banner, this one never explains a save risk: this pane never writes. */
+.preview-pane__banner {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid var(--line-2);
+  background: var(--surface);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-dim-2);
+}
+
+/* --- the search-match decoration ---------------------------------------------
+   Applied by `revealMatch` in `./previewMonaco.ts` via `createDecorationsCollection`.
+   `--warn`, not `--accent`: this mirrors the theme's own `editor.findMatchBackground`
+   mapping (a find hit is not focus, and this pane's whole reason for existing
+   is showing where a search hit landed — the same relationship). Monaco's CSS
+   classes apply to inline spans, so this is expressed as `background` with an
+   alpha rather than the 8-digit hex the theme colours use. */
+
+.preview-pane__match {
+  background: rgba(217, 169, 63, 0.35); /* --warn @ 0.35 */
+  border-radius: 2px;
+}

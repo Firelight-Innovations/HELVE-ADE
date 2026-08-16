@@ -1,20 +1,26 @@
 /*
- * The Files pane's own layout: a tree, a divider, and everything to the right.
+ * File Explorer's own layout: a tree, filling the pane it is in.
  *
- * Only what spans regions lives here. The tree's rows are in
- * `explorer/explorer.css`, the tab strip's in `tabs/tabs.css`, and each viewer
- * carries its own sheet next to it — which is not just tidiness: a viewer is
- * behind a dynamic `import()`, so its CSS becomes a chunk fetched when that
- * format is first opened, and never otherwise. A single sheet would have put
- * every viewer's styling on the critical path for a plain text file.
+ * Only what spans the app lives here. The tree's rows are in
+ * `explorer/explorer.css`, and the Recycle Bin list is in `trash/trash.css`.
  *
  * Colours are `src/tokens.css`. Nothing here may introduce a hex — see the
  * header of `apps/shared/app.css`. The one carve-out anywhere in this app is
- * the Material file icons, and it is argued for in `icons/materialIcons.ts`.
+ * the Material file icons, and it is argued for in
+ * `packages/file-icons/src/index.ts`.
  *
- * Files draws no `.app__head`. The two shared bars above this frame have
- * already said what this is, and VS Code's explorer earns its density by
- * spending no vertical space on a title.
+ * This app draws no `.app__head`. The two shared bars above this frame have
+ * already said what it is, and VS Code's explorer earns its density by spending
+ * no vertical space on a title.
+ *
+ * ## What used to be here
+ *
+ * A three-region layout — tree, divider, editor — and the divider's own
+ * styling. All of it went with the split: the editor is `apps/viewer/ui/` now,
+ * and dividing a pane is the shell's job, which it already did better. The old
+ * one could only ever put the tree to the left of the file, in one window,
+ * whatever the person wanted. `.viewer`, `.viewer__pending` and
+ * `.viewer__failed` moved verbatim to `apps/viewer/ui/src/viewer.css`.
  */
 
 .files {
@@ -22,107 +28,16 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  /* The tree refuses to shrink past its content without this, and a deep path
+     would push the pane's own edge off-screen. */
+  min-width: 0;
   overflow: hidden;
 }
 
-.files__split {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  /* Both children are `min-width: 0` below. Without that a flex item refuses
-     to shrink past its content's intrinsic width, and a long path in a tab or
-     a wide line in the editor would push the splitter off-screen. */
-  min-width: 0;
-}
-
-/* The right-hand side: tab strip on top, the mounted viewer filling the rest. */
-.files__main {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  background: var(--bg);
-}
-
-.files__empty {
-  margin: auto;
-  padding: 18px;
-}
-
-/* An error from a call that belongs to the app rather than to one pane —
-   `files/root` failing, or a save the tab strip started. Pinned above the
-   split rather than inside a pane, because neither pane owns it. */
+/* An error from a call that belongs to the app rather than to the tree —
+   `files/root` failing. Pinned above the tree rather than inside it, because
+   the tree is what failed to appear. */
 .files__error {
   flex: 0 0 auto;
   margin: 8px 10px 0;
-}
-
-/* --- the divider ----------------------------------------------------------
-   Six pixels of hit area, one pixel of visible line. The handle is wider than
-   the line it draws for the same reason the shell's is: a 1px drag target is
-   a 1px drag target, and `--w-resize-handle` is the number the rest of the
-   product already uses for this. */
-
-.files__splitter {
-  flex: 0 0 var(--w-resize-handle);
-  position: relative;
-  cursor: col-resize;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  /* The pointer handler tracks the window, not this element, so a fast drag
-     that outruns the cursor must not select the tree's text on the way past. */
-  touch-action: none;
-}
-
-.files__splitter::after {
-  content: "";
-  position: absolute;
-  inset: 0 50%;
-  width: 1px;
-  background: var(--line);
-}
-
-.files__splitter:hover::after,
-.files__splitter:focus-visible::after {
-  background: var(--accent);
-}
-
-.files__splitter:focus-visible {
-  outline: none;
-}
-
-/* While dragging, the whole document gets this class — a splitter that only
-   set its own cursor loses it the moment the pointer outruns the handle. */
-.files-dragging,
-.files-dragging * {
-  cursor: col-resize !important;
-  user-select: none;
-}
-
-/* --- the viewer host ------------------------------------------------------
-   `Viewer.tsx`'s wrapper and its two non-content states. What a viewer draws
-   inside this is the viewer's own sheet. */
-
-.viewer {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.viewer__pending {
-  margin: auto;
-  padding: 18px;
-}
-
-.viewer__failed {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 18px;
-  overflow: auto;
 }

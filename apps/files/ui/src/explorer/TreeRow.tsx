@@ -19,7 +19,8 @@
  * a question about `useTree.ts`.
  */
 import type { Row } from "./useTree";
-import { fileIconUrl, folderIconUrl } from "../icons/materialIcons";
+import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
+import { GIT_KIND_LETTER, GIT_KIND_TOKEN, type GitDecoration } from "./gitStatus";
 
 /** Pixels of indent per level. Small: the chevron and icon already read as
  *  structure, and VS Code's tree earns its density by not over-stepping.
@@ -37,6 +38,7 @@ export default function TreeRow({
   id,
   cursor,
   open,
+  git,
   onActivate,
   onKeep,
   onContextMenu,
@@ -48,6 +50,9 @@ export default function TreeRow({
   cursor: boolean;
   /** This row's file is the one showing in the viewer. */
   open: boolean;
+  /** `null` for "no project" or "not a repository" — draw this row exactly
+   *  as if `files/git-status` did not exist. See `gitStatus.ts`. */
+  git: GitDecoration | null;
   onActivate: (row: Row) => void;
   /**
    * The user double-clicked a file: it stops being a preview and stays. Not
@@ -58,6 +63,15 @@ export default function TreeRow({
   onContextMenu: (row: Row, event: React.MouseEvent) => void;
 }) {
   const isDir = row.entry.kind === "dir";
+
+  // This row's own change — a file that was edited, or (git reports these
+  // whole rather than file-by-file) a directory that is itself untracked.
+  const directKind = git?.direct.get(row.entry.path);
+  // Only asked for a directory with no change of its own: a file already has
+  // its answer, and a directory that *is* the change would double-count
+  // itself against `rollup`, which only ever describes what is below it.
+  const rollupKind = !directKind && isDir ? git?.rollup.get(row.entry.path) : undefined;
+  const gitKind = directKind ?? rollupKind;
 
   return (
     <div
@@ -98,12 +112,34 @@ export default function TreeRow({
         draggable={false}
       />
 
-      <span className="explorer__name">{row.entry.name}</span>
+      <span
+        className="explorer__name"
+        // Colour is set inline per row, exactly as `SourceControlView.tsx`
+        // does for the same map — `GIT_KIND_TOKEN` is one of ten CSS custom
+        // properties, not a fixed set of classes, so there is no static class
+        // per kind for this to pick between.
+        style={gitKind ? { color: GIT_KIND_TOKEN[gitKind] } : undefined}
+      >
+        {row.entry.name}
+      </span>
 
-      {/* A directory that would not list. Said on the row rather than as a
-          line of its own, so the flat array stays one entry per tree node and
-          the keyboard never lands on something it cannot open. */}
-      {row.error && <span className="explorer__tag">unreadable</span>}
+      {/* The "unreadable" tag and the git badge share one slot at the row's
+          trailing edge, so at most one row ever pays for the extra element —
+          most rows have neither. */}
+      {(row.error || directKind) && (
+        <span className="explorer__end">
+          {/* A directory that would not list. Said on the row rather than as
+              a line of its own, so the flat array stays one entry per tree
+              node and the keyboard never lands on something it cannot
+              open. */}
+          {row.error && <span className="explorer__tag">unreadable</span>}
+          {directKind && (
+            <span className="explorer__gitBadge" style={{ color: GIT_KIND_TOKEN[directKind] }}>
+              {GIT_KIND_LETTER[directKind]}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }

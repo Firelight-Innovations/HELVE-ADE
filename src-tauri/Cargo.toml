@@ -71,3 +71,20 @@ semver = "1"
 portable-pty = "0.9.0"
 sysinfo = "0.39.6"
 trash = "5.2.6"
+
+# Content search (search.rs), built from the same crates ripgrep itself is
+# built from rather than shelling out to an `rg` binary, which is not
+# guaranteed to be on a user's machine. `ignore` is the directory walker that
+# already knows how to honour `.gitignore` — the reason this replaces the old
+# hardcoded skip list wholesale rather than keeping both. `grep-matcher` is the
+# trait the other two share; `grep-regex` turns a query into a matcher, literal
+# or pattern; `grep-searcher` drives that matcher over a file's bytes, line by
+# line, with binary detection built in.
+ignore = "0.4"
+grep-matcher = "0.1"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+# For escaping a *literal* query into a regex `grep-regex` can compile — see
+# `search::build_matcher`. Already pulled in transitively by `grep-regex`;
+# named directly here because this crate calls its `escape` function itself.
+regex-syntax = "0.8"

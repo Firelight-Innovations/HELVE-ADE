@@ -23,7 +23,7 @@
  * as TypeScript rather than as part of the name.
  */
 import type { DraftKind } from "../ContextMenu";
-import { fileIconUrl, folderIconUrl } from "../icons/materialIcons";
+import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
 import { useInlineName } from "../useInlineName";
 
 /** One sentence, used as both the placeholder and the accessible name — they

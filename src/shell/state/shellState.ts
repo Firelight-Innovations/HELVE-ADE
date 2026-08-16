@@ -22,7 +22,7 @@ import type { Cluster, EngineState, SplitDir, SurfaceInstance } from "../contrac
 // that merely *looked* right once cost — a hardcoded dock list that disagreed
 // with `ShellState::default` hid an empty-switcher bug for the fixture's whole
 // life.
-import { isFake, subscribeFakeShellState, fakeLayout as fake } from "./fakeBackend";
+import { isFake, subscribeFakeShellState, fakeShellState, fakeLayout as fake } from "./fakeBackend";
 
 /** Mirrors `shell_state::WindowGeometry`. Physical pixels. */
 export interface WindowGeometry {
@@ -132,6 +132,22 @@ export function useShellState(): ShellSnapshot | null {
   }, []);
 
   return snapshot;
+}
+
+/**
+ * One-shot read of the shared state, for a caller with no component to hang
+ * `useShellState`'s subscription on.
+ *
+ * `search/openHit.ts` is the reason this exists: resolving where a search
+ * hit's Enter keystroke should open into happens outside any render, so there
+ * is no hook to call and no subscription worth keeping open for a single
+ * answer. Every other reader of this state is a component and should still
+ * prefer `useShellState` — polling on every keystroke would be the wrong
+ * answer for a screen that is already told the moment something changes.
+ */
+export function fetchShellState(): Promise<ShellSnapshot> {
+  if (isFake()) return Promise.resolve(fakeShellState());
+  return invoke<ShellSnapshot>("shell_state");
 }
 
 /** This window's own label, from the URL it was opened with. */

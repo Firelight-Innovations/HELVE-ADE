@@ -51,6 +51,10 @@
   /* Without this, a tall child sets the row's height and the status bar goes
      below the fold — exactly when there is most to report. */
   min-height: 0;
+  /* The positioning context for `splitOverlay`, which pins to this row's box
+     so it covers the split and stops at the bars. Nothing else here is
+     positioned, so this changes no existing layout. */
+  position: relative;
 }
 
 .frame__toolwindow {

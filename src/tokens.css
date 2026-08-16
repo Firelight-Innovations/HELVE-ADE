@@ -60,6 +60,24 @@
   --accent-wash: rgba(217, 138, 63, 0.08);
   --accent-wash-faint: rgba(217, 138, 63, 0.05);
 
+  /* --- commit graph lane colours ------------------------------------------
+     Not from the handoff — everything above this point is, but a commit
+     graph can carry more concurrent lanes than the four semantic status
+     colours (`--accent`/`--ok`/`--warn`/`--err`) cover, and unlike those four
+     a lane colour means nothing beyond "which lane"; reusing a status colour
+     for that would risk implying a lane is an error or a warning. These four
+     extend that rotation (see `LANE_COLORS` in `CommitGraph.tsx`) rather than
+     reaching for a raw hex there, matched to the same mid-tone brightness and
+     ~60% saturation the existing four share so a fifth-through-eighth lane
+     doesn't stand out as an obviously different kind of colour. Do not use
+     these outside the commit graph — they exist for lane-index variety, not
+     as general-purpose palette additions. */
+
+  --graph-blue: #5f95d9;
+  --graph-violet: #956fd9;
+  --graph-teal: #4fc4bd;
+  --graph-pink: #d96fb1;
+
   /* --- type ------------------------------------------------------------- */
 
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;

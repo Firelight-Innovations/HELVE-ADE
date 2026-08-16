@@ -198,45 +198,65 @@ pub fn take_migration_seed(app: &AppHandle) -> Option<PathBuf> {
     taken.filter(|p| p.is_dir())
 }
 
-/// The folder a cluster's work is in, for everything that needs to start
-/// somewhere: a Files app's root, a new terminal's working directory.
+/// Where a cluster's work actually happens, for everything that needs to
+/// start somewhere: a Files app's root, a new terminal's working directory,
+/// a search's scope.
 ///
-/// `None` when that cluster has no project, when `cluster_id` names no cluster,
-/// *or* when the folder is no longer on disk — a caller wanting a directory to
-/// work in should not be handed a path that was true last week.
+/// A worktree wins over the project whenever the cluster has one — see
+/// `ShellState::cluster_root` for why. `None` when that root is no longer on
+/// disk, on top of the plain "no cluster, no root" cases — a caller wanting
+/// a directory to work in should not be handed a path that was true last
+/// week.
 ///
-/// That last filter is why [`cluster_pointer`] exists beside this. The two
-/// differ on exactly one case and it is a case that has to be drawn rather than
-/// hidden: a project whose folder has been deleted or unplugged. This one says
-/// "nowhere to work", which is what a terminal and a file tree need to hear;
-/// that one says "still pointed there", which is what Home needs in order to
-/// draw the row as unavailable instead of claiming nothing is open.
+/// That disk filter is why [`cluster_pointer`] exists beside this. The two
+/// differ on exactly one case and it is a case that has to be drawn rather
+/// than hidden: a project whose folder has been deleted or unplugged. This
+/// one says "nowhere to work", which is what a terminal and a file tree need
+/// to hear; that one says "still pointed there", which is what Home needs in
+/// order to draw the row as unavailable instead of claiming nothing is open.
 pub fn cluster_path(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
-    cluster_pointer(app, cluster_id).filter(|p| p.is_dir())
+    cluster_root_pointer(app, cluster_id).filter(|p| p.is_dir())
 }
 
 /// What a cluster is pointed at, whether or not it is still there.
 ///
-/// See [`cluster_path`] for the one case the two disagree on and why both are
-/// needed. Nothing here touches the disk, which is also what makes it the right
-/// thing for the window title to read: retitling should not cost a `stat` on a
-/// network share every time somebody clicks a chip.
+/// This is the *project*, never the worktree — deliberately, and unlike
+/// [`cluster_path`] and [`cluster_root_pointer`], which follow a worktree
+/// when one is set. Home draws a deleted project's row as unavailable rather
+/// than as closed, and the title bar names the project a cluster is *about*;
+/// both would misreport if this followed the worktree instead. Nothing here
+/// touches the disk, which is also what makes it the right thing for the
+/// window title to read: retitling should not cost a `stat` on a network
+/// share every time somebody clicks a chip.
 pub fn cluster_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
     app.state::<ShellState>()
         .cluster_project(cluster_id)
         .map(PathBuf::from)
 }
 
-/// The project of whatever cluster a window is showing.
+/// What a cluster's work is pointed at, whether or not it is still there —
+/// the worktree-aware counterpart to [`cluster_pointer`], which stays on the
+/// project on purpose. See [`cluster_path`] for the disk-existence filter
+/// this deliberately omits, and `ShellState::cluster_root` for the
+/// precedence itself.
+pub fn cluster_root_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
+    app.state::<ShellState>()
+        .cluster_root(cluster_id)
+        .map(PathBuf::from)
+}
+
+/// The working root of whatever cluster a window is showing.
 ///
-/// The window-shaped question, for the two things that are the window's rather
-/// than any cluster's: the terminal panel, and the OS window title. A terminal
-/// opened in a window starts in the project that window is looking at *at that
-/// moment* and then stays where it is — see `ShellState::active_cluster_project`
-/// for why it does not follow later cluster switches.
+/// The window-shaped question, for the two things that are the window's
+/// rather than any cluster's: the terminal panel, and where it spawns. A
+/// terminal opened in a window starts in the root that window is looking at
+/// *at that moment* and then stays where it is — see
+/// `ShellState::active_cluster_root` for why it does not follow later
+/// cluster switches, and for the worktree-over-project precedence a plain
+/// `active_cluster_project` would have missed.
 pub fn window_path(app: &AppHandle, label: &str) -> Option<PathBuf> {
     app.state::<ShellState>()
-        .active_cluster_project(label)
+        .active_cluster_root(label)
         .map(PathBuf::from)
         .filter(|p| p.is_dir())
 }
@@ -311,8 +331,22 @@ pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSna
     // goes through `ShellState::mutate`, which emits and writes to disk, and
     // holding one store's lock across another's broadcast is how a deadlock
     // gets written.
-    app.state::<ShellState>()
-        .set_cluster_project(app, cluster_id, Some(path.display().to_string()));
+    let shell = app.state::<ShellState>();
+
+    // The worktree goes before the project does, and it is not optional. A
+    // worktree belongs to the repository it was cut from, so a cluster that was
+    // working in one and is now pointed at a *different* project holds a binding
+    // to a checkout of something else entirely — and since a worktree outranks
+    // the project in `cluster_root`, leaving it set would send this cluster's
+    // terminals, file tree and search into the old project's worktree while the
+    // title bar named the new one. Opening a project is the one moment we know
+    // for certain the old binding cannot still be right.
+    //
+    // Ordered first so that no subscriber ever observes the pair mid-swap: the
+    // intermediate state is "new project, no worktree", which is exactly what a
+    // freshly opened project looks like anyway.
+    shell.set_cluster_worktree(app, cluster_id, None);
+    shell.set_cluster_project(app, cluster_id, Some(path.display().to_string()));
 
     retitle(app);
 
@@ -360,8 +394,14 @@ pub fn initialize(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<Proje
 /// in the cluster you are looking at leaves the cluster on the next monitor
 /// exactly where it was — which is the difference this whole change is about.
 pub fn close(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
-    app.state::<ShellState>()
-        .set_cluster_project(app, cluster_id, None);
+    let shell = app.state::<ShellState>();
+
+    // Both, for the reason `open` spells out: a worktree left behind by a closed
+    // project outranks the `None` project in `cluster_root`, so a cluster that
+    // was supposed to have nothing open would still be handing out a directory
+    // to work in. Closing the project closes the checkout it was working in.
+    shell.set_cluster_worktree(app, cluster_id, None);
+    shell.set_cluster_project(app, cluster_id, None);
 
     retitle(app);
     changed(app, cluster_id)

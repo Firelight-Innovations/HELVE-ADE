@@ -23,6 +23,10 @@ import type {
   GitControl,
   GitFileChange,
   GitStatus,
+  GitCommit,
+  GitWorktree,
+  WorktreeControl,
+  WorktreeRef,
   LayoutPreset,
   PaneNode,
   PresetNode,
@@ -35,6 +39,7 @@ import type {
 // which is the tool half of transport B and touches `window.parent` at module
 // load. A table of numbers has no such side effect.
 import { HelveErrorCode } from "../../../packages/bridge/src/errors";
+import type { SearchMatch } from "../search/types";
 import type { ShellSnapshot, TerminalSessionState, WindowPlacement } from "./shellState";
 
 let cached: boolean | null = null;
@@ -2127,6 +2132,13 @@ const fakeGit = {
   branch: "feature/git-source-control",
   ahead: 0,
   behind: 0,
+  // Static, unlike `staged`/`unstaged` below: recomputing a real line-diff
+  // total every time `stage`/`unstage`/`commit` moves an entry between those
+  // two arrays is fixture work nobody spends on here, since nothing renders
+  // from these two except the status bar's own readout. They exist so that
+  // readout has something plausible to draw under `?fake=1` at all.
+  insertions: 187,
+  deletions: 42,
   staged: [] as GitFileChange[],
   unstaged: [
     fakeChange("src/shell/state/git.ts", "modified", false),
@@ -2167,13 +2179,15 @@ export const fakeGitControl: GitControl = {
       branch: fakeGit.branch,
       ahead: fakeGit.ahead,
       behind: fakeGit.behind,
+      insertions: fakeGit.insertions,
+      deletions: fakeGit.deletions,
       staged: fakeGit.staged.map((c) => ({ ...c })),
       unstaged: fakeGit.unstaged.map((c) => ({ ...c })),
     };
     return Promise.resolve(status);
   },
 
-  diff(_toolId, path, staged) {
+  diff(_clusterId, path, staged) {
     const untracked = fakeGit.unstaged.some((c) => c.path === path && c.kind === "untracked");
     return Promise.resolve({
       original: untracked ? "" : `// ${path}\nexport const helve = {\n  seam: "before",\n};\n`,
@@ -2181,12 +2195,12 @@ export const fakeGitControl: GitControl = {
     });
   },
 
-  stage(_toolId, paths) {
+  stage(_clusterId, paths) {
     fakeMove(fakeGit.unstaged, fakeGit.staged, paths, true);
     return Promise.resolve();
   },
 
-  unstage(_toolId, paths) {
+  unstage(_clusterId, paths) {
     fakeMove(fakeGit.staged, fakeGit.unstaged, paths, false);
     return Promise.resolve();
   },
@@ -2202,6 +2216,247 @@ export const fakeGitControl: GitControl = {
     return Promise.resolve();
   },
 };
+
+// --- worktrees ---------------------------------------------------------------
+//
+// Stateful for the same reason source control above is: creating a worktree and
+// then seeing it appear in the list is the loop, and a frozen fixture would make
+// the create button indistinguishable from a broken one.
+//
+// The rule this fixture has to keep is that the main checkout is always present
+// and always first — `git worktree list` prints it that way, `isMain` is derived
+// from that position in `git.rs`, and a fake that ever produced a list without
+// it would let a component ship that crashes on the real backend's first answer.
+
+const FAKE_PROJECT = "C:/Users/dev/code/orchestrator";
+const FAKE_WORKTREE_HOME = "C:/Users/dev/code/.worktrees/orchestrator";
+
+const fakeWorktrees: GitWorktree[] = [
+  {
+    path: FAKE_PROJECT,
+    branch: "main",
+    head: "7b0fc22a1d3e4f5061728394a5b6c7d8e9f00112",
+    isMain: true,
+    locked: false,
+  },
+  {
+    path: `${FAKE_WORKTREE_HOME}/search-and-git`,
+    branch: "search-and-git",
+    head: "d2bf42f9c8b7a6e5d4c3b2a1908f7e6d5c4b3a29",
+    isMain: false,
+    locked: false,
+  },
+];
+
+/**
+ * Which worktree each cluster is bound to, keyed by cluster id.
+ *
+ * The binding lives on `Cluster.worktree` in the real backend and arrives with
+ * `shell:state`. There is no fake shell-state cluster list to hang it off here,
+ * so this map stands in for that field alone — enough for the panel to answer
+ * "which one is this cluster on" without `?fake=1` having to model clusters.
+ */
+const fakeClusterWorktrees = new Map<string, WorktreeRef>();
+
+export const fakeWorktreeControl: WorktreeControl & {
+  reconcile(clusterId: string): Promise<WorktreeRef | null>;
+} = {
+  list() {
+    // Fresh objects per call, for the reason `fakeGitControl.status` gives:
+    // handing out the live array would let a later create mutate a snapshot
+    // React has already rendered from.
+    return Promise.resolve(fakeWorktrees.map((w) => ({ ...w })));
+  },
+
+  create(clusterId, name) {
+    // The same rejections the real backend makes, because the create dialog's
+    // error path is a thing worth being able to see under `?fake=1` — and a
+    // fixture that accepted every name would let a dialog ship with no error
+    // rendering at all.
+    if (fakeWorktrees.some((w) => w.branch === name)) {
+      return Promise.reject(`worktree add failed: \`${name}\` already exists — pick another name.`);
+    }
+
+    const created: GitWorktree = {
+      path: `${FAKE_WORKTREE_HOME}/${name}`,
+      branch: name,
+      head: "0000000000000000000000000000000000000000",
+      isMain: false,
+      locked: false,
+    };
+    fakeWorktrees.push(created);
+
+    const reference: WorktreeRef = { path: created.path, branch: name };
+    fakeClusterWorktrees.set(clusterId, reference);
+    return Promise.resolve({ ...reference });
+  },
+
+  remove(clusterId) {
+    const reference = fakeClusterWorktrees.get(clusterId);
+    if (!reference) return Promise.resolve();
+
+    const at = fakeWorktrees.findIndex((w) => w.path === reference.path);
+    // Never the main checkout, whatever a caller asks: git refuses to remove
+    // the primary working tree, and a fixture that allowed it would model a
+    // state the real backend cannot reach.
+    if (at > 0) fakeWorktrees.splice(at, 1);
+
+    fakeClusterWorktrees.delete(clusterId);
+    return Promise.resolve();
+  },
+
+  reconcile(clusterId) {
+    // Nothing deletes a directory behind `?fake=1`'s back, so the honest fake is
+    // the one that never reconciles anything away and simply reports the
+    // current binding.
+    return Promise.resolve(fakeClusterWorktrees.get(clusterId) ?? null);
+  },
+
+  graph(_clusterId, limit) {
+    return Promise.resolve(fakeCommits.slice(0, limit).map((c) => ({ ...c })));
+  },
+
+  divergence(clusterId) {
+    // `null` for a cluster not on a worktree, because that is the branch the
+    // panel takes to draw its ordinary source-control view instead — and a
+    // fixture that always returned a divergence would let that whole path ship
+    // without ever being looked at.
+    if (!fakeClusterWorktrees.has(clusterId)) return Promise.resolve(null);
+
+    return Promise.resolve({
+      base: "main",
+      mergeBase: "c8b3d4e",
+      commits: 2,
+      files: fakeDivergenceFiles.map((c) => ({ ...c })),
+    });
+  },
+
+  divergenceDiff(_clusterId, path) {
+    return Promise.resolve({
+      original: `// ${path}\nexport const helve = {\n  seam: "at the fork point",\n};\n`,
+      modified: `// ${path}\nexport const helve = {\n  seam: "after this cluster's work",\n  committed: true,\n  uncommitted: true,\n};\n`,
+    });
+  },
+
+};
+
+/**
+ * The divergence list — committed and uncommitted work together.
+ *
+ * Deliberately not the same paths as `fakeGit`'s working-tree list. The two
+ * views answer different questions, and a fixture that made them identical
+ * would hide a panel wired to the wrong one.
+ *
+ * Every entry has `staged: false`, matching the real backend: this view is not
+ * about the index, and a fixture with staged entries here would invite a
+ * component to draw a checkbox that means nothing.
+ */
+const fakeDivergenceFiles: GitFileChange[] = [
+  fakeChange("src-tauri/src/git.rs", "modified", false),
+  fakeChange("src/shell/worktree/CommitGraph.tsx", "added", false),
+  fakeChange("src/shell/state/git.ts", "modified", false),
+  fakeChange("src/shell/worktree/oldWorktreePanel.tsx", "deleted", false),
+  fakeChange("docs/notes/scratch.md", "untracked", false),
+];
+
+/**
+ * A history with an actual fork in it.
+ *
+ * The shape matters more than the contents. A fixture of ten commits in a
+ * straight line would let a graph ship that draws one column and no connectors,
+ * and the first real repository would break it — so this branches at `c4`,
+ * runs two lanes in parallel, and merges them back at `c8`. Every case the
+ * layout has to handle is in here: a fork, two live tips, a merge with two
+ * parents, and a root commit with none.
+ *
+ * Ordered newest first, the way `--date-order` returns it, because a fixture
+ * sorted the other way would hide a component that forgot to reverse it.
+ */
+const fakeCommits: GitCommit[] = [
+  {
+    sha: "c9",
+    short: "c9a1b2c",
+    summary: "Give clusters a worktree of their own",
+    author: "Braden Seaborn",
+    when: 1786847271,
+    parents: ["c8"],
+    refs: ["search-and-git"],
+  },
+  {
+    sha: "c8",
+    short: "c8b3d4e",
+    summary: "Merge the worktree spike back into main",
+    author: "Braden Seaborn",
+    when: 1786847122,
+    parents: ["c7", "c6"],
+    refs: ["main"],
+  },
+  {
+    sha: "c7",
+    short: "c7e5f6a",
+    summary: "Show a pane's tabs as one group",
+    author: "Braden Seaborn",
+    when: 1786846900,
+    parents: ["c5"],
+    refs: [],
+  },
+  {
+    sha: "c6",
+    short: "c6f7a8b",
+    summary: "Spike: a second checkout per cluster",
+    author: "Braden Seaborn",
+    when: 1786846400,
+    parents: ["c4"],
+    refs: ["worktree-spike"],
+  },
+  {
+    sha: "c5",
+    short: "c5a9b0c",
+    summary: "Put every tab in one bar",
+    author: "Braden Seaborn",
+    when: 1786845451,
+    parents: ["c4"],
+    refs: [],
+  },
+  {
+    sha: "c4",
+    short: "c4b1c2d",
+    summary: "Give windows their own terminals",
+    author: "Braden Seaborn",
+    when: 1786836051,
+    parents: ["c3"],
+    refs: [],
+  },
+  {
+    sha: "c3",
+    short: "c3c3d4e",
+    summary: "Draw the secondary panel's collapsed strip",
+    author: "Braden Seaborn",
+    when: 1786830000,
+    parents: ["c2"],
+    refs: [],
+  },
+  {
+    sha: "c2",
+    short: "c2d5e6f",
+    summary: "Teach the frame to resize its panel",
+    author: "Braden Seaborn",
+    when: 1786820000,
+    parents: ["c1"],
+    refs: [],
+  },
+  {
+    sha: "c1",
+    short: "c1e7f8a",
+    summary: "First commit",
+    author: "Braden Seaborn",
+    when: 1786810000,
+    // A root commit. The layout has to survive one, and a fixture without it
+    // would let a component ship that assumes every row has a parent to reach.
+    parents: [],
+    refs: [],
+  },
+];
 
 // --- the fake shell state store ---------------------------------------------
 //
@@ -3363,6 +3618,222 @@ export const fakePresets = {
     }
   },
 };
+
+// --- content search -----------------------------------------------------------
+//
+// The stand-in for `search_content` (`src-tauri/src/search.rs`), which is a real
+// `ignore` + `grep-searcher` walk and therefore the one part of search that
+// cannot run in a browser at all.
+//
+// This searches **the same fixture tree `files/list` and `files/read` already
+// serve** rather than a corpus of its own, and that is the whole point. Every
+// region of the overlay reads from a different source — the results list from
+// here, the locator tree from `files/list`, the preview from `files/read` — so
+// a fixture that invented its own files would produce rows whose locator could
+// not reveal them and whose preview came back empty. Searching the real tree
+// makes all three agree, which is the only way `?fake=1` can verify the overlay
+// end to end.
+//
+// It honours the fixture's own `.gitignore` for the same reason the real walk
+// does: without it, `node_modules` alone contributes 240 packages of
+// boilerplate and every query drowns in them, which would look like a ranking
+// bug rather than a missing exclusion.
+
+/** Mirrors `search::SearchFileHit`. */
+interface FakeSearchFileHit {
+  path: string;
+  matches: SearchMatch[];
+}
+
+/** Mirrors `search::SearchResponse`. */
+interface FakeSearchResponse {
+  hits: FakeSearchFileHit[];
+  truncated: boolean;
+}
+
+// The same two ceilings `search.rs` applies, restated rather than imported
+// because Rust constants cannot cross into TypeScript. If they drift, the fake
+// stops predicting the real one's `truncated` — so they are named identically
+// on both sides to make the pairing greppable.
+const FAKE_MAX_MATCHES = 1000;
+const FAKE_MAX_HITS = 500;
+
+/**
+ * The subset of `.gitignore` syntax this fixture's own ignore file uses:
+ * `node_modules/`, `dist/`, `/target`, `*.log`, `.DS_Store`.
+ *
+ * Deliberately not a general implementation. The real walk gets full gitignore
+ * semantics from the `ignore` crate, and reimplementing negations, `**`, and
+ * nested ignore files here would be a second implementation to keep correct for
+ * no gain — this one only has to be right about the five patterns the fixture
+ * actually contains.
+ */
+function fakeIsIgnored(relative: string, patterns: string[]): boolean {
+  const segments = relative.split("\\");
+  const name = segments[segments.length - 1] ?? "";
+
+  return patterns.some((pattern) => {
+    if (pattern.startsWith("*.")) {
+      return name.endsWith(pattern.slice(1));
+    }
+    if (pattern.startsWith("/")) {
+      // Anchored to the root: matches that one top-level entry and its subtree.
+      const anchored = pattern.slice(1);
+      return segments[0] === anchored;
+    }
+    const bare = pattern.endsWith("/") ? pattern.slice(0, -1) : pattern;
+    // Unanchored: matches at any depth, which is what makes `node_modules/`
+    // exclude a nested one too.
+    return segments.includes(bare);
+  });
+}
+
+/** The fixture tree's `.gitignore`, parsed once per search. Comments and blank
+ *  lines dropped, as git does. */
+function fakeIgnorePatterns(root: string): string[] {
+  const node = fileTree().get(joinPath(root, ".gitignore"));
+  if (!node || node.text === null) return [];
+  return node.text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+}
+
+/**
+ * The query, as one `RegExp`, built the same way `search::build_matcher` builds
+ * its `grep-regex` matcher.
+ *
+ * Literal mode escapes rather than falling back to `indexOf`, for the reason
+ * the Rust side gives: `wholeWord` is a word-boundary wrapper around the
+ * pattern, so a literal search still has to go through the regex engine for
+ * that flag to mean anything.
+ *
+ * Throws on an uncompilable pattern, standing in for `AppError::Search`. That
+ * is a real state the find-and-replace UI has to handle — someone typing a
+ * regex will pass through `[` on the way to `[a-z]` — and a fixture that
+ * silently returned nothing would hide it until the packaged build.
+ */
+function fakeSearchMatcher(
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  regex: boolean,
+): RegExp {
+  const body = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const source = wholeWord ? `\\b(?:${body})\\b` : body;
+  try {
+    return new RegExp(source, caseSensitive ? "g" : "gi");
+  } catch {
+    throw new Error(`search: invalid pattern: ${query}`);
+  }
+}
+
+/**
+ * Every match on one line.
+ *
+ * `column` is `index + 1` with no conversion, and that is not a shortcut the
+ * Rust side also takes: JavaScript string indices are already UTF-16 code
+ * units, which is exactly what `search.rs`'s `utf16_column` converts its byte
+ * offsets *into*. The two agree by construction on non-ASCII lines rather than
+ * by coincidence.
+ *
+ * The `lastIndex` nudge is not optional. A user-supplied pattern that can match
+ * empty — `a*`, `^`, `\b` — leaves `lastIndex` where it found it, and a `g`
+ * regex that never advances is an infinite loop with the window frozen.
+ */
+function fakeLineMatches(line: string, lineNumber: number, matcher: RegExp): SearchMatch[] {
+  const found: SearchMatch[] = [];
+  matcher.lastIndex = 0;
+
+  for (let m = matcher.exec(line); m !== null; m = matcher.exec(line)) {
+    if (m[0].length > 0) {
+      found.push({ line: lineNumber, column: m.index + 1, text: line, length: m[0].length });
+    }
+    if (matcher.lastIndex === m.index) matcher.lastIndex += 1;
+  }
+
+  return found;
+}
+
+/** The cluster's project directory, resolved the way `search_content` resolves
+ *  `cluster_id` through `project::cluster_path` — never a path handed in by the
+ *  caller. `null` for a cluster with nothing open, which answers empty. */
+function fakeClusterRoot(clusterId: string): string | null {
+  for (const window of fakeShellState().windows) {
+    for (const cluster of window.clusters) {
+      if (cluster.id === clusterId) return cluster.project;
+    }
+  }
+  return null;
+}
+
+/**
+ * Answer one `search_content` call from the fixture tree.
+ *
+ * Matches names *and* contents, like the real one: a file whose name matches
+ * but whose text does not still reports as a hit with an empty `matches`, which
+ * is the name-only case `SearchHit.matches` documents and the results list
+ * draws as a lone row.
+ *
+ * Binary files (`text === null`) get the name check and are never scanned,
+ * mirroring `MAX_CONTENT_BYTES` and `grep-searcher`'s binary detection — for
+ * the same reason, which is that there is nothing in them a person searching
+ * for a word wants to see.
+ */
+export function fakeSearchContent(
+  clusterId: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  regex: boolean,
+): Promise<FakeSearchResponse> {
+  const root = fakeClusterRoot(clusterId);
+  if (root === null || query === "") return Promise.resolve({ hits: [], truncated: false });
+
+  let matcher: RegExp;
+  try {
+    matcher = fakeSearchMatcher(query, caseSensitive, wholeWord, regex);
+  } catch (err) {
+    return Promise.reject(err);
+  }
+
+  const patterns = fakeIgnorePatterns(root);
+  const prefix = root.endsWith("\\") ? root : `${root}\\`;
+  const hits: FakeSearchFileHit[] = [];
+  let total = 0;
+  let truncated = false;
+
+  // Insertion order is tree order — see `buildTree` — so hits come out in the
+  // order a walk would produce them rather than needing a sort.
+  for (const [path, node] of fileTree()) {
+    if (total >= FAKE_MAX_MATCHES || hits.length >= FAKE_MAX_HITS) {
+      truncated = true;
+      break;
+    }
+    if (node.kind !== "file" || !path.startsWith(prefix)) continue;
+
+    const relative = path.slice(prefix.length);
+    if (fakeIsIgnored(relative, patterns)) continue;
+
+    const name = relative.slice(relative.lastIndexOf("\\") + 1);
+    matcher.lastIndex = 0;
+    const nameMatches = matcher.test(name);
+
+    const matches: SearchMatch[] = [];
+    if (node.text !== null) {
+      const lines = node.text.split(/\r?\n/);
+      for (let i = 0; i < lines.length && total + matches.length < FAKE_MAX_MATCHES; i += 1) {
+        matches.push(...fakeLineMatches(lines[i], i + 1, matcher));
+      }
+    }
+
+    if (matches.length === 0 && !nameMatches) continue;
+    hits.push({ path, matches });
+    total += matches.length;
+  }
+
+  return Promise.resolve({ hits, truncated });
+}
 
 /** Port of `presets::mint_id`: a slug of the name, numbered if it is taken. */
 function mintFakePresetId(name: string): string {

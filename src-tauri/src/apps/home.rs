@@ -38,6 +38,7 @@
 
 use crate::apps::CallContext;
 use crate::error::AppError;
+use crate::git;
 use crate::project::{self, ProjectSnapshot};
 use crate::state::AppState;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
@@ -102,6 +103,20 @@ pub fn call(
         )),
         "home/close-project" => shape(project::close(app, context.require_cluster()?)),
 
+        // Whether this cluster could work in a worktree, and whether it already
+        // is. Home asks after every open so it knows whether to offer one, and
+        // the answer is deliberately a separate round trip rather than a field
+        // on the snapshot: `git rev-parse` is a process spawn, and every other
+        // caller of `home/state` — every redraw of the Recent list — would pay
+        // for it to render a heading.
+        "home/worktree-state" => worktree_state(app, context),
+        "home/worktree-create" => {
+            let cluster = context.require_cluster()?;
+            let name = name_param(params.as_ref())?;
+            git::git_worktree_create(app.clone(), cluster.to_string(), name).map_err(rpc)?;
+            worktree_state(app, context)
+        }
+
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no such method: {method}"),
@@ -162,6 +177,60 @@ fn pick(app: &AppHandle, title: &str) -> Option<PathBuf> {
         dialog = dialog.set_parent(&window);
     }
     dialog.pick_folder()
+}
+
+/// Whether this cluster can be put on a worktree, and whether it already is.
+///
+/// Three fields, and the frontend needs all three to decide what to draw:
+/// `isRepo` is false for a project that is not under git at all, which is the
+/// case where the offer must not appear; `worktree` being set means this cluster
+/// is already working in one, so the offer would be asking a second time; and
+/// `taken` lets the dialog reject a duplicate name as the user types rather than
+/// after a round trip that has already failed.
+///
+/// An unopened project answers the same as a non-repository. Both mean "there is
+/// nothing to offer here", and Home draws nothing for either.
+fn worktree_state(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let Some(cluster) = context.cluster_id.as_deref() else {
+        return Ok(json!({ "isRepo": false, "worktree": null, "taken": [] }));
+    };
+
+    // `git_worktrees` already answers an empty list for "no project" and "not a
+    // repository" alike, so the one call covers every case that is not an
+    // outright git failure.
+    let worktrees = git::git_worktrees(app.clone(), cluster.to_string()).map_err(rpc)?;
+
+    let taken: Vec<&str> = worktrees
+        .iter()
+        .filter_map(|w| w.branch.as_deref())
+        .collect();
+
+    let current = app
+        .state::<crate::shell_state::ShellState>()
+        .cluster_worktree(cluster);
+
+    Ok(json!({
+        "isRepo": !worktrees.is_empty(),
+        "worktree": current,
+        "taken": taken,
+    }))
+}
+
+/// The required `name` parameter for `home/worktree-create`.
+///
+/// Only checked for being a non-empty string here. What makes a name *usable* —
+/// legal as both a branch and a folder on Windows — is `git::validate_worktree_
+/// name`, and it stays there so that the rule has one home rather than a copy
+/// on each path that can reach it.
+fn name_param(params: Option<&Value>) -> Result<String, RpcError> {
+    match params.and_then(|p| p.get("name")) {
+        Some(Value::String(raw)) if !raw.is_empty() => Ok(raw.clone()),
+        Some(other) => Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("name must be a non-empty string, got {other}"),
+        )),
+        None => Err(RpcError::new(INVALID_PARAMS, "name is required")),
+    }
 }
 
 /// The required `path` parameter, for the methods that act on a row the frontend

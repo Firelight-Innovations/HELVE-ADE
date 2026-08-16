@@ -32,6 +32,7 @@
  *   theme note below for what happens when that one moves in here.
  */
 import * as monaco from "monaco-editor/editor/editor.api";
+import type { GitHunk } from "./gitHunks";
 
 /**
  * Every editor contribution Monaco ships.
@@ -113,7 +114,7 @@ import "monaco-editor/languages/definitions/ini/register";
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
-import { TOML_CONFIGURATION, TOML_LANGUAGE } from "./toml";
+import { registerToml } from "@helve/monaco-languages";
 
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
@@ -159,19 +160,18 @@ jsonDefaults.setDiagnosticsOptions({ ...jsonDefaults.diagnosticsOptions, enableS
 /**
  * TOML, which Monaco does not ship and this app cannot do without.
  *
- * The grammar is `./toml.ts`; that file argues for its own existence and lists
- * what the `ini` stand-in it replaced got wrong. Registered here rather than
- * there so that the rule at the top of this file still holds — one module
- * touches `monaco-editor`, and a grammar is data.
+ * The grammar used to be `./toml.ts`, written for this editor. It has moved to
+ * `@helve/monaco-languages`, unchanged, because there are now three editors in
+ * HELVE that need it and only two of them are in this app's half of the
+ * repository — `src/` and `apps/files/` may not import each other, so a package
+ * is the only ground all three can stand on. That file still argues for its own
+ * existence and still lists what the `ini` stand-in it replaced got wrong.
  *
- * Both extensions are declared on the language itself as well as in
- * `LANGUAGE_BY_EXTENSION` below. The table is what this app resolves through;
- * the declaration here is what Monaco's own machinery reads, and a model
- * created by URI without a language would otherwise find nothing.
+ * Called here rather than at import time inside the package so that the rule at
+ * the top of this file still holds: one module touches `monaco-editor`, and the
+ * package it takes the grammar from touches it only as a type.
  */
-monaco.languages.register({ id: "toml", extensions: [".toml", ".helve"], aliases: ["TOML"] });
-monaco.languages.setLanguageConfiguration("toml", TOML_CONFIGURATION);
-monaco.languages.setMonarchTokensProvider("toml", TOML_LANGUAGE);
+registerToml(monaco);
 
 /**
  * The editor theme, defined once at module scope.
@@ -371,7 +371,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
    * this one.
    *
    * This is also the pairing that makes the icon work land: `.helve` gets the
-   * HELVE glyph from `icons/materialIcons.ts` *and* the colour of the format it
+   * HELVE glyph from `packages/file-icons/src/index.ts` *and* the colour of the format it
    * actually is.
    */
   toml: "toml",
@@ -504,6 +504,301 @@ export function mountEditor(container: HTMLElement, model: TextModel, readOnly: 
  */
 export function bindSave(editor: CodeEditor, run: () => void): void {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, run);
+}
+
+/**
+ * The dirty-diff gutter: a coloured bar beside every changed line, each of
+ * which opens an inline peek on click. The caller holds one of these per
+ * mounted editor and disposes it exactly where it disposes the editor — see
+ * `TextViewer.tsx`.
+ */
+export interface GitGutter {
+  /**
+   * Replace the set of hunks this editor is showing bars for, and the text of
+   * HEAD they were computed against.
+   *
+   * `headText` does not change from one call to the next within a single
+   * file open — a save changes the working copy, not HEAD — so the caller is
+   * expected to fetch it once and pass the same string on every subsequent
+   * call; this only takes it as a parameter rather than a constructor
+   * argument so a peek opened before the first successful fetch has
+   * something other than `undefined` to close over.
+   *
+   * Always closes an open peek first. A peek is anchored to a line number
+   * that only means what it did for the hunks it was opened against — after
+   * a save, the same line can belong to a different hunk or none at all, and
+   * a peek left open across that swap would show text next to a bar it no
+   * longer describes.
+   */
+  update(hunks: GitHunk[], headText: string): void;
+  dispose(): void;
+}
+
+/**
+ * Rows of vertical space one peek needs, in the editor's own line height
+ * rather than a fixed pixel count — so it does not clip if `mountEditor` ever
+ * grows a font-size option, and lines up with the surrounding text at
+ * whatever size the editor is actually drawing.
+ */
+function peekHeightPx(editor: CodeEditor, rows: number): number {
+  const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+  return rows * lineHeight + 12;
+}
+
+/**
+ * Whether `line` falls inside the current-file span a hunk covers.
+ *
+ * A deletion covers no current line at all — its `lines` is 0 — so it can
+ * only ever match the one line its wedge is drawn against, which is `start`
+ * itself; see `hunkDecoration` below for why that is where the wedge sits.
+ */
+function hunkCoversLine(hunk: GitHunk, line: number): boolean {
+  if (hunk.kind === "deleted") return line === hunk.start;
+  return line >= hunk.start && line <= hunk.start + hunk.lines - 1;
+}
+
+/**
+ * One hunk, as a Monaco line decoration.
+ *
+ * `isWholeLine` is what makes `linesDecorationsClassName` paint every line
+ * the range crosses rather than only the one its column sits on — without it
+ * a three-line addition would show a bar on its first line alone.
+ *
+ * A deletion's range covers only `start`, on both ends: it has no lines of
+ * its own to span, and `start` is exactly the line the CSS wedge in
+ * `text.css` is drawn to point at.
+ */
+function hunkDecoration(hunk: GitHunk): monaco.editor.IModelDeltaDecoration {
+  const last = hunk.kind === "deleted" ? hunk.start : hunk.start + hunk.lines - 1;
+  return {
+    range: new monaco.Range(hunk.start, 1, last, 1),
+    options: {
+      isWholeLine: true,
+      linesDecorationsClassName: `text__gitgutter text__gitgutter--${hunk.kind}`,
+    },
+  };
+}
+
+/**
+ * HEAD's text, split into lines.
+ *
+ * `\r?\n` and not a plain `"\n"`: this project is developed on Windows, and
+ * git hands back whichever line ending the file's `core.autocrlf` handling
+ * produced. Splitting on `"\n"` alone would leave a trailing `\r` on every
+ * line, which renders as an invisible difference on a line that is actually
+ * identical to the one below it in the peek — a confusing thing to debug from
+ * a screenshot, since the two lines look the same.
+ */
+function headLines(headText: string): string[] {
+  return headText === "" ? [] : headText.split(/\r?\n/);
+}
+
+/**
+ * One row of the peek, coloured by which side of the diff it came from.
+ *
+ * A `div` rather than a line inside one shared `<pre>`: each row needs its
+ * own background tint, and a background painted per line is what makes this
+ * read as a diff instead of two blocks of plain text.
+ */
+function peekRow(kind: "removed" | "added", text: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `text__gitpeek-row text__gitpeek-row--${kind}`;
+  row.textContent = text;
+  return row;
+}
+
+/**
+ * The most rows a peek will draw, across both of its blocks.
+ *
+ * A ceiling rather than a preference. The peek is a view zone, so its height is
+ * real document flow — an uncapped one over a hunk that deleted four thousand
+ * lines is a peek several screens tall that pushes the rest of the file out of
+ * view, and since a peek is closed by clicking the same gutter bar that opened
+ * it, that bar is now scrolled far off screen. One click, stuck editor.
+ *
+ * Forty is chosen for what this view is for: glancing at what changed, not
+ * reading the file. Anything longer is a job for the diff view.
+ */
+const PEEK_MAX_ROWS = 40;
+
+/**
+ * How many rows each side of the peek may draw.
+ *
+ * Split rather than first-come, because a hunk that removed three thousand
+ * lines and added five would otherwise spend the entire budget on the removed
+ * side and show none of what replaced it — which is the half the reader is
+ * usually looking for. Each side is guaranteed half the budget, and whatever
+ * the other side does not need is handed back, so the common case of a small
+ * hunk is capped by nothing at all.
+ */
+function peekBudget(removed: number, added: number): [number, number] {
+  if (removed + added <= PEEK_MAX_ROWS) return [removed, added];
+
+  const half = Math.floor(PEEK_MAX_ROWS / 2);
+  const forRemoved = Math.min(removed, Math.max(half, PEEK_MAX_ROWS - added));
+  return [forRemoved, PEEK_MAX_ROWS - forRemoved];
+}
+
+/**
+ * A dim row standing in for what the cap left out.
+ *
+ * Present so that a truncated peek cannot be mistaken for the whole change —
+ * a reader who saw forty rows and no marker would reasonably conclude that was
+ * all of it, which is a worse failure than showing nothing.
+ */
+function peekMore(count: number): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "text__gitpeek-row text__gitpeek-row--more";
+  row.textContent = `… ${count.toLocaleString()} more line${count === 1 ? "" : "s"}`;
+  return row;
+}
+
+/**
+ * The peek's content: HEAD's lines for this hunk, then the current file's,
+ * each read straight from its source rather than cached anywhere.
+ *
+ * HEAD's side comes from `headText`, fetched once when the file opened —
+ * `originalStart` is 1-based like the rest of `GitHunk`, so the slice below
+ * subtracts 1 before indexing. The current side is read off the model itself
+ * rather than off the last `files/read`, so a peek can never disagree with an
+ * edit typed since the last save.
+ *
+ * Both slices fall out of one rule with no per-`kind` branching needed: an
+ * addition has `originalLines: 0`, so its HEAD slice is empty and only the
+ * added rows draw; a deletion has `lines: 0`, so only the removed rows draw.
+ * A modification draws both, in the order a unified diff would.
+ */
+function buildPeek(hunk: GitHunk, model: TextModel, headText: string): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "text__gitpeek";
+
+  const before = headLines(headText).slice(
+    hunk.originalStart - 1,
+    hunk.originalStart - 1 + hunk.originalLines,
+  );
+
+  // The model is the authority on how many lines are actually there. `lines`
+  // comes from a diff taken against the file as it was on disk, and the user
+  // may have deleted lines since without saving — reading past the end would
+  // throw inside `getLineContent` and take the whole peek with it.
+  const after = Math.min(hunk.lines, model.getLineCount() - hunk.start + 1);
+
+  const [removedRows, addedRows] = peekBudget(before.length, Math.max(after, 0));
+
+  for (const line of before.slice(0, removedRows)) root.appendChild(peekRow("removed", line));
+  if (before.length > removedRows) root.appendChild(peekMore(before.length - removedRows));
+
+  for (let i = 0; i < addedRows; i += 1) {
+    root.appendChild(peekRow("added", model.getLineContent(hunk.start + i)));
+  }
+  if (after > addedRows) root.appendChild(peekMore(after - addedRows));
+
+  return root;
+}
+
+/**
+ * How tall the peek's view zone has to be, in editor lines.
+ *
+ * Derived from what `buildPeek` will actually draw rather than from the hunk's
+ * own counts, because the two stopped agreeing the moment the cap above
+ * existed — a zone sized to four thousand lines around forty rows of content
+ * is the same stuck editor by another route. The `+1` covers a truncation
+ * marker; one spare row costs nothing and a clipped last line looks broken.
+ */
+function peekHeight(hunk: GitHunk, model: TextModel, headText: string): number {
+  const before = Math.min(
+    hunk.originalLines,
+    Math.max(headLines(headText).length - (hunk.originalStart - 1), 0),
+  );
+  const after = Math.max(Math.min(hunk.lines, model.getLineCount() - hunk.start + 1), 0);
+  const [removedRows, addedRows] = peekBudget(before, after);
+
+  const markers = (before > removedRows ? 1 : 0) + (after > addedRows ? 1 : 0);
+  return Math.max(removedRows + addedRows + markers, 1);
+}
+
+/**
+ * Mount the gutter and its click-to-peek behaviour over an already-mounted
+ * editor.
+ *
+ * A decorations *collection* rather than the older `deltaDecorations(old,
+ * new)` call: `.set()` replaces the whole set in one step and `.clear()` is
+ * the teardown, which is exactly update/dispose and one fewer id for this
+ * module to track by hand.
+ *
+ * The mouse listener is registered once, for the life of the editor, and
+ * reads `hunks` out of a closure variable `update` reassigns — cheaper than
+ * tearing the listener down and rebuilding it on every save, which is when
+ * `update` is called a second time for the same editor.
+ */
+export function createGitGutter(editor: CodeEditor): GitGutter {
+  const decorations = editor.createDecorationsCollection();
+  let hunks: GitHunk[] = [];
+  let headText = "";
+  let peek: { index: number; zoneId: string } | null = null;
+
+  function closePeek(): void {
+    if (!peek) return;
+    const zoneId = peek.zoneId;
+    peek = null;
+    editor.changeViewZones((accessor) => accessor.removeZone(zoneId));
+  }
+
+  function openPeek(index: number): void {
+    const hunk = hunks[index];
+    const model = editor.getModel();
+    if (!hunk || !model) return;
+
+    const dom = buildPeek(hunk, model, headText);
+    // Asked of the same rules `buildPeek` draws by, not of the hunk's raw
+    // counts — see `peekHeight`. Sizing this from `originalLines + lines` would
+    // reintroduce the multi-screen zone the row cap exists to prevent.
+    const rows = peekHeight(hunk, model, headText);
+    editor.changeViewZones((accessor) => {
+      const zoneId = accessor.addZone({
+        // A deletion has no lines of its own to sit after, so its peek opens
+        // directly above the line its wedge points at — line 0 is a legal
+        // `afterLineNumber` and means "before the first line".
+        afterLineNumber:
+          hunk.kind === "deleted" ? Math.max(hunk.start - 1, 0) : hunk.start + hunk.lines - 1,
+        heightInPx: peekHeightPx(editor, rows),
+        domNode: dom,
+      });
+      peek = { index, zoneId };
+    });
+  }
+
+  const click = editor.onMouseDown((e) => {
+    if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS) return;
+    const line = e.target.position?.lineNumber;
+    if (line === undefined) return;
+
+    const index = hunks.findIndex((hunk) => hunkCoversLine(hunk, line));
+    if (index === -1) return;
+
+    // A second click on the same bar is the toggle closed — without it there
+    // would be no way to dismiss a peek short of scrolling it out of view.
+    if (peek?.index === index) {
+      closePeek();
+      return;
+    }
+    closePeek();
+    openPeek(index);
+  });
+
+  return {
+    update(next, nextHeadText) {
+      hunks = next;
+      headText = nextHeadText;
+      closePeek();
+      decorations.set(next.map(hunkDecoration));
+    },
+    dispose() {
+      closePeek();
+      decorations.clear();
+      click.dispose();
+    },
+  };
 }
 
 /** One CSS custom property off the root element, trimmed. `""` if unset. */

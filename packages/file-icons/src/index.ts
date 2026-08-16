@@ -1,42 +1,46 @@
 /**
- * File-type icons for the Files tree, from VS Code's Material Icon Theme.
+ * File-type icons from VS Code's Material Icon Theme, shared by the Files app
+ * and the shell.
  *
  * ## This is a deliberate carve-out from the icon rule
  *
- * `src/ui/Icon.tsx` says every glyph in this codebase is hand-authored inline
+ * `src/ui/Icon.tsx` says every glyph in the shell is hand-authored inline
  * JSX, strokes `currentColor`, and hardcodes no hex. These do the opposite:
  * they are external, multi-colour, flat SVG files loaded over a URL.
  *
- * The reason is that for these icons the colour *is* the information. A tree of
- * fifty rows is scanned, not read — the orange of a `.rs` against the blue-grey
- * of a `.toml` against the yellow of a `.json` is what lets you find the file
- * you want without reading a single filename. Recolouring them to
- * `currentColor` would delete the entire point and leave fifty identical grey
- * shapes. That is a different argument from "an icon package is convenient",
- * and it applies to nothing else in the app.
+ * The reason is that for these icons the colour *is* the information. A tree
+ * of fifty rows is scanned, not read — the orange of a `.rs` against the
+ * blue-grey of a `.toml` against the yellow of a `.json` is what lets you
+ * find the file you want without reading a single filename. Recolouring them
+ * to `currentColor` would delete the entire point and leave fifty identical
+ * grey shapes. That is a different argument from "an icon package is
+ * convenient", and it applies to nothing else in either app.
  *
- * So the carve-out is bounded: **file-type icons inside the Files tree, and
- * nowhere else.** Chrome — the tree's expand chevron, toolbar glyphs, anything
- * that is furniture rather than content — stays hand-authored inline SVG at
- * `currentColor` under the existing rule.
+ * So the carve-out is bounded: **file-type icons wherever a filename is
+ * listed for someone to scan, and nowhere else.** That today means the Files
+ * tree and the search overlay's locator pane, which lists filenames the same
+ * way. Chrome — expand chevrons, toolbar glyphs, anything that is furniture
+ * rather than content — stays hand-authored inline SVG at `currentColor`
+ * under the existing rule.
  *
- * `material-icon-theme` is MIT, and its LICENSE travels with the dependency in
- * `node_modules`. This app is internal and is not redistributed.
+ * `material-icon-theme` is MIT, and its LICENSE travels with the dependency
+ * in `node_modules`. This app is internal and is not redistributed.
  *
  * ## Mechanics
  *
  * The SVGs and the lookup tables are both generated at build time by
  * `scripts/generate-file-icons.mjs` and are not in git. Icons live in
- * `public/icons/material/`, so they are served as static files rather than
- * bundled — see that script's header for why that matters. Render the result
- * as `<img src={fileIconUrl(name)} alt="" />`.
+ * `public/icons/material/` at the repo root — the shell's public directory,
+ * which both the shell and the Files app (mounted as an iframe under the
+ * shell) are served from — so they resolve at `/icons/material/...` under
+ * either. Render the result as `<img src={fileIconUrl(name)} alt="" />`.
  *
  * ## The HELVE icons, and why they are not in that directory
  *
  * `.helve` folders and `<project>.helve` files are ours, and the theme has
- * never heard of them. Their three SVGs are hand-drawn from `assets/`, live in
- * `public/icons/helve/`, and are **in git** — which is the whole point of the
- * separate directory rather than the convenience of one.
+ * never heard of them. Their three SVGs are hand-drawn from `assets/`, live
+ * in `public/icons/helve/`, and are **in git** — which is the whole point of
+ * the separate directory rather than the convenience of one.
  * `generate-file-icons.mjs` opens with an `rmSync` on `public/icons/material/`,
  * so anything dropped in there is deleted by the next `pnpm build` and, being
  * gitignored, does not come back. A drawing nobody can recover is a bad place
@@ -80,7 +84,7 @@
  * background is the icon's own amber, not the page.
  */
 
-import { defaultIcons, fileExtensions, fileNames, folderNames, folderNamesExpanded } from "./manifest.generated";
+import { defaultIcons, fileExtensions, fileNames, folderNames, folderNamesExpanded } from "./manifest.generated.js";
 
 /** Root-relative, so it resolves the same under Vite and under Tauri's asset host. */
 const BASE = "/icons/material/";
@@ -104,7 +108,7 @@ const HELVE_EXTENSION = ".helve";
  * The dot must have something before it. `.helve` on its own is a name, not a
  * file with a `helve` extension, and it is a name the theme has no icon for
  * either; leaving it to the generic file glyph is the honest answer, and it is
- * the same rule `extensionOf` in `../rpc` already applies.
+ * the same rule `extensionOf` in `apps/files/ui/src/rpc.ts` already applies.
  */
 function helveFileIcon(lower: string): string | null {
   if (lower.length <= HELVE_EXTENSION.length) return null;

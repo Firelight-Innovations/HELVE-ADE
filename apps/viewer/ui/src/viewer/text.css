@@ -1,0 +1,224 @@
+/*
+ * The text viewer: two banners and the box Monaco fills.
+ *
+ * Almost nothing here styles the editor. Monaco draws itself from the
+ * `helve-dark` theme in `./monaco.ts`, which is where the tokens end up as
+ * colours; a CSS rule reaching into `.monaco-editor` would be a second,
+ * invisible place those decisions live. This sheet's job is to give the editor
+ * a correctly sized box and to draw the two things Monaco has no opinion about.
+ *
+ * Loaded from `TextViewer.tsx`, so it arrives with the Monaco chunk and never
+ * on the path of a file that is opened as a picture.
+ *
+ * Colours are `src/tokens.css`. Nothing here introduces a hex.
+ */
+
+.text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/*
+ * `min-height: 0` is what makes `automaticLayout` work at all here. Monaco
+ * measures its container; a flex child defaults to `min-height: auto`, which
+ * refuses to shrink below its content — and Monaco's content is however tall
+ * the file is. Without this the editor grows to the length of the document and
+ * the pane scrolls instead of the editor.
+ */
+.text__editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* --- banners --------------------------------------------------------------
+   Both sit above the editor rather than floating over it: they are about the
+   whole file, they need to be read before the next keystroke, and a Monaco
+   overlay would be one more thing competing with the find widget. */
+
+.text__banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+/* A truncated read. Not an error — the file is fine, this app is only willing
+   to hold so much of it — so `--text-dim-2` rather than a status colour. */
+.text__banner--note {
+  border-left: 2px solid var(--line-2);
+  color: var(--text-dim-2);
+}
+
+/* The way back to the picture, for a file that has one — an SVG or a Mermaid
+   document opened through its viewer's "view source". Nothing is wrong and
+   nothing needs answering, so it takes the neutral rule rather than a status
+   colour; the button is the whole point of the row. */
+.text__banner--source {
+  border-left: 2px solid var(--line-2);
+}
+
+/* A write that lost a race. `--warn`, not `--err`: nothing has gone wrong yet,
+   and both ways out of it are still open. */
+.text__banner--conflict {
+  border-left: 2px solid var(--warn);
+}
+
+.text__banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.text__banner-action {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.text__banner-action:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Reload is listed first and is the one that loses nothing on disk, so it is
+   the one drawn in the accent — same rule as `.notice__action`. */
+.text__banner-action:first-of-type {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.text__banner-action:first-of-type:hover {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.text__banner-action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* A read that failed for a reason other than "not text" — that one is handed
+   to the unsupported viewer instead and never reaches this. */
+.text__failed {
+  margin: 18px;
+}
+
+/* --- dirty-diff gutter ------------------------------------------------------
+   `text__gitgutter` is Monaco's own `linesDecorationsClassName`: a div it
+   already positions and sizes to exactly one line, in the margin lane
+   `lineDecorationsWidth` reserves whether or not anything is drawn in it — so
+   these bars appear and disappear without ever changing where the text
+   starts. `position: relative` on that div is what lets the bar itself be a
+   narrower `::before` inside it, the way VS Code's is, rather than a block
+   filling the whole reserved lane. */
+
+.text__gitgutter {
+  position: relative;
+}
+
+.text__gitgutter--added::before,
+.text__gitgutter--modified::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 2px;
+  width: 3px;
+  border-radius: 1px;
+}
+
+.text__gitgutter--added::before {
+  background: var(--ok);
+}
+
+.text__gitgutter--modified::before {
+  background: var(--warn);
+}
+
+/* A deletion has no line of its own to draw a bar across — `lines: 0` in the
+   hunk that produced it — so instead of a bar this is a small wedge pointing
+   at the boundary just above the line it is anchored to, which is where the
+   removed text used to be. `top: -3px` puts it just above this div's own top
+   edge, i.e. at that boundary rather than inside the line below it. */
+.text__gitgutter--deleted::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 1px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 6px 0 0;
+  border-color: var(--err) transparent transparent transparent;
+}
+
+/* --- the peek --------------------------------------------------------------
+   A view zone Monaco lays out as part of the document flow, so it pushes the
+   lines below it down rather than floating over them — the same reason a
+   banner above the editor is a flex child and not an overlay. */
+
+.text__gitpeek {
+  box-sizing: border-box;
+  height: 100%;
+  /* Belt and braces alongside the row cap in `monaco.ts`'s `peekBudget`: that
+     cap is what keeps this box from *asking* to be huge, but a short window
+     is still a short window, and a view zone tall enough to fit forty rows
+     comfortably can still outgrow one. Without this the peek would rather
+     push the editor's own scrollbar into a state where the bar that opened
+     it scrolls away — the exact stuck-editor failure the cap exists to rule
+     out, arriving by a different route. */
+  max-height: 40vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* One line of the diff, coloured by which side it came from — HEAD's text
+   above the current file's, the same order a unified diff prints them in.
+   `color-mix` derives the tint from `--err`/`--ok` themselves rather than
+   writing a second, unrelated colour for the background, which is also why
+   there is no separate wash token for this: the tint only ever needs to
+   agree with the token it is a tint of. */
+.text__gitpeek-row {
+  padding: 0 12px;
+  white-space: pre;
+  line-height: 1.5;
+}
+
+.text__gitpeek-row--removed {
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+  color: var(--err);
+}
+
+.text__gitpeek-row--added {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--text);
+}
+
+/*
+ * The stand-in for rows the peek's cap left out. Dim and untinted on purpose:
+ * it is the one row in the block that is not a line of the file, and tinting it
+ * like its neighbours would invite it to be read as content.
+ */
+.text__gitpeek-row--more {
+  color: var(--text-dim-2);
+  font-style: italic;
+}

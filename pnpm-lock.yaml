@@ -17,6 +17,12 @@ importers:
       '@helve/bridge':
         specifier: workspace:*
         version: link:packages/bridge
+      '@helve/file-icons':
+        specifier: workspace:*
+        version: link:packages/file-icons
+      '@helve/monaco-languages':
+        specifier: workspace:*
+        version: link:packages/monaco-languages
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
@@ -112,6 +118,21 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(vite@7.3.6)
+
+  packages/file-icons:
+    devDependencies:
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+
+  packages/monaco-languages:
+    devDependencies:
+      monaco-editor:
+        specifier: ^0.56.0
+        version: 0.56.0
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
 
 packages:
 

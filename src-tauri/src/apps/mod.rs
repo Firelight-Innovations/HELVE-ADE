@@ -163,8 +163,33 @@ const REGISTRY: &[Registered] = &[
     },
     Registered {
         id: "files",
-        name: "Files",
-        description: "Browse the open project, and read or edit what is in it.",
+        name: "File Explorer",
+        description: "Browse the open project — its folders, and what is in them.",
+        call: files::call,
+    },
+    Registered {
+        id: "viewer",
+        name: "File Viewer",
+        description: "Read and edit open files, in tabs.",
+        // **The same dispatch as `files` above, deliberately.**
+        //
+        // The two are separate *apps* — separate frontends, separate entry
+        // points, separate surfaces you can put in two panes — but there is only
+        // one filesystem, and `files::call` is the half that talks to it.
+        // Giving the Viewer a Rust module of its own would mean a second
+        // `files/read`, a second `files/write` and a second copy of the
+        // `baseMtime` guard that keeps two writers from clobbering each other:
+        // three chances for the pair to disagree, bought in exchange for the
+        // appearance of symmetry.
+        //
+        // What this does *not* share is any state. `files::call` holds none —
+        // every method takes its root from the [`CallContext`] the caller
+        // resolved, which is a fact about where the *frame* is placed rather
+        // than about which app is in it. So a Viewer and an Explorer in one
+        // cluster resolve the same project, and the same worktree, while a pair
+        // in the next cluster resolve theirs; see
+        // `two_apps_in_one_cluster_resolve_the_same_context` below, which is
+        // there to keep that true.
         call: files::call,
     },
 ];
@@ -391,6 +416,64 @@ mod tests {
     #[test]
     fn an_unknown_app_id_is_method_not_found_rather_than_a_panic() {
         assert!(!is_app("nonesuch"));
+    }
+
+    // --- the Explorer and the Viewer are answered by one filesystem ----------
+
+    /// The two file apps dispatch to the *same* function, and that is what
+    /// makes their `CallContext` provably identical rather than merely
+    /// probably identical.
+    ///
+    /// [`CallContext::resolve`] takes the instance id the shell resolved from
+    /// `event.source` and asks which cluster's pane tree holds it. Nothing on
+    /// that path — not `resolve`, not `cluster_of_instance`, not
+    /// `project::cluster_path` — is handed an app id at all, so a `viewer`
+    /// frame in a cluster resolves the same project, and the same worktree, as
+    /// a `files` frame beside it. This test cannot reach into that path (it
+    /// needs an `AppHandle`), but it guards the one thing that would make the
+    /// argument stop holding: the day someone gives the Viewer a dispatch of
+    /// its own is the day it could start resolving a root differently, and this
+    /// fails then rather than silently.
+    ///
+    /// Why it matters concretely: `files/git-status`, `files/git-hunks` and
+    /// `files/git-head` decorate against whatever checkout the context names.
+    /// A Viewer that resolved a different one would draw a dirty-diff gutter
+    /// against the wrong worktree — no error, no failed call, just wrong hunks,
+    /// which is the shape of bug that outlives everyone who could recognise it.
+    #[test]
+    fn two_apps_in_one_cluster_resolve_the_same_context() {
+        let dispatch = |id: &str| {
+            REGISTRY
+                .iter()
+                .find(|a| a.id == id)
+                .unwrap_or_else(|| panic!("no `{id}` in the registry"))
+                .call
+        };
+
+        assert_eq!(
+            dispatch("files") as usize,
+            dispatch("viewer") as usize,
+            "the Explorer and the Viewer must be answered by one implementation — \
+             two would be two chances to resolve a different root for the same cluster"
+        );
+    }
+
+    /// Both file apps are real registry rows, and the Viewer is not a terminal
+    /// in disguise: it has a frontend to mount and a dispatch to call, so every
+    /// consumer of `REGISTRY` treats it as an app without a special case.
+    #[test]
+    fn the_viewer_is_an_app_like_any_other() {
+        assert!(is_app("viewer"));
+        assert!(is_app("files"));
+        assert!(
+            openables().iter().any(|o| o.id == "viewer" && o.kind == OpenableKind::App),
+            "the Apps menu offers it"
+        );
+        assert!(
+            roster().iter().any(|(id, _)| *id == "viewer"),
+            "boot knows it can paint — `boot::expected` narrows the roster to what is \
+             actually open, so this costs a launch nothing when no Viewer is docked"
+        );
     }
 
     // --- the terminal is offered like an app and is not one ------------------

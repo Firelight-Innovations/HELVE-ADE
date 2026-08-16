@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    // DOM is in here where `@helve/file-icons` needs no such thing: the type-only
+    // `monaco-editor` import below reaches a declaration file that names
+    // `HTMLElement`, `KeyboardEvent` and friends throughout. `skipLibCheck`
+    // suppresses errors *inside* that file but does not conjure the globals it
+    // refers to, so without DOM the grammar's own type annotations fail to
+    // resolve. No DOM value is used at runtime — this package emits pure data.
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}

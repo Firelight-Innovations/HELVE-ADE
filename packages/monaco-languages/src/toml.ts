@@ -3,8 +3,8 @@
  *
  * `monaco-editor` 0.56 bundles 84 basic languages and TOML is not among them
  * (checked, not assumed: `esm/vs/languages/definitions/` has `ini`, `yaml`,
- * `xml` and no `toml`). Until this file existed, `monaco.ts` mapped `.toml` to
- * the `ini` grammar as an admitted stand-in, and its own comment named the
+ * `xml` and no `toml`). Before this existed, the Files app mapped `.toml` to the
+ * `ini` grammar as an admitted stand-in, and its own comment named the
  * follow-up: "a ~30-line Monarch tokenizer registered next to this table under
  * a real `toml` id". This is that.
  *
@@ -31,16 +31,32 @@
  * Those five are the exact list the old comment admitted to, so this grammar is
  * measured against them rather than against TOML in the abstract.
  *
+ * ## Why it lives in a package
+ *
+ * It was written for the Files app and sat in `apps/files/ui/src/viewer/toml.ts`
+ * for exactly as long as there was one editor to serve. There are now three —
+ * Files' viewer, the search overlay's preview pane, and the source-control diff
+ * — and `src/` and `apps/files/` may not import each other (see the repository
+ * CLAUDE.md), so the only ground all three can stand on is `packages/`. Moving
+ * it here is what makes "TOML is highlighted in HELVE" one fact rather than
+ * three copies drifting apart.
+ *
+ * That move is also why `index.ts` exports a `registerToml` rather than leaving
+ * each editor to call the three `monaco.languages.*` setters itself. Two of the
+ * three consumers are shell-side and can be live in the same JS context at once,
+ * where a second registration of the same id is a real hazard — the same class
+ * of collision the editors' theme names already had to be pulled apart to avoid.
+ *
  * ## Token names are borrowed, not invented
  *
  * Every token this emits is one `vs-dark` already colours — `key`, `metatag`,
  * `comment`, `string`, `number`, `number.hex`, `keyword`, `delimiter` (read out
  * of `editor/standalone/common/themes.js`). That is deliberate and it is what
- * lets `helve-dark` keep `rules: []`: the theme's header in `monaco.ts` forbids
- * inventing a token colour, on the grounds that the handoff palette names UI
- * surfaces rather than grammar scopes. Borrowing scopes the base theme already
- * styles means a `.helve` file is coloured by exactly the machinery that colours
- * a `.py` or a `.md`, and this file introduces no palette of its own.
+ * lets every HELVE theme keep `rules: []`: the theme headers forbid inventing a
+ * token colour, on the grounds that the handoff palette names UI surfaces rather
+ * than grammar scopes. Borrowing scopes the base theme already styles means a
+ * `.helve` file is coloured by exactly the machinery that colours a `.py` or a
+ * `.md`, and this file introduces no palette of its own.
  *
  * ## What it deliberately does not do
  *
@@ -48,10 +64,23 @@
  * is a lexer: it says what a run of characters *looks* like, not whether the
  * document is well-formed. A `.helve` with a duplicate table is coloured
  * perfectly and is still rejected by Rust, which is the half that gets to have
- * an opinion — the same division `monaco.ts` draws for every other language
- * here except JSON.
+ * an opinion — the same division every consumer of this package draws for every
+ * other language it registers, except JSON.
  */
 import type * as monaco from "monaco-editor/editor/editor.api";
+
+/**
+ * The language id, and the two extensions that resolve to it.
+ *
+ * Exported rather than spelled as a literal at each call site because three
+ * editors and one caller now name it, and one of those callers (`isTomlPath`
+ * below, used by the source-control panel) has to agree with the extension list
+ * Monaco is given without importing Monaco to find it out.
+ */
+export const TOML_LANGUAGE_ID = "toml";
+
+/** Lowercase, dot-less, matching the `extensionOf` helpers on both sides. */
+export const TOML_EXTENSIONS = ["toml", "helve"] as const;
 
 /**
  * Comments, brackets, and what the editor auto-closes.

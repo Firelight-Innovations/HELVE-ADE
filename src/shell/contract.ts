@@ -20,7 +20,14 @@
  *     update", "not tracked", "not installed". The mapping happens once, below.
  */
 import type { ReactNode } from "react";
-import type { AppInfo, ResolvedTool, ToolStatus } from "../bindings";
+import type {
+  AppInfo,
+  GitCommit,
+  GitWorktree,
+  ResolvedTool,
+  ToolStatus,
+  WorktreeRef,
+} from "../bindings";
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -409,6 +416,21 @@ export interface GitStatus {
    */
   ahead: number;
   behind: number;
+  /**
+   * Line-change totals since `HEAD` (or, for a repository with no commits
+   * yet, since the empty tree) — what the status bar's compact
+   * `+N -N · M files` readout is built from. Mirrors `GitStatus` in `git.rs`,
+   * which is where the exact rule for what counts and what doesn't is written
+   * down: staged and unstaged changes to tracked files combined into one
+   * diff against the base, plus every untracked file (already present below
+   * in `unstaged`) counted as a pure addition of its own line count. A
+   * changed binary file and an untracked file over 5 MiB both still appear in
+   * `staged`/`unstaged` — so they still count as a file touched — without
+   * adding to `insertions`/`deletions`, since there is no line count worth
+   * reading either of them for.
+   */
+  insertions: number;
+  deletions: number;
   staged: GitFileChange[];
   unstaged: GitFileChange[];
 }
@@ -419,13 +441,139 @@ export interface GitDiff {
   modified: string;
 }
 
+/**
+ * The index, scoped to a cluster: what has changed, what is staged, commit it.
+ *
+ * Every method takes a **cluster** id. It used to be a tool id, which was not a
+ * near-miss but a dead end — Rust resolved a tool id against the `helve.toml`
+ * `[[tool]]` pins, a list `discovery.rs` leaves empty for every project, so
+ * every call rejected and the source-control view drew an error where its
+ * change list should have been. `git.rs`'s note on `git_cluster_status` has the
+ * full account.
+ *
+ * A cluster is also the honest subject. It is the thing a user opens a project
+ * into, the thing that can be moved onto a worktree, and the thing whose branch
+ * the status bar names — none of which the pane that happens to hold focus has
+ * any bearing on.
+ */
 export interface GitControl {
-  /** `null` when the tool has no checkout or the checkout is not a repo. */
-  status(toolId: string): Promise<GitStatus | null>;
-  diff(toolId: string, path: string, staged: boolean): Promise<GitDiff>;
-  stage(toolId: string, paths: string[]): Promise<void>;
-  unstage(toolId: string, paths: string[]): Promise<void>;
-  commit(toolId: string, message: string): Promise<void>;
+  /** `null` when the cluster has no project open or its project is not a repo. */
+  status(clusterId: string): Promise<GitStatus | null>;
+  diff(clusterId: string, path: string, staged: boolean): Promise<GitDiff>;
+  stage(clusterId: string, paths: string[]): Promise<void>;
+  unstage(clusterId: string, paths: string[]): Promise<void>;
+  commit(clusterId: string, message: string): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Worktrees — one cluster, one checkout of its own
+// ---------------------------------------------------------------------------
+//
+// A cluster can work inside a git worktree instead of the project folder
+// itself, which is what lets two clusters hold two branches of one repository
+// open at the same time without either one's edits showing up in the other's
+// file tree. The worktree is a real second checkout on disk; git maintains it,
+// and `git worktree list` — not anything HELVE writes down — is the authority
+// on which ones exist.
+//
+// They are created *outside* the project, at `<project>/../.worktrees/
+// <project-name>/<name>/`, and that placement is load-bearing rather than
+// tidiness. A worktree nested inside the project would be a complete second
+// copy of the codebase sitting in the tree that every file walker descends:
+// the Files app, the search index, and Vite's watcher would each find one more
+// copy of `src/` per cluster. Outside, nothing has to be taught to ignore it.
+
+/**
+ * Creating, listing, and discarding a cluster's worktree.
+ *
+ * Request/reply for the same reason `GitControl` is (see the note at the top of
+ * the source-control section): there is no watcher, and every one of these
+ * either follows a user action or a cluster switch, both of which are already
+ * moments the panel re-asks at.
+ */
+export interface WorktreeControl {
+  /**
+   * Every worktree of the cluster's repository, main checkout included.
+   *
+   * Scoped to a cluster rather than a path because the frontend never names a
+   * directory for the backend to run `git` in — the same rule the source
+   * control commands follow. Empty when the cluster has no project, or has one
+   * that is not a repository; neither is an error worth a dialog.
+   */
+  list(clusterId: string): Promise<GitWorktree[]>;
+  /**
+   * The repository's local branches as one graph, newest first.
+   *
+   * On `WorktreeControl` rather than `GitControl` because it is scoped to a
+   * cluster and spans every worktree of its repository — the graph is the one
+   * part of the panel that is deliberately *not* about the cluster's own
+   * checkout, which is why the top half stays put while the bottom half changes
+   * as you switch clusters.
+   */
+  graph(clusterId: string, limit: number): Promise<GitCommit[]>;
+  /**
+   * Everything this cluster's worktree has changed since it forked.
+   *
+   * `null` for a cluster working in its project folder rather than a worktree.
+   * There is no fork point to measure from, and the panel draws its ordinary
+   * source-control view for that case rather than an empty divergence.
+   */
+  divergence(clusterId: string): Promise<GitDivergence | null>;
+  /**
+   * One file's whole divergence, as two texts for the diff editor.
+   *
+   * Takes the `mergeBase` from the `GitDivergence` the file came from rather
+   * than letting the backend resolve it again: a merge base computed twice
+   * during one reading of one list could differ if something fetched in
+   * between, and a diff taken against a different base than the list was built
+   * from is quietly wrong rather than visibly broken.
+   */
+  divergenceDiff(clusterId: string, path: string, mergeBase: string): Promise<GitDiff>;
+  /**
+   * Cut a new branch named `name` from the current HEAD, check it out into a
+   * new worktree, and point the cluster at it.
+   *
+   * One name for both the branch and the folder, because two names for one
+   * thing is two things to keep in agreement and the user is naming a piece of
+   * work, not a directory. Fails rather than overwrites when the branch or the
+   * folder already exists.
+   */
+  create(clusterId: string, name: string): Promise<WorktreeRef>;
+  /**
+   * Remove the worktree and return the cluster to working in its project.
+   *
+   * Deletes the checkout on disk but never the branch — the commits on it are
+   * the point of having made it. `force` is what a worktree with uncommitted
+   * changes needs, and git's refusal without it is correct: that refusal is the
+   * only thing standing between a stray click and unrecoverable work.
+   */
+  remove(clusterId: string, force: boolean): Promise<void>;
+}
+
+/**
+ * Where a cluster's work actually is: its worktree when it has one, else its
+ * project folder.
+ *
+ * The precedence lives here and nowhere else. Terminals spawn in this
+ * directory, the Files app roots its tree at it, and the search index scopes to
+ * it — three features that must agree, and would eventually stop agreeing if
+ * each carried its own copy of the rule. The Rust side resolves the same
+ * precedence in `project::cluster_path`.
+ *
+ * Deliberately *not* the answer to "which project is this cluster on" — that is
+ * `Cluster.project`, and it stays the project even while the work is happening
+ * in a worktree beside it. Home names the project, the file tree walks the
+ * root, and conflating them would have Home renaming itself every time somebody
+ * made a branch.
+ *
+ * Synchronous, so it cannot check that the directory still exists. A worktree
+ * removed outside HELVE leaves the path pointing at nothing until the backend
+ * reconciles against `git worktree list`, which it does on load and after every
+ * worktree mutation. Callers that walk the result should treat a missing
+ * directory as empty rather than as a failure.
+ */
+export function clusterRoot(cluster: Cluster): string | null {
+  return cluster.worktree?.path ?? cluster.project;
 }
 
 // ---------------------------------------------------------------------------
@@ -631,11 +779,68 @@ export interface LayoutPreset {
   root: PresetNode;
 }
 
-/** Mirrors `shell_state::WorktreeRef`. A stub — nothing reads it yet. */
-export interface WorktreeRef {
-  path: string;
-  branch: string | null;
+/**
+ * What a cluster's worktree has changed since it forked. Mirrors
+ * `git::GitDivergence`.
+ *
+ * Committed and uncommitted work in one list, deliberately. The comparison is
+ * against the fork point rather than against HEAD, so committing a file does
+ * not make it leave this list and does not change the diff shown for it — the
+ * question the bottom half of the panel answers is "what has this cluster
+ * done", and that must not depend on how often the user happened to commit.
+ *
+ * Declared here rather than in `bindings.ts` — unlike the other Rust mirrors —
+ * because it holds `GitFileChange`, which lives here. `bindings` cannot import
+ * from `contract`, so a mirror that references a contract type has to be on
+ * this side of the edge, and `state/git.ts` calls `invoke` for it directly the
+ * way it already does for `git_status`.
+ */
+export interface GitDivergence {
+  /** The branch this worktree was cut from. */
+  base: string;
+  /**
+   * The fork point. Every diff in this view is taken against it, so it is safe
+   * to cache on: a merge base that has not moved means none of these diffs can
+   * have changed except through the working tree.
+   */
+  mergeBase: string;
+  /** Commits made since the fork. Zero is ordinary — work not yet committed. */
+  commits: number;
+  /** `staged` is meaningless here and always false; this view is not the index. */
+  files: GitFileChange[];
 }
+
+/**
+ * One changed region of a file against HEAD, in lines. Mirrors `git::GitHunk`.
+ *
+ * What the editor's gutter draws one mark per. Against HEAD rather than the
+ * index, matching VS Code: staging a change does not clear the bar, because the
+ * line really is still different from the last committed version and a mark
+ * that vanished on `git add` would say the file matches HEAD when it does not.
+ *
+ * A deletion covers no current lines — `lines` is `0` — and is drawn as a wedge
+ * between two lines rather than as a bar beside one.
+ */
+export interface GitHunk {
+  kind: "added" | "modified" | "deleted";
+  /** 1-based, in the file as it is now. Already clamped to a minimum of 1. */
+  start: number;
+  /** How many current lines the region covers. `0` for a deletion. */
+  lines: number;
+  originalStart: number;
+  originalLines: number;
+}
+
+/**
+ * Where a cluster's work is happening on disk, and what git reports about the
+ * checkouts it could be happening in.
+ *
+ * Both mirror Rust and are therefore declared in `bindings.ts`, re-exported
+ * here because this is the file the shell reads its types from. See
+ * [`clusterRoot`] for the rule that decides which of a cluster's two possible
+ * roots wins.
+ */
+export type { GitCommit, GitWorktree, WorktreeRef } from "../bindings";
 
 /**
  * One tab in the switcher bar: a layout, the project it is about, and its
@@ -848,4 +1053,16 @@ export interface FrameSlots {
   statusBar: ReactNode;
   /** Portalled above everything: drag ghost and drop outlines. */
   overlay?: ReactNode;
+  /**
+   * Covers the split row — the tool window, the handle and the panel — while
+   * search is open, leaving the switcher bar above and the status bar below
+   * untouched.
+   *
+   * Its own band rather than part of `overlay` because the two sit at
+   * different heights and answer to different things: `overlay` is portalled
+   * over the entire frame for a drag ghost that has to be able to cross every
+   * bar, whereas this deliberately stops at the two edges it does, so the
+   * field being typed into stays visible and the status bar keeps reporting.
+   */
+  splitOverlay?: ReactNode;
 }

@@ -462,3 +462,127 @@
   font-size: 11px;
   white-space: pre-wrap;
 }
+
+/* --- the worktree prompt ---------------------------------------------------
+   Offered once, right after a project opens with no worktree of its own yet —
+   see `WorktreeDialog.tsx`. Full-viewport scrim rather than one scoped to a
+   region, because this page has no smaller positioned box worth scoping it
+   to and it is the only dialog Home draws. The surface itself is not a new
+   visual language: same background, hairline border, radius and shadow as
+   the shell's own confirmation dialogs (`panel__confirm`). */
+
+.home__worktree-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+
+.home__worktree {
+  width: 340px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+
+.home__worktree-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.home__worktree-text {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.home__worktree-label {
+  display: block;
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.home__worktree-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.home__worktree-input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.home__worktree-input:disabled {
+  opacity: 0.6;
+}
+
+.home__worktree-error {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--err);
+}
+
+.home__worktree-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.home__worktree-cancel {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.home__worktree-cancel:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.home__worktree-submit {
+  padding: 6px 12px;
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  color: var(--bg);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.home__worktree-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.home__worktree-submit:disabled,
+.home__worktree-cancel:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

@@ -1,34 +1,57 @@
 /**
- * Files — the explorer, the tabs, and the pane the two of them fill.
+ * File Explorer — the tree, and the questions it has to ask before it changes
+ * anything on disk.
  *
- * This file is the join. It owns the three-region layout and the state that
- * genuinely spans regions — where the tree is rooted, and which file is
- * showing — and nothing else. The tree is `explorer/`, the tab model is
- * `tabs/`, and what a file *looks* like is `viewer/registry.ts`. Each of those
- * can be read without reading this one.
+ * This file is the join. It owns where the tree is rooted and the one
+ * confirmation bar the app is allowed to show, and nothing else. The tree
+ * itself is `explorer/`; what a row looks like is `explorer/TreeRow.tsx`.
  *
- * What it deliberately does not own: the list of file formats. Adding a viewer
- * touches `viewer/registry.ts` and one new component, and never this file. If
- * a change to Files ever needs an edit here *and* there, the seam is in the
- * wrong place.
+ * ## What changed when this stopped being half of Files
+ *
+ * This app no longer shows a file. Clicking a row does not open an editor here
+ * — it asks the shell for a File Viewer *in this cluster* and hands it a path
+ * (`openIn`, `docs/tool-protocol.md` §3). The Explorer does not know whether a
+ * Viewer exists, does not know its instance id, and cannot address one; the
+ * shell finds or opens it. That indirection is what makes the tree and the
+ * editor two surfaces you can put in two panes, or on two monitors.
+ *
+ * Three things used to be answerable by reading another region's state, and are
+ * now facts the Viewer volunteers:
+ *
+ * - **Which row is open** — `ACTIVE_PATH`, subscribed below.
+ * - **What is unsaved** — `DIRTY_PATHS`, which is what lets a delete
+ *   confirmation still name work that lives in a different frame.
+ * - **A rename or a delete** — `TREE_CHANGE`, published both ways.
+ *
+ * The splitter is gone with the editor. A pane is the shell's to divide now,
+ * which it already did better: the old one could only ever put the tree left of
+ * the file, in one window.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { on, reportPainted } from "@helve/bridge";
-import { useMotionValue } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { on, openIn, publish, reportPainted, subscribe } from "@helve/bridge";
 import Explorer, { type ExplorerHandle } from "./explorer/Explorer";
 import NoticeBar from "./NoticeBar";
 import { useMenuCommands } from "./commands";
 import { useDelete } from "./useDelete";
-import Splitter from "./Splitter";
-import TabStrip from "./tabs/TabStrip";
-import { useOpenFiles } from "./tabs/useOpenFiles";
-import Viewer from "./viewer/Viewer";
+import {
+  ACTIVE_PATH,
+  DIRTY_PATHS,
+  TREE_CHANGE,
+  asActivePath,
+  asDirtyPaths,
+  isAtOrUnder,
+  type TreeChange,
+} from "./topics";
 import { describe, getRoot, type Root } from "./rpc";
 
-/** The explorer's starting width, and the two minimums the splitter clamps to. */
-const EXPLORER_DEFAULT = 260;
-const EXPLORER_MIN = 180;
-const VIEWER_MIN = 240;
+/**
+ * The app id this app opens files into.
+ *
+ * A *kind*, never a surface — see `openIn`. Written down here rather than
+ * inlined because it is the one string in this app that names another app, and
+ * a typo in it is a click that silently does nothing.
+ */
+const VIEWER_APP = "viewer";
 
 export default function App() {
   const [root, setRoot] = useState<Root | null>(null);
@@ -36,19 +59,13 @@ export default function App() {
 
   /**
    * Bumped whenever the tree's contents may have changed underneath us: the
-   * project was switched, or the user asked for a refresh. The explorer treats
-   * a change as "drop the cache and re-list", which is the whole of the live
-   * project-change reload — there is no filesystem watcher.
+   * project was switched, the user asked for a refresh, or a Viewer reported a
+   * change of its own. The explorer treats a change as "drop the cache and
+   * re-list", which is the whole of the live reload — there is no filesystem
+   * watcher.
    */
   const [treeNonce, setTreeNonce] = useState(0);
-
-  const files = useOpenFiles();
-
-  // Written directly by the splitter's pointer handler rather than held in
-  // React state, so a drag is one style write per frame instead of one render.
-  // See `Splitter.tsx`; the mechanics are `src/shell/frame/Frame.tsx`'s.
-  const explorerWidth = useMotionValue(EXPLORER_DEFAULT);
-  const splitRef = useRef<HTMLDivElement | null>(null);
+  const reloadTree = useCallback(() => setTreeNonce((n) => n + 1), []);
 
   const loadRoot = useCallback(() => {
     void getRoot()
@@ -62,9 +79,7 @@ export default function App() {
   useEffect(loadRoot, [loadRoot]);
 
   /**
-   * The splash window waits for this pane before the main window is shown —
-   * see `reportPainted` in `@helve/bridge`, and `boot::await_apps` for what is
-   * waiting and for how long.
+   * The splash window waits for this pane before the main window is shown.
    *
    * "First meaningful frame" here is *the tree having rows*, not the layout
    * having appeared, which is why the explorer reports it rather than this
@@ -81,158 +96,187 @@ export default function App() {
   /**
    * The project changed under us — a different folder is open.
    *
-   * The event arrives over the same bridge every call goes out on; the shell
-   * forwards it into this frame (`src/shell/toolwindow/ToolWindow.tsx`). Open
-   * tabs are left alone rather than closed: a file that is still on disk is
-   * still readable, and closing someone's editor because they switched
-   * projects would lose work to a guess about intent.
-   *
-   * "The project" means **this surface's cluster's** project. A project belongs
-   * to a cluster, and the shell relays this event only into frames in the
-   * cluster it names — so a switch in the Files on the next monitor does not
-   * reach here. Nothing in this file has to know that: `files/root` below is
-   * answered against whichever cluster this frame is in, resolved by the shell
-   * from the frame itself rather than from anything sent in the call.
+   * "The project" means **this surface's cluster's** project. The shell relays
+   * this event only into frames in the cluster it names, so a switch in the
+   * Explorer on the next monitor does not reach here.
    */
   useEffect(
     () =>
       on("project:changed", () => {
         loadRoot();
-        setTreeNonce((n) => n + 1);
+        reloadTree();
       }),
-    [loadRoot],
+    [loadRoot, reloadTree],
   );
 
   /**
-   * Ctrl+S at the document level, so it works with focus anywhere in the app.
+   * The shell asking this app to open one path — the search overlay's Enter
+   * key, relayed through `src/shell/search/openHit.ts`.
    *
-   * Monaco binds its own Ctrl+S inside the editor and that one wins there; this
-   * catches the case where focus is in the tree or the tab strip. Both end up
-   * at the same `save` the viewer registered.
+   * Forwarded rather than handled, because this app no longer shows files. It
+   * arrives here because `openHit.ts` still addresses the Files instance by its
+   * app id, which was the only surface that could show a file when that code
+   * was written; the honest fix is for it to call `openIn("viewer", …)` itself
+   * and skip this hop entirely, and it is left alone for now only because that
+   * file is being worked on elsewhere. See `docs/handoffs/files-app-split.md`.
+   *
+   * A real open, not a peek: someone who searched for a file and pressed Enter
+   * means to work in it.
    */
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key !== "s") return;
-      event.preventDefault();
-      void files.saveActive().catch((err: unknown) => setError(describe("files/write", err)));
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [files]);
+  useEffect(
+    () =>
+      on("files:open-path", (payload) => {
+        const path = (payload as { path?: unknown } | null)?.path;
+        if (typeof path === "string") void openIn(VIEWER_APP, { path, preview: false }).catch(noop);
+      }),
+    [],
+  );
 
   /**
-   * The delete confirmation, owned here rather than by either region.
+   * Which file the Viewer is showing, for the row treatment.
    *
-   * Both the tree and the tab strip can start a delete, and only one question
-   * should ever be on screen — two bars asking about two files would be a
-   * choice about which one Escape answers. This file is also the only place
-   * that can see both the tree and the open buffers, which is what the
-   * confirmation has to weigh: what is on disk, and what is unsaved.
+   * Retained by the shell and replayed on handshake, so an Explorer opened
+   * after a Viewer is not briefly wrong about this — see `helve/publish`.
+   *
+   * With two Viewers in one cluster this takes the most recent announcement
+   * rather than arbitrating between them. That is the honest answer to a
+   * question with no single one: `publish` only fires on a change, so the last
+   * to speak is the last to change, which is the closest thing to "the editor
+   * you were just in" that either app can see. It is briefly arbitrary on
+   * mount, when replay delivers several at once, and self-corrects on the next
+   * click.
+   */
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  useEffect(() => subscribe(ACTIVE_PATH, (value) => setOpenPath(asActivePath(value))), []);
+
+  /**
+   * What every Viewer in this cluster is holding unsaved, by instance.
+   *
+   * Keyed by publisher rather than merged into one set, because a Viewer that
+   * closes has to take its claims with it. The shell drops a departed frame's
+   * retained topics, but a Viewer that merely saved everything publishes an
+   * empty list — and both have to land on the same answer here.
+   */
+  const [dirtyByViewer, setDirtyByViewer] = useState<ReadonlyMap<string, string[]>>(new Map());
+  useEffect(
+    () =>
+      subscribe(DIRTY_PATHS, (value, from) =>
+        setDirtyByViewer((prev) => {
+          const next = new Map(prev);
+          next.set(from, asDirtyPaths(value));
+          return next;
+        }),
+      ),
+    [],
+  );
+
+  /**
+   * The names of open files at or under a path that hold unsaved work.
+   *
+   * This is the question the split nearly took away. It used to be a call into
+   * the tab model in the same component tree; it is now an answer assembled
+   * from what the Viewers have announced. Deduplicated by path, because two
+   * Viewers can hold the same file open and the confirmation should name it
+   * once.
+   */
+  const unsavedUnder = useCallback(
+    (path: string): string[] => {
+      const names = new Set<string>();
+      for (const paths of dirtyByViewer.values()) {
+        for (const dirty of paths) {
+          if (isAtOrUnder(dirty, path)) names.add(baseName(dirty));
+        }
+      }
+      return [...names];
+    },
+    [dirtyByViewer],
+  );
+
+  /**
+   * A rename or a delete landed on disk somewhere else — a Save As in a Viewer,
+   * a delete confirmed from a tab.
+   *
+   * Either way the tree is re-read wholesale. A delete can remove a subtree and
+   * a Save As can land in a folder this app has never listed, so there is no
+   * single directory to re-list and no cheaper honest answer.
+   */
+  useEffect(() => subscribe(TREE_CHANGE, reloadTree), [reloadTree]);
+
+  /**
+   * The delete confirmation.
+   *
+   * `dropUnder` is a publish rather than a call: the tabs that have to close
+   * are in another frame, and this app has no way to reach them except by
+   * saying what happened. It fires *before* `onDeleted` for the reason the old
+   * single-app version closed tabs first — nothing should be left polling a
+   * path that is gone and marking itself missing a moment after the user
+   * watched it go.
    */
   const del = useDelete({
-    unsavedUnder: files.unsavedUnder,
-    dropUnder: files.dropUnder,
-    // The tree is re-read wholesale. A delete is rare, and unlike a create it
-    // can remove a whole subtree — so there is no single directory to re-list
-    // and no cheaper honest answer.
-    onDeleted: () => setTreeNonce((n) => n + 1),
+    unsavedUnder,
+    dropUnder: (path) => publish(TREE_CHANGE, { kind: "deleted", path } satisfies TreeChange),
+    onDeleted: reloadTree,
   });
 
-  /**
-   * The title bar's File and Edit menus, answered from here.
-   *
-   * Here rather than in a region, for the same reason the delete confirmation
-   * is: a menu command can be about the tree, the tabs, or the editor, and this
-   * is the only file that can see all three. It is also the only one that can
-   * declare honestly what is possible — Save needs the buffer's dirty state,
-   * Delete needs a tab, New File needs a root.
-   *
-   * Every command routes into the code the equivalent gesture already uses, so
-   * a menu-bar Delete raises the same confirmation the right-click one does.
-   * See `commands.ts`.
-   */
   const explorerRef = useRef<ExplorerHandle | null>(null);
   useMenuCommands({
     root,
-    files,
     explorer: explorerRef,
-    askDelete: del.ask,
-    onTreeChanged: () => setTreeNonce((n) => n + 1),
     onError: setError,
   });
 
-  const active = files.tabs.find((tab) => tab.path === files.activePath) ?? null;
+  /**
+   * Open a file, somewhere that can show one.
+   *
+   * `preview` is the tree's report of how deliberate the gesture was — a single
+   * click is a peek, a double click and a freshly created file are not. What
+   * that *means* is the Viewer's business (`tabs/useOpenFiles.ts`), and this
+   * app deliberately does not know: it says how the user asked, not what should
+   * happen to a tab.
+   *
+   * The rejection is swallowed. `openIn` can fail if the cluster went away
+   * between the click and the call, and a tree that raised an error bar because
+   * a pane closed would be reporting the shell's business as the user's
+   * problem.
+   */
+  const openFile = useCallback((path: string, preview: boolean) => {
+    void openIn(VIEWER_APP, { path, preview }).catch(noop);
+  }, []);
+
+  const openTreatment = useMemo(() => openPath, [openPath]);
 
   return (
     <div className="files">
       {error && <p className="app__error files__error">{error}</p>}
 
-      <div className="files__split" ref={splitRef}>
-        <Explorer
-          ref={explorerRef}
-          root={root}
-          width={explorerWidth}
-          reloadNonce={treeNonce}
-          selectedPath={files.activePath}
-          onFirstListing={reportPainted}
-          onRefresh={() => setTreeNonce((n) => n + 1)}
-          onOpenFile={files.open}
-          // The tree has already re-listed the folder it renamed in, so this
-          // only has to move the tabs. Bumping `treeNonce` here as well would
-          // drop the whole cache to show a change one directory already knows
-          // about.
-          onRenamed={files.rename}
-          onDelete={del.ask}
-        />
+      <Explorer
+        ref={explorerRef}
+        root={root}
+        reloadNonce={treeNonce}
+        selectedPath={openTreatment}
+        onFirstListing={reportPainted}
+        onRefresh={reloadTree}
+        onOpenFile={openFile}
+        // The tree has already re-listed the folder it renamed in, so this only
+        // has to tell the Viewers to move their tabs. Bumping `treeNonce` here
+        // as well would drop the whole cache to show a change one directory
+        // already knows about.
+        onRenamed={(from, to) => publish(TREE_CHANGE, { kind: "renamed", from, to } satisfies TreeChange)}
+        onDelete={del.ask}
+      />
 
-        <Splitter
-          width={explorerWidth}
-          containerRef={splitRef}
-          minLeft={EXPLORER_MIN}
-          minRight={VIEWER_MIN}
-        />
-
-        <section className="files__main">
-          <TabStrip
-            tabs={files.tabs}
-            activePath={files.activePath}
-            dirty={files.dirty}
-            rootPath={root?.path ?? null}
-            onActivate={files.activate}
-            onClose={files.close}
-            // Unlike the tree's, a rename started from a tab has no idea which
-            // folder it happened in — so the tree is told to re-read whatever
-            // it has open. Heavier than the tree's own `relist` of one
-            // directory, and the right trade for a path this app takes rarely:
-            // the alternative is teaching this file to work out a parent
-            // directory, which is the one thing the frontend must not do.
-            onRenamed={(from, to) => {
-              files.rename(from, to);
-              setTreeNonce((n) => n + 1);
-            }}
-            onDelete={del.ask}
-          />
-
-          {/* The delete confirmation, under the strip where every other
-              question in this app appears. Escape answers it the same way
-              Cancel does — see `NoticeBar`. */}
-          {del.notice && <NoticeBar notice={del.notice} onEscape={del.cancel} />}
-
-          {active ? (
-            <Viewer
-              // The nonce is in the key so an external reload remounts the
-              // viewer and it re-reads from disk. The path alone would not:
-              // reloading the same file is not a different file.
-              key={`${active.path}:${active.nonce}`}
-              file={active}
-              onDirty={(dirty) => files.setDirty(active.path, dirty)}
-              registerSave={(save) => files.registerSave(active.path, save)}
-            />
-          ) : (
-            <p className="app__note files__empty">Select a file to open it.</p>
-          )}
-        </section>
-      </div>
+      {/* The one question this app is allowed to have on screen. Escape answers
+          it the same way Cancel does — see `NoticeBar`. */}
+      {del.notice && <NoticeBar notice={del.notice} onEscape={del.cancel} />}
     </div>
   );
 }
+
+/** The last segment of a path. Both separators, for the reason `rpc.ts` gives. */
+function baseName(path: string): string {
+  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return cut === -1 ? path : path.slice(cut + 1);
+}
+
+/** Swallow a rejection deliberately, where doing nothing is the right answer. */
+function noop(): void {}

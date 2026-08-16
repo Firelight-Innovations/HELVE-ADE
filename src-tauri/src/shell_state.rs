@@ -110,14 +110,31 @@ pub struct SurfaceInstance {
 
 /// Where a cluster's work is happening on disk.
 ///
-/// **A stub.** Braden is building the git half separately; this carries the
-/// shape so that adding the behaviour later is not a migration of everything
-/// already written to `layout.json`. Nothing reads it yet.
+/// A cluster on one of these is working in a second checkout of its project's
+/// repository rather than in the project folder itself, which is what lets two
+/// clusters hold two branches open at once. `crate::project::cluster_path`
+/// resolves the precedence: this wins over the project whenever it is set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeRef {
     pub path: String,
     pub branch: Option<String>,
+    /// The branch this one was cut from, recorded when the worktree is created.
+    ///
+    /// Git does not remember this. A branch knows its commits and its upstream,
+    /// but nothing in the repository records what it was forked off — so
+    /// "everything this cluster has changed" would otherwise have to guess a
+    /// base, and the obvious guess (whatever the main checkout is on right now)
+    /// silently becomes wrong the moment somebody switches the main checkout to
+    /// another branch. Recording it at creation is the only way the answer stays
+    /// stable for the life of the worktree.
+    ///
+    /// `default` because a `layout.json` written before this field existed has
+    /// no such key, and a layout that fails to load is a session lost. `None`
+    /// there means the divergence view falls back to comparing against the main
+    /// checkout's branch, which is what it would have had to do anyway.
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 /// One tab in the switcher bar: a layout, the project it is about, and its
@@ -601,6 +618,70 @@ impl ShellState {
             .and_then(|c| c.project.clone())
     }
 
+    /// Point a cluster at a worktree, or at nothing.
+    ///
+    /// Mirrors [`Self::set_cluster_project`] exactly, down to going through
+    /// `mutate` and staying silent when `cluster_id` names nothing — the same
+    /// picker-closed race applies here, and a worktree only one window knew
+    /// about would be the identical bug in miniature.
+    pub fn set_cluster_worktree(
+        &self,
+        app: &AppHandle,
+        cluster_id: &str,
+        worktree: Option<WorktreeRef>,
+    ) {
+        self.mutate(app, |s| {
+            for w in s.windows.iter_mut() {
+                if let Some(c) = w.cluster_mut(cluster_id) {
+                    c.worktree = worktree;
+                    return;
+                }
+            }
+        });
+    }
+
+    /// The worktree a cluster is pointed at, exactly as stored. `None` both
+    /// for a cluster with no worktree and for an id that names no cluster —
+    /// see [`Self::cluster_project`], which this matches case for case.
+    pub fn cluster_worktree(&self, cluster_id: &str) -> Option<WorktreeRef> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        guard
+            .windows
+            .iter()
+            .flat_map(|w| w.clusters.iter())
+            .find(|c| c.id == cluster_id)
+            .and_then(|c| c.worktree.clone())
+    }
+
+    /// Where a cluster's work actually happens, as opposed to what it is
+    /// *about*.
+    ///
+    /// A cluster with a worktree is doing its work in that worktree, not in
+    /// the project it was branched from — a terminal, a file tree, or a
+    /// search that started from the project path would be reading the wrong
+    /// checkout the moment a worktree exists. So the worktree wins whenever
+    /// one is set, and the project is the fallback for a cluster that has
+    /// none. This is the one place that precedence is decided; every other
+    /// "where does this cluster work" question should route through this
+    /// rather than re-deriving it, or the two are guaranteed to drift apart.
+    ///
+    /// Deliberately does not check whether the worktree path still exists on
+    /// disk — this module does no disk I/O, by design; see [`crate::project`]
+    /// for the layer that filters on `is_dir()`.
+    pub fn cluster_root(&self, cluster_id: &str) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        let cluster = guard
+            .windows
+            .iter()
+            .flat_map(|w| w.clusters.iter())
+            .find(|c| c.id == cluster_id)?;
+        cluster
+            .worktree
+            .as_ref()
+            .map(|wt| wt.path.clone())
+            .or_else(|| cluster.project.clone())
+    }
+
     /// Which cluster holds `instance_id` — the whole of "which project is this
     /// app call about".
     ///
@@ -630,6 +711,26 @@ impl ShellState {
             .iter()
             .find(|c| c.id == active)
             .and_then(|c| c.project.clone())
+    }
+
+    /// The working root of the cluster a window is *showing* — see
+    /// [`Self::cluster_root`] for the worktree-over-project precedence, and
+    /// [`Self::active_cluster_project`] for why this is asked of the window
+    /// rather than of a cluster that might have moved on since. Kept
+    /// alongside `active_cluster_project` rather than replacing it: a window
+    /// title names the project, a terminal needs the root, and those are two
+    /// different questions that happen to agree whenever there is no
+    /// worktree.
+    pub fn active_cluster_root(&self, label: &str) -> Option<String> {
+        let guard = self.inner.read().expect("shell state lock poisoned");
+        let w = guard.windows.iter().find(|w| w.label == label)?;
+        let active = w.active_cluster_id.as_deref()?;
+        let cluster = w.clusters.iter().find(|c| c.id == active)?;
+        cluster
+            .worktree
+            .as_ref()
+            .map(|wt| wt.path.clone())
+            .or_else(|| cluster.project.clone())
     }
 
     /// Every window, with the project of whatever cluster it is showing. What

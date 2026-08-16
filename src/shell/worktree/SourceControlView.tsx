@@ -10,12 +10,25 @@
  * The status itself is *not* owned here — see `useGitStatus.ts` for why it
  * lives in `WindowRoot` and arrives as a prop. Everything else (which file is
  * selected, its diff, the commit message) is view-local and deliberately reset
- * when the shown tool changes: none of it means anything in another repo.
+ * when the shown cluster changes: none of it means anything in another repo.
+ *
+ * ## Scoped to a cluster, not a tool
+ *
+ * This used to take a tool id, and every call it made resolved through
+ * `git.rs`'s `repo()` — which looks an id up in `StackSnapshot.tools`, the
+ * `helve.toml` stack-component pins. Those are a different id space from the
+ * shell's own apps, and `discovery.rs`'s `ENABLED_TOOLS` is `&[]`, so that list
+ * is empty for every project. The lookup could therefore only ever fail: every
+ * call from here came back `UnknownTool`, and the panel rendered "Git
+ * unavailable" where the change list should have been. A cluster id resolves
+ * through `project::cluster_path` instead, which follows the worktree-or-project
+ * precedence a cluster actually has.
  *
  * No motion, for the same reason `WorktreeView` had none — the handoff's
  * motion section is explicit that this list stays at native scroll speed.
  */
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { isTomlPath, TOML_LANGUAGE_ID } from "@helve/monaco-languages";
 import type { GitControl, GitDiff, GitFileChange } from "../contract";
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch } from "../../ui/Icon";
@@ -33,8 +46,8 @@ const DiffView = lazy(() => import("../diff/DiffView"));
 
 export interface SourceControlViewProps {
   control: GitControl;
-  /** `null` when the window is showing no tool at all — the empty state. */
-  toolId: string | null;
+  /** `null` when no cluster is active — the empty state. */
+  clusterId: string | null;
   git: GitStatusHandle;
 }
 
@@ -45,7 +58,7 @@ interface Selection {
   staged: boolean;
 }
 
-export default function SourceControlView({ control, toolId, git }: SourceControlViewProps) {
+export default function SourceControlView({ control, clusterId, git }: SourceControlViewProps) {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [diff, setDiff] = useState<GitDiff | null>(null);
   const [message, setMessage] = useState("");
@@ -59,16 +72,16 @@ export default function SourceControlView({ control, toolId, git }: SourceContro
     setDiff(null);
     setMessage("");
     setFailure(null);
-  }, [toolId]);
+  }, [clusterId]);
 
   useEffect(() => {
-    if (toolId === null || selected === null) {
+    if (clusterId === null || selected === null) {
       setDiff(null);
       return;
     }
 
     let live = true;
-    control.diff(toolId, selected.path, selected.staged).then(
+    control.diff(clusterId, selected.path, selected.staged).then(
       (next) => {
         if (live) setDiff(next);
       },
@@ -82,16 +95,16 @@ export default function SourceControlView({ control, toolId, git }: SourceContro
     return () => {
       live = false;
     };
-  }, [control, toolId, selected]);
+  }, [control, clusterId, selected]);
 
   const toggle = useCallback(
     async (change: GitFileChange) => {
-      if (toolId === null || busy) return;
+      if (clusterId === null || busy) return;
       setBusy(true);
       setFailure(null);
       try {
-        if (change.staged) await control.unstage(toolId, [change.path]);
-        else await control.stage(toolId, [change.path]);
+        if (change.staged) await control.unstage(clusterId, [change.path]);
+        else await control.stage(clusterId, [change.path]);
         // The row is about to move to the other list, which makes the open
         // diff the wrong side of the index. Close it rather than show a stale
         // one.
@@ -103,15 +116,15 @@ export default function SourceControlView({ control, toolId, git }: SourceContro
         setBusy(false);
       }
     },
-    [busy, control, refresh, selected, toolId],
+    [busy, control, refresh, selected, clusterId],
   );
 
   const commit = useCallback(async () => {
-    if (toolId === null || busy) return;
+    if (clusterId === null || busy) return;
     setBusy(true);
     setFailure(null);
     try {
-      await control.commit(toolId, message.trim());
+      await control.commit(clusterId, message.trim());
       setMessage("");
       setSelected(null);
       refresh();
@@ -120,12 +133,12 @@ export default function SourceControlView({ control, toolId, git }: SourceContro
     } finally {
       setBusy(false);
     }
-  }, [busy, control, message, refresh, toolId]);
+  }, [busy, control, message, refresh, clusterId]);
 
-  if (toolId === null) return <EmptyState kind="no-tool" />;
+  if (clusterId === null) return <EmptyState kind="no-cluster" />;
   if (status === null) {
-    // `loading` is what keeps this from flashing between a tool being selected
-    // and its status arriving.
+    // `loading` is what keeps this from flashing between a cluster being
+    // selected and its status arriving.
     if (loading) return null;
     return git.error !== null ? <EmptyState kind="error" detail={git.error} /> : <EmptyState kind="not-a-repo" />;
   }
@@ -174,8 +187,21 @@ export default function SourceControlView({ control, toolId, git }: SourceContro
           ) : (
             <Suspense fallback={<div className="worktree__quiet">Loading diff…</div>}>
               {/* Inline rather than side by side: see `renderSideBySide` in
-                  DiffViewProps for why the panel's width settles this. */}
-              <DiffView original={diff.original} modified={diff.modified} renderSideBySide={false} />
+                  DiffViewProps for why the panel's width settles this.
+
+                  `language` is TOML or nothing, because that is the entire set
+                  `DiffView` can tokenize — its header explains why. Decided
+                  here from the path rather than inside `DiffView` because a
+                  path is what this view has; asked of `@helve/monaco-languages`
+                  rather than answered inline because that package owns which
+                  extensions its grammar claims, and it is Monaco-free, so
+                  importing it does not undo the `lazy` boundary above. */}
+              <DiffView
+                original={diff.original}
+                modified={diff.modified}
+                language={isTomlPath(selected.path) ? TOML_LANGUAGE_ID : undefined}
+                renderSideBySide={false}
+              />
             </Suspense>
           )}
         </div>
@@ -335,17 +361,17 @@ function ChangeRow({
  * "Add worktree" button is gone, because there is no command behind it and it
  * was already rendering inert.
  */
-function EmptyState({ kind, detail }: { kind: "no-tool" | "not-a-repo" | "error"; detail?: string }) {
+function EmptyState({ kind, detail }: { kind: "no-cluster" | "not-a-repo" | "error"; detail?: string }) {
   const { title, body } =
-    kind === "no-tool"
+    kind === "no-cluster"
       ? {
-          title: "No tool selected",
-          body: "Choose a tool in the switcher bar to see its source control.",
+          title: "No cluster selected",
+          body: "Open a project in a cluster to see its source control.",
         }
       : kind === "not-a-repo"
         ? {
             title: "Not a git repository",
-            body: "This tool has no checkout, or its checkout is not a git repository.",
+            body: "This cluster has no project open, or its project is not a git repository.",
           }
         : { title: "Git unavailable", body: detail ?? "" };
 

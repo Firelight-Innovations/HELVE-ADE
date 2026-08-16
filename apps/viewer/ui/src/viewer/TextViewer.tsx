@@ -25,7 +25,9 @@
 import { useEffect, useRef, useState } from "react";
 import { pick, type ViewerProps } from "./registry";
 import { clearActiveEditor, setActiveEditor } from "./activeEditor";
-import { bindSave, createModel, mountEditor, retargetModel } from "./monaco";
+import { bindSave, createGitGutter, createModel, mountEditor, retargetModel } from "./monaco";
+import { gitHunks } from "./gitHunks";
+import { gitHead } from "./gitHead";
 import { documents, requestReload, saveDocument, type TabDocument } from "../tabs/useOpenFiles";
 import { describe, formatSize, isNotText, readText, staleWrite } from "../rpc";
 import "./text.css";
@@ -135,6 +137,43 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
     // tree. See `./activeEditor` for the whole of that seam.
     setActiveEditor(editor);
 
+    // Set to true in this effect's cleanup, and checked before every
+    // `gitHunks` result is applied — this is the same guard the buffer-read
+    // effect above uses `cancelled` for, kept separate because it lives on a
+    // different effect with a different lifetime.
+    let cancelled = false;
+
+    /**
+     * The dirty-diff gutter.
+     *
+     * Hunks are fetched fresh on every mount — a tab switch back to this
+     * file, a reload, and a first open are all a mount — and again after
+     * every save in `save` below, since a write is the other moment the
+     * hunks against HEAD can change.
+     *
+     * HEAD's text is fetched once, here, and reused for every peek opened
+     * against this editor: a save changes the working copy, not HEAD, so
+     * there is nothing a refetch after save would pick up, and re-reading it
+     * on every hunk update would make a save costlier for no different
+     * result. `headText` is a plain closure variable rather than something
+     * `useState` holds, because nothing here needs a re-render when it
+     * arrives — it only has to be in place by the time a peek is opened.
+     *
+     * Both disposed in this effect's cleanup, alongside the editor.
+     */
+    const gutter = createGitGutter(editor);
+    let headText = "";
+    void Promise.all([gitHunks(file.path), gitHead(file.path)])
+      .then(([hunks, head]) => {
+        headText = head.text;
+        if (!cancelled) gutter.update(hunks, headText);
+      })
+      .catch(() => {
+        // Best-effort: a gutter that fails to appear is a missing
+        // decoration, not a reason to show an error over a file that
+        // otherwise opened fine.
+      });
+
     // Dirty is a version comparison, not a flag, so undoing back to the saved
     // text clears the dot instead of leaving it stuck on.
     const report = () =>
@@ -156,6 +195,16 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
         await saveDocument(file.path);
         setConflict(null);
         report();
+        void gitHunks(file.path)
+          .then((hunks) => {
+            // `headText` is already in scope from the mount-time fetch above
+            // — see that comment for why a save does not refetch it.
+            if (!cancelled) gutter.update(hunks, headText);
+          })
+          .catch(() => {
+            /* Same as the fetch on mount: a stale or missing gutter after a
+               save is not worth surfacing over a write that succeeded. */
+          });
       } catch (err: unknown) {
         const stale = staleWrite(err);
         if (!stale) throw err;
@@ -167,11 +216,15 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
     bindSave(editor, () => void save());
 
     return () => {
+      cancelled = true;
       // Before the editor goes, or the caret and scroll go with it.
       doc.viewState = editor.saveViewState();
       clearActiveEditor(editor);
       changes.dispose();
       latest.current.registerSave(null);
+      // Before `editor.dispose()` — the gutter's own teardown still needs a
+      // live editor to remove its view zones and decorations from.
+      gutter.dispose();
       editor.setModel(null);
       editor.dispose();
     };

@@ -91,6 +91,46 @@ export interface CommandMessage {
 
 export type IncomingMessage = ReadyMessage | ResponseMessage | EventMessage | CommandMessage;
 
+// ---- The sideways channel: frame -> shell -> another frame ----
+
+/**
+ * The event name a `helve/open` is delivered under.
+ *
+ * One name for every kind of open, rather than a name per intent, because the
+ * shell must not learn what any of them mean. What is being asked for lives in
+ * the payload and is read by the app that receives it: File Explorer sends
+ * `{path, preview}` and File Viewer knows that is a file to show; the source
+ * control view will send something else to the same app under the same event.
+ * A shell that routed on intent would need a table of every app's verbs, which
+ * is the thing `helve/commands` was shaped to avoid.
+ */
+export const OPENED_EVENT = "helve:opened";
+
+/**
+ * The event prefix a published topic is delivered under.
+ *
+ * Prefixed rather than posted as the bare topic name, so an app's topics can
+ * never collide with the shell's own push events (`project:changed`,
+ * `files:open-path`). A frame subscribing to `files/active-path` is listening
+ * on `helve:topic/files/active-path`, and nothing an app can publish is able to
+ * impersonate news the shell authored.
+ */
+export const TOPIC_EVENT_PREFIX = "helve:topic/";
+
+/** What arrives with a `helve:topic/*` event. */
+export interface PublishedTopic {
+  value: unknown;
+  /**
+   * The instance that published it.
+   *
+   * Carried because a subscriber may have several publishers — two Viewers in
+   * one cluster both publish an active path — and "which one" is a question
+   * only the subscriber can answer, since only it knows whether it cares. The
+   * shell does not arbitrate; it delivers both.
+   */
+  from: string;
+}
+
 /**
  * The one check every inbound `message` event must pass before anything
  * else looks at it. Deliberately loose beyond that — `kind`-specific shape

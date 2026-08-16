@@ -216,6 +216,13 @@ export default function Frame({
         <motion.div className="frame__panel" data-region="panel" style={{ width }}>
           {slots.secondaryPanel}
         </motion.div>
+
+        {/* Last child, and positioned against this row rather than the frame,
+            so it covers the tool window, the handle and the panel without
+            reaching the bars above or below. The row keeps its own layout
+            underneath — nothing here resizes anything, so closing the overlay
+            restores the split exactly as it was. */}
+        {slots.splitOverlay}
       </div>
 
       <div className="frame__statusbar" data-region="statusbar">

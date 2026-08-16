@@ -41,10 +41,15 @@ export default defineConfig(async ({ mode }) => ({
       // `splash.html` for why the splash window is kept free of any
       // dependency on this application's code.
       //
-      // The two first-party apps are entries for a different reason. Each is a
+      // The first-party apps are entries for a different reason. Each is a
       // separate document mounted in an iframe (`src-tauri/src/apps/`), so each
       // needs its own HTML and its own module graph — but they are built *here*,
       // by the shell's own config, rather than by a Vite project of their own.
+      //
+      // There is one entry per row in `apps::REGISTRY`, and this is the piece
+      // that cannot be inferred from that list: Vite has to be told about every
+      // HTML entry point or it silently builds none of it. An app added to the
+      // registry without a line here mounts a 404.
       //
       // That is what makes `apps::entry_url` able to hand back a root-relative
       // path and be right under both hosts. An entry's HTML lands in `dist/` at
@@ -60,6 +65,7 @@ export default defineConfig(async ({ mode }) => ({
         splash: resolve(__dirname, "splash.html"),
         home: resolve(__dirname, "apps/home/ui/index.html"),
         files: resolve(__dirname, "apps/files/ui/index.html"),
+        viewer: resolve(__dirname, "apps/viewer/ui/index.html"),
       },
     },
   },

@@ -160,9 +160,8 @@ pub struct LayoutPreset {
 /// this shell that a person coming from a single-document editor does not expect
 /// to be possible, and which no amount of menu copy would tell them.
 ///
-/// They name only `files` and terminals, because `home` and `files` are the
-/// whole registry and a built-in built around Home would be a preset for the
-/// screen you are already on.
+/// They name the two file apps and terminals, and never Home — a built-in built
+/// around Home would be a preset for the screen you are already on.
 pub fn builtins() -> Vec<LayoutPreset> {
     vec![
         LayoutPreset {
@@ -195,6 +194,30 @@ pub fn builtins() -> Vec<LayoutPreset> {
                 dir: SplitDir::Column,
                 sizes: vec![0.7, 0.3],
                 children: vec![app_pane("files"), terminal_pane()],
+            },
+        },
+        // The one a person coming from VS Code is looking for: the tree beside
+        // the file. It is a *preset* rather than the shape of one app, which is
+        // the point of the split — this layout is something the user can
+        // rearrange, move to another monitor, or throw away, where the old
+        // Files could only ever draw it one way in one pane.
+        //
+        // Appended rather than put first, though it is the one most people will
+        // want. The tests below index `builtins()` positionally, and an
+        // insertion at the front silently re-points every one of them at a
+        // different preset — several would still pass while asserting about
+        // something else, which is worse than the ones that fail.
+        LayoutPreset {
+            id: format!("{BUILTIN_PREFIX}explorer-and-viewer"),
+            name: "Explorer & Viewer".to_string(),
+            builtin: true,
+            root: PresetNode::Split {
+                dir: SplitDir::Row,
+                // The proportions the old in-app splitter defaulted to: 260px
+                // of tree against everything else, near enough, so the layout
+                // people already had does not shift under them.
+                sizes: vec![0.25, 0.75],
+                children: vec![app_pane("files"), app_pane("viewer")],
             },
         },
     ]
@@ -962,8 +985,16 @@ mod tests {
     fn user_presets_follow_the_builtins_and_keep_their_order() {
         let merged = merge(vec![user("a", "Alpha"), user("b", "Beta")]);
         let names: Vec<&str> = merged.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(&names[..3], &["Files & Terminal", "Two Files", "Files over Terminal"]);
-        assert_eq!(&names[3..], &["Alpha", "Beta"]);
+        assert_eq!(
+            &names[..4],
+            &[
+                "Files & Terminal",
+                "Two Files",
+                "Files over Terminal",
+                "Explorer & Viewer",
+            ]
+        );
+        assert_eq!(&names[4..], &["Alpha", "Beta"]);
     }
 
     // --- applying -----------------------------------------------------------

@@ -98,11 +98,157 @@ pub fn call(
         "files/reveal" => reveal(app, params.as_ref()),
         "files/open-external" => open_external(app, params.as_ref()),
 
+        // Git decoration. Both answer about the cluster this surface is in, so
+        // neither takes a cluster from the request body — same identity rule as
+        // everything else here.
+        "files/git-status" => git_status(app, context),
+        "files/git-hunks" => git_hunks(app, context, params.as_ref()),
+        "files/git-head" => git_head(app, context, params.as_ref()),
+
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no such method: {method}"),
         )),
     }
+}
+
+/// Every changed path in this cluster's checkout, for the explorer to mark up.
+///
+/// **Absolute paths, not repo-relative.** Git speaks in paths relative to the
+/// repository root, and the explorer speaks in absolute ones; converting here
+/// means the frontend never has to know where the repository root is, which
+/// matters because it is not always the folder the tree is rooted at — a
+/// project can be a subdirectory of a larger repository, and an explorer
+/// matching git's relative paths against its own would then decorate the wrong
+/// rows, or none.
+///
+/// One flat list rather than the staged/unstaged split `git status` returns. The
+/// gutter and the row badge care what happened to a file, not which side of the
+/// index it sits on, and a path that appears on both sides — staged, then edited
+/// again — should decorate once, as the more recent of the two.
+///
+/// `null` for a cluster with no project or a project that is not a repository.
+/// The explorer draws its ordinary undecorated tree for both.
+fn git_status(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let Some(cluster) = context.cluster_id.as_deref() else {
+        return Ok(Value::Null);
+    };
+
+    let Some(status) = crate::git::git_cluster_status(app.clone(), cluster.to_string())
+        .map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?
+    else {
+        return Ok(Value::Null);
+    };
+
+    let Some(root) = crate::project::cluster_path(app, cluster) else {
+        return Ok(Value::Null);
+    };
+
+    // Against the *repository* root, not the cluster's. `git status --porcelain`
+    // reports every path relative to the top of the working tree regardless of
+    // which directory it was run in, so for a project that is a subdirectory of
+    // a larger repository — `repo/nested/proj` open as the project — the paths
+    // come back as `nested/proj/file`. Joining those onto the project directory
+    // would produce `repo/nested/proj/nested/proj/file`, which matches no row in
+    // the explorer, and the decoration would simply never appear rather than
+    // appear wrongly. Verified against real git rather than reasoned about.
+    //
+    // Note this differs from `git_hunks` below, which is correct joining against
+    // the cluster root: a `--` pathspec *is* interpreted relative to the current
+    // directory. The two commands genuinely disagree about relativity.
+    let base = crate::git::repo_root(&root).unwrap_or(root);
+
+    // Unstaged second so that it wins on collision: a file staged and then
+    // modified again is, to a reader looking at the tree, modified.
+    let changes: Vec<Value> = status
+        .staged
+        .iter()
+        .chain(status.unstaged.iter())
+        .map(|change| {
+            json!({
+                "path": base.join(&change.path).display().to_string(),
+                "kind": change.kind,
+                "staged": change.staged,
+            })
+        })
+        .collect();
+
+    Ok(json!({ "branch": status.branch, "changes": changes }))
+}
+
+/// The changed line ranges of one file, against HEAD, for the editor's gutter.
+///
+/// Takes the same absolute `path` the explorer and the viewer already hold, and
+/// makes it relative on this side for the same reason `git_status` makes them
+/// absolute: the repository root is this side's business.
+///
+/// An empty list for an unchanged file, an untracked one, or a path outside the
+/// checkout entirely — none of which is worth an error in the middle of someone
+/// editing.
+fn git_hunks(
+    app: &AppHandle,
+    context: &CallContext,
+    params: Option<&Value>,
+) -> Result<Value, RpcError> {
+    let path = required_path(params)?;
+
+    let Some(cluster) = context.cluster_id.as_deref() else {
+        return Ok(json!([]));
+    };
+    let Some(root) = crate::project::cluster_path(app, cluster) else {
+        return Ok(json!([]));
+    };
+
+    let Ok(relative) = path.strip_prefix(&root) else {
+        return Ok(json!([]));
+    };
+
+    // Git wants forward slashes whatever the platform, and `strip_prefix` hands
+    // back whatever the caller's separator was.
+    let relative = relative.display().to_string().replace('\\', "/");
+
+    let hunks = crate::git::git_hunks(app.clone(), cluster.to_string(), relative)
+        .map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+
+    serde_json::to_value(hunks).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            format!("the hunk list could not be serialized: {e}"),
+        )
+    })
+}
+
+/// One open file as HEAD has it, so the editor can show a hunk's before-and-
+/// after without the frontend having to reconstruct it from line numbers.
+///
+/// Takes the same absolute path everything else in this app does; making it
+/// repo-relative is this side's business, exactly as in `git_hunks`. Empty text
+/// covers "not in a repository", "outside the checkout", and "added since the
+/// last commit" alike — all three mean there is no committed version, which is
+/// what a diff view draws as an addition.
+fn git_head(
+    app: &AppHandle,
+    context: &CallContext,
+    params: Option<&Value>,
+) -> Result<Value, RpcError> {
+    let path = required_path(params)?;
+
+    let Some(cluster) = context.cluster_id.as_deref() else {
+        return Ok(json!({ "text": "" }));
+    };
+    let Some(root) = crate::project::cluster_path(app, cluster) else {
+        return Ok(json!({ "text": "" }));
+    };
+    let Ok(relative) = path.strip_prefix(&root) else {
+        return Ok(json!({ "text": "" }));
+    };
+
+    let relative = relative.display().to_string().replace('\\', "/");
+
+    let text = crate::git::git_head_text(app.clone(), cluster.to_string(), relative)
+        .map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+
+    Ok(json!({ "text": text }))
 }
 
 /// Where the tree roots, for the explorer's header.

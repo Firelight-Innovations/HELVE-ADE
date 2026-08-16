@@ -199,6 +199,9 @@ the shell answers these itself and never forwards them to a core.
 |---|---|---|---|
 | `helve/painted` | none | `null` | This frontend has drawn its first meaningful content. |
 | `helve/commands` | `{"commands":string[]}` | `null` | These are the menu commands this frontend can carry out **right now**. |
+| `helve/title` | `{"title":string}` | `null` | Call this surface's tab something other than its app's name. |
+| `helve/open` | `{"appId":string,"payload"?:any}` | `{"instanceId":string}` | Put something on screen in another app, in my cluster. |
+| `helve/publish` | `{"topic":string,"value":any}` | `null` | State a fact about myself for my cluster-mates to read. |
 
 `helve/painted` is a report, not a request. The orchestrator holds its splash
 window up until every first-party app has sent one, so that the window it hands
@@ -266,6 +269,99 @@ orchestrator's are in `src/shell/titlebar/TitleBar.tsx` (`APP_COMMAND`).
 declaration is de-duplicated against the last one actually sent, because the
 natural place to call it is an effect that runs on every render.
 
+### Frames talking to each other
+
+`helve/open` and `helve/publish` are how one frontend reaches **another
+frontend** — sideways, through the shell, without either of them learning the
+other exists. Everything else on this transport goes down to a host and back.
+
+Neither travels through a tool core or through Rust. Both frames are already in
+the same browser, and the layout that decides *which* frame is a fact only the
+shell holds.
+
+#### `helve/open` — put this on screen somewhere else
+
+```jsonc
+{"helve":1,"kind":"request","id":7,"method":"helve/open",
+ "params":{"appId":"viewer","payload":{"path":"a.txt","preview":true}}}
+```
+
+The shell finds a surface of that app kind **in the calling frame's own
+cluster**, brings it forward if it is already there, opens one if it is not,
+and delivers the payload to it as an event:
+
+```jsonc
+{"helve":1,"kind":"event","event":"helve:opened","payload":{"path":"a.txt","preview":true}}
+```
+
+The result names the surface that was chosen — `{"instanceId":"viewer-2"}` —
+for a caller that wants to know whether it opened something new. Most ignore it.
+
+Three properties are load-bearing:
+
+- **A kind, never an instance.** A frame cannot address a particular surface,
+  because which surface should answer is a fact about the layout that only the
+  shell can see, and a frame that could name one could name one in a cluster it
+  is not in.
+- **Its own cluster only.** The calling frame is resolved from `event.source`
+  against the shell's map of mounted iframes, exactly as every other message
+  here is, and the search for a target never leaves the cluster that frame is
+  placed in.
+- **One event name for every intent.** What is being asked for lives in the
+  payload and is read by the app that receives it — File Explorer sends a path
+  and a peek flag, the source control view will send something else to the same
+  app. A shell that routed on intent would need a table of every app's verbs,
+  which is the thing this transport is shaped to avoid.
+
+The payload is **not validated by the shell**, and that is deliberate: it is the
+app's vocabulary, not the protocol's. The receiving app is the first and only
+place its shape is checked.
+
+#### `helve/publish` — state a fact for your cluster-mates
+
+```jsonc
+{"helve":1,"kind":"request","id":8,"method":"helve/publish",
+ "params":{"topic":"files/active-path","value":{"path":"a.txt"}}}
+```
+
+Delivered to every **other** app frame in the cluster under the topic's name,
+prefixed:
+
+```jsonc
+{"helve":1,"kind":"event","event":"helve:topic/files/active-path",
+ "payload":{"value":{"path":"a.txt"},"from":"viewer-1"}}
+```
+
+The publisher is excluded from its own broadcast. A subscriber that republished
+anything derived from what it heard would otherwise ping-pong with itself, and
+no amount of care in one app prevents that from the other end.
+
+**Topics are retained.** The last value published under a topic is replayed to
+any frame that completes its handshake later, so a surface opened a minute after
+the fact is not left blind until the next change. A publisher's topics are
+dropped when its frame goes — a retained value from a surface that has closed
+would be replayed to the next one as though it were current.
+
+The `helve:topic/` prefix is what keeps an app's topics from colliding with the
+shell's own push events (`project:changed`). A frame cannot publish under a name
+that would arrive looking like news the shell authored.
+
+`value` is unvalidated, `undefined` included — publishing "there is nothing" is
+a real thing to say, and narrowing it to a refusal would leave the last real
+value retained and make an empty editor indistinguishable from one nobody had
+heard from.
+
+#### Under the Tauri host
+
+Both are **refused** with `-32601`, not accepted and dropped the way
+`helve/commands` is. A tool's own standalone app is one window with one frontend
+in it: there is no cluster, no second app, and nobody to deliver to. Answering
+"done" to an open while nothing happened would leave a frontend believing it had
+put a file on screen that nothing anywhere is showing.
+
+`publish` is fire-and-forget in the bridge, so that rejection is swallowed at
+the call site rather than surfacing as an unhandled promise.
+
 ### Origins
 
 - The bridge posts `hello` with `targetOrigin: "*"` — it doesn't know the shell's
@@ -302,6 +398,7 @@ tool code, either host.
 ```ts
 import {
   invoke, on, onCommand, declareCommands, session, host, reportPainted,
+  openIn, publish, subscribe, OPENED_EVENT,
 } from "@helve/bridge";
 
 const reply = await invoke<{ text: string }>("echo", { text: "hi" });
@@ -314,7 +411,20 @@ reportPainted();                 // "there is something on screen now"
 // again whenever the answer changes, and pass the whole set each time.
 declareCommands(dirty ? ["file/save", "edit/undo"] : ["edit/undo"]);
 const stop = onCommand((command) => run(command));
+
+// Reaching another app in this cluster. `openIn` names a kind, never a surface.
+await openIn("viewer", { path: "a.txt", preview: true });
+on(OPENED_EVENT, (payload) => show(payload));   // the receiving end
+
+// Facts your cluster-mates may care about. Retained, so a frame that mounts
+// later is told the current value rather than waiting for the next change.
+publish("files/active-path", { path: "a.txt" });
+const off = subscribe("files/active-path", (value, from) => highlight(value, from));
 ```
+
+`publish` de-duplicates against the last value sent for the same topic, because
+the natural place to call it is an effect that runs on every render — the same
+reasoning `declareCommands` is built on.
 
 `reportPainted` sends `helve/painted` once, from a `requestAnimationFrame` so
 the browser has laid the content out first — with a short timer racing it,
