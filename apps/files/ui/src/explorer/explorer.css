@@ -183,6 +183,30 @@
   color: var(--text);
 }
 
+/* Git is ignoring this path — `node_modules`, `dist`, anything a `.gitignore`
+   names. The tree still lists it, because the explorer shows what is on disk
+   and these directories are on disk; it just says, the way VS Code's does,
+   that none of it is work.
+
+   After the hover and cursor rules rather than before, and that ordering is
+   the whole rule: both set `color` at the same specificity this does, so
+   source order is what decides, and an ignored row that brightened under the
+   pointer would be claiming to be tracked for as long as the pointer sat on
+   it. The background still responds, so the row is visibly hoverable without
+   the colour saying anything untrue.
+
+   Colour on the row and opacity only on the icon, rather than opacity on the
+   whole row: opacity would fade the selection background along with the text,
+   and the cursor is exactly as real on an ignored row as anywhere else. */
+.explorer__row[data-ignored],
+.explorer__row[data-ignored]:hover {
+  color: var(--text-dim-3);
+}
+
+.explorer__row[data-ignored] .explorer__icon {
+  opacity: 0.5;
+}
+
 .explorer__chevron {
   flex: 0 0 auto;
   width: 12px;

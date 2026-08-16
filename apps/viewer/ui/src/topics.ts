@@ -56,6 +56,39 @@ export const DIRTY_PATHS = "files/dirty";
  */
 export const TREE_CHANGE = "files/tree-change";
 
+/**
+ * A file was written to disk.
+ *
+ * Separate from `TREE_CHANGE` because it is not one: saving a file leaves the
+ * tree's *shape* exactly as it was, and the Explorer would be re-listing every
+ * open folder to learn something none of them can tell it. What it does change
+ * is what git says about that path, which is the one thing the Explorer
+ * refetches on this.
+ */
+export const FILE_SAVED = "files/saved";
+
+/**
+ * What `FILE_SAVED` carries — and why it carries a counter.
+ *
+ * `publish` does not re-send a value equal to the last one it sent on that
+ * topic (`client.test.ts` pins this: "sends a publish, and does not re-send an
+ * unchanged value"). That is right for the topics it was built for, which are
+ * *state* — which file is active, which buffers are dirty — where re-announcing
+ * an unchanged answer is pure noise.
+ *
+ * This one is an *event*, and saving the same file twice in a row is the most
+ * ordinary thing a person does in an editor. With the path alone the second
+ * save would be silently dropped and the tree would stop keeping up. The
+ * counter is what makes each save a distinct value, so the dedup that is
+ * correct for state cannot swallow an event.
+ */
+export interface FileSaved {
+  path: string;
+  /** Monotonic within one Viewer. Not meaningful across apps, and not meant
+   *  to be read — only to differ. */
+  seq: number;
+}
+
 /** What `TREE_CHANGE` carries. */
 export type TreeChange =
   | { kind: "renamed"; from: string; to: string }

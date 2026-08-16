@@ -165,6 +165,54 @@ fn status_in(cwd: &Path) -> Result<GitStatus> {
     })
 }
 
+/// Every path git is ignoring in this checkout, repo-relative, for the file
+/// explorer to grey out the way VS Code's does.
+///
+/// **Deliberately a second `git status` rather than a flag on the one
+/// `status_in` already runs.** `--ignored` folds these entries into the same
+/// list the changes come back in, so every caller of `GitStatus` — the source
+/// control panel, the status bar's counts — would start reporting
+/// `node_modules` as work in progress. The explorer is the only surface that
+/// wants this, so it is the only one that pays for it.
+///
+/// And it is a real cost: measured against this repository, plain `git status`
+/// answers in 53ms and the same call with `--ignored` takes 989ms, because the
+/// ignored walk is exactly the walk over `node_modules` and `target` that
+/// everything else in git is built to avoid. That ratio is why `files.rs`
+/// exposes this as its own RPC fetched once per project rather than folding it
+/// into the status refresh, which runs every time the tree changes.
+///
+/// `--ignored` bare means `--ignored=traditional`, which is the cheap *shape*
+/// as well: a directory with nothing tracked inside it comes back as a single
+/// entry with a trailing slash — `node_modules/` — rather than as every file
+/// beneath it. This repository answers with 15 entries instead of tens of
+/// thousands, and the frontend greys a whole subtree from each one. That
+/// collapsing is tied to the untracked mode, so it is named here rather than
+/// left to `status.showUntrackedFiles`, which a user may have set to `no`.
+///
+/// Failure returns an empty list rather than an error. A checkout whose ignore
+/// rules cannot be read should still get its modified files decorated.
+pub fn ignored_roots(cwd: &Path) -> Vec<String> {
+    let Ok(out) = run_git(
+        cwd,
+        "status",
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--ignored",
+            "--untracked-files=normal",
+        ],
+    ) else {
+        return Vec::new();
+    };
+
+    out.split('\0')
+        .filter_map(|entry| entry.strip_prefix("!! "))
+        .map(str::to_string)
+        .collect()
+}
+
 /// The empty tree's well-known object id — every git repository has this
 /// object, whether or not it has ever been written to disk, because it needs
 /// no content to exist. Diffing against it is how a repository with no commits

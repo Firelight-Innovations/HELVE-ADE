@@ -168,8 +168,10 @@ const Explorer = forwardRef<
   // Same `reloadNonce` the tree itself re-lists on: whatever counts as "the
   // project changed underneath us" for the file list counts as it for git
   // status too, and there is no reason for the two to disagree about when
-  // that is.
-  const git = useGitStatus(reloadNonce);
+  // that is. The root is passed as well, on its own schedule — see
+  // `useGitStatus`, which fetches the far more expensive ignore list once per
+  // project rather than on every one of those refreshes.
+  const git = useGitStatus(root?.path ?? null, reloadNonce);
 
   /**
    * The rows, with the draft field spliced in where its entry will land.

@@ -98,10 +98,11 @@ pub fn call(
         "files/reveal" => reveal(app, params.as_ref()),
         "files/open-external" => open_external(app, params.as_ref()),
 
-        // Git decoration. Both answer about the cluster this surface is in, so
-        // neither takes a cluster from the request body — same identity rule as
-        // everything else here.
+        // Git decoration. Each answers about the cluster this surface is in, so
+        // none of them takes a cluster from the request body — same identity
+        // rule as everything else here.
         "files/git-status" => git_status(app, context),
+        "files/git-ignored" => git_ignored(app, context),
         "files/git-hunks" => git_hunks(app, context, params.as_ref()),
         "files/git-head" => git_head(app, context, params.as_ref()),
 
@@ -165,15 +166,81 @@ fn git_status(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError>
         .iter()
         .chain(status.unstaged.iter())
         .map(|change| {
+            let (path, dir) = absolute(&base, &change.path);
             json!({
-                "path": base.join(&change.path).display().to_string(),
+                "path": path,
                 "kind": change.kind,
                 "staged": change.staged,
+                "dir": dir,
             })
         })
         .collect();
 
     Ok(json!({ "branch": status.branch, "changes": changes }))
+}
+
+/// A repo-relative path from git, as an absolute one the explorer can match a
+/// row against, plus whether git named it as a whole directory.
+///
+/// **`PathBuf::join` is not enough, and that is the whole reason this exists.**
+/// Git speaks forward slashes on every platform, and `join` appends the string
+/// it is given verbatim rather than translating it, so on Windows
+/// `C:\repo`.join("src/a.ts") displays as `C:\repo\src/a.ts`. `files/list`
+/// builds its rows from `read_dir`, which gives `C:\repo\src\a.ts`, and the
+/// frontend compares the two as strings. So every nested path missed, and
+/// because the frontend derives a directory's rollup from these same strings,
+/// no folder tinted either — only a change at the top level of a project could
+/// ever show. Pushing one component at a time is what makes the separator the
+/// platform's own.
+///
+/// The trailing slash is git's shorthand for "and everything under here",
+/// which it uses for an untracked directory (and for an ignored one, over in
+/// `git::ignored_roots`). It is stripped from the path, since no row's path
+/// ends in a separator, and reported separately so the frontend can decorate
+/// the subtree rather than just the folder — which is what VS Code shows: open
+/// an untracked folder and every file inside is marked untracked too.
+fn absolute(base: &Path, relative: &str) -> (String, bool) {
+    let dir = relative.ends_with('/');
+
+    let mut path = base.to_path_buf();
+    for component in relative.split('/').filter(|part| !part.is_empty()) {
+        path.push(component);
+    }
+
+    (path.display().to_string(), dir)
+}
+
+/// Every ignored path in this cluster's checkout, absolute, for the explorer to
+/// grey out.
+///
+/// Its own method rather than a field on `files/git-status` because of what it
+/// costs: see `git::ignored_roots`, which measures the two. Status is re-asked
+/// every time the tree changes; this is asked once when a project opens, which
+/// is the right cadence for an answer that only changes when a `.gitignore`
+/// does.
+///
+/// An empty list — never an error — for a cluster with no project, a project
+/// that is not a repository, or a checkout git could not answer about. All
+/// three mean the same thing to the tree: nothing to grey.
+fn git_ignored(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
+    let Some(cluster) = context.cluster_id.as_deref() else {
+        return Ok(json!([]));
+    };
+    let Some(root) = crate::project::cluster_path(app, cluster) else {
+        return Ok(json!([]));
+    };
+
+    // Against the repository root for the same reason `git_status` is — these
+    // come out of the same `git status`, relative to the same top of the
+    // working tree, whichever directory it ran in.
+    let base = crate::git::repo_root(&root).unwrap_or(root);
+
+    let ignored: Vec<Value> = crate::git::ignored_roots(&base)
+        .iter()
+        .map(|relative| Value::String(absolute(&base, relative).0))
+        .collect();
+
+    Ok(Value::Array(ignored))
 }
 
 /// The changed line ranges of one file, against HEAD, for the editor's gutter.
@@ -2026,6 +2093,46 @@ mod tests {
 
         assert_eq!(value["files"], 0);
         assert_eq!(value["dirs"], 0);
+    }
+
+    /// The bug this whole helper exists for. `join` would leave git's forward
+    /// slashes in the middle of a Windows path, and the explorer — which
+    /// compares these against `read_dir` output as plain strings — would then
+    /// match nothing below the top level.
+    #[test]
+    fn a_git_path_takes_the_platform_separator() {
+        let base = PathBuf::from("base");
+        let (path, dir) = absolute(&base, "src/shell/foo.ts");
+
+        assert!(!dir);
+        assert_eq!(
+            path,
+            base.join("src").join("shell").join("foo.ts").display().to_string()
+        );
+        // The point of the assertion above, stated the other way round: no
+        // separator from git survives into the result.
+        assert!(!path.trim_start_matches("base").contains('/'));
+    }
+
+    /// An untracked or ignored directory. The slash is git saying "and
+    /// everything under here", which the explorer needs as a flag rather than
+    /// as a character on the end of a path no row has.
+    #[test]
+    fn a_trailing_slash_becomes_the_directory_flag() {
+        let base = PathBuf::from("base");
+        let (path, dir) = absolute(&base, "node_modules/");
+
+        assert!(dir);
+        assert_eq!(path, base.join("node_modules").display().to_string());
+    }
+
+    #[test]
+    fn a_top_level_git_path_is_unchanged_by_any_of_this() {
+        let base = PathBuf::from("base");
+        let (path, dir) = absolute(&base, "Cargo.toml");
+
+        assert!(!dir);
+        assert_eq!(path, base.join("Cargo.toml").display().to_string());
     }
 
     #[test]

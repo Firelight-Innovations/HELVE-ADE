@@ -22,6 +22,25 @@ export const DIRTY_PATHS = "files/dirty";
 /** The last thing that happened to the tree on disk. Both apps publish it. */
 export const TREE_CHANGE = "files/tree-change";
 
+/** A file was written. Only the git decoration listens — the tree's shape is
+ *  unchanged by a save. Its payload carries a path and a counter, and the
+ *  counter is load-bearing; `apps/viewer/ui/src/topics.ts` has the note. */
+export const FILE_SAVED = "files/saved";
+
+/**
+ * The path out of a `FILE_SAVED` payload, or `null` if it does not look like
+ * one.
+ *
+ * The decoration mostly does not care *which* file was saved — it re-asks git
+ * about the whole checkout either way. It cares about exactly one path: a
+ * `.gitignore`, which is the only save that can change what is greyed out.
+ */
+export function asSavedPath(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const path = (value as { path?: unknown }).path;
+  return typeof path === "string" ? path : null;
+}
+
 /** What `TREE_CHANGE` carries. */
 export type TreeChange =
   | { kind: "renamed"; from: string; to: string }
