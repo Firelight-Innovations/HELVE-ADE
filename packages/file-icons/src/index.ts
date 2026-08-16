@@ -84,7 +84,13 @@
  * background is the icon's own amber, not the page.
  */
 
-import { defaultIcons, fileExtensions, fileNames, folderNames, folderNamesExpanded } from "./manifest.generated.js";
+import {
+  defaultIcons,
+  fileExtensions,
+  fileNames,
+  folderNames,
+  folderNamesExpanded,
+} from "./manifest.generated.js";
 
 /** Root-relative, so it resolves the same under Vite and under Tauri's asset host. */
 const BASE = "/icons/material/";

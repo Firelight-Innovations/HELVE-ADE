@@ -12,14 +12,12 @@ use crate::apps;
 use crate::boot;
 use crate::discovery::{self, StackSnapshot};
 use crate::error::{AppError, Result};
+use crate::layout::SplitDir;
 use crate::manifest::{self, Manifest};
 use crate::presets;
 use crate::project;
 use crate::pty::{self, PtySessions};
-use crate::layout::SplitDir;
-use crate::shell_state::{
-    EngineState, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry,
-};
+use crate::shell_state::{EngineState, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry};
 use crate::state::AppState;
 use crate::tool_frontend;
 use crate::windows;
@@ -483,11 +481,7 @@ pub fn detach_instance(
 /// being dragged, and telling every other window about each frame of that would
 /// be a storm none of them need. See `ShellState::set_geometry`.
 #[tauri::command]
-pub fn set_window_geometry(
-    shell: State<'_, ShellState>,
-    label: String,
-    geometry: WindowGeometry,
-) {
+pub fn set_window_geometry(shell: State<'_, ShellState>, label: String, geometry: WindowGeometry) {
     shell.set_geometry(&label, geometry);
 }
 
@@ -537,7 +531,14 @@ pub fn create_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<String> {
-    open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))
+    open_terminal(
+        &app,
+        &shell,
+        &ptys,
+        &label,
+        cols.unwrap_or(80),
+        rows.unwrap_or(24),
+    )
 }
 
 /// The one path that opens a terminal, shared by the command above and by the
@@ -718,7 +719,12 @@ fn terminal_cwd(app: &tauri::AppHandle, label: &str) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn close_terminal(app: tauri::AppHandle, shell: State<'_, ShellState>, ptys: State<'_, PtySessions>, id: String) {
+pub fn close_terminal(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    ptys: State<'_, PtySessions>,
+    id: String,
+) {
     ptys.close(&id);
     shell.close_terminal(&app, &id);
 }
@@ -751,7 +757,14 @@ pub fn split_terminal(
         reason: "no such terminal to split".to_string(),
     })?;
 
-    let new_id = open_terminal(&app, &shell, &ptys, &label, cols.unwrap_or(80), rows.unwrap_or(24))?;
+    let new_id = open_terminal(
+        &app,
+        &shell,
+        &ptys,
+        &label,
+        cols.unwrap_or(80),
+        rows.unwrap_or(24),
+    )?;
     shell.group_with(&app, &id, &new_id);
     Ok(new_id)
 }
@@ -827,7 +840,12 @@ pub fn set_active_terminal(
 /// empty/no-op guards and the path-shortening live, both explained there.
 /// This command exists purely so the frontend has something to `invoke`.
 #[tauri::command]
-pub fn set_terminal_title(app: tauri::AppHandle, shell: State<'_, ShellState>, id: String, title: String) {
+pub fn set_terminal_title(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    id: String,
+    title: String,
+) {
     shell.set_terminal_title(&app, &id, &title);
 }
 
@@ -931,7 +949,8 @@ pub async fn app_call(
         // the layout as it is when the call runs. A context read on the main
         // thread and then carried across could name a cluster that closed while
         // the call was queued.
-        let context = apps::CallContext::resolve(&app, instance_id.as_deref(), cluster_id.as_deref());
+        let context =
+            apps::CallContext::resolve(&app, instance_id.as_deref(), cluster_id.as_deref());
         apps::call(&app, &context, &id, &method, params)
     })
     .await
@@ -960,7 +979,10 @@ pub async fn app_call(
 /// A `ProjectInfo` rather than a bare path, because the bar names the project
 /// and the manifest's name wins over the folder's — see `project::describe`.
 #[tauri::command]
-pub fn cluster_project(app: tauri::AppHandle, cluster_id: Option<String>) -> Option<project::ProjectInfo> {
+pub fn cluster_project(
+    app: tauri::AppHandle,
+    cluster_id: Option<String>,
+) -> Option<project::ProjectInfo> {
     project::snapshot(&app, cluster_id.as_deref()).open
 }
 
@@ -1058,8 +1080,8 @@ pub fn apply_preset(
     label: String,
     preset_id: String,
 ) -> Result<()> {
-    let preset =
-        presets::find(&app, &preset_id).ok_or_else(|| AppError::UnknownPreset(preset_id.clone()))?;
+    let preset = presets::find(&app, &preset_id)
+        .ok_or_else(|| AppError::UnknownPreset(preset_id.clone()))?;
 
     let (cluster_id, gaps) = shell
         .apply_preset(&app, &label, &preset.root)

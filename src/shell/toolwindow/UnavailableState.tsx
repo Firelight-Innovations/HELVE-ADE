@@ -7,7 +7,13 @@ import type { ToolPresentation } from "../contract";
  * This is the normal state for most tools most of the time, not an error, so
  * it borrows the empty state's quiet typography rather than an error style.
  */
-export default function UnavailableState({ tool, reason }: { tool: ToolPresentation; reason: string }) {
+export default function UnavailableState({
+  tool,
+  reason,
+}: {
+  tool: ToolPresentation;
+  reason: string;
+}) {
   return (
     <div className="toolwindow__empty">
       <div className="toolwindow__empty-column">

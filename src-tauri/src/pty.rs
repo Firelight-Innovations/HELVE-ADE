@@ -191,7 +191,14 @@ impl PtySessions {
     /// Returns the shell's short name — `pwsh`, `bash` — which is what the tab
     /// gets called. Naming the tab after whatever actually spawned means the
     /// label can never claim to be a shell you are not talking to.
-    pub fn open(&self, app: &AppHandle, id: &str, cwd: &Path, cols: u16, rows: u16) -> Result<String> {
+    pub fn open(
+        &self,
+        app: &AppHandle,
+        id: &str,
+        cwd: &Path,
+        cols: u16,
+        rows: u16,
+    ) -> Result<String> {
         let pty = native_pty_system()
             .openpty(PtySize {
                 rows,
@@ -351,7 +358,12 @@ fn spawn_shell(
 /// dedicated thread underneath it anyway. `move` transfers ownership of the
 /// handle and the id into the thread, because the thread outlives this function
 /// and so cannot borrow from it.
-fn pump(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>, backlog: Arc<Mutex<Backlog>>) {
+fn pump(
+    app: AppHandle,
+    id: String,
+    mut reader: Box<dyn Read + Send>,
+    backlog: Arc<Mutex<Backlog>>,
+) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         // Bytes from the end of the last read that were a *partial* UTF-8
@@ -489,7 +501,10 @@ pub fn busy(sessions: &PtySessions, id: &str) -> Option<Busy> {
 
     sys.processes()
         .values()
-        .find(|p| p.parent().is_some_and(|parent| parent.as_u32() == shell_pid))
+        .find(|p| {
+            p.parent()
+                .is_some_and(|parent| parent.as_u32() == shell_pid)
+        })
         .map(|p| Busy {
             process: p.name().to_string_lossy().to_string(),
         })
@@ -515,15 +530,23 @@ mod tests {
         );
 
         b.attached = true;
-        let live = b.push("PS C:\\> ".to_string()).expect("an attached session emits");
-        assert_eq!(live.seq, 1, "sequence numbers count every chunk, not every emission");
+        let live = b
+            .push("PS C:\\> ".to_string())
+            .expect("an attached session emits");
+        assert_eq!(
+            live.seq, 1,
+            "sequence numbers count every chunk, not every emission"
+        );
 
         let held: String = b.chunks.iter().map(|(_, t)| t.as_str()).collect();
         assert_eq!(
             held, "\u{1b}[6nPS C:\\> ",
             "the chunk emitted to nobody is still there for the emulator that arrives late"
         );
-        assert_eq!(b.next_seq, 2, "attach tells the emulator where the live stream resumes");
+        assert_eq!(
+            b.next_seq, 2,
+            "attach tells the emulator where the live stream resumes"
+        );
     }
 
     /// A build left running overnight must not grow this without bound.
@@ -540,7 +563,10 @@ mod tests {
             "backlog grew to {} bytes against a {BACKLOG_BYTES}-byte budget",
             b.bytes
         );
-        assert_eq!(b.next_seq, 200, "trimming drops history, never the sequence");
+        assert_eq!(
+            b.next_seq, 200,
+            "trimming drops history, never the sequence"
+        );
     }
 
     /// The one thing in this module that cannot be verified by reading it: does
@@ -570,7 +596,10 @@ mod tests {
         // and this one has to go or the reader below never sees end-of-file.
         drop(pty.slave);
 
-        let mut reader = pty.master.try_clone_reader().expect("the master can be read");
+        let mut reader = pty
+            .master
+            .try_clone_reader()
+            .expect("the master can be read");
         let mut writer = pty.master.take_writer().expect("the master can be written");
 
         // Reading a pty blocks, and a shell that never prints anything would
@@ -585,7 +614,10 @@ mod tests {
                     Ok(0) | Err(_) => break,
                     Ok(n) => n,
                 };
-                if tx.send(String::from_utf8_lossy(&buf[..n]).to_string()).is_err() {
+                if tx
+                    .send(String::from_utf8_lossy(&buf[..n]).to_string())
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -617,8 +649,14 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
 
-        assert!(!name.is_empty(), "the spawned shell has a name to put on a tab");
-        assert!(!reply.is_empty(), "`{name}` answered the handshake with nothing");
+        assert!(
+            !name.is_empty(),
+            "the spawned shell has a name to put on a tab"
+        );
+        assert!(
+            !reply.is_empty(),
+            "`{name}` answered the handshake with nothing"
+        );
     }
 
     /// `HELVE_SHELL` is the documented one-line override, and a typo'd path in
@@ -633,6 +671,10 @@ mod tests {
         assert!(!names.is_empty(), "some shell is always worth trying");
 
         #[cfg(windows)]
-        assert_eq!(names.last().map(String::as_str), Some("cmd"), "cmd is the last resort");
+        assert_eq!(
+            names.last().map(String::as_str),
+            Some("cmd"),
+            "cmd is the last resort"
+        );
     }
 }

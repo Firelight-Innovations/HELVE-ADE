@@ -31,13 +31,7 @@ import {
   gitWorktreeRemove,
   gitWorktrees,
 } from "../../bindings";
-import type {
-  GitControl,
-  GitDiff,
-  GitDivergence,
-  GitStatus,
-  WorktreeControl,
-} from "../contract";
+import type { GitControl, GitDiff, GitDivergence, GitStatus, WorktreeControl } from "../contract";
 import { fakeGitControl, fakeWorktreeControl, isFake } from "./fakeBackend";
 
 export const gitControl: GitControl = {

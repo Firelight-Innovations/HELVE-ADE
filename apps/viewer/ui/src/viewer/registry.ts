@@ -80,16 +80,7 @@ export interface ViewerDescriptor {
 }
 
 /** Set membership reads better than a chain of `||` and is the same cost. */
-const IMAGE_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "bmp",
-  "ico",
-  "avif",
-]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
 
 export const VIEWERS: ViewerDescriptor[] = [
   {

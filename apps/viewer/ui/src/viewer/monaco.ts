@@ -155,7 +155,10 @@ self.MonacoEnvironment = {
  * doing something its user did not ask for. Structural validation still works;
  * only remote schema resolution is off.
  */
-jsonDefaults.setDiagnosticsOptions({ ...jsonDefaults.diagnosticsOptions, enableSchemaRequest: false });
+jsonDefaults.setDiagnosticsOptions({
+  ...jsonDefaults.diagnosticsOptions,
+  enableSchemaRequest: false,
+});
 
 /**
  * TOML, which Monaco does not ship and this app cannot do without.
@@ -290,7 +293,7 @@ monaco.editor.defineTheme(THEME, {
     "input.background": "#14161a", // --bg
     "input.foreground": "#e4e7ec", // --text
     "input.border": "#3a404b", // --line-2
-    "focusBorder": "#d98a3f", // --accent
+    focusBorder: "#d98a3f", // --accent
 
     // --- diagnostics ------------------------------------------------------
     // Only JSON produces these today; the mapping is the shell's, so it stays
@@ -465,7 +468,11 @@ export function retargetModel(model: TextModel, extension: string): void {
  * stretched to the pane's height, and the map's vertical position agrees with
  * the scrollbar beside it.
  */
-export function mountEditor(container: HTMLElement, model: TextModel, readOnly: boolean): CodeEditor {
+export function mountEditor(
+  container: HTMLElement,
+  model: TextModel,
+  readOnly: boolean,
+): CodeEditor {
   return monaco.editor.create(container, {
     model,
     theme: THEME,

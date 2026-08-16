@@ -171,7 +171,11 @@ export default function SearchSlot({
   const kinds = session?.kinds ?? [];
 
   return (
-    <motion.div layoutId="search-slot" className="search-slot search-slot--expanded" onKeyDown={onFieldKeyDown}>
+    <motion.div
+      layoutId="search-slot"
+      className="search-slot search-slot--expanded"
+      onKeyDown={onFieldKeyDown}
+    >
       <Search size={15} className="search-slot__glyph search-slot__glyph--accent" />
       <input
         ref={inputRef}
@@ -202,7 +206,12 @@ export default function SearchSlot({
           )}
         </AnimatePresence>
       </div>
-      <button type="button" className="search-slot__close" aria-label="Close search" onClick={closeSearch}>
+      <button
+        type="button"
+        className="search-slot__close"
+        aria-label="Close search"
+        onClick={closeSearch}
+      >
         <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
           <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="var(--text-dim-2)" strokeWidth="1.4" />
         </svg>

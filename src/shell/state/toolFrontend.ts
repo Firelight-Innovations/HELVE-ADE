@@ -17,8 +17,7 @@ import { isFake, fakeApps, fakeToolPage } from "./fakeBackend";
 
 /** Mirrors `tool_frontend::ToolFrontend`. */
 export type ToolFrontend =
-  | { state: "mountable"; url: string }
-  | { state: "unavailable"; reason: string };
+  { state: "mountable"; url: string } | { state: "unavailable"; reason: string };
 
 /**
  * Resolve one tool's frontend.

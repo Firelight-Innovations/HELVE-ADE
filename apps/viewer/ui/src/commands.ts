@@ -126,8 +126,7 @@ export function useMenuCommands({
    * Both are consulted, because a viewer that reports dirty without a Monaco
    * document behind it (there is none today) would otherwise be missed.
    */
-  const dirty =
-    active !== null && (documents.isDirty(active.path) || files.dirty.has(active.path));
+  const dirty = active !== null && (documents.isDirty(active.path) || files.dirty.has(active.path));
 
   /** A file that is open and still on disk — what Duplicate and Delete need. */
   const onDisk = active !== null && !active.missing;

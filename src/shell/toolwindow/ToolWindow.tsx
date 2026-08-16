@@ -576,7 +576,10 @@ const ToolWindow = forwardRef<
 
       const { id, method, params } = event.data;
       const respond = (body: Omit<ResponseMessage, "helve" | "kind">) =>
-        source.postMessage({ helve: 1, kind: "response", ...body } satisfies ResponseMessage, origin);
+        source.postMessage(
+          { helve: 1, kind: "response", ...body } satisfies ResponseMessage,
+          origin,
+        );
 
       // `helve/*` belongs to the host, exactly as `hello` above does — this one
       // is a frame saying it has drawn its first meaningful content, and it is

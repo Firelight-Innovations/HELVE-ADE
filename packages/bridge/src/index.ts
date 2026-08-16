@@ -71,10 +71,8 @@ export const openIn: (appId: string, payload?: unknown) => Promise<{ instanceId:
 export const publish: (topic: string, value: unknown) => void = client.publish;
 
 /** Listen for what other frames in this cluster publish under `topic`. */
-export const subscribe: (
-  topic: string,
-  cb: (value: unknown, from: string) => void,
-) => () => void = client.subscribe;
+export const subscribe: (topic: string, cb: (value: unknown, from: string) => void) => () => void =
+  client.subscribe;
 
 export const session: typeof client.session = client.session;
 

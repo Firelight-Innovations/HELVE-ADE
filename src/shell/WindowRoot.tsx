@@ -147,10 +147,7 @@ export default function WindowRoot({
   // How to present the app an instance is an instance of. A lookup by *app* id,
   // because that is what decides which code to load and what to call it — there
   // is one presentation of Files however many Files are open.
-  const presentations = useMemo(
-    () => new Map(apps.map((a) => [a.id, appPresentation(a)])),
-    [apps],
-  );
+  const presentations = useMemo(() => new Map(apps.map((a) => [a.id, appPresentation(a)])), [apps]);
   const presentationOf = useCallback((appId: string) => presentations.get(appId), [presentations]);
 
   const shell = useShellState();
@@ -612,7 +609,11 @@ export default function WindowRoot({
   // from the title bar. `SecondaryPanel` still renders `CloseConfirm` — the
   // dialog is visually scoped to the panel — it just no longer decides when
   // to show it.
-  const [pendingClose, setPendingClose] = useState<{ id: string; title: string; busy: TerminalBusy } | null>(null);
+  const [pendingClose, setPendingClose] = useState<{
+    id: string;
+    title: string;
+    busy: TerminalBusy;
+  } | null>(null);
   const requestClose = useCallback(
     async (session: TerminalSession) => {
       const busy = await terminalControl.busy(session.id);
@@ -636,7 +637,9 @@ export default function WindowRoot({
   const requestCloseTab = useCallback(
     (tab: TerminalTabGroup) => {
       const target =
-        tab.id === panelTabId ? (tab.sessions.find((s) => s.id === focusedPaneId) ?? tab.sessions[0]) : tab.sessions[0];
+        tab.id === panelTabId
+          ? (tab.sessions.find((s) => s.id === focusedPaneId) ?? tab.sessions[0])
+          : tab.sessions[0];
       void requestClose(target);
     },
     [panelTabId, focusedPaneId, requestClose],
@@ -942,10 +945,7 @@ export default function WindowRoot({
   // Deliberately *not* caught here. The refusals this can produce — a blank
   // name, a name one of the built-ins holds — are answers to what was just
   // typed, and the field that typed it is what shows them. See `MenuPrompt`.
-  const onSavePreset = useCallback(
-    (name: string) => savePreset(label, name),
-    [label],
-  );
+  const onSavePreset = useCallback((name: string) => savePreset(label, name), [label]);
 
   // Everything this build can open here, from Rust rather than a literal list,
   // so a row added in `apps::openables` appears without a second edit here.
@@ -1373,7 +1373,9 @@ function zoomBlocked(zoom: number, direction: 1 | -1): string | undefined {
   }
   if (nextZoom(zoom, direction) !== zoom) return undefined;
   const at = `${Math.round(zoom * 100)}%`;
-  return direction === 1 ? `Already at the largest size (${at}).` : `Already at the smallest size (${at}).`;
+  return direction === 1
+    ? `Already at the largest size (${at}).`
+    : `Already at the smallest size (${at}).`;
 }
 
 /**

@@ -164,10 +164,7 @@ export const TOML_LANGUAGE: monaco.languages.IMonarchLanguage = {
       //
       // Offset date-time, local date-time, and local date, in one rule; the
       // trailing parts are optional because TOML makes them so.
-      [
-        /\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})?)?/,
-        "number",
-      ],
+      [/\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})?)?/, "number"],
       // Local time, which has no date in front of it at all.
       [/\d{2}:\d{2}:\d{2}(?:\.\d+)?/, "number"],
 

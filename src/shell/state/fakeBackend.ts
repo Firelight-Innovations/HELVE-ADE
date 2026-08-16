@@ -90,25 +90,43 @@ export function fakeStack(): StackSnapshot {
         { state: "ready", version: "0.1.0" },
         "runtime",
       ),
-      tool("forger", "Forger", "Technical design software — specs out the stack and its boundaries.", {
-        state: "ready",
-        version: "0.1.0",
-      }),
-      tool("journeyman", "Journeyman", "Game design software — design prototyping, rough playable systems.", {
-        state: "ready",
-        version: "0.1.0",
-      }),
+      tool(
+        "forger",
+        "Forger",
+        "Technical design software — specs out the stack and its boundaries.",
+        {
+          state: "ready",
+          version: "0.1.0",
+        },
+      ),
+      tool(
+        "journeyman",
+        "Journeyman",
+        "Game design software — design prototyping, rough playable systems.",
+        {
+          state: "ready",
+          version: "0.1.0",
+        },
+      ),
       // "needs update" in the health list.
-      tool("turner", "Turner", "Procedural art system — generates art from an artist's rough shape.", {
-        state: "mismatch",
-        expected: "0.1.0",
-        found: "0.0.9",
-      }),
+      tool(
+        "turner",
+        "Turner",
+        "Procedural art system — generates art from an artist's rough shape.",
+        {
+          state: "mismatch",
+          expected: "0.1.0",
+          found: "0.0.9",
+        },
+      ),
       tool("scrivener", "Scrivener", "Narrative and dialogue authoring tool.", {
         state: "ready",
         version: "0.1.0",
       }),
-      tool("quickener", "Quickener", "NPC behavior and AI tooling.", { state: "ready", version: "0.1.0" }),
+      tool("quickener", "Quickener", "NPC behavior and AI tooling.", {
+        state: "ready",
+        version: "0.1.0",
+      }),
       // "not installed" — renders dim and inert.
       tool("wright", "Wright", "Audio authoring and composition tooling.", { state: "missing" }),
     ],
@@ -597,13 +615,40 @@ function baseNameOf(path: string): string {
  *  names in the log below. Twenty by twelve is 240 packages; see the loop in
  *  `buildTree` for why that number. */
 const PACKAGE_PREFIXES = [
-  "ansi", "async", "babel", "cache", "chalk", "chokidar", "debug", "esbuild",
-  "eslint", "glob", "graceful", "is", "json5", "lru", "micromatch", "minipass",
-  "postcss", "resolve", "semver", "yargs",
+  "ansi",
+  "async",
+  "babel",
+  "cache",
+  "chalk",
+  "chokidar",
+  "debug",
+  "esbuild",
+  "eslint",
+  "glob",
+  "graceful",
+  "is",
+  "json5",
+  "lru",
+  "micromatch",
+  "minipass",
+  "postcss",
+  "resolve",
+  "semver",
+  "yargs",
 ];
 const PACKAGE_SUFFIXES = [
-  "core", "utils", "parser", "plugin", "loader", "runtime",
-  "config", "helpers", "types", "cli", "stream", "fs",
+  "core",
+  "utils",
+  "parser",
+  "plugin",
+  "loader",
+  "runtime",
+  "config",
+  "helpers",
+  "types",
+  "cli",
+  "stream",
+  "fs",
 ];
 
 /**
@@ -792,7 +837,11 @@ function fakeDefaultRoot(clusterId: string | null): string {
  * Home switch above can fall through to here and still refuse what neither
  * store knows.
  */
-function filesCall(method: string, params?: unknown, clusterId: string | null = null): unknown | undefined {
+function filesCall(
+  method: string,
+  params?: unknown,
+  clusterId: string | null = null,
+): unknown | undefined {
   const root = fakeDefaultRoot(clusterId);
   const p = (params ?? {}) as {
     path?: unknown;
@@ -1060,11 +1109,10 @@ function writeAt(path: string, rawText: unknown, rawBaseMtime: unknown): unknown
     // `staleWrite` in the app's `rpc.ts` reads `data.kind`, not the code —
     // `InvalidParams` is also what a bad `text` gets, so the payload is the
     // only thing that says which refusal this is.
-    throw rpcError(
-      HelveErrorCode.InvalidParams,
-      `${path} changed on disk since it was read`,
-      { kind: "stale", mtime: current },
-    );
+    throw rpcError(HelveErrorCode.InvalidParams, `${path} changed on disk since it was read`, {
+      kind: "stale",
+      mtime: current,
+    });
   }
 
   if (existing !== undefined && existing.kind !== "file") {
@@ -1105,9 +1153,28 @@ function writeAt(path: string, rawText: unknown, rawBaseMtime: unknown): unknown
  */
 const FAKE_RESERVED_CHARS = new Set(["<", ">", ":", '"', "|", "?", "*"]);
 const FAKE_RESERVED_STEMS = new Set([
-  "con", "prn", "aux", "nul",
-  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
-  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
 ]);
 
 /**
@@ -1161,10 +1228,7 @@ function fakeValidateName(name: string): void {
  * that way — a fixture that overwrote would let the create flow ship having
  * never once shown the error it spends most of its code on.
  */
-function createAt(
-  p: { parent?: unknown; name?: unknown },
-  kind: "file" | "dir",
-): unknown {
+function createAt(p: { parent?: unknown; name?: unknown }, kind: "file" | "dir"): unknown {
   const parent = requiredString(p.parent, "parent");
   const name = requiredString(p.name, "name");
   fakeValidateName(name);
@@ -1414,9 +1478,7 @@ function trashListing(root: string): unknown {
         size: entry.kind === "dir" ? null : sizeOf(entry.removed[0][1]),
         entries:
           entry.kind === "dir"
-            ? entry.removed.filter(
-                ([key]) => parentOf(key) === entry.originalPath,
-              ).length
+            ? entry.removed.filter(([key]) => parentOf(key) === entry.originalPath).length
             : null,
       })),
   };
@@ -2165,7 +2227,11 @@ function fakeMove(from: GitFileChange[], to: GitFileChange[], paths: string[], s
     to.push({
       ...change,
       staged,
-      kind: staged ? fakeStagedKind(change.kind) : change.kind === "added" ? "untracked" : change.kind,
+      kind: staged
+        ? fakeStagedKind(change.kind)
+        : change.kind === "added"
+          ? "untracked"
+          : change.kind,
     });
   }
 }
@@ -2337,7 +2403,6 @@ export const fakeWorktreeControl: WorktreeControl & {
       modified: `// ${path}\nexport const helve = {\n  seam: "after this cluster's work",\n  committed: true,\n  uncommitted: true,\n};\n`,
     });
   },
-
 };
 
 /**
@@ -2698,7 +2763,9 @@ export function fakeGroupWith(sourceId: string, id: string): void {
   const source = fakeTerminals.find((t) => t.id === sourceId);
   if (!source) return;
   const groupId = source.groupId ?? `group-${sourceId}`;
-  fakeTerminals = fakeTerminals.map((t) => (t.id === sourceId || t.id === id ? { ...t, groupId } : t));
+  fakeTerminals = fakeTerminals.map((t) =>
+    t.id === sourceId || t.id === id ? { ...t, groupId } : t,
+  );
   publishFakeShellState();
 }
 
@@ -2729,7 +2796,9 @@ export function fakeCloseTerminal(id: string): void {
   if (closed?.groupId) {
     const survivors = fakeTerminals.filter((t) => t.groupId === closed.groupId);
     if (survivors.length === 1) {
-      fakeTerminals = fakeTerminals.map((t) => (t.id === survivors[0].id ? { ...t, groupId: null } : t));
+      fakeTerminals = fakeTerminals.map((t) =>
+        t.id === survivors[0].id ? { ...t, groupId: null } : t,
+      );
     }
   }
   // A terminal dragged into the layout is a tab as well as a session.
@@ -2941,7 +3010,15 @@ function openIntoNode(
   split: { dir: SplitDir; splitId: string; newPaneId: string } | null,
 ): PaneNode {
   if (split && paneCount(node) < MAX_AUTO_PANES && !paneIsEmpty(node, paneId)) {
-    return splitPaneNode(node, paneId, split.dir, split.splitId, split.newPaneId, instanceId, false);
+    return splitPaneNode(
+      node,
+      paneId,
+      split.dir,
+      split.splitId,
+      split.newPaneId,
+      instanceId,
+      false,
+    );
   }
   return insertTab(node, paneId, instanceId, index);
 }
@@ -2951,7 +3028,9 @@ function openIntoNode(
  * `null` when no direction was measured, so nothing is minted for an open that
  * was never going to split — the same thrift `ShellState::open_instance` shows.
  */
-function mintSplitIds(dir?: SplitDir): { dir: SplitDir; splitId: string; newPaneId: string } | null {
+function mintSplitIds(
+  dir?: SplitDir,
+): { dir: SplitDir; splitId: string; newPaneId: string } | null {
   if (!dir) return null;
   fakeSplitSerial += 1;
   fakePaneSerial += 1;
@@ -3030,7 +3109,9 @@ export const fakeLayout = {
     // Out of everywhere else before in anywhere, so a cross-pane move cannot
     // leave a copy behind. Mirrors `ShellState::move_instance`.
     eachCluster((cluster) =>
-      cluster.id === clusterId ? cluster : { ...cluster, tree: removeTab(cluster.tree, instanceId) },
+      cluster.id === clusterId
+        ? cluster
+        : { ...cluster, tree: removeTab(cluster.tree, instanceId) },
     );
     eachCluster((cluster) =>
       cluster.id === clusterId
@@ -3050,9 +3131,7 @@ export const fakeLayout = {
     eachCluster((cluster) => ({ ...cluster, tree: removeTabInner(cluster.tree, instanceId) }));
     eachCluster((cluster) => ({
       ...cluster,
-      tree: prune(
-        splitPaneNode(cluster.tree, paneId, dir, splitId, newPaneId, instanceId, before),
-      ),
+      tree: prune(splitPaneNode(cluster.tree, paneId, dir, splitId, newPaneId, instanceId, before)),
     }));
     publishFakeShellState();
     return Promise.resolve();
@@ -3443,9 +3522,7 @@ function capturePreset(node: PaneNode): PresetNode {
     node.kind === "leaf"
       ? {
           kind: "pane",
-          slots: node.tabs
-            .map(fakeSlotOfTab)
-            .filter((slot): slot is PresetSlot => slot !== null),
+          slots: node.tabs.map(fakeSlotOfTab).filter((slot): slot is PresetSlot => slot !== null),
         }
       : {
           kind: "split",
@@ -3479,7 +3556,13 @@ function planPreset(
     if (node.kind === "split") {
       fakeSplitSerial += 1;
       const id = `split-${fakeSplitSerial}`;
-      return { kind: "split", id, dir: node.dir, sizes: [...node.sizes], children: node.children.map(build) };
+      return {
+        kind: "split",
+        id,
+        dir: node.dir,
+        sizes: [...node.sizes],
+        children: node.children.map(build),
+      };
     }
 
     fakePaneSerial += 1;
@@ -3543,9 +3626,7 @@ export const fakePresets = {
     if (!trimmed) {
       return Promise.reject("a preset needs a name to be found by");
     }
-    const clash = fakeBuiltinPresets().find(
-      (b) => b.name.toLowerCase() === trimmed.toLowerCase(),
-    );
+    const clash = fakeBuiltinPresets().find((b) => b.name.toLowerCase() === trimmed.toLowerCase());
     if (clash) {
       return Promise.reject(
         `"${clash.name}" is one of HELVE's own presets, so it cannot be replaced — pick another name`,
@@ -3557,9 +3638,7 @@ export const fakePresets = {
     if (!cluster) return Promise.reject("this window has no cluster to save the arrangement of");
 
     const root = capturePreset(cluster.tree);
-    const existing = fakeUserPresets.find(
-      (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
-    );
+    const existing = fakeUserPresets.find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
     if (existing) {
       // Saving over a name replaces it, and keeps its id — the only way this
       // build has of editing a preset. See `presets::save`.

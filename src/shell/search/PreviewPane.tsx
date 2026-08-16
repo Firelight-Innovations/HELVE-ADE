@@ -64,7 +64,14 @@ type PreviewState =
   | { kind: "loading" }
   | { kind: "not-text" }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; path: string; text: string; extension: string; truncated: boolean; limit: number };
+  | {
+      kind: "ready";
+      path: string;
+      text: string;
+      extension: string;
+      truncated: boolean;
+      limit: number;
+    };
 
 export default function PreviewPane({ focus, clusterId }: PreviewPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -189,7 +196,9 @@ export default function PreviewPane({ focus, clusterId }: PreviewPaneProps) {
 
   return (
     <div className="preview-pane">
-      {state.kind === "empty" && <p className="preview-pane__message">Select a result to preview it.</p>}
+      {state.kind === "empty" && (
+        <p className="preview-pane__message">Select a result to preview it.</p>
+      )}
       {state.kind === "loading" && <p className="preview-pane__message">Loading…</p>}
       {state.kind === "not-text" && (
         <p className="preview-pane__message">No preview — this file is not text.</p>

@@ -103,7 +103,10 @@ pub fn load(app: &AppHandle) -> Stored {
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        eprintln!("helve: {} is not readable, starting fresh: {e}", path.display());
+        eprintln!(
+            "helve: {} is not readable, starting fresh: {e}",
+            path.display()
+        );
         Stored::default()
     })
 }
@@ -268,7 +271,12 @@ mod tests {
     use crate::shell_state::{Cluster, SurfaceKind};
 
     fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
-        Rect { x, y, width, height }
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// A laptop display, with a second monitor to its right.
@@ -322,7 +330,10 @@ mod tests {
 
         let placed = place_within(saved, &[small], Some(small)).expect("a placement");
 
-        assert_eq!(placed.width, 1280, "a window wider than the screen is unreachable");
+        assert_eq!(
+            placed.width, 1280,
+            "a window wider than the screen is unreachable"
+        );
         assert_eq!(placed.height, 800);
         assert_eq!(placed.x, 0);
         assert_eq!(placed.y, 0);
@@ -349,7 +360,14 @@ mod tests {
     fn sample() -> Stored {
         let mut tree = PaneNode::leaf("pane-1");
         tree.insert_tab("pane-1", "files-1", None);
-        tree.split_pane("pane-1", SplitDir::Row, "split-1", "pane-2", "files-2", false);
+        tree.split_pane(
+            "pane-1",
+            SplitDir::Row,
+            "split-1",
+            "pane-2",
+            "files-2",
+            false,
+        );
 
         Stored {
             windows: vec![WindowPlacement {
@@ -401,9 +419,16 @@ mod tests {
         let back: Stored = serde_json::from_str(&json).expect("and reads back");
 
         assert_eq!(back.windows.len(), 1);
-        assert_eq!(back.windows[0].clusters[0].tree, stored.windows[0].clusters[0].tree);
+        assert_eq!(
+            back.windows[0].clusters[0].tree,
+            stored.windows[0].clusters[0].tree
+        );
         assert_eq!(back.windows[0].geometry, stored.windows[0].geometry);
-        assert_eq!(back.instances.len(), 2, "two Files, which is the whole point");
+        assert_eq!(
+            back.instances.len(),
+            2,
+            "two Files, which is the whole point"
+        );
         assert_eq!(back.terminals[0].window_label, "main");
         assert_eq!(
             back.windows[0].active_terminal.as_deref(),
@@ -425,7 +450,10 @@ mod tests {
         }"#;
 
         let stored: Stored = serde_json::from_str(json).expect("an unknown field is not fatal");
-        assert!(stored.terminals.is_empty(), "an absent field takes its default");
+        assert!(
+            stored.terminals.is_empty(),
+            "an absent field takes its default"
+        );
     }
 
     /// The file already on disk: terminals carrying a `clusterId`, the panel's
@@ -473,7 +501,8 @@ mod tests {
 
     #[test]
     fn an_empty_document_is_a_valid_empty_layout() {
-        let stored: Stored = serde_json::from_str("{}").expect("`{}` is a layout with nothing in it");
+        let stored: Stored =
+            serde_json::from_str("{}").expect("`{}` is a layout with nothing in it");
         assert!(stored.windows.is_empty());
     }
 

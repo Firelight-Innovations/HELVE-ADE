@@ -75,7 +75,12 @@ export default function CloseConfirm({ title, busy, onConfirm, onCancel }: Close
           <strong>{title}</strong>. Close it anyway?
         </p>
         <div className="panel__confirm-actions">
-          <button type="button" className="panel__confirm-cancel" ref={cancelRef} onClick={onCancel}>
+          <button
+            type="button"
+            className="panel__confirm-cancel"
+            ref={cancelRef}
+            onClick={onCancel}
+          >
             Cancel
           </button>
           <button type="button" className="panel__confirm-destroy" onClick={onConfirm}>

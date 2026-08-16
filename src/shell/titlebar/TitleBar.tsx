@@ -462,10 +462,7 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
           label: "New Window",
           onSelect: file.newWindow,
           disabled: file.newWindow === undefined,
-          hint:
-            file.newWindow === undefined
-              ? "This window cannot open another."
-              : undefined,
+          hint: file.newWindow === undefined ? "This window cannot open another." : undefined,
         },
         {
           label: "Open…",

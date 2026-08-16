@@ -25,9 +25,8 @@ export default function NoClustersState() {
         <BrandGlyph size={38} className="toolwindow__empty-glyph" />
         <div className="toolwindow__empty-title">No clusters in this window</div>
         <div className="toolwindow__empty-body">
-          Click the + in the bar above to make a cluster and open a project in
-          it. The terminal beside this one is the window's, so it is still
-          running.
+          Click the + in the bar above to make a cluster and open a project in it. The terminal
+          beside this one is the window's, so it is still running.
         </div>
       </div>
     </div>

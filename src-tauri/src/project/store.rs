@@ -126,7 +126,10 @@ pub fn load(app: &AppHandle) -> Stored {
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        eprintln!("helve: {} is not readable, starting fresh: {e}", path.display());
+        eprintln!(
+            "helve: {} is not readable, starting fresh: {e}",
+            path.display()
+        );
         Stored::default()
     })
 }

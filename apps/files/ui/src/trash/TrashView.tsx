@@ -145,7 +145,9 @@ export default function TrashView({
         />
       )}
 
-      {items === null && !error && <p className="app__note trash__note">Reading the Recycle Bin…</p>}
+      {items === null && !error && (
+        <p className="app__note trash__note">Reading the Recycle Bin…</p>
+      )}
 
       {items !== null && items.length === 0 && (
         <p className="app__note trash__note">

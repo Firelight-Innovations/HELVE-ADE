@@ -82,7 +82,8 @@ pub fn run() {
                 // `ShellState::set_geometry`.
                 WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                     if let Some(geometry) = windows::geometry_of(window) {
-                        app.state::<ShellState>().set_geometry(window.label(), geometry);
+                        app.state::<ShellState>()
+                            .set_geometry(window.label(), geometry);
                     }
                 }
                 // A window has been asked to close — by our own titlebar's ×,
@@ -239,8 +240,11 @@ pub fn run() {
 /// launch that did not happen to have it open.
 fn apps_on_screen(app: &tauri::AppHandle) -> Vec<(String, String)> {
     let snapshot = app.state::<ShellState>().snapshot();
-    let open: std::collections::HashSet<String> =
-        snapshot.instances.iter().map(|i| i.app_id.clone()).collect();
+    let open: std::collections::HashSet<String> = snapshot
+        .instances
+        .iter()
+        .map(|i| i.app_id.clone())
+        .collect();
 
     apps::roster()
         .into_iter()

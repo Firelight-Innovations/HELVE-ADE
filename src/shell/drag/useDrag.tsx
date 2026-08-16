@@ -28,13 +28,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { AnimatePresence, useMotionValue, useSpring } from "framer-motion";
-import type {
-  ClusterDrag,
-  DragHandleProps,
-  DragPayload,
-  DragState,
-  DropTarget,
-} from "../contract";
+import type { ClusterDrag, DragHandleProps, DragPayload, DragState, DropTarget } from "../contract";
 import { snap } from "../motion";
 import {
   detachCluster,

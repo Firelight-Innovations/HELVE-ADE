@@ -67,7 +67,10 @@ export default function StatusBar({ engine, git, githubOk }: StatusBarProps) {
         {/* The handoff only draws GitHub healthy (--ok). --err is this
             component's own extrapolation for `githubOk === false` — the
             spec has no failure-state crop for this dot to check against. */}
-        <span className="statusbar__dot" style={{ background: githubOk ? "var(--ok)" : "var(--err)" }} />
+        <span
+          className="statusbar__dot"
+          style={{ background: githubOk ? "var(--ok)" : "var(--err)" }}
+        />
         <span className="statusbar__label">GitHub</span>
       </div>
 

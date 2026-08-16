@@ -251,7 +251,11 @@ export default function WorktreePanel({
         style={{ flexBasis: sectionBasis(topRatio) }}
       >
         <div className="worktreepanel__graph-scroll">
-          <CommitGraph commits={data.commits} worktrees={data.worktrees} activeBranch={activeBranch} />
+          <CommitGraph
+            commits={data.commits}
+            worktrees={data.worktrees}
+            activeBranch={activeBranch}
+          />
         </div>
       </div>
 
@@ -270,7 +274,11 @@ export default function WorktreePanel({
         {data.divergence === null ? (
           <SourceControlView control={gitControl} clusterId={clusterId} git={git} />
         ) : (
-          <DivergenceView clusterId={clusterId} worktreeControl={worktreeControl} divergence={data.divergence} />
+          <DivergenceView
+            clusterId={clusterId}
+            worktreeControl={worktreeControl}
+            divergence={data.divergence}
+          />
         )}
       </div>
     </div>
@@ -425,7 +433,9 @@ function DivFileRow({
       </span>
       <span
         className={
-          change.kind === "deleted" ? "worktreepanel__divfile worktreepanel__divfile--deleted" : "worktreepanel__divfile"
+          change.kind === "deleted"
+            ? "worktreepanel__divfile worktreepanel__divfile--deleted"
+            : "worktreepanel__divfile"
         }
       >
         {change.file}

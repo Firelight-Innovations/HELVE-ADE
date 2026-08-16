@@ -91,14 +91,17 @@ export interface FileSaved {
 
 /** What `TREE_CHANGE` carries. */
 export type TreeChange =
-  | { kind: "renamed"; from: string; to: string }
-  | { kind: "deleted"; path: string };
+  { kind: "renamed"; from: string; to: string } | { kind: "deleted"; path: string };
 
 /** Narrow a `TREE_CHANGE` payload, which arrives as `unknown`. */
 export function asTreeChange(value: unknown): TreeChange | null {
   if (typeof value !== "object" || value === null) return null;
   const change = value as { kind?: unknown; from?: unknown; to?: unknown; path?: unknown };
-  if (change.kind === "renamed" && typeof change.from === "string" && typeof change.to === "string") {
+  if (
+    change.kind === "renamed" &&
+    typeof change.from === "string" &&
+    typeof change.to === "string"
+  ) {
     return { kind: "renamed", from: change.from, to: change.to };
   }
   if (change.kind === "deleted" && typeof change.path === "string") {

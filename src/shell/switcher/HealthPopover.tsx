@@ -10,7 +10,13 @@ export type UnhealthyTool = ToolPresentation & { health: Exclude<ToolHealth, "ok
  * The only place tool state appears. One row per unhealthy tool — a healthy
  * tool is silent here exactly like it is silent on its tab.
  */
-export default function HealthPopover({ tools, onRescan }: { tools: UnhealthyTool[]; onRescan: () => void }) {
+export default function HealthPopover({
+  tools,
+  onRescan,
+}: {
+  tools: UnhealthyTool[];
+  onRescan: () => void;
+}) {
   return (
     <motion.div
       className="switcher__popover"
@@ -22,7 +28,10 @@ export default function HealthPopover({ tools, onRescan }: { tools: UnhealthyToo
       <div className="switcher__popover-header">TOOL HEALTH</div>
       {tools.map((tool) => (
         <div key={tool.id} className="switcher__popover-row">
-          <span className="switcher__popover-dot" style={{ background: HEALTH_TOKEN[tool.health] }} />
+          <span
+            className="switcher__popover-dot"
+            style={{ background: HEALTH_TOKEN[tool.health] }}
+          />
           <span className="switcher__popover-name">{tool.name}</span>
           <span className="switcher__popover-spacer" />
           {/* Always the user-facing word from HEALTH_LABEL — never the

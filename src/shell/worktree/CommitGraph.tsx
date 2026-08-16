@@ -242,7 +242,13 @@ export interface CommitGraphProps {
   selected?: string | null;
 }
 
-export default function CommitGraph({ commits, worktrees, activeBranch, onSelect, selected }: CommitGraphProps) {
+export default function CommitGraph({
+  commits,
+  worktrees,
+  activeBranch,
+  onSelect,
+  selected,
+}: CommitGraphProps) {
   const placed = useMemo(() => layoutCommits(commits), [commits]);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -274,7 +280,14 @@ export default function CommitGraph({ commits, worktrees, activeBranch, onSelect
   const moveSelection = (from: string | null | undefined, delta: number) => {
     if (!onSelect) return;
     const index = from ? placed.findIndex((p) => p.commit.sha === from) : -1;
-    const next = placed[clamp(index === -1 ? (delta > 0 ? 0 : placed.length - 1) : index + delta, 0, placed.length - 1)];
+    const next =
+      placed[
+        clamp(
+          index === -1 ? (delta > 0 ? 0 : placed.length - 1) : index + delta,
+          0,
+          placed.length - 1,
+        )
+      ];
     onSelect(next.commit.sha);
     rowRefs.current.get(next.commit.sha)?.focus();
   };
@@ -382,7 +395,12 @@ function CommitRow({
           preserveAspectRatio="none"
         >
           {segments.map((d, i) => (
-            <path key={i} d={d} className="commitgraph__line" style={{ stroke: laneColor(placed.lane) }} />
+            <path
+              key={i}
+              d={d}
+              className="commitgraph__line"
+              style={{ stroke: laneColor(placed.lane) }}
+            />
           ))}
         </svg>
         {/* The node and its ring are plain positioned elements, not more SVG
@@ -411,7 +429,12 @@ function CommitRow({
         )}
         <span
           className="commitgraph__node"
-          style={{ left: laneX(placed.lane), width: NODE_R * 2, height: NODE_R * 2, background: laneColor(placed.lane) }}
+          style={{
+            left: laneX(placed.lane),
+            width: NODE_R * 2,
+            height: NODE_R * 2,
+            background: laneColor(placed.lane),
+          }}
         />
       </div>
 
@@ -422,7 +445,12 @@ function CommitRow({
       {commit.refs.length > 0 && (
         <span className="commitgraph__refs">
           {commit.refs.map((ref) => (
-            <RefBadge key={ref} name={ref} active={ref === activeBranch} live={liveBranches.has(ref)} />
+            <RefBadge
+              key={ref}
+              name={ref}
+              active={ref === activeBranch}
+              live={liveBranches.has(ref)}
+            />
           ))}
         </span>
       )}

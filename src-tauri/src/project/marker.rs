@@ -262,7 +262,10 @@ mod tests {
 
         let path = find(&dir.0).expect("create leaves a manifest find can locate");
         assert_eq!(path.file_name().unwrap(), "MyGame.helve");
-        assert!(dir.0.join(TRACE_DIR).is_dir(), ".helve/ is created beside it");
+        assert!(
+            dir.0.join(TRACE_DIR).is_dir(),
+            ".helve/ is created beside it"
+        );
 
         let read = load(&path).expect("load");
         assert_eq!(read.name, "MyGame");
@@ -326,7 +329,10 @@ pipeline = "deferred"
         let marker = load(&path).expect("an unknown key must not fail the read");
         assert_eq!(marker.name, "Future");
         assert_eq!(marker.id, "abc123");
-        assert_eq!(marker.format, 99, "so the caller can say it is reading it partially");
+        assert_eq!(
+            marker.format, 99,
+            "so the caller can say it is reading it partially"
+        );
     }
 
     #[test]

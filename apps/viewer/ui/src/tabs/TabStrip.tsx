@@ -182,9 +182,7 @@ export default function TabStrip({
         />
       )}
 
-      {tabs.map((tab) =>
-        tab.notice ? <NoticeBar key={tab.path} notice={tab.notice} /> : null,
-      )}
+      {tabs.map((tab) => (tab.notice ? <NoticeBar key={tab.path} notice={tab.notice} /> : null))}
 
       {menu && (
         <ContextMenu

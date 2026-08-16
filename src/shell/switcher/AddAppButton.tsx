@@ -144,10 +144,7 @@ export default function AddAppButton({ apps }: { apps: AppsMenuHandlers }) {
       // this button is on the row's leading side, where the health popover is
       // right-aligned because it is on the trailing one. Clamped so a cluster
       // scrolled hard right cannot push the surface off the window.
-      left: Math.max(
-        EDGE_GAP,
-        Math.min(rect.left, window.innerWidth - MENU_MIN_WIDTH - EDGE_GAP),
-      ),
+      left: Math.max(EDGE_GAP, Math.min(rect.left, window.innerWidth - MENU_MIN_WIDTH - EDGE_GAP)),
     });
     setOpen(true);
   };

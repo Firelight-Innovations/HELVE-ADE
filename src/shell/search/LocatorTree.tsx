@@ -83,12 +83,20 @@ export default function LocatorTree({ root, focus, clusterId }: LocatorTreeProps
   const visible = nodes.slice(rowWindow.start, rowWindow.end);
 
   return (
-    <div className="locator-tree" style={{ "--locator-row": `${ROW_HEIGHT}px` } as React.CSSProperties}>
+    <div
+      className="locator-tree"
+      style={{ "--locator-row": `${ROW_HEIGHT}px` } as React.CSSProperties}
+    >
       {rootLabel && (
         <div className="locator-tree__head">
           {/* Root always reads as open: its children are exactly what's
               listed below the header, there's no collapsed state for it. */}
-          <img className="locator-tree__head-icon" src={rootFolderIconUrl(true)} alt="" draggable={false} />
+          <img
+            className="locator-tree__head-icon"
+            src={rootFolderIconUrl(true)}
+            alt=""
+            draggable={false}
+          />
           <span className="locator-tree__head-label">{rootLabel}</span>
         </div>
       )}
@@ -114,7 +122,11 @@ function LocatorRow({ node, error }: { node: LocatorNode; error: string | null }
       title={error ?? node.path}
     >
       {isDir ? (
-        <span className="locator-tree__chevron" data-open={node.expanded || undefined} aria-hidden="true">
+        <span
+          className="locator-tree__chevron"
+          data-open={node.expanded || undefined}
+          aria-hidden="true"
+        >
           <Chevron />
         </span>
       ) : (

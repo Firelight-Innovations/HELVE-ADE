@@ -17,7 +17,13 @@ export interface BootProgress {
  * Determinate when `progress` is supplied, indeterminate otherwise — no step
  * source exists yet, so every caller today gets the indeterminate form.
  */
-export default function BootOverlay({ toolName, progress }: { toolName: string; progress?: BootProgress }) {
+export default function BootOverlay({
+  toolName,
+  progress,
+}: {
+  toolName: string;
+  progress?: BootProgress;
+}) {
   const fraction = progress ? Math.min(Math.max(progress.step / progress.total, 0), 1) : 0;
 
   return (

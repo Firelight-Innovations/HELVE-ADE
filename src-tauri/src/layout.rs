@@ -161,10 +161,9 @@ impl PaneNode {
     #[allow(dead_code)]
     pub fn pane_of_tab(&self, instance_id: &str) -> Option<&str> {
         match self {
-            PaneNode::Leaf { id, tabs, .. } => tabs
-                .iter()
-                .any(|t| t == instance_id)
-                .then_some(id.as_str()),
+            PaneNode::Leaf { id, tabs, .. } => {
+                tabs.iter().any(|t| t == instance_id).then_some(id.as_str())
+            }
             PaneNode::Split { children, .. } => {
                 children.iter().find_map(|c| c.pane_of_tab(instance_id))
             }
@@ -191,9 +190,9 @@ impl PaneNode {
             // A split always has children after `prune`, but `first` rather
             // than `[0]` keeps a hand-built or hand-edited tree from panicking
             // the whole backend.
-            PaneNode::Split { id, children, .. } => {
-                children.first().map_or(id.as_str(), PaneNode::first_pane_id)
-            }
+            PaneNode::Split { id, children, .. } => children
+                .first()
+                .map_or(id.as_str(), PaneNode::first_pane_id),
         }
     }
 
@@ -289,7 +288,10 @@ impl PaneNode {
     /// handler working from a pointer position, and a tab dropped past the end
     /// of a strip means "last", not "error".
     pub fn insert_tab(&mut self, pane_id: &str, instance_id: &str, index: Option<usize>) -> bool {
-        let Some(PaneNode::Leaf { tabs, active_tab, .. }) = self.find_leaf_mut(pane_id) else {
+        let Some(PaneNode::Leaf {
+            tabs, active_tab, ..
+        }) = self.find_leaf_mut(pane_id)
+        else {
             return false;
         };
 
@@ -320,7 +322,9 @@ impl PaneNode {
 
     fn remove_tab_inner(&mut self, instance_id: &str) -> bool {
         match self {
-            PaneNode::Leaf { tabs, active_tab, .. } => {
+            PaneNode::Leaf {
+                tabs, active_tab, ..
+            } => {
                 let Some(i) = tabs.iter().position(|t| t == instance_id) else {
                     return false;
                 };
@@ -341,7 +345,9 @@ impl PaneNode {
     /// that does not hold the instance being activated somewhere else.
     pub fn activate_tab(&mut self, instance_id: &str) -> bool {
         match self {
-            PaneNode::Leaf { tabs, active_tab, .. } => {
+            PaneNode::Leaf {
+                tabs, active_tab, ..
+            } => {
                 if tabs.iter().any(|t| t == instance_id) {
                     *active_tab = Some(instance_id.to_string());
                     true
@@ -416,7 +422,10 @@ impl PaneNode {
         match self {
             PaneNode::Leaf { .. } => false,
             PaneNode::Split {
-                id, sizes, children, ..
+                id,
+                sizes,
+                children,
+                ..
             } if id == split_id => {
                 if next.len() != children.len() {
                     return false;
@@ -681,7 +690,11 @@ mod tests {
         let PaneNode::Leaf { active_tab, .. } = &tree else {
             panic!("expected a leaf");
         };
-        assert_eq!(active_tab.as_deref(), Some("c"), "the tab that took its index");
+        assert_eq!(
+            active_tab.as_deref(),
+            Some("c"),
+            "the tab that took its index"
+        );
     }
 
     #[test]
@@ -704,7 +717,10 @@ mod tests {
         let mut tree = leaf_with("p1", &["files-1"]);
         tree.remove_tab("files-1");
 
-        assert!(tree.is_empty_leaf(), "a cluster with nothing open is still a cluster");
+        assert!(
+            tree.is_empty_leaf(),
+            "a cluster with nothing open is still a cluster"
+        );
         assert_eq!(tree.id(), "p1");
     }
 
@@ -720,7 +736,11 @@ mod tests {
             panic!("expected a split");
         };
         assert_eq!(*dir, SplitDir::Row);
-        assert_eq!(children.len(), 3, "three columns, not a column inside a column");
+        assert_eq!(
+            children.len(),
+            3,
+            "three columns, not a column inside a column"
+        );
         assert_eq!(
             children.iter().map(PaneNode::id).collect::<Vec<_>>(),
             ["p1", "p2", "p3"]
@@ -739,7 +759,11 @@ mod tests {
         let PaneNode::Split { children, .. } = &tree else {
             panic!("expected a split");
         };
-        assert_eq!(children.len(), 2, "a column inside a row is a real distinction");
+        assert_eq!(
+            children.len(),
+            2,
+            "a column inside a row is a real distinction"
+        );
         assert!(matches!(children[1], PaneNode::Split { .. }));
     }
 
@@ -748,7 +772,10 @@ mod tests {
         let mut tree = leaf_with("p1", &["a"]);
         assert!(tree.insert_tab("p1", "b", Some(99)));
 
-        let PaneNode::Leaf { tabs, active_tab, .. } = &tree else {
+        let PaneNode::Leaf {
+            tabs, active_tab, ..
+        } = &tree
+        else {
             panic!("expected a leaf");
         };
         assert_eq!(tabs, &["a".to_string(), "b".to_string()]);
@@ -788,7 +815,11 @@ mod tests {
             panic!("opening beside something should have produced a split");
         };
         assert_eq!(*dir, SplitDir::Row);
-        assert_eq!(children[0].id(), "p1", "the new pane takes the trailing side");
+        assert_eq!(
+            children[0].id(),
+            "p1",
+            "the new pane takes the trailing side"
+        );
         assert_eq!(children[1].id(), "p2");
     }
 
@@ -812,11 +843,18 @@ mod tests {
         let mut tree = leaf_with("p1", &["files-1"]);
         assert!(tree.open_into("p1", "files-2", None, None));
 
-        let PaneNode::Leaf { tabs, active_tab, .. } = &tree else {
+        let PaneNode::Leaf {
+            tabs, active_tab, ..
+        } = &tree
+        else {
             panic!("a tab must not have produced a split");
         };
         assert_eq!(tabs, &["files-1".to_string(), "files-2".to_string()]);
-        assert_eq!(active_tab.as_deref(), Some("files-2"), "an opened tab is shown");
+        assert_eq!(
+            active_tab.as_deref(),
+            Some("files-2"),
+            "an opened tab is shown"
+        );
     }
 
     /// The ceiling, and what happens at it: the surface stacks into the focused
@@ -824,11 +862,16 @@ mod tests {
     #[test]
     fn opening_stops_splitting_at_the_pane_ceiling() {
         let mut tree = leaf_with("p1", &["a"]);
-        for (i, (pane, split, fresh)) in [("p1", "s1", "p2"), ("p2", "s2", "p3"), ("p3", "s3", "p4")]
-            .into_iter()
-            .enumerate()
+        for (i, (pane, split, fresh)) in
+            [("p1", "s1", "p2"), ("p2", "s2", "p3"), ("p3", "s3", "p4")]
+                .into_iter()
+                .enumerate()
         {
-            let dir = if i % 2 == 0 { SplitDir::Row } else { SplitDir::Column };
+            let dir = if i % 2 == 0 {
+                SplitDir::Row
+            } else {
+                SplitDir::Column
+            };
             assert!(tree.open_into(pane, &format!("t{i}"), None, Some((dir, split, fresh))));
         }
         assert_eq!(tree.pane_count(), MAX_AUTO_PANES, "four opens, four panes");
@@ -836,7 +879,11 @@ mod tests {
         // The fifth. It lands in p4 as a tab rather than halving it again.
         assert!(tree.open_into("p4", "fifth", None, Some((SplitDir::Row, "s4", "p5"))));
         assert_eq!(tree.pane_count(), MAX_AUTO_PANES, "no fifth pane");
-        assert_eq!(tree.pane_of_tab("fifth"), Some("p4"), "stacked where it was opened");
+        assert_eq!(
+            tree.pane_of_tab("fifth"),
+            Some("p4"),
+            "stacked where it was opened"
+        );
     }
 
     /// The cap is on *opening*. A drag that names a pane and an edge is a
@@ -850,7 +897,11 @@ mod tests {
         assert_eq!(tree.pane_count(), 4);
 
         assert!(tree.split_pane("p4", SplitDir::Column, "s4", "p5", "e", false));
-        assert_eq!(tree.pane_count(), 5, "an explicit drop is never refused for shape");
+        assert_eq!(
+            tree.pane_count(),
+            5,
+            "an explicit drop is never refused for shape"
+        );
     }
 
     #[test]
@@ -866,7 +917,10 @@ mod tests {
         let mut tree = leaf_with("p1", &["a"]);
         tree.split_pane("p1", SplitDir::Row, "s1", "p2", "b", false);
 
-        assert!(!tree.set_sizes("s1", &[0.2, 0.3, 0.5]), "a stale measurement is refused");
+        assert!(
+            !tree.set_sizes("s1", &[0.2, 0.3, 0.5]),
+            "a stale measurement is refused"
+        );
         assert_sizes(&tree, &[0.5, 0.5]);
         assert!(tree.set_sizes("s1", &[0.7, 0.3]));
         assert_sizes(&tree, &[0.7, 0.3]);
@@ -885,7 +939,10 @@ mod tests {
             sizes[1] >= MIN_SIZE - 1e-6,
             "a pane dragged to zero would have no divider left to grab"
         );
-        assert!((sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5, "weights still sum to 1");
+        assert!(
+            (sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5,
+            "weights still sum to 1"
+        );
     }
 
     /// The clamp has to survive the scaling that follows it — the bug this
@@ -897,9 +954,15 @@ mod tests {
         normalize(&mut sizes);
 
         for (i, s) in sizes.iter().enumerate() {
-            assert!(*s >= MIN_SIZE - 1e-6, "pane {i} is under the floor: {sizes:?}");
+            assert!(
+                *s >= MIN_SIZE - 1e-6,
+                "pane {i} is under the floor: {sizes:?}"
+            );
         }
-        assert!((sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5, "{sizes:?} must sum to 1");
+        assert!(
+            (sizes.iter().sum::<f32>() - 1.0).abs() < 1e-5,
+            "{sizes:?} must sum to 1"
+        );
     }
 
     /// Past twenty panes the floor cannot be honoured for everyone at once.
@@ -910,7 +973,10 @@ mod tests {
         sizes[0] = 1.0;
         normalize(&mut sizes);
 
-        assert!(sizes.iter().all(|s| (*s - 1.0 / 40.0).abs() < 1e-6), "{sizes:?}");
+        assert!(
+            sizes.iter().all(|s| (*s - 1.0 / 40.0).abs() < 1e-6),
+            "{sizes:?}"
+        );
     }
 
     #[test]
@@ -940,7 +1006,10 @@ mod tests {
             panic!("expected a leaf");
         };
         assert_eq!(active_tab.as_deref(), Some("b"));
-        assert!(!tree.activate_tab("nonesuch"), "an absent instance is not activated");
+        assert!(
+            !tree.activate_tab("nonesuch"),
+            "an absent instance is not activated"
+        );
     }
 
     /// Activating a tab in a pane you are **not** focused on touches that pane
@@ -972,14 +1041,23 @@ mod tests {
 
         assert!(tree.activate_tab("files-1"), "the tab is in this tree");
 
-        let PaneNode::Split { children, dir, sizes, .. } = &tree else {
+        let PaneNode::Split {
+            children,
+            dir,
+            sizes,
+            ..
+        } = &tree
+        else {
             panic!("activating must not reshape the tree");
         };
         assert_eq!(*dir, SplitDir::Row);
         assert_eq!(sizes.len(), 2);
         assert_eq!(children.len(), 2, "no pane appeared or vanished");
 
-        let PaneNode::Leaf { tabs, active_tab, .. } = &children[0] else {
+        let PaneNode::Leaf {
+            tabs, active_tab, ..
+        } = &children[0]
+        else {
             panic!("expected p1 to still be a leaf");
         };
         assert_eq!(
@@ -987,12 +1065,23 @@ mod tests {
             &["files-1".to_string(), "term-1".to_string()],
             "the activated tab did not move panes, and neither did its neighbour"
         );
-        assert_eq!(active_tab.as_deref(), Some("files-1"), "its own pane switched");
+        assert_eq!(
+            active_tab.as_deref(),
+            Some("files-1"),
+            "its own pane switched"
+        );
 
-        let PaneNode::Leaf { tabs, active_tab, .. } = &children[1] else {
+        let PaneNode::Leaf {
+            tabs, active_tab, ..
+        } = &children[1]
+        else {
             panic!("expected p2 to still be a leaf");
         };
-        assert_eq!(tabs, &["files-2".to_string()], "the focused pane's contents are untouched");
+        assert_eq!(
+            tabs,
+            &["files-2".to_string()],
+            "the focused pane's contents are untouched"
+        );
         assert_eq!(
             active_tab.as_deref(),
             Some("files-2"),
@@ -1003,7 +1092,10 @@ mod tests {
         // clicking the chip you are already looking at cannot disturb anything.
         let mut again = before.clone();
         assert!(again.activate_tab("term-1"));
-        assert_eq!(again, before, "re-activating the showing tab changes nothing");
+        assert_eq!(
+            again, before,
+            "re-activating the showing tab changes nothing"
+        );
     }
 
     #[test]
@@ -1012,7 +1104,10 @@ mod tests {
         tree.split_pane("p1", SplitDir::Row, "s1", "p2", "b", false);
 
         assert!(tree.pane_of_id("p1"));
-        assert!(tree.pane_of_id("p2"), "a pane nested under a split still counts");
+        assert!(
+            tree.pane_of_id("p2"),
+            "a pane nested under a split still counts"
+        );
         assert!(!tree.pane_of_id("s1"), "a split is not a pane");
         assert!(!tree.pane_of_id("nonesuch"));
     }
@@ -1022,7 +1117,11 @@ mod tests {
         let mut tree = leaf_with("p1", &["a"]);
         tree.split_pane("p1", SplitDir::Row, "s1", "p2", "b", true);
 
-        assert_eq!(tree.first_pane_id(), "p2", "`before` put p2 on the leading edge");
+        assert_eq!(
+            tree.first_pane_id(),
+            "p2",
+            "`before` put p2 on the leading edge"
+        );
     }
 
     /// The round trip matters more than the exact spelling: this is written to
@@ -1043,7 +1142,13 @@ mod tests {
     fn the_wire_form_is_tagged_and_camel_cased() {
         let tree = leaf_with("p1", &["a"]);
         let json = serde_json::to_string(&tree).expect("a tree serializes");
-        assert!(json.contains(r#""kind":"leaf""#), "discriminated by `kind`: {json}");
-        assert!(json.contains(r#""activeTab""#), "camelCase on the wire: {json}");
+        assert!(
+            json.contains(r#""kind":"leaf""#),
+            "discriminated by `kind`: {json}"
+        );
+        assert!(
+            json.contains(r#""activeTab""#),
+            "camelCase on the wire: {json}"
+        );
     }
 }

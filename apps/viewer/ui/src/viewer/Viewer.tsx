@@ -12,7 +12,15 @@
  * viewer built on Monaco, pdf.js or mermaid has three separate third-party
  * render paths that can throw for reasons this app will never enumerate.
  */
-import { Component, Suspense, lazy, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import {
+  Component,
+  Suspense,
+  lazy,
+  useMemo,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { byId, pick, type OpenFile, type ViewerDescriptor, type ViewerProps } from "./registry";
 
 /**
@@ -70,7 +78,13 @@ export default function Viewer({ file, onDirty, registerSave }: ViewerHostProps)
         key={`${file.path}:${descriptor.id}`}
         file={file}
       >
-        <Suspense fallback={<p className="app__note viewer__pending">Loading {descriptor.label.toLowerCase()} viewer…</p>}>
+        <Suspense
+          fallback={
+            <p className="app__note viewer__pending">
+              Loading {descriptor.label.toLowerCase()} viewer…
+            </p>
+          }
+        >
           <Mounted
             file={file}
             onDirty={onDirty}

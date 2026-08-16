@@ -1,0 +1,20 @@
+# Build output and dependencies.
+node_modules/
+dist/
+dist-ssr/
+target/
+public/icons/material/
+
+# Generated: rebuilt from `material-icon-theme` by scripts/generate-file-icons.mjs
+# on every install. Formatting it would be formatting build output.
+packages/file-icons/src/manifest.generated.ts
+
+# Lockfiles are owned by their package managers.
+pnpm-lock.yaml
+Cargo.lock
+
+# Markdown is deliberately excluded. The docs in this repo are hand-wrapped
+# prose, and Prettier's markdown printer rewraps paragraphs — it would reflow
+# every table and paragraph in STANDARDS.md and docs/tool-protocol.md for no
+# gain. Prose wrapping stays a human decision.
+*.md

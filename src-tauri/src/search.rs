@@ -202,7 +202,10 @@ pub async fn search_content(
             // No project, or the project's folder is gone — the same "nothing
             // to search" state `git_cluster_status` draws as empty rather than
             // as an error.
-            return Ok(SearchResponse { hits: Vec::new(), truncated: false });
+            return Ok(SearchResponse {
+                hits: Vec::new(),
+                truncated: false,
+            });
         };
 
         let matcher = build_matcher(&query, case_sensitive, whole_word, regex)?;
@@ -216,7 +219,11 @@ pub async fn search_content(
     // plain error rather than an unwrap that would take the main thread with
     // it. There is no `RpcError` vocabulary here, so this crosses as an
     // ordinary `AppError`.
-    .unwrap_or_else(|e| Err(AppError::Search(format!("the search did not complete: {e}"))))
+    .unwrap_or_else(|e| {
+        Err(AppError::Search(format!(
+            "the search did not complete: {e}"
+        )))
+    })
 }
 
 /// A query plus its three flags, compiled into one matcher that both the
@@ -236,7 +243,11 @@ fn build_matcher(
     whole_word: bool,
     regex: bool,
 ) -> Result<grep_regex::RegexMatcher> {
-    let pattern = if regex { query.to_string() } else { regex_syntax::escape(query) };
+    let pattern = if regex {
+        query.to_string()
+    } else {
+        regex_syntax::escape(query)
+    };
 
     RegexMatcherBuilder::new()
         .case_insensitive(!case_sensitive)
@@ -321,14 +332,23 @@ fn walk(
 
         let mut matches = Vec::new();
         if !too_large {
-            let hit_cap = search_file(&mut searcher, matcher, path, &mut matches, &mut total_matches);
+            let hit_cap = search_file(
+                &mut searcher,
+                matcher,
+                path,
+                &mut matches,
+                &mut total_matches,
+            );
             if hit_cap {
                 truncated = true;
             }
         }
 
         if name_matches || !matches.is_empty() {
-            hits.push(SearchFileHit { path: path.display().to_string(), matches });
+            hits.push(SearchFileHit {
+                path: path.display().to_string(),
+                matches,
+            });
         }
 
         if total_matches >= MAX_MATCHES || hits.len() >= MAX_HITS {

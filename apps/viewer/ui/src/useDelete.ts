@@ -212,7 +212,9 @@ function confirmation(
   if (unsaved.length === 1) {
     parts.push(`Unsaved changes in ${unsaved[0]} will be lost.`);
   } else if (unsaved.length > 1) {
-    parts.push(`Unsaved changes in ${unsaved.length} open files will be lost: ${unsaved.join(", ")}.`);
+    parts.push(
+      `Unsaved changes in ${unsaved.length} open files will be lost: ${unsaved.join(", ")}.`,
+    );
   }
 
   return parts.join(" ");

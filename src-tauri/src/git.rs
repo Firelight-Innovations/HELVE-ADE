@@ -279,7 +279,10 @@ fn line_change_counts(cwd: &Path, unstaged: &[GitFileChange]) -> (u32, u32) {
         }
     }
 
-    for file in unstaged.iter().filter(|f| matches!(f.kind, GitChangeKind::Untracked)) {
+    for file in unstaged
+        .iter()
+        .filter(|f| matches!(f.kind, GitChangeKind::Untracked))
+    {
         insertions += untracked_line_count(&cwd.join(&file.path));
     }
 
@@ -537,7 +540,7 @@ pub fn worktrees(repo: &Path) -> Result<Vec<GitWorktree>> {
                  head: &mut String,
                  branch: &mut Option<String>,
                  locked: &mut bool,
-                      result: &mut Vec<GitWorktree>| {
+                 result: &mut Vec<GitWorktree>| {
         if let Some(p) = path.take() {
             result.push(GitWorktree {
                 path: p,
@@ -751,7 +754,9 @@ fn validate_worktree_name(name: &str) -> Result<()> {
         return Err(bad("A worktree needs a name."));
     }
     if name.len() > 100 {
-        return Err(bad("A worktree name has to be shorter than 100 characters."));
+        return Err(bad(
+            "A worktree name has to be shorter than 100 characters.",
+        ));
     }
 
     // `.` and `-` are legal *inside* a name and troublesome at the edges: a
@@ -762,7 +767,9 @@ fn validate_worktree_name(name: &str) -> Result<()> {
         return Err(bad("A worktree name cannot start with a dot or a dash."));
     }
     if name.ends_with('.') || name.ends_with(".lock") {
-        return Err(bad("A worktree name cannot end with a dot or with `.lock`."));
+        return Err(bad(
+            "A worktree name cannot end with a dot or with `.lock`.",
+        ));
     }
     if name.contains("..") {
         return Err(bad("A worktree name cannot contain two dots in a row."));
@@ -786,7 +793,9 @@ fn validate_worktree_name(name: &str) -> Result<()> {
     ];
     let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
     if RESERVED.contains(&stem.as_str()) {
-        return Err(bad(&format!("`{name}` is a name Windows reserves — pick another.")));
+        return Err(bad(&format!(
+            "`{name}` is a name Windows reserves — pick another."
+        )));
     }
 
     Ok(())
@@ -805,10 +814,11 @@ fn validate_worktree_name(name: &str) -> Result<()> {
 /// is sitting in, or the answer would depend on where the question was asked
 /// from.
 fn cluster_repo(app: &AppHandle, cluster_id: &str, op: &str) -> Result<(PathBuf, PathBuf)> {
-    let project = crate::project::cluster_pointer(app, cluster_id).ok_or_else(|| AppError::Git {
-        op: op.to_string(),
-        reason: "This cluster has no project open.".to_string(),
-    })?;
+    let project =
+        crate::project::cluster_pointer(app, cluster_id).ok_or_else(|| AppError::Git {
+            op: op.to_string(),
+            reason: "This cluster has no project open.".to_string(),
+        })?;
 
     if !project.is_dir() {
         return Err(AppError::Git {
@@ -901,11 +911,8 @@ pub fn git_worktree_create(
         base,
     };
 
-    app.state::<crate::shell_state::ShellState>().set_cluster_worktree(
-        &app,
-        &cluster_id,
-        Some(reference.clone()),
-    );
+    app.state::<crate::shell_state::ShellState>()
+        .set_cluster_worktree(&app, &cluster_id, Some(reference.clone()));
 
     Ok(reference)
 }

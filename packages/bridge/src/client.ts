@@ -310,7 +310,11 @@ export function createClient(opts: ClientOptions): Client {
   // client *unbound* (`export const invoke = client.invoke`), so a `this.invoke`
   // there would be a `this` of undefined the moment anyone imported the
   // shorthand — which is every caller.
-  function invokeAny<T>(method: string, params?: unknown, timeoutMs = defaultTimeoutMs): Promise<T> {
+  function invokeAny<T>(
+    method: string,
+    params?: unknown,
+    timeoutMs = defaultTimeoutMs,
+  ): Promise<T> {
     return host === "helve"
       ? invokeHelve<T>(method, params, timeoutMs)
       : invokeTauri<T>(method, params);

@@ -163,7 +163,13 @@ export default function SecondaryPanel({
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   if (collapsed) {
-    return <CollapsedStrip sessions={sessions} activeTabId={activeTabId} onToggleCollapse={onToggleCollapse} />;
+    return (
+      <CollapsedStrip
+        sessions={sessions}
+        activeTabId={activeTabId}
+        onToggleCollapse={onToggleCollapse}
+      />
+    );
   }
 
   return (
@@ -191,7 +197,12 @@ export default function SecondaryPanel({
             />
           ))}
 
-          <button type="button" className="panel__newbtn" onClick={onNewTerminal} aria-label="New terminal">
+          <button
+            type="button"
+            className="panel__newbtn"
+            onClick={onNewTerminal}
+            aria-label="New terminal"
+          >
             <Plus />
           </button>
         </div>
@@ -213,7 +224,12 @@ export default function SecondaryPanel({
         </div>
 
         <div className="panel__collapsegroup">
-          <button type="button" className="panel__collapsebtn" onClick={onToggleCollapse} aria-label="Collapse panel">
+          <button
+            type="button"
+            className="panel__collapsebtn"
+            onClick={onToggleCollapse}
+            aria-label="Collapse panel"
+          >
             <ChevronRight />
           </button>
         </div>
@@ -224,10 +240,14 @@ export default function SecondaryPanel({
           loses its scrollback and its running process's own rendering
           state, so switching to the worktree tab and back has to be free. */}
       <div className="panel__body">
-        <div className={`panel__body-slot panel__body-slot--worktree${onWorktree ? "" : " panel__body-slot--hidden"}`}>
+        <div
+          className={`panel__body-slot panel__body-slot--worktree${onWorktree ? "" : " panel__body-slot--hidden"}`}
+        >
           {worktreeView ?? null}
         </div>
-        <div className={`panel__body-slot panel__body-slot--terminal${onWorktree ? " panel__body-slot--hidden" : ""}`}>
+        <div
+          className={`panel__body-slot panel__body-slot--terminal${onWorktree ? " panel__body-slot--hidden" : ""}`}
+        >
           {terminalView ?? null}
         </div>
       </div>
@@ -370,11 +390,17 @@ function CollapsedStrip({
   // worktree tab was the one active before collapsing, there is no session
   // to name at all, so it falls back to the first session rather than
   // showing nothing (the handoff doesn't cover that case).
-  const activeSession = sessions.find((s) => s.id === activeTabId || s.groupId === activeTabId) ?? sessions[0];
+  const activeSession =
+    sessions.find((s) => s.id === activeTabId || s.groupId === activeTabId) ?? sessions[0];
 
   return (
     <div className="panel panel__collapsed">
-      <button type="button" className="panel__restorebtn" onClick={onToggleCollapse} aria-label="Restore panel">
+      <button
+        type="button"
+        className="panel__restorebtn"
+        onClick={onToggleCollapse}
+        aria-label="Restore panel"
+      >
         <ChevronLeft />
       </button>
       {activeSession && <div className="panel__collapsed-label">{activeSession.title}</div>}

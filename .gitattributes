@@ -1,0 +1,31 @@
+# Line endings are LF in the repository *and* in the working tree.
+#
+# This file exists because of a specific failure. `core.autocrlf=true` is set
+# locally, so without an eol rule git checks source out as CRLF while rustfmt
+# and Prettier both write LF unconditionally. The two never agree: running
+# `prettier --check` immediately after a successful `prettier --write` reported
+# 52 files as still unformatted, because it was reading the CRLF that git had
+# put back. A format check that cannot pass even on freshly formatted code is
+# worse than no format check, so the working tree is pinned to LF.
+*               text=auto eol=lf
+
+# Binary assets git must never translate.
+*.png           binary
+*.ico           binary
+*.icns          binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.pdf           binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.otf           binary
+*.dll           binary
+*.exe           binary
+
+# Generated and vendored files, excluded from language statistics and from
+# diffs that a human is expected to read.
+pnpm-lock.yaml                              linguist-generated=true -diff
+Cargo.lock                                  linguist-generated=true -diff
+packages/file-icons/src/manifest.generated.ts linguist-generated=true -diff

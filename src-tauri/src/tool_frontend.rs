@@ -137,7 +137,11 @@ pub fn serve(app: &AppHandle, path: &str) -> (u16, &'static str, Vec<u8>) {
         // A `..` segment, an absolute path, or a symlink pointing out of the
         // checkout. Refusing rather than clamping: a request that tried to
         // leave the directory is not a request worth guessing the intent of.
-        return (403, "text/plain", b"outside the tool's dist directory".to_vec());
+        return (
+            403,
+            "text/plain",
+            b"outside the tool's dist directory".to_vec(),
+        );
     };
 
     match std::fs::read(&file) {

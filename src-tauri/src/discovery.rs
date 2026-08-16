@@ -202,7 +202,11 @@ mod tests {
             .iter()
             .filter(|t| ENABLED_TOOLS.contains(&t.id.as_str()))
             .count();
-        assert_eq!(snapshot.tools.len(), expected, "ENABLED_TOOLS filtering changed");
+        assert_eq!(
+            snapshot.tools.len(),
+            expected,
+            "ENABLED_TOOLS filtering changed"
+        );
 
         // Every tool resolves to a path under the checkout root, and ids are unique.
         let mut ids: Vec<&str> = snapshot.tools.iter().map(|t| t.spec.id.as_str()).collect();

@@ -107,7 +107,9 @@ impl CallContext {
             .and_then(|id| app.state::<ShellState>().cluster_of_instance(id))
             .or_else(|| cluster_id.map(str::to_owned));
 
-        let project = resolved.as_deref().and_then(|id| project::cluster_path(app, id));
+        let project = resolved
+            .as_deref()
+            .and_then(|id| project::cluster_path(app, id));
 
         Self {
             cluster_id: resolved,
@@ -466,7 +468,9 @@ mod tests {
         assert!(is_app("viewer"));
         assert!(is_app("files"));
         assert!(
-            openables().iter().any(|o| o.id == "viewer" && o.kind == OpenableKind::App),
+            openables()
+                .iter()
+                .any(|o| o.id == "viewer" && o.kind == OpenableKind::App),
             "the Apps menu offers it"
         );
         assert!(

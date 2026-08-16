@@ -227,12 +227,8 @@ mod platform {
         }
 
         let name = item.name.to_string_lossy().into_owned();
-        os_limited::restore_all([item]).map_err(|e| {
-            RpcError::new(
-                INTERNAL_ERROR,
-                format!("could not restore {name}: {e}"),
-            )
-        })?;
+        os_limited::restore_all([item])
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not restore {name}: {e}")))?;
 
         Ok(json!({
             "path": target.display().to_string(),
@@ -330,13 +326,21 @@ fn list(_app: &AppHandle, _context: &CallContext) -> Result<Value, RpcError> {
 }
 
 /// Put one item back where it came from. Refuses rather than overwriting.
-fn restore(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+fn restore(
+    app: &AppHandle,
+    context: &CallContext,
+    params: Option<&Value>,
+) -> Result<Value, RpcError> {
     let root = scope_root(app, context)?;
     platform::restore_one(&root, &required_id(params)?)
 }
 
 /// Destroy one item for good. There is no recovering from this one.
-fn purge(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+fn purge(
+    app: &AppHandle,
+    context: &CallContext,
+    params: Option<&Value>,
+) -> Result<Value, RpcError> {
     let root = scope_root(app, context)?;
     platform::purge_one(&root, &required_id(params)?)
 }
