@@ -16,6 +16,7 @@
     "lint:js": "eslint .",
     "lint:rust": "node scripts/clippy-baseline.mjs",
     "lint:comments": "node scripts/check-comments.mjs",
+    "slop": "node scripts/slop.mjs",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write . && cargo fmt --all",
     "format:check": "prettier --check . && cargo fmt --all -- --check",
