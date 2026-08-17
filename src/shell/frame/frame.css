@@ -78,6 +78,13 @@
   min-width: 0;
   background: var(--bg);
   position: relative;
+  /* Load-bearing once the band can take the whole column. The surfaces inside
+     are absolutely positioned from measurements taken while this box still had
+     height, and `ToolWindow` deliberately keeps the last good geometry rather
+     than re-measuring a box of zero — so at zero height they would paint over
+     the band instead of disappearing with it. Clipping here is what makes
+     "minimized" look minimized while every app stays mounted and running. */
+  overflow: hidden;
 }
 
 /* --- the terminal band ------------------------------------------------------

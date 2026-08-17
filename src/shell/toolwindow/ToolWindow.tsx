@@ -164,6 +164,20 @@ const ToolWindow = forwardRef<
     instances: Map<string, SurfaceInstance>;
     /** How to present the app an instance is an instance of. */
     presentationOf: (appId: string) => ToolPresentation | undefined;
+    /**
+     * One surface, drawn over the whole window instead of over its pane.
+     *
+     * What the cluster chip does with Home: every app is covered rather than
+     * closed, and uncovering them is a state change here and nothing else —
+     * no tab is moved, no pane is resized, and not one iframe is remounted, so
+     * whatever each app had open is exactly where it was left.
+     *
+     * Covered rather than hidden, deliberately. A hidden frame stops being
+     * given a rendering lifecycle and its tiles are dropped, so unhiding it
+     * shows the bare canvas for a frame or two — see the `outgoing` comment
+     * below. One drawn *over* the top costs nothing to lift.
+     */
+    soloInstanceId?: string | null;
     /** The pane a new surface lands in, drawn with the active-pane treatment. */
     focusedPaneId: string | null;
     onFocusPane: (paneId: string) => void;
@@ -184,6 +198,7 @@ const ToolWindow = forwardRef<
     clustersKnown,
     instances,
     presentationOf,
+    soloInstanceId = null,
     focusedPaneId,
     onFocusPane,
     onResize,
@@ -978,15 +993,24 @@ const ToolWindow = forwardRef<
           pane's content area ended up — but holds no surfaces and, since the
           cluster bar took over every tab in the window, no tabs either. See the
           `rects` comment above for why the layout and the surfaces are
-          deliberately separate trees. */}
-      <PaneTree
-        tree={tree}
-        focusedPaneId={focusedPaneId}
-        onFocusPane={onFocusPane}
-        onResize={onResize}
-        onHostChange={onHostChange}
-        dropTarget={dropTarget}
-      />
+          deliberately separate trees.
+
+          The wrapper exists for `soloInstanceId`, and only for it: the pane
+          layer's dividers, focus ring and drop indicators all draw *above* a
+          surface on purpose, so a surface covering the window would be crossed
+          by lines belonging to panes nobody can see. `visibility` rather than
+          `display`, so every pane keeps its box and the measuring above keeps
+          answering — the geometry is still correct the instant it is uncovered. */}
+      <div className="toolwindow__layout" data-hidden={soloInstanceId !== null || undefined}>
+        <PaneTree
+          tree={tree}
+          focusedPaneId={focusedPaneId}
+          onFocusPane={onFocusPane}
+          onResize={onResize}
+          onHostChange={onHostChange}
+          dropTarget={dropTarget}
+        />
+      </div>
 
       {/* Every surface in the cluster, always mounted, positioned over the pane
           that owns it. Flat siblings of a container that never moves: this list
@@ -1011,7 +1035,10 @@ const ToolWindow = forwardRef<
         const paneId = paneOfTab(tree, instanceId);
         const rect = paneId ? rects.get(paneId) : undefined;
 
-        const active = activeByPane.get(paneId ?? "") === instanceId;
+        // The surface that has taken the window is drawn whether or not its own
+        // pane is showing it — it is not being shown *in* that pane.
+        const takeover = instanceId === soloInstanceId;
+        const active = takeover || activeByPane.get(paneId ?? "") === instanceId;
         // Being active wins. An instance can be in the outgoing set and active
         // at once — a tab dragged out of one pane and into another leaves the
         // first while arriving in the second — and covering itself with itself
@@ -1027,6 +1054,10 @@ const ToolWindow = forwardRef<
             // comment above for why the two are separate attributes.
             data-outgoing={leaving || undefined}
             data-fading={(leaving && outgoing.fading) || undefined}
+            // Read by `toolwindow.css` for the one thing this cannot say in a
+            // style attribute: which layer it sits on. Above every other
+            // surface, and above the pane layer's own decorations.
+            data-solo={takeover || undefined}
             // Read back by the blur handler above, to resolve a focused iframe
             // to the pane holding it.
             data-instance={instanceId}
@@ -1048,15 +1079,17 @@ const ToolWindow = forwardRef<
             // takes the one replacing it to draw. That is the whole of the
             // deferred hide; see the `outgoing` comment above.
             style={
-              rect
-                ? {
-                    left: rect.left,
-                    top: rect.top,
-                    width: rect.width,
-                    height: rect.height,
-                    visibility: active || leaving ? "visible" : "hidden",
-                  }
-                : { visibility: "hidden" }
+              takeover
+                ? { left: 0, top: 0, width: "100%", height: "100%", visibility: "visible" }
+                : rect
+                  ? {
+                      left: rect.left,
+                      top: rect.top,
+                      width: rect.width,
+                      height: rect.height,
+                      visibility: active || leaving ? "visible" : "hidden",
+                    }
+                  : { visibility: "hidden" }
             }
           >
             {isTerminal ? (

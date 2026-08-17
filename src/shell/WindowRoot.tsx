@@ -116,6 +116,11 @@ export default function WindowRoot({
   const [bottomHeight, setBottomHeight] = useState(BOTTOM_DEFAULT);
   const [bottomCollapsed, setBottomCollapsed] = useState(true);
 
+  // The band pulled all the way to the top, with the apps minimized under it.
+  // Minimized and not closed: the tool window keeps every surface mounted at
+  // zero height, so pulling back down puts them back untouched.
+  const [bottomMaximized, setBottomMaximized] = useState(false);
+
   // Registered on the band rather than taken by the band itself: `panel` is a
   // region and may not import the drag layer (STANDARDS.md §1.2). This file is
   // not a region, so the zone is made here and handed down as a ref.
@@ -300,14 +305,62 @@ export default function WindowRoot({
     setOpenedInstance(null);
   }, [openedInstanceId, tree]);
 
+  // --- Home ------------------------------------------------------------------
+  //
+  // Home is a surface like any other and lives in the cluster's tree. It is
+  // never *listed* — not in the bar, not in the Apps menu — because it has one
+  // door instead: the chip of the cluster you are already in. What that door
+  // does is cover the window with it, so every app is still mounted at the size
+  // it was when Home goes away. `ToolWindow`'s `soloInstanceId` is the whole of
+  // the mechanism.
+  const homeInstanceId = useMemo(
+    () => paneTabs(tree).find((id) => instances.get(id)?.appId === "home") ?? null,
+    [tree, instances],
+  );
+
+  // Asked for, and separately, showing. Opening a Home for a cluster that has
+  // none is a round trip through Rust, and the flag is set before it lands.
+  const [homeWanted, setHomeWanted] = useState(false);
+  const homeShowing = homeWanted && homeInstanceId !== null;
+
+  // The Home this window opened to cover with, closed again on the way out. A
+  // cluster that already had one keeps it; one that did not is left exactly as
+  // it was found, rather than paying a permanent pane for a look at Home.
+  const openedHome = useRef<string | null>(null);
+
+  const showHome = useCallback(() => {
+    setHomeWanted(true);
+    if (homeInstanceId !== null) return;
+    void openInstance(label, "home", activePaneId ?? undefined, splitDirOnOpen(activePaneId))
+      .then((id) => (openedHome.current = id))
+      .catch((err: unknown) => {
+        setHomeWanted(false);
+        console.error("helve: could not open Home:", err);
+      });
+  }, [label, activePaneId, homeInstanceId]);
+
+  // Also what every other way of choosing a surface calls — clicking a chip,
+  // opening an app, switching cluster. Uncovering is the same act as choosing
+  // something else to look at, so it is not a separate gesture to learn.
+  const hideHome = useCallback(() => {
+    setHomeWanted(false);
+    const ours = openedHome.current;
+    openedHome.current = null;
+    if (ours !== null) void closeInstance(ours);
+  }, []);
+
   // The surface the menus act on: the active tab of the focused pane. Not "the
   // active tab" — with several panes on screen there is no such thing, and
   // Save has to mean the editor you were typing in rather than whichever pane
   // happens to be first in the tree.
+  // Home while it covers the window, because that is the surface in front of
+  // you — a File menu acting on an app nobody can see would be wrong for as
+  // long as Home is up.
   const activeInstanceId = useMemo(() => {
+    if (homeShowing) return homeInstanceId;
     const focused = paneLeaves(tree).find((l) => l.id === activePaneId);
     return focused?.activeTab ?? paneLeaves(tree)[0]?.activeTab ?? null;
-  }, [tree, activePaneId]);
+  }, [tree, activePaneId, homeShowing, homeInstanceId]);
 
   const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
 
@@ -337,11 +390,13 @@ export default function WindowRoot({
    */
   const onOpenApp = useCallback(
     (appId: string) => {
+      // Opening something is asking to look at it, so Home stops covering it.
+      hideHome();
       void openInstance(label, appId, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
         .then(setOpenedInstance)
         .catch((err: unknown) => console.error("helve: could not open that app:", err));
     },
-    [label, activePaneId],
+    [label, activePaneId, hideHome],
   );
 
   /**
@@ -366,13 +421,14 @@ export default function WindowRoot({
    * nothing on screen to predict which you were about to get.
    */
   const onOpenTerminalHere = useCallback(() => {
+    hideHome();
     void terminalControl
       .createInPane(label, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
       // A session id is a tab id in a tree like any other, so the same
       // focus-follows-open path above applies to it unchanged.
       .then(setOpenedInstance)
       .catch((err: unknown) => console.error("helve: could not open a terminal here:", err));
-  }, [label, activePaneId]);
+  }, [label, activePaneId, hideHome]);
 
   /**
    * The Apps menu's one click handler, for a list that is no longer all apps.
@@ -395,31 +451,24 @@ export default function WindowRoot({
     void setPaneSizes(splitId, sizes);
   }, []);
 
-  // Home in the active cluster: the instance it already has, focused, or a
-  // fresh one opened into the focused pane if it has none. Shared by the
-  // cluster chip below and File > Open Recent further down, which both mean
-  // "show me Home" now — one rule rather than two copies that could disagree.
-  const onFocusHome = useCallback(() => {
-    const existing = paneTabs(tree).find((id) => instances.get(id)?.appId === "home");
-    if (existing) void activateInstance(existing);
-    else onOpenApp("home");
-  }, [tree, instances, onOpenApp]);
-
   // --- clusters -------------------------------------------------------------
 
   const onSelectCluster = useCallback(
     (clusterId: string) => {
-      // The already-active chip no longer just re-selects itself — nothing
-      // changes when it does — it opens or focuses Home instead, now that
-      // Home is unlisted from the Apps menu and hidden from this row (see
-      // `appsHandlers` and `members`). An inactive chip still only switches.
+      // The already-active chip does not re-select itself — nothing changes when
+      // it does. It is Home's switch instead: press it and Home covers the
+      // window, press it again and the apps are back exactly as they were. An
+      // inactive chip still only switches, and takes the cover down on its way
+      // out, since the Home it was covering belongs to the cluster you left.
       if (clusterId === activeClusterId) {
-        onFocusHome();
+        if (homeShowing) hideHome();
+        else showHome();
         return;
       }
+      hideHome();
       void setActiveCluster(label, clusterId);
     },
-    [label, activeClusterId, onFocusHome],
+    [label, activeClusterId, homeShowing, showHome, hideHome],
   );
 
   const onAddCluster = useCallback(() => {
@@ -632,6 +681,14 @@ export default function WindowRoot({
           setActiveBandTab(remaining[0].id);
         }
       }
+      // The band goes with the last of them, un-maximized so the next terminal
+      // does not open onto a band that had swallowed the window. Only for one
+      // that was *in* the band: closing a terminal that had been dragged into a
+      // pane says nothing about what the band still holds.
+      if (closed && sessions.length === 1) {
+        setBottomCollapsed(true);
+        setBottomMaximized(false);
+      }
       terminalControl.close(id);
     },
     [bandTabId, sessions],
@@ -804,6 +861,9 @@ export default function WindowRoot({
    */
   const onSelectMember = useCallback(
     (member: ClusterMember) => {
+      // Clicking any of them is choosing what to look at, which is the other
+      // way Home stops covering the window. See `showHome`.
+      hideHome();
       if (member.paneId !== null) {
         setActivePane(member.paneId);
         void activateInstance(member.id);
@@ -812,7 +872,7 @@ export default function WindowRoot({
       setBottomCollapsed(false);
       onSelectBandTab(member.id);
     },
-    [onSelectBandTab],
+    [onSelectBandTab, hideHome],
   );
 
   /**
@@ -969,10 +1029,11 @@ export default function WindowRoot({
   }, [activeClusterId]);
 
   // `MenuItem` has no submenu and faking one is out, so Open Recent shows the
-  // surface that has the real list. It is `onFocusHome` itself now, not a
-  // second copy of it — the chip is the primary route to Home and this menu
-  // item the secondary one, but "find it, or open it" is one rule either way.
-  const onOpenRecent = onFocusHome;
+  // surface that has the real list. It is `showHome` itself, not a second copy
+  // of it — the chip is the primary route to Home and this menu item the
+  // secondary one, but showing it is one rule either way. Not the toggle: a menu
+  // item named Open Recent has to end with the list open, however it was left.
+  const onOpenRecent = showHome;
 
   // Every arrangement this build ships or this machine has saved. Rust merges
   // the compiled-in built-ins with `presets.json` and broadcasts the answer, so
@@ -1184,8 +1245,10 @@ export default function WindowRoot({
         onPanelMaximizedChange={setPanelMaximized}
         bottomHeight={bottomHeight}
         bottomCollapsed={bottomCollapsed}
+        bottomMaximized={bottomMaximized}
         onBottomHeightChange={setBottomHeight}
         onBottomCollapsedChange={setBottomCollapsed}
+        onBottomMaximizedChange={setBottomMaximized}
         slots={{
           // "HELVE Engine | project | branch". What the window is *pointed at*,
           // rather than which surface happens to be in front — the tab strip
@@ -1317,6 +1380,9 @@ export default function WindowRoot({
               clustersKnown={shell !== null}
               instances={instances}
               presentationOf={presentationOf}
+              // Home over the top of everything, from the cluster chip. `null`
+              // whenever it is not showing, which is most of the time.
+              soloInstanceId={homeShowing ? homeInstanceId : null}
               focusedPaneId={activePaneId}
               onFocusPane={setActivePane}
               onResize={onResizePane}

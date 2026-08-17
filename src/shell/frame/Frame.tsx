@@ -42,6 +42,15 @@ export const TOOLWINDOW_MIN_H = 120;
  * shove and reopening takes a deliberate lift.
  */
 export const BOTTOM_COLLAPSE_OVERSHOOT = 60;
+/**
+ * How far *past* the tool window's floor the pointer must travel before the
+ * band takes the whole column, and how far back it must fall to give it up.
+ *
+ * The same dead zone `MAXIMIZE_OVERSHOOT` gives the panel, at the other end of
+ * the same drag. A band that swallowed the apps the moment the pointer grazed
+ * the floor would be one twitch away from hiding everything on screen.
+ */
+export const BOTTOM_MAXIMIZE_OVERSHOOT = 60;
 
 export default function Frame({
   kind,
@@ -53,8 +62,10 @@ export default function Frame({
   onPanelMaximizedChange,
   bottomHeight = BOTTOM_DEFAULT,
   bottomCollapsed = true,
+  bottomMaximized = false,
   onBottomHeightChange,
   onBottomCollapsedChange,
+  onBottomMaximizedChange,
 }: {
   kind: WindowKind;
   slots: FrameSlots;
@@ -80,8 +91,17 @@ export default function Frame({
    */
   bottomHeight?: number;
   bottomCollapsed?: boolean;
+  /**
+   * The band has taken the whole column and the tool window is at zero.
+   *
+   * The apps are still mounted at that height — this is the same box they
+   * always sat in, measuring nothing — so pulling the band back down puts them
+   * back rather than reopening them. See `.frame__toolwindow`'s `overflow`.
+   */
+  bottomMaximized?: boolean;
   onBottomHeightChange?: (height: number) => void;
   onBottomCollapsedChange?: (collapsed: boolean) => void;
+  onBottomMaximizedChange?: (maximized: boolean) => void;
 }) {
   // The panel's width is a motion value rather than React state on purpose.
   // Dragging has to be exactly 1:1 with the cursor, and routing every frame of
@@ -107,6 +127,16 @@ export default function Frame({
   // the two to quietly disagree. The fallback only matters for the instant
   // before the handle has laid out.
   const handleWidth = () => handleRef.current?.getBoundingClientRect().width ?? 6;
+
+  // The band with the tool window at zero: the column, minus the handle. A
+  // fraction of the OS window rather than a number, for the reason the panel's
+  // maximized width is one — see the resize observer below.
+  const bottomFull = useCallback(
+    () =>
+      (mainRef.current?.getBoundingClientRect().height ?? 0) -
+      (bottomHandleRef.current?.getBoundingClientRect().height ?? 6),
+    [],
+  );
 
   // Collapsing and restoring *is* animated — it's a state change, not a
   // gesture, and the handoff lists it as one of the seven moments. Maximizing
@@ -148,9 +178,25 @@ export default function Frame({
   // fights the pointer.
   useEffect(() => {
     if (bottomDragging.current) return;
-    const controls = animate(bottom, bottomCollapsed ? 0 : bottomHeight, settle);
+    const target = bottomCollapsed ? 0 : bottomMaximized ? bottomFull() : bottomHeight;
+    const controls = animate(bottom, target, settle);
     return () => controls.stop();
-  }, [bottomCollapsed, bottomHeight, bottom]);
+  }, [bottomCollapsed, bottomMaximized, bottomHeight, bottom, bottomFull]);
+
+  // A maximized band has to be re-derived when the window changes size, exactly
+  // as the maximized panel's width does: a fixed pixel height taken at the
+  // moment of the drag would leave a strip of tool window showing the next time
+  // the window grew. Guarded against a drag in flight for the same reason.
+  useEffect(() => {
+    const col = mainRef.current;
+    if (!col) return;
+    const observer = new ResizeObserver(() => {
+      if (bottomDragging.current || bottomCollapsed || !bottomMaximized) return;
+      bottom.set(bottomFull());
+    });
+    observer.observe(col);
+    return () => observer.disconnect();
+  }, [bottomCollapsed, bottomMaximized, bottom, bottomFull]);
 
   /**
    * Pull the band up, or shove it shut.
@@ -176,21 +222,36 @@ export default function Frame({
       const colRect = col.getBoundingClientRect();
       const colBottom = colRect.bottom;
       const handleH = bottomHandleRef.current?.getBoundingClientRect().height ?? 6;
-      const maxNormal = colRect.height - handleH - TOOLWINDOW_MIN_H;
+      const full = colRect.height - handleH;
+      // The tallest the band gets while still leaving the apps a usable strip.
+      // Past this the drag stops resizing and starts minimizing them instead.
+      const maxNormal = full - TOOLWINDOW_MIN_H;
 
       // Read once and mutated locally, never re-derived from raw position each
-      // frame — re-deriving is exactly what the dead zone below exists to stop.
+      // frame — re-deriving is exactly what the dead zones below exist to stop.
       let collapsed = bottomCollapsed;
+      let maximized = bottomMaximized;
 
       const onMove = (ev: PointerEvent) => {
         const raw = colBottom - ev.clientY;
 
-        if (raw < BOTTOM_MIN - BOTTOM_COLLAPSE_OVERSHOOT) collapsed = true;
-        else if (raw > BOTTOM_MIN) collapsed = false;
+        if (raw < BOTTOM_MIN - BOTTOM_COLLAPSE_OVERSHOOT) {
+          collapsed = true;
+          // Shoving the band shut from the top of the window must not leave it
+          // remembering that it was maximized: the next pull would then jump
+          // straight back to full height instead of opening where it was let go.
+          maximized = false;
+        } else if (raw > BOTTOM_MIN) {
+          collapsed = false;
+        }
 
-        bottom.set(
-          collapsed ? 0 : Math.min(Math.max(raw, BOTTOM_MIN), Math.max(maxNormal, BOTTOM_MIN)),
-        );
+        if (raw > maxNormal + BOTTOM_MAXIMIZE_OVERSHOOT) maximized = true;
+        else if (raw < maxNormal) maximized = false;
+
+        const height = maximized
+          ? full
+          : Math.min(Math.max(raw, BOTTOM_MIN), Math.max(maxNormal, BOTTOM_MIN));
+        bottom.set(collapsed ? 0 : height);
       };
 
       const onUp = () => {
@@ -199,16 +260,25 @@ export default function Frame({
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
         onBottomCollapsedChange?.(collapsed);
-        // `bottomHeight` means "last open height" — shut, it must keep whatever
-        // it was, or the next pull would open onto zero.
-        if (!collapsed) onBottomHeightChange?.(bottom.get());
+        onBottomMaximizedChange?.(maximized);
+        // `bottomHeight` means "last *normal* height" — neither shut nor
+        // maximized may overwrite it, or coming back from either would land on
+        // zero or on the full column rather than where the drag was let go.
+        if (!collapsed && !maximized) onBottomHeightChange?.(bottom.get());
       };
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [bottomCollapsed, onBottomHeightChange, onBottomCollapsedChange, bottom],
+    [
+      bottomCollapsed,
+      bottomMaximized,
+      onBottomHeightChange,
+      onBottomCollapsedChange,
+      onBottomMaximizedChange,
+      bottom,
+    ],
   );
 
   const onHandleDown = useCallback(
