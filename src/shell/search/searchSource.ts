@@ -1,26 +1,18 @@
 /**
  * Where hits come from.
  *
- * This used to be a placeholder — see the git history of this file for what
- * it looked like before the real search landed. That version walked a
- * cluster's directory over the Files app's own `files/list`, breadth-first,
- * matching only file *names*: enough to make the overlay real (rows to draw,
- * a locator tree to reveal, files for the preview to open) without yet
- * answering whether search matches file names, file contents, or both.
- *
- * It matches both now. `search_content` (`src-tauri/src/search.rs`) is a real
- * `ignore`/`grep-searcher` walk — the same crates ripgrep is built from — that
- * opens every text file under a cluster's directory and reports every line a
- * query matches, with a line, a column, and a length. This module is the thin
+ * `search_content` (`src-tauri/src/search.rs`) is a real `ignore`/
+ * `grep-searcher` walk — the same crates ripgrep is built from — that opens
+ * every text file under a cluster's directory and reports every line a query
+ * matches, with a line, a column, and a length. This module is the thin
  * frontend shell around that one Rust command: it resolves flags to sane
  * defaults, filters the response by kind (a purely client-side notion — see
- * `./kinds.ts` — that Rust knows nothing about), and turns an abort into the
- * same rejection the old walk produced so `useSearchSession.ts`'s existing
- * abort handling needs no changes.
+ * `./kinds.ts` — that Rust knows nothing about), and turns an abort into a
+ * rejection `useSearchSession.ts`'s existing `.catch()` already expects.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { searchContent } from "../../bindings";
 import { kindOf } from "./kinds";
-import type { SearchHit, SearchKind, SearchMatch } from "./types";
+import type { SearchHit, SearchKind } from "./types";
 
 export interface SearchRequest {
   /**
@@ -48,17 +40,12 @@ export interface SearchRequest {
   /**
    * The query's path-shaped filters, precompiled by `compilePathFilter`.
    *
-   * Applied here rather than in Rust because the grammar is a frontend
-   * concept: `search_content` takes a needle and a cluster, and knows nothing
-   * about globs, `path:` scopes or `ext:` filters. Omitted means no path
-   * restriction, which is what an unfiltered query parses to.
-   *
-   * The cost of filtering after the walk rather than during it is that the
-   * backend's own caps (`MAX_HITS`, `MAX_MATCHES`) are counted *before* this
-   * runs — a query with a narrow glob over a large repository can come back
-   * truncated with few surviving rows. Pushing the globs into Rust is the fix
-   * when that becomes real; it is not real yet, and doing it now would mean a
-   * second glob implementation to keep in step with `query.ts`.
+   * Applied here rather than in Rust: the grammar is a frontend concept, and
+   * `search_content` knows nothing about globs, `path:` or `ext:` filters.
+   * Omitted means no restriction. Filtering after the walk rather than during
+   * it means the backend's own caps (`MAX_HITS`, `MAX_MATCHES`) are counted
+   * first, so a narrow glob over a large repository can come back truncated
+   * with few surviving rows.
    */
   accept?: (path: string) => boolean;
   /**
@@ -72,27 +59,6 @@ export interface SearchRequest {
   regex?: boolean;
   /** Aborts a search whose results nobody is waiting for any more. */
   signal: AbortSignal;
-}
-
-/** Mirrors `search::SearchResponse` in `search.rs`. */
-interface SearchResponse {
-  hits: SearchFileHit[];
-  /**
-   * True when the backend's own caps (total matches, total files — see
-   * `search.rs`'s `MAX_MATCHES`/`MAX_HITS`) cut the walk short, or a newer
-   * search superseded this one before it finished. Not surfaced to the UI
-   * today — there is nowhere in the results region to say "and more" yet —
-   * but read here rather than dropped, so that wiring one in later is a
-   * one-line change in the caller rather than a second trip through this
-   * file's shape.
-   */
-  truncated: boolean;
-}
-
-/** Mirrors `search::SearchFileHit`. */
-interface SearchFileHit {
-  path: string;
-  matches: SearchMatch[];
 }
 
 /**
@@ -131,13 +97,7 @@ export async function runSearch(request: SearchRequest): Promise<SearchHit[]> {
   // own that a newer search has started — see `SearchState` in `search.rs` —
   // and stops early rather than spending the blocking thread pool on a result
   // this promise has already stopped listening for.
-  const call = invoke<SearchResponse>("search_content", {
-    clusterId,
-    query,
-    caseSensitive,
-    wholeWord,
-    regex,
-  });
+  const call = searchContent(clusterId, query, caseSensitive, wholeWord, regex);
 
   const response = await Promise.race([call, rejectOnAbort(signal)]);
 

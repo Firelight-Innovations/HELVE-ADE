@@ -72,7 +72,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { instant, instantOut } from "../motion";
+import { instant, instantOut } from "./motion";
 import "./overlayScrollbar.css";
 
 /**

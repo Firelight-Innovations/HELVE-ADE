@@ -10,6 +10,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 /** Mirrors `tool::ToolKind`. */
 export type ToolKind = "runtime" | "dev-tool";
@@ -64,6 +66,19 @@ export function cachedStack(): Promise<StackSnapshot | null> {
 /** Show a tool's checkout in the OS file manager. */
 export function revealTool(id: string): Promise<void> {
   return invoke<void>("reveal_tool", { id });
+}
+
+/** Mirrors `tool_frontend::ToolFrontend`. */
+export type ToolFrontend =
+  { state: "mountable"; url: string } | { state: "unavailable"; reason: string };
+
+/**
+ * Where a tool's iframe points. Resolved per-tool and on demand rather than
+ * part of the stack snapshot, since a dev server can start or stop and a
+ * checkout can be built while the shell is running.
+ */
+export function toolFrontend(id: string): Promise<ToolFrontend> {
+  return invoke<ToolFrontend>("tool_frontend", { id });
 }
 
 /**
@@ -214,6 +229,19 @@ export function setClusterProject(clusterId: string, path: string | null): Promi
   return invoke("set_cluster_project", { clusterId, path });
 }
 
+export const PROJECT_CHANGED_EVENT = "project:changed";
+
+/**
+ * Subscribe to a project opening, closing, or changing under any cluster.
+ *
+ * The payload is relayed untyped — callers narrow it themselves against the
+ * cluster they care about, the way `useClusterProject` and `ToolWindow` both
+ * already do, rather than trusting a shape this file has never checked.
+ */
+export function onProjectChanged(cb: (payload: unknown) => void): Promise<UnlistenFn> {
+  return listen<unknown>(PROJECT_CHANGED_EVENT, (e) => cb(e.payload));
+}
+
 /**
  * Where a cluster's work is happening on disk. Mirrors `shell_state::
  * WorktreeRef`.
@@ -270,6 +298,63 @@ export interface GitCommit {
   parents: string[];
   /** Local branch names pointing here, `refs/heads/` already stripped. */
   refs: string[];
+}
+
+/** Mirrors `git::GitChangeKind`. */
+export type GitChangeKind =
+  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
+
+/**
+ * Mirrors `git::GitFileChange` — one path, in one of `GitStatus`'s two lists.
+ * `path` is repo-relative with forward slashes, the identity every other git
+ * command takes back as an argument. `renamedFrom` is present only when
+ * `kind` is `"renamed"`.
+ */
+export interface GitFileChange {
+  path: string;
+  file: string;
+  dir: string;
+  kind: GitChangeKind;
+  staged: boolean;
+  renamedFrom?: string;
+}
+
+/**
+ * Mirrors `git::GitStatus`. `insertions`/`deletions` are line-change totals
+ * since `HEAD` (the empty tree for a repository with no commits yet) — what
+ * the status bar's compact `+N -N · M files` readout is built from. A changed
+ * binary or an untracked file over 5 MiB still appears in `staged`/`unstaged`
+ * without adding to either total. `ahead`/`behind` are both `0` when there is
+ * no tracking ref, which is not an error.
+ */
+export interface GitStatus {
+  branch: string;
+  ahead: number;
+  behind: number;
+  insertions: number;
+  deletions: number;
+  staged: GitFileChange[];
+  unstaged: GitFileChange[];
+}
+
+/** Mirrors `git::GitDiff` — two whole texts, not a patch. Monaco's diff editor computes its own hunks. */
+export interface GitDiff {
+  original: string;
+  modified: string;
+}
+
+/**
+ * Mirrors `git::GitDivergence` — a worktree's changes since it forked,
+ * commits and uncommitted work together against the fork point rather than
+ * HEAD, so committing a file neither leaves this list nor changes its diff.
+ * `staged` on each `GitFileChange` here is always false; this view is not
+ * the index.
+ */
+export interface GitDivergence {
+  base: string;
+  mergeBase: string;
+  commits: number;
+  files: GitFileChange[];
 }
 
 /**
@@ -337,6 +422,43 @@ export function gitWorktreeReconcile(clusterId: string): Promise<WorktreeRef | n
   return invoke<WorktreeRef | null>("git_worktree_reconcile", { clusterId });
 }
 
+/** `null` when the cluster has no project open or its project is not a repo. */
+export function gitClusterStatus(clusterId: string): Promise<GitStatus | null> {
+  return invoke<GitStatus | null>("git_cluster_status", { clusterId });
+}
+
+/** One file's staged or unstaged diff, as two whole texts. */
+export function gitClusterDiff(clusterId: string, path: string, staged: boolean): Promise<GitDiff> {
+  return invoke<GitDiff>("git_cluster_diff", { clusterId, path, staged });
+}
+
+export function gitClusterStage(clusterId: string, paths: string[]): Promise<void> {
+  return invoke("git_cluster_stage", { clusterId, paths });
+}
+
+export function gitClusterUnstage(clusterId: string, paths: string[]): Promise<void> {
+  return invoke("git_cluster_unstage", { clusterId, paths });
+}
+
+/** Commit whatever is staged. Rejects with git's own message — nothing staged, an empty message, a failing hook. */
+export function gitClusterCommit(clusterId: string, message: string): Promise<void> {
+  return invoke("git_cluster_commit", { clusterId, message });
+}
+
+/** `null` for a cluster in its project folder rather than a worktree — there is no fork point to measure from. */
+export function gitDivergence(clusterId: string): Promise<GitDivergence | null> {
+  return invoke<GitDivergence | null>("git_divergence", { clusterId });
+}
+
+/** One file's whole divergence from `mergeBase`, taken from the `GitDivergence` the file came from rather than resolved again. */
+export function gitDivergenceDiff(
+  clusterId: string,
+  path: string,
+  mergeBase: string,
+): Promise<GitDiff> {
+  return invoke<GitDiff>("git_divergence_diff", { clusterId, path, mergeBase });
+}
+
 /**
  * Tell the backend that a first-party app's UI has drawn its first meaningful
  * frame.
@@ -399,6 +521,425 @@ export function finishBoot(): Promise<void> {
  */
 export function bootStatus(): Promise<BootStatus> {
   return invoke<BootStatus>("boot_status");
+}
+
+/* --- host window -------------------------------------------------------------
+ *
+ * Tauri exposes window and webview control as objects with methods rather
+ * than named commands, which is the one place §1.1's "call a typed wrapper
+ * instead" cannot mean "wrap another `invoke`". Narrowed here to plain
+ * function calls so this file stays the only one importing `@tauri-apps/api`.
+ * `hostWindow.ts` and `WindowControls.tsx` keep their own `isTauri` guard in
+ * front of each of these — both are reachable in a plain browser
+ * (`pnpm dev:agent`), which has no Tauri runtime underneath to answer them.
+ */
+
+export function closeHostWindow(): Promise<void> {
+  return getCurrentWindow().close();
+}
+
+export function minimizeHostWindow(): Promise<void> {
+  return getCurrentWindow().minimize();
+}
+
+export function toggleHostMaximize(): Promise<void> {
+  return getCurrentWindow().toggleMaximize();
+}
+
+export function hostWindowIsFullscreen(): Promise<boolean> {
+  return getCurrentWindow().isFullscreen();
+}
+
+export function setHostWindowFullscreen(on: boolean): Promise<void> {
+  return getCurrentWindow().setFullscreen(on);
+}
+
+/** Scale the whole webview — title bar, switcher, panel and every app iframe together. */
+export function setHostZoom(factor: number): Promise<void> {
+  return getCurrentWebview().setZoom(factor);
+}
+
+/* --- shell state — placement and layout, shared across every window --------
+ *
+ * Mirrors `src-tauri/src/shell_state.rs` and `src-tauri/src/layout.rs`. More
+ * than one window has to agree on placement and terminal sessions, so Rust
+ * owns them; every mutation below broadcasts `shell:state` rather than
+ * answering with the new value, so there is no local state to update
+ * optimistically and no chance of a window applying a change its siblings
+ * never hear about. Fire and let the event come back.
+ */
+
+/** Mirrors `layout::SplitDir`. */
+export type SplitDir = "row" | "column";
+
+/** Mirrors `shell_state::SurfaceKind`. */
+export type SurfaceKind = "app" | "tool" | "terminal";
+
+/**
+ * One live surface. Mirrors `shell_state::SurfaceInstance`.
+ *
+ * `appId` says which code to load and where to route an `invoke`; everything
+ * else — which frame a message came from, which tab to close, which iframe to
+ * keep mounted — is keyed on `id`.
+ */
+export interface SurfaceInstance {
+  id: string;
+  appId: string;
+  kind: SurfaceKind;
+  title: string;
+}
+
+/**
+ * One node of a cluster's layout. Mirrors `layout::PaneNode`.
+ *
+ * Discriminated on `kind`, like `ToolStatus` and `BootStatus`. `sizes` are
+ * fractions of the parent, one per child, summing to 1 rather than pixels —
+ * the window is resizable, and pixels would have to be recomputed on every
+ * resize and would restore wrongly onto a different monitor.
+ */
+export type PaneNode =
+  | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
+  | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
+
+/** Mirrors `shell_state::EngineState`. What the engine reports beyond these
+ *  five stub strings is not designed yet. */
+export type EngineState = "idle" | "building" | "running" | "failed" | "none";
+
+/**
+ * One tab in the switcher bar: a layout, the project it is about, and its
+ * worktree. Mirrors `shell_state::Cluster`.
+ *
+ * `project` is a path, not a name — a project's name is its manifest's, and
+ * only `clusterProject` has read that. `worktree` is `null` for a cluster
+ * working directly in its project folder rather than one made from it.
+ */
+export interface Cluster {
+  id: string;
+  name: string;
+  tree: PaneNode;
+  project: string | null;
+  worktree: WorktreeRef | null;
+  /** Which terminal this cluster's band shows, or `null` for an empty band. */
+  activeTerminal: string | null;
+}
+
+/** Mirrors `shell_state::WindowGeometry`. Physical pixels. */
+export interface WindowGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Mirrors `shell_state::WindowPlacement`. */
+export interface WindowPlacement {
+  label: string;
+  clusters: Cluster[];
+  activeClusterId: string | null;
+  geometry: WindowGeometry | null;
+}
+
+/**
+ * Mirrors `shell_state::TerminalSession`.
+ *
+ * `clusterId`, not a window label — the terminal band is drawn inside the
+ * cluster's half of the window, so a terminal belongs to the cluster it is
+ * drawn under, spawns in that cluster's project, and closes with it.
+ */
+export interface TerminalSessionState {
+  id: string;
+  title: string;
+  clusterId: string;
+  agentFinished: boolean;
+  groupId: string | null;
+}
+
+/** Mirrors `shell_state::ShellSnapshot`. */
+export interface ShellSnapshot {
+  windows: WindowPlacement[];
+  /** Every live app and tool surface, flat; the pane trees hold ids and resolve against this. */
+  instances: SurfaceInstance[];
+  terminals: TerminalSessionState[];
+  engine: EngineState;
+}
+
+export const SHELL_STATE_EVENT = "shell:state";
+
+/** The whole shared state, fetched once. See `useShellState` for the subscribe-then-fetch ordering this is meant to pair with. */
+export function shellState(): Promise<ShellSnapshot> {
+  return invoke<ShellSnapshot>("shell_state");
+}
+
+/** Subscribe to the shared state, from this window or any other. */
+export function onShellStateChanged(cb: (snapshot: ShellSnapshot) => void): Promise<UnlistenFn> {
+  return listen<ShellSnapshot>(SHELL_STATE_EVENT, (e) => cb(e.payload));
+}
+
+// --- instances ----------------------------------------------------------------
+
+/**
+ * Open a new instance of an app. Resolves to its *instance* id.
+ *
+ * `paneId` names the pane the open is relative to, not the pane the surface
+ * lands in; omitted, it falls back to the active cluster's first pane. `dir`
+ * is the axis to split that pane along; omitted, nothing splits and the
+ * surface arrives as a tab.
+ */
+export function openInstance(
+  label: string,
+  appId: string,
+  paneId?: string,
+  dir?: SplitDir,
+): Promise<string> {
+  return invoke<string>("open_instance", {
+    label,
+    appId,
+    paneId: paneId ?? null,
+    dir: dir ?? null,
+  });
+}
+
+export function closeInstance(instanceId: string): Promise<void> {
+  return invoke("close_instance", { instanceId });
+}
+
+export function activateInstance(instanceId: string): Promise<void> {
+  return invoke("activate_instance", { instanceId });
+}
+
+/** Reorder within a strip, or move a tab into another pane or window. */
+export function moveInstance(
+  instanceId: string,
+  clusterId: string,
+  paneId: string,
+  index: number | null,
+): Promise<void> {
+  return invoke("move_instance", { instanceId, clusterId, paneId, index });
+}
+
+/** Drop a tab on a pane's edge: split there, and put it in the new half. */
+export function splitPane(
+  paneId: string,
+  dir: SplitDir,
+  instanceId: string,
+  before: boolean,
+): Promise<void> {
+  return invoke("split_pane", { paneId, dir, instanceId, before });
+}
+
+/** What a divider drag commits on release. Weights, not pixels. */
+export function setPaneSizes(splitId: string, sizes: number[]): Promise<void> {
+  return invoke("set_pane_sizes", { splitId, sizes });
+}
+
+// --- clusters -------------------------------------------------------------
+
+export function addCluster(label: string, name: string): Promise<string | null> {
+  return invoke<string | null>("add_cluster", { label, name });
+}
+
+export function setActiveCluster(label: string, clusterId: string | null): Promise<void> {
+  return invoke("set_active_cluster", { label, clusterId });
+}
+
+export function renameCluster(clusterId: string, name: string): Promise<void> {
+  return invoke("rename_cluster", { clusterId, name });
+}
+
+export function closeCluster(clusterId: string): Promise<void> {
+  return invoke("close_cluster", { clusterId });
+}
+
+// --- windows ----------------------------------------------------------------
+
+/** Drag a tab clear of its window. The gesture that makes a second window. */
+export function detachInstance(instanceId: string): Promise<void> {
+  return invoke("detach_instance", { instanceId });
+}
+
+/**
+ * Move a whole cluster — its chip and its entire pane tree — to another
+ * window. `toLabel` names a window that is already open; `null` asks for a
+ * new one. Rejects when no window holds `clusterId` — it was closed between
+ * the release and this call.
+ */
+export function detachCluster(clusterId: string, toLabel: string | null): Promise<void> {
+  return invoke("detach_cluster", { clusterId, toLabel });
+}
+
+/**
+ * Close this window on purpose, through the backend rather than
+ * `getCurrentWindow().close()` — that indirection is load-bearing, since it
+ * is the only thing separating a deliberate close from the application
+ * shutting down. See `ShellState::closing`.
+ */
+export function closeWindow(label: string): Promise<void> {
+  return invoke("close_window", { label });
+}
+
+/** Open a new, empty window. Distinct from `detachInstance`, which makes one by moving a tab into it. */
+export function newWindow(): Promise<void> {
+  return invoke("new_window");
+}
+
+export function setWindowGeometry(label: string, geometry: WindowGeometry): Promise<void> {
+  return invoke("set_window_geometry", { label, geometry });
+}
+
+/** Which HELVE window the cursor is over, or `null` if it is over none of them. */
+export function windowAtCursor(): Promise<string | null> {
+  return invoke<string | null>("window_at_cursor");
+}
+
+/** Drop a terminal into any HELVE window's terminal band, including this one. */
+export function moveTerminal(id: string, toLabel: string): Promise<void> {
+  return invoke("move_terminal", { id, toLabel });
+}
+
+/** Which terminal a cluster's band is showing. */
+export function setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
+  return invoke("set_active_terminal", { clusterId, id });
+}
+
+/** An app naming its own tab — "Files" becoming `client.ts`. */
+export function setInstanceTitle(instanceId: string, title: string): Promise<void> {
+  return invoke("set_instance_title", { instanceId, title });
+}
+
+/* --- terminals ---------------------------------------------------------------
+ *
+ * Mirrors `src-tauri/src/pty.rs`. `terminals.ts` owns the buffering that turns
+ * these into a byte stream an emulator can trust; the wrappers below only
+ * cross the boundary.
+ */
+
+/**
+ * What a session is running, when it is running anything. Mirrors
+ * `pty::Busy`. `null` means the shell is at a prompt with no child of its own.
+ */
+export interface TerminalBusy {
+  process: string;
+}
+
+/** Mirrors `pty::Chunk` — one emission on `pty:data:<id>`. */
+export interface PtyChunk {
+  seq: number;
+  data: string;
+}
+
+/** Mirrors `pty::Attachment` — what `terminalAttach` answers with. */
+export interface PtyAttachment {
+  text: string;
+  nextSeq: number;
+  exited: boolean;
+}
+
+export function createTerminal(windowLabel: string, cols: number, rows: number): Promise<string> {
+  return invoke<string>("create_terminal", { label: windowLabel, cols, rows });
+}
+
+/**
+ * A terminal in a pane of the active cluster, from the Apps menu or the
+ * switcher's `+`. No `cols`/`rows`: unlike the panel's `create`, there is no
+ * deck to size this against yet, so Rust uses the same 80x24 placeholder the
+ * emulator corrects the instant it has measured itself.
+ */
+export function openTerminalInPane(
+  windowLabel: string,
+  paneId?: string,
+  dir?: SplitDir,
+): Promise<string> {
+  return invoke<string>("open_terminal_in_pane", {
+    label: windowLabel,
+    paneId: paneId ?? null,
+    dir: dir ?? null,
+  });
+}
+
+export function splitTerminal(sourceId: string, cols: number, rows: number): Promise<string> {
+  return invoke<string>("split_terminal", { id: sourceId, cols, rows });
+}
+
+export function closeTerminal(id: string): Promise<void> {
+  return invoke("close_terminal", { id });
+}
+
+export function terminalBusy(id: string): Promise<TerminalBusy | null> {
+  return invoke<TerminalBusy | null>("terminal_busy", { id });
+}
+
+export function setTerminalTitle(id: string, title: string): Promise<void> {
+  return invoke("set_terminal_title", { id, title });
+}
+
+/** Subscribe to one session's output chunks. */
+export function onPtyData(id: string, cb: (chunk: PtyChunk) => void): Promise<UnlistenFn> {
+  return listen<PtyChunk>(`pty:data:${id}`, (e) => cb(e.payload));
+}
+
+/** Subscribe to one session's shell exiting — `exit`, or a crash. */
+export function onPtyExit(id: string, cb: () => void): Promise<UnlistenFn> {
+  return listen(`pty:exit:${id}`, () => cb());
+}
+
+/** The backlog since `id` was last attached to, or `null` if the session had already closed before anyone attached. */
+export function terminalAttach(id: string): Promise<PtyAttachment | null> {
+  return invoke<PtyAttachment | null>("terminal_attach", { id });
+}
+
+export function terminalWrite(id: string, data: string): Promise<void> {
+  return invoke("terminal_write", { id, data });
+}
+
+export function terminalResize(id: string, cols: number, rows: number): Promise<void> {
+  return invoke("terminal_resize", { id, cols, rows });
+}
+
+/* --- layout presets ----------------------------------------------------------
+ *
+ * Mirrors `src-tauri/src/presets/mod.rs`. A preset is a named arrangement,
+ * user data living in `presets.json` and outlasting whichever layout it was
+ * captured from.
+ */
+
+/** Mirrors `presets::PresetSlot`. A terminal is not an app id. */
+export type PresetSlot = { kind: "app"; appId: string } | { kind: "terminal" };
+
+/** Mirrors `presets::PresetNode`. Discriminated on `kind`, like `PaneNode`. */
+export type PresetNode =
+  | { kind: "split"; dir: SplitDir; sizes: number[]; children: PresetNode[] }
+  | { kind: "pane"; slots: PresetSlot[] };
+
+/** Mirrors `presets::LayoutPreset`. */
+export interface LayoutPreset {
+  /** Stable across renames — what the menu sends back when a row is clicked. */
+  id: string;
+  name: string;
+  /** Computed by Rust and never trusted from the file — a built-in cannot be replaced or deleted. */
+  builtin: boolean;
+  root: PresetNode;
+}
+
+export const PRESETS_CHANGED_EVENT = "presets:changed";
+
+/** Every preset: built-ins first, then what survives of `presets.json`. */
+export function listPresets(): Promise<LayoutPreset[]> {
+  return invoke<LayoutPreset[]>("list_presets");
+}
+
+/** Subscribe to preset list changes, from this window or any other. */
+export function onPresetsChanged(cb: (presets: LayoutPreset[]) => void): Promise<UnlistenFn> {
+  return listen<LayoutPreset[]>(PRESETS_CHANGED_EVENT, (e) => cb(e.payload));
+}
+
+/** Rearrange this window's active cluster to match a preset. Nothing open is closed — see `presets::plan`. */
+export function applyLayoutPreset(label: string, presetId: string): Promise<void> {
+  return invoke("apply_preset", { label, presetId });
+}
+
+/** Capture the active cluster's arrangement under `name`. Resolves with the updated list. */
+export function saveLayoutPreset(label: string, name: string): Promise<LayoutPreset[]> {
+  return invoke<LayoutPreset[]>("save_preset", { label, name });
 }
 
 /* --- settings --------------------------------------------------------------
@@ -579,4 +1120,56 @@ export function setMcpServerEnabled(id: string, enabled: boolean): Promise<boole
  *  may have edited or deleted it. */
 export function syncMcpConfig(): Promise<void> {
   return invoke<void>("mcp_sync_config");
+}
+
+/* --- search ------------------------------------------------------------------
+ *
+ * Mirrors `src-tauri/src/search.rs`. `search/searchSource.ts` owns the query
+ * grammar (globs, `path:`/`ext:` filters) and the kind-filtering built on top
+ * of this; the wrapper below only crosses the boundary.
+ */
+
+/** Mirrors `search::SearchMatch` — one line a query matched, within a file. */
+export interface SearchMatch {
+  /** 1-based, matching what Monaco's `revealLineInCenter` expects. */
+  line: number;
+  /** 1-based column of the first matched character. */
+  column: number;
+  /** The matched line's full text, for the row's preview snippet. */
+  text: string;
+  /** Length of the match within `text`, so the row can mark it. */
+  length: number;
+}
+
+/** Mirrors `search::SearchFileHit`. */
+export interface SearchFileHit {
+  /** However `Path::display` renders it on this platform — backslashed on Windows. */
+  path: string;
+  matches: SearchMatch[];
+}
+
+/**
+ * Mirrors `search::SearchResponse`. `truncated` is true when the backend's
+ * own caps (`MAX_MATCHES`/`MAX_HITS`) cut the walk short, or a newer search
+ * superseded this one before it finished.
+ */
+export interface SearchResponse {
+  hits: SearchFileHit[];
+  truncated: boolean;
+}
+
+export function searchContent(
+  clusterId: string,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  regex: boolean,
+): Promise<SearchResponse> {
+  return invoke<SearchResponse>("search_content", {
+    clusterId,
+    query,
+    caseSensitive,
+    wholeWord,
+    regex,
+  });
 }

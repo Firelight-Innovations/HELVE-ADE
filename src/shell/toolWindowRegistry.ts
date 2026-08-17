@@ -19,6 +19,9 @@
  * `ToolWindow` a window mounts registers itself here under that same label,
  * and a caller elsewhere looks it up the same way.
  *
+ * Directly under `src/shell/` rather than inside `toolwindow/` for that reason:
+ * a lookup table two regions share is neither one's to own (STANDARDS.md §1.2).
+ *
  * Not exposed on `ToolWindowHandle` itself. That type is the title bar's
  * contract — one frame, whichever is active, a bare command string — and
  * widening it to "any frame, any event, any payload" would let a menu command

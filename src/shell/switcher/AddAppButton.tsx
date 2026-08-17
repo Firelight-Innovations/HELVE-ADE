@@ -7,18 +7,17 @@
  *
  * ## It is the same menu, not a second one
  *
- * The items come from `appsMenu()` in `titlebar/TitleBar.tsx` — the single
+ * The items come from `appsMenu()` in `src/shell/appsMenu.ts` — the single
  * definition the menu bar's Apps menu is also built from — and are rendered by
  * `MenuItemList`, the same component both menu surfaces use. Nothing about the
  * list is restated here. An app added to the registry appears in both places or
  * neither, which is the only way two surfaces showing "every app" can be kept
  * honest: there is nothing to keep in sync.
  *
- * Both imports cross out of this region, which the contract otherwise forbids.
- * That is the point of the exercise rather than a lapse — the instruction was to
- * reuse the existing menu, and a copy of it that happened to live on the correct
- * side of a module boundary would be the exact drift the boundary is meant to
- * prevent.
+ * Both live directly under `src/shell/` rather than inside `titlebar/`, which is
+ * what lets this import them without crossing a region boundary (STANDARDS.md
+ * §1.2). They were moved there when the second surface appeared: a definition two
+ * regions draw is not either region's to own.
  *
  * ## Why the surface is portalled
  *
@@ -38,8 +37,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { popover } from "../motion";
-import MenuItemList, { inMenuSurface } from "../titlebar/MenuItemList";
-import { appsMenu, type AppsMenuHandlers } from "../titlebar/TitleBar";
+import MenuItemList, { inMenuSurface } from "../MenuItemList";
+import { appsMenu, type AppsMenuHandlers } from "../appsMenu";
 import { Plus } from "../../ui/Icon";
 import "./addapp.css";
 

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { DropTarget, SplitDir } from "../contract";
+import type { DropTarget, SplitDir } from "./contract";
 
 /**
  * The drop-target registry.

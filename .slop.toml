@@ -57,12 +57,25 @@ enabled = true
 threshold = 20
 severity = "error"
 
+# Reported, not gated, and the distinction is the whole point. `hotspot` is not
+# a threshold: slop classifies a file into that quadrant when its complexity AND
+# its LOC growth are both at or above the 75th percentile *of the files it
+# measured this run*. Roughly a quarter of the tree is above each cut by
+# construction, and the two overlap, so the quadrant is never empty however good
+# the code gets — driving complexity down everywhere just moves the cut down
+# with it. Worse for a gate: `loc_delta` counts commits in the window, so a
+# refactor that halves a file's complexity still raises its churn and can leave
+# it ranked higher than before.
+#
+# A ranking answers "what would I refactor next", which is worth printing on
+# every run. It cannot answer "is this branch clean", which is what an error
+# severity claims. So it stays enabled and stays visible as an advisory.
 [rules.structural.hotspots]
 enabled = true
 since = "90 days ago"
 min_commits = 3
 fail_on_quadrant = ["hotspot"]
-severity = "error"
+severity = "warning"
 
 [rules.structural.packages]
 enabled = true

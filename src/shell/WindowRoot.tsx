@@ -23,6 +23,10 @@ import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./tit
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ClusterBar from "./switcher/ClusterBar";
 import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
+// The two the tool window draws through a render prop rather than importing;
+// see its `renderPanes`/`renderTerminal` props for why.
+import PaneTree from "./panes/PaneTree";
+import XTermView from "./terminal/XTermView";
 import { splitDirOnOpen } from "./panes/splitOnOpen";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import BottomPanel from "./panel/BottomPanel";
@@ -33,7 +37,7 @@ import { useSearchSession } from "./search/useSearchSession";
 import { useSearchBarHold } from "./search/useSearchBarHold";
 import { openHitInFiles } from "./search/openHit";
 import { useDrag } from "./drag/useDrag";
-import { useDropZone } from "./drag/dropZones";
+import { useDropZone } from "./dropZones";
 import { useKeyboard } from "./keys/useKeyboard";
 import WorktreePanel from "./worktree/WorktreePanel";
 import { useGitStatus } from "./worktree/useGitStatus";
@@ -1417,6 +1421,17 @@ export default function WindowRoot({
               onResize={onResizePane}
               dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
+              // The two regions the tool window draws but may not import. It
+              // computes every argument; this is only the wiring, and it lives
+              // here because `WindowRoot` is not a region and may see both.
+              renderPanes={(paneProps) => <PaneTree {...paneProps} />}
+              renderTerminal={(instanceId) => (
+                <XTermView
+                  id={instanceId}
+                  transport={terminalTransport}
+                  onTitle={(title) => terminalControl.setTitle(instanceId, title)}
+                />
+              )}
             />
           ),
           // Source control, and only that. The terminals that used to share

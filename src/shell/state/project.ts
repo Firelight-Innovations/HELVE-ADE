@@ -16,19 +16,17 @@
  *
  * The initial read goes through the `cluster_project` command. It used to go
  * through Home's `home/state`, borrowed because the shell had no command of its
- * own; that stopped being possible when the answer became scoped, since Home's
- * method reports the *calling surface's* cluster and the bar is not a surface.
- * The comment that used to sit here said "if a `project/state` command is ever
- * added for its own reasons, this is the one line that changes" — this is that
- * change.
+ * own; that stopped working once the answer became scoped, since Home's method
+ * reports the *calling surface's* cluster and the bar is not a surface. The
+ * comment that used to sit here said a `project/state` command would be the
+ * one line that changes — this is that change.
  *
  * There is no watcher behind any of it. A project renamed on disk while HELVE
  * is running keeps its old name in the bar until something opens it again, and
  * that is the same staleness `ProjectInfo.name` has everywhere else.
  */
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { clusterProject } from "../../bindings";
+import { clusterProject, onProjectChanged } from "../../bindings";
 
 /** The part of Rust's `ProjectInfo` anything in the shell reads. */
 export interface OpenProject {
@@ -68,17 +66,17 @@ export function useClusterProject(clusterId: string | null): OpenProject | null 
       // slot in a title for an error — the console is where this belongs.
       .catch((err: unknown) => console.error("helve: could not read the cluster's project:", err));
 
-    // `listen` is async and a cleanup must be returned synchronously, so the
-    // subscription is set up in the background and `live` covers the gap.
+    // Async, and a cleanup must return synchronously, so this runs in the
+    // background and `live` covers the gap.
     void (async () => {
-      const stop = await listen<unknown>("project:changed", (e) => {
+      const stop = await onProjectChanged((payload) => {
         // Only this cluster's. The event reaches every window in the process,
         // and a switch in the cluster on the other monitor must not rename the
         // one in front of you — which is the whole point of the feature, so a
         // title bar that ignored the stamp would undo it in the most visible
         // place there is.
-        if (!live || clusterOf(e.payload) !== clusterId) return;
-        setOpen(openOf(e.payload));
+        if (!live || clusterOf(payload) !== clusterId) return;
+        setOpen(openOf(payload));
       });
       if (!live) return stop();
       unlisten = stop;

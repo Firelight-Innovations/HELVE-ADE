@@ -1,4 +1,4 @@
-import { paneRect } from "../drag/dropZones";
+import { paneRect } from "../dropZones";
 import type { SplitDir } from "../contract";
 
 /**

@@ -40,7 +40,7 @@ import {
 } from "../state/shellState";
 import DragGhost from "./DragGhost";
 import { DetachOutline } from "./DropTargets";
-import { hitTest } from "./dropZones";
+import { hitTest } from "../dropZones";
 import "./drag.css";
 
 /**

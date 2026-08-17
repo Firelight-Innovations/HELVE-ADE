@@ -1,21 +1,20 @@
 /**
  * Minimise, maximise, close.
  *
- * `@tauri-apps/api/window` is safe to import in a plain browser — nothing at
- * module scope talks to the runtime. It is only *calling* `getCurrentWindow()`
- * or its methods that requires the Tauri internals to exist, so that's what's
- * guarded, right before every command. `isTauri` itself lives in
- * `../hostWindow`, which is where the menu bar's window commands are too — one
- * definition of "is there a real window here", not two that could drift.
+ * The Tauri calls themselves live in `bindings.ts` now (STANDARDS.md §1.1 —
+ * one door). `isTauri` is what's guarded here, right before every command —
+ * it lives in `../hostWindow`, which is where the menu bar's window commands
+ * are too, one definition of "is there a real window here", not two that
+ * could drift.
  */
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { closeHostWindow, minimizeHostWindow, toggleHostMaximize } from "../../bindings";
 import { isTauri } from "../hostWindow";
 import { WindowClose, WindowMaximise, WindowMinimise } from "../../ui/Icon";
 
-function run(fn: (win: ReturnType<typeof getCurrentWindow>) => Promise<unknown>) {
+function run(fn: () => Promise<unknown>) {
   return () => {
     if (!isTauri()) return;
-    void fn(getCurrentWindow());
+    void fn();
   };
 }
 
@@ -26,7 +25,7 @@ export default function WindowControls() {
         type="button"
         className="titlebar__control"
         aria-label="Minimise"
-        onClick={run((w) => w.minimize())}
+        onClick={run(minimizeHostWindow)}
       >
         <WindowMinimise />
       </button>
@@ -34,7 +33,7 @@ export default function WindowControls() {
         type="button"
         className="titlebar__control"
         aria-label="Maximise"
-        onClick={run((w) => w.toggleMaximize())}
+        onClick={run(toggleHostMaximize)}
       >
         <WindowMaximise />
       </button>
@@ -42,7 +41,7 @@ export default function WindowControls() {
         type="button"
         className="titlebar__control titlebar__control--close"
         aria-label="Close"
-        onClick={run((w) => w.close())}
+        onClick={run(closeHostWindow)}
       >
         <WindowClose />
       </button>

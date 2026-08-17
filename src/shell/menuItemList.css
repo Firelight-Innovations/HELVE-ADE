@@ -1,0 +1,199 @@
+/*
+ * The menu item tree, portalled: the rows, their accelerators, the caret on a
+ * row that opens something, the surface that opens beside it, and the name
+ * field a prompt row turns into.
+ *
+ * Beside `MenuItemList.tsx` rather than in `titlebar.css` because the component
+ * is beside it too — three regions render this list (the menu bar, the
+ * hamburger accordion, and the switcher's add-app popover), so it is a shared
+ * widget and not part of the title bar. The values are unchanged and still come
+ * from the popover analogues `titlebar.css`'s own header names.
+ *
+ * The `.hamburger__group .menu-list*` overrides stay in `titlebar.css`: those
+ * are the accordion telling this widget how to sit inside it, which is the
+ * hamburger's business rather than the widget's.
+ */
+
+/* --- the item tree, shared by the inline dropdown and the accordion ----- */
+
+.menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menu-list__separator {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--line);
+}
+
+.menu-list__item {
+  appearance: none;
+  border: none;
+  background: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 6px 12px;
+  font: 400 12px/1 var(--sans);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.menu-list__item:hover {
+  background: var(--surface-2);
+}
+
+/* Any item that cannot act right now: Save with nothing dirty, Delete with no
+   file open, Split with no session. Dimmed and inert rather than removed, so
+   the menu's shape never changes depending on what happens to be showing — a
+   menu whose item count moves under you is harder to learn than one whose
+   items grey out. The reason sits on the row's `title`, because a disabled
+   button takes no pointer events and could never show one of its own. */
+.menu-list__item:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.menu-list__item:disabled:hover {
+  background: none;
+}
+
+.menu-list__item:disabled .menu-list__accel {
+  color: var(--text-dim-3);
+}
+
+.menu-list__label {
+  white-space: nowrap;
+}
+
+.menu-list__accel {
+  font: 400 10px/1 var(--mono);
+  color: var(--text-dim-3);
+  white-space: nowrap;
+}
+
+/* --- rows that open something ---------------------------------------------
+   A caret at the trailing edge is the whole of what separates "this acts" from
+   "this opens a list" — the same signal the switcher's add-app button used to
+   carry and gave up, for the reason `addapp.css` records: there it had position
+   and colour to say it instead, and here in a column of identical rows it has
+   neither. It sits where an accelerator would, because a row never has both.
+
+   Dimmer than the label at rest, matching `.menu-list__accel`: it is a property
+   of the row rather than part of what the row says. */
+
+.menu-list__caret {
+  flex: none;
+  color: var(--text-dim-3);
+}
+
+.menu-list__item[data-open] {
+  background: var(--surface-2);
+}
+
+.menu-list__item[data-open] .menu-list__caret {
+  color: var(--text);
+}
+
+/* The surface that opens beside such a row.
+
+   Repeats `.menubar__dropdown` exactly — `var(--surface)` on `var(--line)`, 6px
+   radius, the same shadow — because it *is* that surface, one level in. It is
+   portalled to `document.body` and placed from measured viewport coordinates,
+   so `top`, `left` and `min-width` all come from the component and this rule
+   only says what it looks like; see the header of `MenuItemList.tsx` for why
+   every one of the three hosts would otherwise clip it. */
+.menu-list__beside {
+  position: fixed;
+  /* Above `.menubar__dropdown` and `.addapp__menu`, which are both at 40 — a
+     submenu that shared their z-index would win or lose on document order,
+     which for a portal is "wherever React happened to append it". */
+  z-index: 41;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 6px 0;
+  /* Where `.menubar__dropdown` can be `overflow: hidden` outright, this one has
+     an unbounded row count under it — every preset the user has ever saved. The
+     component already lifts a tall surface up the screen to keep its last row
+     on it (see `Beside`); past a full window's worth there is nowhere left to
+     lift it to, and scrolling is the only honest answer. */
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* --- the name field -------------------------------------------------------
+   Wider than a menu row wants to be, because it holds a sentence of
+   explanation and a name being typed. `min-width` on the surface is the floor,
+   not the target. */
+
+.menu-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  padding: 4px 12px 8px;
+}
+
+.menu-prompt__label {
+  font: 400 11px/1.4 var(--sans);
+  color: var(--text-dim);
+}
+
+.menu-prompt__field {
+  appearance: none;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  font: 400 12px/1.2 var(--sans);
+  color: var(--text);
+}
+
+.menu-prompt__field:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Why it was refused, under the name it was refused for. Never a colour on its
+   own: `--err` says "this is a problem" to anyone who can see it, and the
+   sentence says the same thing to anyone who cannot. */
+.menu-prompt__error {
+  margin: 0;
+  font: 400 11px/1.4 var(--sans);
+  color: var(--err);
+}
+
+.menu-prompt__confirm {
+  appearance: none;
+  align-self: flex-end;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  font: 400 12px/1 var(--sans);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menu-prompt__confirm:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* An empty field has nothing to save under, and a save already in flight has
+   nothing to add. Inert rather than hidden, for `.menu-list__item:disabled`'s
+   reason: a control that vanishes is harder to learn than one that greys. */
+.menu-prompt__confirm:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}

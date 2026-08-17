@@ -12,13 +12,25 @@
  * `shell:state` (see `shellState.ts`), because a terminal can be dragged into
  * another window and so cannot be owned by the window showing it.
  */
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import type { TerminalBusy, TerminalControl, TerminalTransport } from "../contract";
+import {
+  closeTerminal,
+  createTerminal,
+  onPtyData,
+  onPtyExit,
+  openTerminalInPane,
+  setTerminalTitle,
+  splitTerminal,
+  terminalAttach,
+  terminalBusy,
+  terminalResize,
+  terminalWrite,
+  type PtyChunk,
+} from "../../bindings";
+import type { TerminalControl, TerminalTransport } from "../contract";
 
 export const terminalControl: TerminalControl = {
   create(windowLabel, cols, rows) {
-    return invoke<string>("create_terminal", { label: windowLabel, cols, rows });
+    return createTerminal(windowLabel, cols, rows);
   },
 
   createInPane(windowLabel, paneId, dir) {
@@ -32,31 +44,27 @@ export const terminalControl: TerminalControl = {
     // `dir` is the one thing that *is* measured before the call, and it is a
     // different measurement: the pane being split is already on screen, where
     // the pane being opened is not. See `panes/splitOnOpen.ts`.
-    return invoke<string>("open_terminal_in_pane", {
-      label: windowLabel,
-      paneId: paneId ?? null,
-      dir: dir ?? null,
-    });
+    return openTerminalInPane(windowLabel, paneId, dir);
   },
 
   split(sourceId, cols, rows) {
-    return invoke<string>("split_terminal", { id: sourceId, cols, rows });
+    return splitTerminal(sourceId, cols, rows);
   },
 
   close(id) {
     forgetTitleState(id);
-    void invoke("close_terminal", { id });
+    void closeTerminal(id);
   },
 
   busy(id) {
     // Rust answers `Option<Busy>`, which arrives as the value or `null`. No
     // mapping needed — `null` already means "idle, close it without asking".
-    return invoke<TerminalBusy | null>("terminal_busy", { id });
+    return terminalBusy(id);
   },
 
   setTitle(id, title) {
     reportTitle(id, title, (id, title) => {
-      void invoke("set_terminal_title", { id, title });
+      void setTerminalTitle(id, title);
     });
   },
 };
@@ -114,19 +122,6 @@ function forgetTitleState(id: string) {
   }
 }
 
-/** Mirrors `pty::Chunk` — one emission on `pty:data:<id>`. */
-interface PtyChunk {
-  seq: number;
-  data: string;
-}
-
-/** Mirrors `pty::Attachment` — what `terminal_attach` answers with. */
-interface PtyAttachment {
-  text: string;
-  nextSeq: number;
-  exited: boolean;
-}
-
 export const terminalTransport: TerminalTransport = {
   attach(id, onData) {
     // `listen` is async but `attach` is not, because the caller is a React
@@ -148,10 +143,10 @@ export const terminalTransport: TerminalTransport = {
     const queued: PtyChunk[] = [];
 
     void (async () => {
-      const stop = await listen<PtyChunk>(`pty:data:${id}`, (e) => {
+      const stop = await onPtyData(id, (chunk) => {
         if (!live) return;
-        if (!ready) queued.push(e.payload);
-        else if (e.payload.seq >= cursor) onData(e.payload.data);
+        if (!ready) queued.push(chunk);
+        else if (chunk.seq >= cursor) onData(chunk.data);
       });
       if (!live) return stop();
       unlisteners.push(stop);
@@ -161,7 +156,7 @@ export const terminalTransport: TerminalTransport = {
       // one piece, which for the launch terminal is the cursor-position
       // request the shell is sitting and waiting on. Writing it into the
       // emulator is what produces the reply that unblocks it.
-      const caught = await invoke<PtyAttachment | null>("terminal_attach", { id });
+      const caught = await terminalAttach(id);
       if (!live) return;
       if (!caught) return; // the tab closed while this view was mounting.
 
@@ -180,7 +175,7 @@ export const terminalTransport: TerminalTransport = {
     })();
 
     void (async () => {
-      const stop = await listen(`pty:exit:${id}`, () => {
+      const stop = await onPtyExit(id, () => {
         // The shell ended on its own — `exit`, or it crashed. The session is
         // reaped through the same path a close button uses, so the tab
         // disappears the one way rather than two.
@@ -197,10 +192,10 @@ export const terminalTransport: TerminalTransport = {
   },
 
   write(id, data) {
-    void invoke("terminal_write", { id, data });
+    void terminalWrite(id, data);
   },
 
   resize(id, cols, rows) {
-    void invoke("terminal_resize", { id, cols, rows });
+    void terminalResize(id, cols, rows);
   },
 };

@@ -25,8 +25,24 @@ import globals from "globals";
 
 /**
  * The subdirectories of `src/shell` that count as regions for STANDARDS.md
- * §1.2. Note the doc says "the six shell regions" and there are sixteen; the
- * count drifted, the rule did not.
+ * §1.2 — the parts of the interface that are drawn, each buildable against
+ * `contract.ts` alone.
+ *
+ * Two directories that used to be on this list are deliberately not:
+ *
+ * `state` is not a region. It draws nothing. It is the shell's verb layer —
+ * the strip between `contract.ts` and `bindings.ts` where "send this back to
+ * Rust" lives — and §1 says a region's job is to render a snapshot and send
+ * verbs back. Treating it as a peer meant every region that needed a verb was
+ * in violation, and the only conforming alternative was to thread nine more
+ * function props through `WindowRoot`, which is already the largest file in
+ * the tree. The isolation that mattered is kept, and enforced below: `state`
+ * may not import a region, so the arrow still points one way.
+ *
+ * `scrollbar` is gone entirely. It held one component that four regions
+ * wanted, which is the definition of a shared widget rather than a region;
+ * `OverlayScrollbar.tsx` now sits directly under `src/shell/` beside
+ * `contract.ts`, `motion.ts` and `dropZones.ts`.
  */
 const REGIONS = [
   "diff",
@@ -35,10 +51,8 @@ const REGIONS = [
   "keys",
   "panel",
   "panes",
-  "scrollbar",
   "search",
   "settings",
-  "state",
   "statusbar",
   "stubs",
   "switcher",
@@ -187,6 +201,32 @@ export default tseslint.config(
   },
 
   ...regionIsolation,
+
+  // The other half of taking `state` off the region list. A region may call a
+  // verb; the verb layer may not reach back up into a region. Without this the
+  // reclassification above would be a hole rather than a layer — `state`
+  // importing `toolwindow` would make the two mutually dependent and put the
+  // shell back where §1.2 was written to stop it going.
+  {
+    files: ["src/shell/state/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            ...baseRestrictions(),
+            {
+              group: REGIONS.flatMap((region) => [`../${region}`, `../${region}/**`]),
+              message:
+                "STANDARDS.md §1.2: src/shell/state is the verb layer below the regions, " +
+                "not a peer of them. It may not import a region's source. Take what you " +
+                "need as an argument, or move the shared piece up to src/shell/.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 
   // Node scripts and config files run outside the browser.
   {

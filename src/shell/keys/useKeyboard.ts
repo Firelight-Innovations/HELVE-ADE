@@ -81,6 +81,76 @@ export interface KeyboardActions {
   splitTerminal(): void;
 }
 
+type ChordRun = (a: KeyboardActions) => () => void;
+
+/** One primary-modifier chord: what it runs plain, and what it runs with Shift. */
+interface Chord {
+  plain: ChordRun | null;
+  shift: ChordRun | null;
+}
+
+/** The accelerators, one row per `e.key.toLowerCase()`; `null` is declined on purpose. */
+const CHORDS: Record<string, Chord> = {
+  // Shift+Ctrl+N is New Window, which this build cannot do — see the item's
+  // own note in `TitleBar.tsx`. Unbound rather than bound to nothing, so the
+  // browser's "new incognito window" is at least honest about being the
+  // browser's.
+  n: {
+    plain: (a) => a.newFile,
+    shift: null,
+  },
+  o: {
+    plain: (a) => a.openProject,
+    shift: null,
+  },
+  s: {
+    plain: (a) => a.save,
+    shift: (a) => a.saveAs,
+  },
+  d: {
+    plain: (a) => a.duplicate,
+    shift: null,
+  },
+  // Only with Shift. Plain Ctrl+W closes a *tab* everywhere it is bound, and
+  // this window is not one — binding it to "close the window" would be the most
+  // destructive possible reading of a very common keystroke.
+  w: {
+    plain: null,
+    shift: (a) => a.closeWindow,
+  },
+  p: {
+    plain: null,
+    shift: (a) => a.commandPalette,
+  },
+  b: {
+    plain: (a) => a.togglePanel,
+    shift: null,
+  },
+  "\\": {
+    plain: (a) => a.splitTerminal,
+    shift: null,
+  },
+  // `=`/`+` and `-`/`_` are each the same physical key on a US layout, and
+  // which half arrives depends on Shift and on the layout. Both halves mean the
+  // same zoom; nobody reaching for it is thinking about which.
+  "=": {
+    plain: (a) => a.zoomIn,
+    shift: (a) => a.zoomIn,
+  },
+  "+": {
+    plain: (a) => a.zoomIn,
+    shift: (a) => a.zoomIn,
+  },
+  "-": {
+    plain: (a) => a.zoomOut,
+    shift: (a) => a.zoomOut,
+  },
+  _: {
+    plain: (a) => a.zoomOut,
+    shift: (a) => a.zoomOut,
+  },
+};
+
 /**
  * The menu-bar accelerators, in one table. `true` when the key was ours.
  *
@@ -112,42 +182,13 @@ function matched(e: KeyboardEvent, a: KeyboardActions): boolean {
 
   if (e.code === "Backquote") return fire(shift ? a.newTerminal : a.toggleTerminal);
 
-  switch (key) {
-    case "n":
-      // Shift+Ctrl+N is New Window, which this build cannot do — see the
-      // item's own note in `TitleBar.tsx`. Unbound rather than bound to
-      // nothing, so the browser's "new incognito window" is at least honest
-      // about being the browser's.
-      return shift ? false : fire(a.newFile);
-    case "o":
-      return shift ? false : fire(a.openProject);
-    case "s":
-      return fire(shift ? a.saveAs : a.save);
-    case "d":
-      return shift ? false : fire(a.duplicate);
-    case "w":
-      // Only with Shift. Plain Ctrl+W closes a *tab* everywhere it is bound,
-      // and this window is not one — binding it to "close the window" would be
-      // the most destructive possible reading of a very common keystroke.
-      return shift ? fire(a.closeWindow) : false;
-    case "p":
-      return shift ? fire(a.commandPalette) : false;
-    case "b":
-      return shift ? false : fire(a.togglePanel);
-    case "\\":
-      return shift ? false : fire(a.splitTerminal);
-    // The same physical key on a US layout, and which one arrives depends on
-    // Shift and on the layout. Both mean zoom in; nobody reaching for it is
-    // thinking about which.
-    case "=":
-    case "+":
-      return fire(a.zoomIn);
-    case "-":
-    case "_":
-      return fire(a.zoomOut);
-    default:
-      return false;
-  }
+  const row = CHORDS[key];
+  if (!row) return false;
+
+  const bound = shift ? row.shift : row.plain;
+  if (!bound) return false;
+
+  return fire(bound(a));
 }
 
 /** True for `<input>`, `<textarea>`, and anything `contenteditable`. */

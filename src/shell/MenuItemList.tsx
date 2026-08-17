@@ -45,9 +45,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { popover } from "../motion";
-import { ChevronRight } from "../../ui/Icon";
-import type { MenuItem, MenuPrompt } from "../contract";
+import { popover } from "./motion";
+import { ChevronRight } from "../ui/Icon";
+import type { MenuItem, MenuPrompt } from "./contract";
+import "./menuItemList.css";
 
 /**
  * Marks every portalled menu surface, so the three hosts can tell "the pointer

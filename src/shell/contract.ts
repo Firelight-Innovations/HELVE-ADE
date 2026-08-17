@@ -22,9 +22,19 @@
 import type { ReactNode } from "react";
 import type {
   AppInfo,
+  Cluster,
+  EngineState,
+  GitChangeKind,
   GitCommit,
+  GitDiff,
+  GitDivergence,
+  GitStatus,
   GitWorktree,
+  PaneNode,
   ResolvedTool,
+  SplitDir,
+  SurfaceKind,
+  TerminalBusy,
   ToolStatus,
   WorktreeRef,
 } from "../bindings";
@@ -134,8 +144,6 @@ function healthOf(status: ToolStatus): ToolHealth {
 // Engine status — stubbed, five strings and nothing else
 // ---------------------------------------------------------------------------
 
-export type EngineState = "idle" | "building" | "running" | "failed" | "none";
-
 /** The five strings, verbatim from the handoff. There is no sixth. */
 export const ENGINE_LABEL: Record<EngineState, string> = {
   idle: "Engine idle",
@@ -233,17 +241,14 @@ export function groupTerminalTabs(sessions: TerminalSession[]): TerminalTabGroup
 }
 
 /**
- * What a session is running, when it is running anything.
+ * What a session is running, when it is running anything. Mirrors `pty::Busy`,
+ * declared in `bindings.ts` and re-exported below.
  *
  * Only ever asked for at the moment someone clicks the close button, which is
  * what keeps it cheap: there is no polling and no per-session watcher, just one
  * question answered once. `null` means the shell is sitting at a prompt with no
  * child of its own, and that close needs no confirming.
  */
-export interface TerminalBusy {
-  /** The child process's name, so the dialog can say what it would kill. */
-  process: string;
-}
 
 /**
  * Opening and closing sessions.
@@ -357,9 +362,6 @@ export interface TerminalTransport {
 // there is no watcher — the panel re-asks after every mutation and when the
 // shown tool changes, and that is the whole update model.
 
-export type GitChangeKind =
-  "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
-
 /**
  * The single letter git itself would print in a status short-format, which is
  * also what the row's leading column draws. `untracked` is `?` rather than `U`
@@ -389,58 +391,6 @@ export const GIT_KIND_TOKEN: Record<GitChangeKind, string> = {
   untracked: "var(--text-dim-3)",
   conflicted: "var(--err)",
 };
-
-/**
- * One path, in one of the two lists.
- *
- * A path that is staged *and* then modified again appears twice — once in
- * `staged` and once in `unstaged`, each with its own kind — because those are
- * two different diffs and the user has to be able to click either one.
- */
-export interface GitFileChange {
-  /** Repo-relative, forward slashes. The identity: what the commands take. */
-  path: string;
-  /** Basename only — the directory is a separate, dimmer column. */
-  file: string;
-  dir: string;
-  kind: GitChangeKind;
-  staged: boolean;
-  renamedFrom?: string;
-}
-
-export interface GitStatus {
-  branch: string;
-  /**
-   * Commits ahead of and behind the upstream. Both `0` when there is no
-   * tracking ref at all, which is not an error — a fresh branch is a normal
-   * state, and the bar simply omits the arrows.
-   */
-  ahead: number;
-  behind: number;
-  /**
-   * Line-change totals since `HEAD` (or, for a repository with no commits
-   * yet, since the empty tree) — what the status bar's compact
-   * `+N -N · M files` readout is built from. Mirrors `GitStatus` in `git.rs`,
-   * which is where the exact rule for what counts and what doesn't is written
-   * down: staged and unstaged changes to tracked files combined into one
-   * diff against the base, plus every untracked file (already present below
-   * in `unstaged`) counted as a pure addition of its own line count. A
-   * changed binary file and an untracked file over 5 MiB both still appear in
-   * `staged`/`unstaged` — so they still count as a file touched — without
-   * adding to `insertions`/`deletions`, since there is no line count worth
-   * reading either of them for.
-   */
-  insertions: number;
-  deletions: number;
-  staged: GitFileChange[];
-  unstaged: GitFileChange[];
-}
-
-/** Two blobs, ready for `DiffView`. Never a patch: Monaco diffs whole texts. */
-export interface GitDiff {
-  original: string;
-  modified: string;
-}
 
 /**
  * The index, scoped to a cluster: what has changed, what is staged, commit it.
@@ -703,40 +653,8 @@ export interface Menu {
 // tree would be the first shell layout state outside that broadcast, and it
 // would be wrong for exactly the same reason.
 
-/** Mirrors `shell_state::SurfaceKind`. */
-export type SurfaceKind = "app" | "tool" | "terminal";
-
-/**
- * One live surface. Mirrors `shell_state::SurfaceInstance`.
- *
- * `appId` survives only as the thing that says which code to load and where to
- * route an `invoke`. Everything else — which frame a message came from, which
- * tab to close, which iframe to keep mounted — is keyed on `id`.
- */
-export interface SurfaceInstance {
-  id: string;
-  appId: string;
-  kind: SurfaceKind;
-  title: string;
-}
-
-/** Mirrors `layout::SplitDir`. */
-export type SplitDir = "row" | "column";
-
-/**
- * One node of a cluster's layout. Mirrors `layout::PaneNode`.
- *
- * Discriminated on `kind` rather than on which keys are present, matching
- * `ToolStatus` and `BootStatus`.
- *
- * `sizes` are fractions of the parent, one per child, summing to 1 — not
- * pixels. The window is resizable, so a layout stored in pixels would have to
- * be recomputed on every resize and would restore wrongly onto a different
- * monitor.
- */
-export type PaneNode =
-  | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
-  | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
+/** The layout itself. Mirrors Rust and is declared in `bindings.ts`. */
+export type { PaneNode, SplitDir, SurfaceInstance, SurfaceKind } from "../bindings";
 
 // ---------------------------------------------------------------------------
 // Layout presets — an arrangement, and which app belongs in each pane
@@ -751,62 +669,9 @@ export type PaneNode =
 // arranged in.
 //
 // Nothing in the shell draws a preset's shape today; the menu draws its name.
-// The tree is typed here anyway because it crosses the wire.
 
-/** Mirrors `presets::PresetSlot`. A terminal is not an app id — see below. */
-export type PresetSlot = { kind: "app"; appId: string } | { kind: "terminal" };
-
-/** Mirrors `presets::PresetNode`. Discriminated on `kind`, like `PaneNode`. */
-export type PresetNode =
-  | { kind: "split"; dir: SplitDir; sizes: number[]; children: PresetNode[] }
-  | { kind: "pane"; slots: PresetSlot[] };
-
-/** Mirrors `presets::LayoutPreset`. */
-export interface LayoutPreset {
-  /** Stable across renames — what the menu sends back when a row is clicked. */
-  id: string;
-  name: string;
-  /**
-   * Compiled into the build rather than read from `presets.json`.
-   *
-   * Computed by Rust and never trusted from the file, so this is a fact about
-   * where the preset came from and not a claim the file made. The menu uses it
-   * to separate the two groups; a built-in cannot be replaced or deleted.
-   */
-  builtin: boolean;
-  root: PresetNode;
-}
-
-/**
- * What a cluster's worktree has changed since it forked. Mirrors
- * `git::GitDivergence`.
- *
- * Committed and uncommitted work in one list, deliberately. The comparison is
- * against the fork point rather than against HEAD, so committing a file does
- * not make it leave this list and does not change the diff shown for it — the
- * question the bottom half of the panel answers is "what has this cluster
- * done", and that must not depend on how often the user happened to commit.
- *
- * Declared here rather than in `bindings.ts` — unlike the other Rust mirrors —
- * because it holds `GitFileChange`, which lives here. `bindings` cannot import
- * from `contract`, so a mirror that references a contract type has to be on
- * this side of the edge, and `state/git.ts` calls `invoke` for it directly the
- * way it already does for `git_status`.
- */
-export interface GitDivergence {
-  /** The branch this worktree was cut from. */
-  base: string;
-  /**
-   * The fork point. Every diff in this view is taken against it, so it is safe
-   * to cache on: a merge base that has not moved means none of these diffs can
-   * have changed except through the working tree.
-   */
-  mergeBase: string;
-  /** Commits made since the fork. Zero is ordinary — work not yet committed. */
-  commits: number;
-  /** `staged` is meaningless here and always false; this view is not the index. */
-  files: GitFileChange[];
-}
+/** Mirrors `presets::LayoutPreset` and is declared in `bindings.ts`. */
+export type { LayoutPreset } from "../bindings";
 
 /**
  * One changed region of a file against HEAD, in lines. Mirrors `git::GitHunk`.
@@ -830,55 +695,34 @@ export interface GitHunk {
 }
 
 /**
- * Where a cluster's work is happening on disk, and what git reports about the
- * checkouts it could be happening in.
- *
- * Both mirror Rust and are therefore declared in `bindings.ts`, re-exported
- * here because this is the file the shell reads its types from. See
- * [`clusterRoot`] for the rule that decides which of a cluster's two possible
- * roots wins.
+ * A cluster, its layout, its git status, and the presets it can be arranged
+ * from — every type below mirrors Rust and is therefore declared in
+ * `bindings.ts`, re-exported here because this is the file the shell reads
+ * its types from. See [`clusterRoot`] for the rule that decides which of a
+ * cluster's two possible roots wins.
  */
-export type { GitCommit, GitWorktree, WorktreeRef } from "../bindings";
+export type {
+  Cluster,
+  EngineState,
+  GitCommit,
+  GitDiff,
+  GitDivergence,
+  GitFileChange,
+  GitStatus,
+  GitWorktree,
+  TerminalBusy,
+  WorktreeRef,
+} from "../bindings";
 
-/**
- * One tab in the switcher bar: a layout, the project it is about, and its
- * worktree.
- *
- * A cluster is one thing being worked on. Switching cluster tabs swaps the pane
- * tree, the project underneath it, *and* the terminals in the band below it —
- * the whole of what is on screen for one piece of work, which is what makes a
- * chip a place rather than a filter. See `TerminalSessionState.clusterId`.
- *
- * A terminal dragged into the layout is a tab in `tree` like any other surface
- * and the band stops listing it: membership of one excludes the other, and both
- * are derived from the tree rather than tracked.
- */
-export interface Cluster {
-  id: string;
-  name: string;
-  tree: PaneNode;
-  /**
-   * The folder this cluster's work is in, as an absolute path, or `null` for a
-   * cluster nobody has pointed at one yet.
-   *
-   * The project is the cluster's and not the process's, which is what lets two
-   * windows on two monitors show two projects at once. Every app surface in
-   * this cluster resolves against it — Files roots its tree here, Home names it
-   * as the open project — and Rust does that resolution, from the instance id
-   * the shell passes with each `invoke`. Nothing in the frontend has to carry
-   * a project down to a surface.
-   *
-   * A *path*, not a name. The name the title bar draws comes from
-   * `clusterProject`, because a project's name is its manifest's when it has
-   * one and only the backend has read that.
-   */
-  project: string | null;
-  worktree: WorktreeRef | null;
-  /** Which terminal this cluster's band shows, or `null` for an empty band.
-   *  Rust re-seats it after every mutation, so it always names one of *this*
-   *  cluster's, and never one dragged into a pane tree. */
-  activeTerminal: string | null;
-}
+// `Cluster` — one tab in the switcher bar: a layout, the project it is about,
+// and its worktree — is among the types re-exported above. Switching cluster
+// tabs swaps the pane tree, the project underneath it, *and* the terminals in
+// the band below it — the whole of what is on screen for one piece of work,
+// which is what makes a chip a place rather than a filter. See
+// `TerminalSessionState.clusterId`. A terminal dragged into the layout is a
+// tab in `tree` like any other surface and the band stops listing it:
+// membership of one excludes the other, and both are derived from the tree
+// rather than tracked.
 
 /**
  * One entry in the shell's single tab bar.
@@ -1015,6 +859,34 @@ export interface DragState {
   y: number;
   /** Where a release right now would put it. */
   target: DropTarget;
+}
+
+/**
+ * What it takes to draw a pane tree.
+ *
+ * Here rather than in `panes/PaneTree.tsx` because two regions need the shape
+ * and only one of them draws it: `toolwindow` computes every field but must not
+ * import `panes` (§1.2), so it takes a `renderPanes` prop typed as
+ * `(props: PaneTreeProps) => ReactNode` and `WindowRoot` — which is not a region
+ * and may import both — supplies the `PaneTree` that consumes it.
+ */
+export interface PaneTreeProps {
+  tree: PaneNode;
+  /**
+   * The pane an open acts on, drawn with the active-pane outline.
+   *
+   * "Acts on" rather than "lands in": opening an app splits this pane along its
+   * longer axis and puts the new surface in the half that produces, rather than
+   * stacking it in here as a tab. See `panes/splitOnOpen.ts`.
+   */
+  focusedPaneId: string | null;
+  onFocusPane: (paneId: string) => void;
+  /** Commits a divider drag. One weight per child, summing to 1. */
+  onResize: (splitId: string, sizes: number[]) => void;
+  /** Called as panes mount, move and unmount. See `PaneTree`'s own header. */
+  onHostChange: (paneId: string, el: HTMLDivElement | null) => void;
+  /** Where a drag would land right now, so the target pane can say so. */
+  dropTarget?: DropTarget | null;
 }
 
 /** What a region spreads onto an element to make it a drag source. */

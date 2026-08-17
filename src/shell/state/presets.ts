@@ -22,11 +22,8 @@
  * re-renders with it.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { applyLayoutPreset, listPresets, onPresetsChanged, saveLayoutPreset } from "../../bindings";
 import type { LayoutPreset } from "../contract";
-
-export const PRESETS_CHANGED_EVENT = "presets:changed";
 
 /**
  * Every preset: built-ins first, then what survives of `presets.json`.
@@ -45,14 +42,14 @@ export function useLayoutPresets(): LayoutPreset[] {
     let unlisten: (() => void) | undefined;
 
     void (async () => {
-      unlisten = await listen<LayoutPreset[]>(PRESETS_CHANGED_EVENT, (e) => {
+      unlisten = await onPresetsChanged((next) => {
         if (!live) return;
         settled = true;
-        setPresets(e.payload);
+        setPresets(next);
       });
 
       try {
-        const initial = await invoke<LayoutPreset[]>("list_presets");
+        const initial = await listPresets();
         // An event arrived while that round trip was in flight, and it is newer
         // than what we asked for. Dropping it is the whole point of the flag.
         if (live && !settled) setPresets(initial);
@@ -86,7 +83,7 @@ export function useLayoutPresets(): LayoutPreset[] {
  * pane. The rule and its reasoning are in `presets::plan`.
  */
 export function applyPreset(label: string, presetId: string): Promise<void> {
-  return invoke("apply_preset", { label, presetId });
+  return applyLayoutPreset(label, presetId);
 }
 
 /**
@@ -97,5 +94,5 @@ export function applyPreset(label: string, presetId: string): Promise<void> {
  * `.catch`. Resolves with nothing: the new list arrives on the broadcast.
  */
 export async function savePreset(label: string, name: string): Promise<void> {
-  await invoke<LayoutPreset[]>("save_preset", { label, name });
+  await saveLayoutPreset(label, name);
 }

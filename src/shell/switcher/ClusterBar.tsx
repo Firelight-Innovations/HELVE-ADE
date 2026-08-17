@@ -9,9 +9,9 @@ import type {
   ToolPresentation,
 } from "../contract";
 import { instant, instantOut, snap } from "../motion";
-import { useDropZone } from "../drag/dropZones";
+import { useDropZone } from "../dropZones";
 import { Close, Plus, Search, WarningTriangle } from "../../ui/Icon";
-import OverlayScrollbar from "../scrollbar/OverlayScrollbar";
+import OverlayScrollbar from "../OverlayScrollbar";
 import HealthPopover, { type UnhealthyTool } from "./HealthPopover";
 import AddAppButton, { type AppsMenuHandlers } from "./AddAppButton";
 import "./switcher.css";

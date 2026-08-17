@@ -8,20 +8,25 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { listen } from "@tauri-apps/api/event";
-import type { DropTarget, PaneNode, SurfaceInstance, ToolPresentation } from "../contract";
+import type {
+  DropTarget,
+  PaneNode,
+  PaneTreeProps,
+  SurfaceInstance,
+  ToolPresentation,
+} from "../contract";
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
-import PaneTree from "../panes/PaneTree";
-import XTermView from "../terminal/XTermView";
 import { activateInstance, openInstance, setInstanceTitle } from "../state/shellState";
-import { terminalControl, terminalTransport } from "../state/terminals";
-// The wire types come from the bridge package's source by relative path rather
-// than from `@helve/bridge` itself. The root package does depend on that
-// package now — the first-party apps under `apps/` import it, and they are
-// built by this same Vite config — but the shell must not import its *client*,
-// which is the tool half of transport B and reaches for `window.parent` at
-// module load. Types and the error-code table have no such side effect.
+// The wire types come from `@helve/bridge`'s `protocol`/`errors` subpaths
+// rather than its root entry. The root package does depend on `@helve/bridge`
+// now — the first-party apps under `apps/` import it, and they are built by
+// this same Vite config — but the shell must not import the client that entry
+// builds, which is the tool half of transport B and reaches for
+// `window.parent` at module load. The two subpaths below are side-effect-free
+// — a handful of types, two constants, and an error-code table — so they carry
+// none of that risk.
 import type {
   CommandMessage,
   EventMessage,
@@ -30,22 +35,17 @@ import type {
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
-} from "../../../packages/bridge/src/protocol";
-// Values, not just types, from the same module — the reserved event names both
-// sides of the sideways channel have to agree on. Safe for the same reason the
-// types above are: `protocol.ts` is two constants and a handful of type guards
-// with no module-level side effect, where `client.ts` reaches for
-// `window.parent` at load.
-import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "../../../packages/bridge/src/protocol";
-import { HelveErrorCode } from "../../../packages/bridge/src/errors";
-import { appPainted } from "../../bindings";
+} from "@helve/bridge/protocol";
+import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve/bridge/protocol";
+import { HelveErrorCode } from "@helve/bridge/errors";
+import { appPainted, onProjectChanged } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
 import { windowLabel } from "../state/shellState";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
 import NoClustersState from "./NoClustersState";
-import { registerToolWindow, unregisterToolWindow } from "./toolWindowRegistry";
+import { registerToolWindow, unregisterToolWindow } from "../toolWindowRegistry";
 import "./toolwindow.css";
 
 /**
@@ -190,6 +190,24 @@ const ToolWindow = forwardRef<
      * with a dirty editor can Save and one without cannot.
      */
     onCommandsChange?: (instanceId: string, commands: readonly string[]) => void;
+    /**
+     * Draw the pane layout this window measured.
+     *
+     * A render prop rather than an import, because `panes` is another region and
+     * §1.2 lets this one import nothing but `contract.ts`. Everything it takes is
+     * computed here — `PaneTreeProps` is in the contract for exactly this reason
+     * — and `WindowRoot`, which is not a region, supplies the component.
+     */
+    renderPanes: (props: PaneTreeProps) => ReactNode;
+    /**
+     * Draw the terminal emulator bound to `instanceId`'s pty.
+     *
+     * A render prop for the same reason as `renderPanes`, and it also takes the
+     * transport with it: a terminal is bytes on a wire and this window has no
+     * business holding either end. The element still sits in the same place in
+     * the tree, so nothing about it remounts.
+     */
+    renderTerminal: (instanceId: string) => ReactNode;
   }
 >(function ToolWindow(
   {
@@ -204,6 +222,8 @@ const ToolWindow = forwardRef<
     onResize,
     dropTarget,
     onCommandsChange,
+    renderPanes,
+    renderTerminal,
   },
   ref,
 ) {
@@ -811,21 +831,21 @@ const ToolWindow = forwardRef<
   // for the active cluster's tree only, so every frame in `frames` is in that
   // cluster by construction.
   useEffect(() => {
-    // `listen` is async and an effect's cleanup must be returned synchronously,
-    // so the subscription is set up in the background and `live` covers the gap
-    // — an unmount before Tauri registers the listener must still end up with
-    // nothing listening.
+    // `onProjectChanged` is async and an effect's cleanup must be returned
+    // synchronously, so the subscription is set up in the background and
+    // `live` covers the gap — an unmount before Tauri registers the listener
+    // must still end up with nothing listening.
     let live = true;
     let unlisten: (() => void) | undefined;
 
     void (async () => {
-      const stop = await listen<unknown>("project:changed", (e) => {
+      const stop = await onProjectChanged((payload) => {
         if (!live) return;
         // A change in a cluster this window is not showing has no frame here to
         // act on it, and telling one anyway would be telling it about somebody
         // else's project. A payload with no cluster on it is dropped for the
         // same reason: the event's whole contract is that it names one.
-        if (changedCluster(e.payload) !== showing.current) return;
+        if (changedCluster(payload) !== showing.current) return;
         for (const [win, frame] of frames.current) {
           if (!frame.isApp || frame.origin === null) continue;
           win.postMessage(
@@ -833,7 +853,7 @@ const ToolWindow = forwardRef<
               helve: 1,
               kind: "event",
               event: "project:changed",
-              payload: e.payload,
+              payload,
             } satisfies EventMessage,
             frame.origin,
           );
@@ -1002,14 +1022,14 @@ const ToolWindow = forwardRef<
           `display`, so every pane keeps its box and the measuring above keeps
           answering — the geometry is still correct the instant it is uncovered. */}
       <div className="toolwindow__layout" data-hidden={soloInstanceId !== null || undefined}>
-        <PaneTree
-          tree={tree}
-          focusedPaneId={focusedPaneId}
-          onFocusPane={onFocusPane}
-          onResize={onResize}
-          onHostChange={onHostChange}
-          dropTarget={dropTarget}
-        />
+        {renderPanes({
+          tree,
+          focusedPaneId,
+          onFocusPane,
+          onResize,
+          onHostChange,
+          dropTarget,
+        })}
       </div>
 
       {/* Every surface in the cluster, always mounted, positioned over the pane
@@ -1093,13 +1113,7 @@ const ToolWindow = forwardRef<
             }
           >
             {isTerminal ? (
-              <div className="toolwindow__slot">
-                <XTermView
-                  id={instanceId}
-                  transport={terminalTransport}
-                  onTitle={(title) => terminalControl.setTitle(instanceId, title)}
-                />
-              </div>
+              <div className="toolwindow__slot">{renderTerminal(instanceId)}</div>
             ) : (
               presentation && (
                 <ToolMount

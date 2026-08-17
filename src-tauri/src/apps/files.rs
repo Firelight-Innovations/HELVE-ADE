@@ -1,27 +1,6 @@
 //! The Files app's Rust half — listing a directory, reading a file, and writing
 //! one back.
 //!
-//! Every method that names a file takes an absolute path. `files/list` and
-//! `files/read` accept none and fall back to the project of the cluster the
-//! calling surface is in, which `files/root` reports directly; that fallback is
-//! the only place this module has an opinion about *where* the user is, and
-//! everything else is the frontend's to decide and pass in. The methods that
-//! change something — write, reveal, open — refuse a missing path instead of
-//! defaulting, because none of them has a harmless thing to do to the root.
-//!
-//! "The cluster the calling surface is in" is the whole of what changed when a
-//! project stopped being global. Two Files side by side in two clusters root at
-//! two different folders, and neither of them holds any state saying so: the
-//! answer comes in with the call, as `CallContext`, resolved from the frame the
-//! message arrived on. This module still holds no per-instance state at all.
-//!
-//! Nothing here decides what a file *is*. There is no MIME sniffing and no
-//! content type — `kind` is the filesystem's own dir/file/other and stops there.
-//! Which viewer opens a `.png` is the frontend registry's business, and keeping
-//! that knowledge on one side means adding a format is a one-file change rather
-//! than a change here, a change there, and a protocol between them that has to
-//! agree.
-//!
 //! There is deliberately no sandbox here. A tool is third-party code and its
 //! manifest paths are validated as a security boundary (see
 //! `helve-tool-manifest`), but an app is this repository's own code running in
@@ -125,50 +104,117 @@ fn max_read_bytes(app: &AppHandle) -> u64 {
 /// mean different things and must not be a glance apart.
 const MAX_READ_BYTES_BINARY: u64 = 32 * 1024 * 1024;
 
+/// The Files app's single RPC entry point, split by family so that no one
+/// function carries every method.
+///
+/// Every family below is scoped to "the cluster the calling surface is in",
+/// which is the whole of what changed when a project stopped being global. Two
+/// Files side by side in two clusters root at two different folders, and neither
+/// of them holds any state saying so: the answer comes in with the call, as
+/// `CallContext`, resolved from the frame the message arrived on. This module
+/// holds no per-instance state at all.
 pub fn call(
     app: &AppHandle,
     context: &CallContext,
     method: &str,
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
-    match method {
+    // The Recycle Bin half of `files/delete`, in its own module because the
+    // scoping rule it enforces is the whole of its design and deserves to be
+    // read on its own. Dispatched from here because it is the Files app's
+    // surface — one app, one `call`. First, and on its own, because it is
+    // matched by *prefix* rather than by exact name, and because it is the one
+    // branch that wants the params by value.
+    if method.starts_with("trash/") {
+        return super::trash::call(app, context, method, params);
+    }
+
+    let params = params.as_ref();
+
+    entry_methods(app, context, method, params)
+        .or_else(|| shell_methods(app, method, params))
+        .or_else(|| git_methods(app, context, method, params))
+        .unwrap_or_else(|| {
+            Err(RpcError::new(
+                METHOD_NOT_FOUND,
+                format!("no such method: {method}"),
+            ))
+        })
+}
+
+/// The entries themselves: reading a tree, and changing one. `None` for a method
+/// that is not one of these.
+///
+/// Every method that names a file takes an absolute path. `files/list` and
+/// `files/read` accept none and fall back to the project of the cluster the
+/// calling surface is in, which `files/root` reports directly; that fallback is
+/// the only place this module has an opinion about *where* the user is, and
+/// everything else is the frontend's to decide and pass in. The methods that
+/// change something refuse a missing path instead of defaulting, because none of
+/// them has a harmless thing to do to the root.
+fn entry_methods(
+    app: &AppHandle,
+    context: &CallContext,
+    method: &str,
+    params: Option<&Value>,
+) -> Option<Result<Value, RpcError>> {
+    let answer = match method {
         "files/root" => root(app, context),
-        "files/list" => list(app, context, params.as_ref()),
-        "files/stat" => Ok(stat_at(&required_path(params.as_ref())?)),
-        "files/read" => read(app, context, params.as_ref()),
+        "files/list" => list(app, context, params),
+        "files/stat" => required_path(params).map(|path| stat_at(&path)),
+        "files/read" => read(app, context, params),
         "files/read-bytes" => {
-            read_bytes_within(&required_path(params.as_ref())?, MAX_READ_BYTES_BINARY)
+            required_path(params).and_then(|path| read_bytes_within(&path, MAX_READ_BYTES_BINARY))
         }
-        "files/write" => write(params.as_ref()),
-        "files/create-file" => create(params.as_ref(), NewEntry::File),
-        "files/create-dir" => create(params.as_ref(), NewEntry::Dir),
-        "files/rename" => rename(params.as_ref()),
-        "files/duplicate" => duplicate_at(&required_path(params.as_ref())?),
-        "files/save-as" => save_as(app, params.as_ref()),
-        "files/delete" => delete_at(&required_path(params.as_ref())?),
-        "files/tree-size" => Ok(tree_size_at(&required_path(params.as_ref())?)),
-        // The Recycle Bin half of `files/delete`, in its own module because the
-        // scoping rule it enforces is the whole of its design and deserves to be
-        // read on its own. Dispatched from here because it is the Files app's
-        // surface — one app, one `call`.
-        method if method.starts_with("trash/") => super::trash::call(app, context, method, params),
+        "files/write" => write(params),
+        "files/create-file" => create(params, NewEntry::File),
+        "files/create-dir" => create(params, NewEntry::Dir),
+        "files/rename" => rename(params),
+        "files/duplicate" => required_path(params).and_then(|path| duplicate_at(&path)),
+        "files/save-as" => save_as(app, params),
+        "files/delete" => required_path(params).and_then(|path| delete_at(&path)),
+        "files/tree-size" => required_path(params).map(|path| tree_size_at(&path)),
+        _ => return None,
+    };
+    Some(answer)
+}
 
-        "files/reveal" => reveal(app, params.as_ref()),
-        "files/open-external" => open_external(app, params.as_ref()),
+/// The two that hand a path to the OS rather than touching it. `None` for a
+/// method that is not one of these.
+///
+/// Reveal and open refuse a missing path rather than defaulting to the root, for
+/// the reason [`entry_methods`] gives about the methods that change something:
+/// there is no harmless thing to do to the root.
+fn shell_methods(
+    app: &AppHandle,
+    method: &str,
+    params: Option<&Value>,
+) -> Option<Result<Value, RpcError>> {
+    let answer = match method {
+        "files/reveal" => reveal(app, params),
+        "files/open-external" => open_external(app, params),
+        _ => return None,
+    };
+    Some(answer)
+}
 
-        // Git decoration. Each answers about the cluster this surface is in, so
-        // none of them takes a cluster from the request body — same identity
-        // rule as everything else here.
+/// Git decoration. Each answers about the cluster this surface is in, so none of
+/// them takes a cluster from the request body — same identity rule as everything
+/// else here. `None` for a method that is not one of these.
+fn git_methods(
+    app: &AppHandle,
+    context: &CallContext,
+    method: &str,
+    params: Option<&Value>,
+) -> Option<Result<Value, RpcError>> {
+    let answer = match method {
         "files/git-status" => git_status(app, context),
         "files/git-ignored" => git_ignored(app, context),
-        "files/git-hunks" => git_hunks(app, context, params.as_ref()),
-        "files/git-head" => git_head(app, context, params.as_ref()),
-
-        _ => Err(RpcError::new(
-            METHOD_NOT_FOUND,
-            format!("no such method: {method}"),
-        )),
-    }
+        "files/git-hunks" => git_hunks(app, context, params),
+        "files/git-head" => git_head(app, context, params),
+        _ => return None,
+    };
+    Some(answer)
 }
 
 /// Every changed path in this cluster's checkout, for the explorer to mark up.
@@ -817,23 +863,8 @@ fn create_at(parent: &Path, name: &str, what: NewEntry) -> Result<Value, RpcErro
 /// and neither does the caller — renaming a folder is the same gesture, and
 /// refusing it would be inventing a limit the filesystem does not have.
 ///
-/// ## The overwrite this has to prevent by hand
-///
-/// **`std::fs::rename` replaces an existing destination without asking**, on
-/// Windows and POSIX alike. That is the opposite of what `create_at` gets for
-/// free from `create_new(true)`, and it is the one genuinely dangerous edge in
-/// this module: renaming `notes.md` onto an existing `todo.md` would destroy
-/// `todo.md` with no error anywhere. So the check is explicit, and it is why
-/// this function is longer than it looks like it should be.
-///
-/// That check is not atomic, and saying so is better than implying otherwise:
-/// another process could create the destination between the test and the
-/// rename. Closing that gap means `MoveFileExW` *without*
-/// `MOVEFILE_REPLACE_EXISTING`, which fails at the syscall the way
-/// `create_new` does — a Windows-only FFI dependency this module does not
-/// otherwise need. The race is a few microseconds wide and needs a second
-/// writer in the same folder; the common case this does catch is the user
-/// typing a name that is already taken.
+/// The overwrite this has to prevent by hand is the one genuinely dangerous edge
+/// in the module; the check for it is below, with the reasoning beside it.
 fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
     validate_component(name)?;
 
@@ -865,6 +896,21 @@ fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
         return Ok(renamed(&target, name));
     }
 
+    // **`std::fs::rename` replaces an existing destination without asking**, on
+    // Windows and POSIX alike. That is the opposite of what `create_at` gets for
+    // free from `create_new(true)`: renaming `notes.md` onto an existing
+    // `todo.md` would destroy `todo.md` with no error anywhere. So the check is
+    // explicit, and it is why this function is longer than it looks like it
+    // should be.
+    //
+    // That check is not atomic, and saying so is better than implying otherwise:
+    // another process could create the destination between the test and the
+    // rename. Closing that gap means `MoveFileExW` *without*
+    // `MOVEFILE_REPLACE_EXISTING`, which fails at the syscall the way
+    // `create_new` does — a Windows-only FFI dependency this module does not
+    // otherwise need. The race is a few microseconds wide and needs a second
+    // writer in the same folder; the common case this does catch is the user
+    // typing a name that is already taken.
     if target.exists() && !is_same_entry(path, &target) {
         return Err(RpcError::new(
             INVALID_PARAMS,
@@ -903,14 +949,6 @@ fn rename_at(path: &Path, name: &str) -> Result<Value, RpcError> {
 ///
 /// The name is `notes copy.txt`, then `notes copy 2.txt` — see [`copy_name`] for
 /// why not Explorer's `notes - Copy.txt`.
-///
-/// ## A folder is copied recursively, and a failure leaves nothing behind
-///
-/// There is no atomic directory copy on any platform this runs on, so a failure
-/// part-way through would otherwise leave a half-copy sitting next to the
-/// original with a name that says it is a duplicate. [`copy_tree`] removes what
-/// it made when it fails, so the only two outcomes are the whole thing and
-/// nothing.
 fn duplicate_at(path: &Path) -> Result<Value, RpcError> {
     let parent = path.parent().ok_or_else(|| {
         RpcError::new(
@@ -935,6 +973,12 @@ fn duplicate_at(path: &Path) -> Result<Value, RpcError> {
     let name = base_name(path);
     let (target, target_name) = free_copy_path(parent, &name)?;
 
+    // A folder is copied recursively, and a failure leaves nothing behind. There
+    // is no atomic directory copy on any platform this runs on, so a failure
+    // part-way through would otherwise leave a half-copy sitting next to the
+    // original with a name that says it is a duplicate. [`copy_tree`] removes
+    // what it made when it fails, so the only two outcomes are the whole thing
+    // and nothing.
     let made = if metadata.is_dir() {
         copy_tree(path, &target)
     } else if metadata.is_file() {
@@ -1148,15 +1192,6 @@ fn save_as(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
 /// buffer, and a subtly wrong buffer in the one function whose job is to destroy
 /// things is not a bug this codebase should be able to have. `trash` is a small
 /// crate that does exactly this and is tested against exactly that footgun.
-///
-/// ## It refuses rather than falling back
-///
-/// A volume with no Recycle Bin — most network shares, some removable drives —
-/// makes this fail, and it is left failing. Quietly unlinking instead would mean
-/// the confirmation said "Recycle Bin" and the disk did something permanent,
-/// which is the one outcome a confirmation exists to prevent. The user can still
-/// delete such a file from the OS file manager, having been told what that
-/// means.
 fn delete_at(path: &Path) -> Result<Value, RpcError> {
     // Read the kind *before* the delete: afterwards there is nothing to stat,
     // and the caller needs to know whether it just lost a file or a folder.
@@ -1169,6 +1204,12 @@ fn delete_at(path: &Path) -> Result<Value, RpcError> {
     }
     let kind = kind_of(metadata.as_ref());
 
+    // This refuses rather than falling back. A volume with no Recycle Bin — most
+    // network shares, some removable drives — makes this fail, and it is left
+    // failing. Quietly unlinking instead would mean the confirmation said
+    // "Recycle Bin" and the disk did something permanent, which is the one
+    // outcome a confirmation exists to prevent. The user can still delete such a
+    // file from the OS file manager, having been told what that means.
     trash::delete(path).map_err(|e| {
         RpcError::new(
             INTERNAL_ERROR,
@@ -1366,6 +1407,12 @@ fn validate_component(name: &str) -> Result<(), RpcError> {
 ///
 /// `None` is the broken-symlink and permission-denied case — `std::fs::metadata`
 /// follows links, so an entry whose target is gone gives nothing to switch on.
+///
+/// This is as far as the module goes towards deciding what a file *is*: no MIME
+/// sniffing and no content type, just the filesystem's own dir/file/other. Which
+/// viewer opens a `.png` is the frontend registry's business, and keeping that
+/// knowledge on one side means adding a format is a one-file change rather than
+/// a change here, a change there, and a protocol between them that has to agree.
 fn kind_of(metadata: Option<&std::fs::Metadata>) -> &'static str {
     match metadata.map(|m| m.file_type()) {
         Some(t) if t.is_dir() => "dir",

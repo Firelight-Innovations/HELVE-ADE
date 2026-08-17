@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
-import { useDropZone } from "../drag/dropZones";
-import type { DropTarget, PaneNode, SplitDir } from "../contract";
+import { useDropZone } from "../dropZones";
+import type { PaneNode, PaneTreeProps, SplitDir } from "../contract";
 import "./panes.css";
 
 /**
@@ -47,24 +47,9 @@ import "./panes.css";
  * layout in pixels would have to be recomputed on every resize and would
  * restore wrongly onto a different monitor.
  */
-export interface PaneTreeProps {
-  tree: PaneNode;
-  /**
-   * The pane an open acts on, drawn with the active-pane outline.
-   *
-   * "Acts on" rather than "lands in": opening an app splits this pane along its
-   * longer axis and puts the new surface in the half that produces, rather than
-   * stacking it in here as a tab. See `panes/splitOnOpen.ts`.
-   */
-  focusedPaneId: string | null;
-  onFocusPane: (paneId: string) => void;
-  /** Commits a divider drag. One weight per child, summing to 1. */
-  onResize: (splitId: string, sizes: number[]) => void;
-  /** Called as panes mount, move and unmount. See the note above. */
-  onHostChange: (paneId: string, el: HTMLDivElement | null) => void;
-  /** Where a drag would land right now, so the target pane can say so. */
-  dropTarget?: DropTarget | null;
-}
+// `PaneTreeProps` is in `contract.ts`, not here: `toolwindow` computes every
+// field of it and hands it back through a `renderPanes` prop, which it could not
+// type without importing this region (STANDARDS.md §1.2).
 
 /**
  * The smallest share a pane may be dragged to, matching `MIN_SIZE` in
@@ -217,7 +202,7 @@ function Pane({
 
   // Registered rather than found. The drag layer used to locate its targets by
   // querying the DOM, which cannot work now that panes come and go as the user
-  // splits things — see `drag/dropZones.tsx`.
+  // splits things — see `dropZones.ts`.
   //
   // A pane registers one zone where it used to register two. The strip zone
   // went with the strip; the row that answers "insert between these two tabs"

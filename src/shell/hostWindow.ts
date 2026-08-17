@@ -1,19 +1,24 @@
 /**
  * The handful of things the shell asks of the window it is drawn in.
  *
- * `@tauri-apps/api` is safe to import in a plain browser — nothing at module
- * scope talks to the runtime. It is only *calling* `getCurrentWindow()` or its
- * methods that needs the Tauri internals to exist, which is why `isTauri` is
- * checked immediately before each one rather than once at load. Same posture as
- * `titlebar/WindowControls.tsx`, which is where this pattern started; that file
- * now imports `isTauri` from here rather than keeping a second copy of it.
+ * The Tauri window and webview calls themselves live in `bindings.ts` now
+ * (STANDARDS.md §1.1 — one door). What stays here is `isTauri`, checked
+ * immediately before every one of them rather than once at load: both are
+ * reachable in a plain browser (`pnpm dev:agent`), which has no Tauri runtime
+ * underneath to answer them. Same posture as `titlebar/WindowControls.tsx`,
+ * which is where this pattern started; that file now imports `isTauri` from
+ * here rather than keeping a second copy of it.
  *
  * Every function here is a no-op in a plain browser, and the menu items that
  * reach them are disabled there rather than silently doing nothing — see
  * `ViewMenuHandlers.zoomBlocked`.
  */
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import {
+  closeHostWindow,
+  hostWindowIsFullscreen,
+  setHostWindowFullscreen,
+  setHostZoom,
+} from "../bindings";
 
 export function isTauri(): boolean {
   return "__TAURI_INTERNALS__" in window;
@@ -22,18 +27,18 @@ export function isTauri(): boolean {
 /** Close this window. The same call `WindowControls`' × makes. */
 export function closeWindow(): void {
   if (!isTauri()) return;
-  void getCurrentWindow().close();
+  void closeHostWindow();
 }
 
 /** Whether this window is full screen. `false` when there is no window to ask. */
 export async function isFullscreen(): Promise<boolean> {
   if (!isTauri()) return false;
-  return getCurrentWindow().isFullscreen();
+  return hostWindowIsFullscreen();
 }
 
 export async function setFullscreen(on: boolean): Promise<void> {
   if (!isTauri()) return;
-  return getCurrentWindow().setFullscreen(on);
+  return setHostWindowFullscreen(on);
 }
 
 /**
@@ -67,5 +72,5 @@ export function nextZoom(current: number, direction: 1 | -1): number {
  */
 export async function setZoom(factor: number): Promise<void> {
   if (!isTauri()) return;
-  return getCurrentWebview().setZoom(factor);
+  return setHostZoom(factor);
 }

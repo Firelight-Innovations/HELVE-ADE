@@ -41,7 +41,7 @@
 import type { Cluster, SurfaceInstance } from "../contract";
 import { paneTabs } from "../contract";
 import { activateInstance, fetchShellState, openInstance, windowLabel } from "../state/shellState";
-import { toolWindowBridge } from "../toolwindow/toolWindowRegistry";
+import { toolWindowBridge } from "../toolWindowRegistry";
 
 /**
  * The event this module pushes into a mounted Files frame. Colon-separated,

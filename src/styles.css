@@ -11,7 +11,7 @@
 /* --- the default scrollbar -------------------------------------------------
  * Every plain scroll container in the shell (the worktree panel, the commit
  * graph, anything with a bare `overflow: auto`) gets this look unless it
- * opts out. It is not a new design: it is `src/shell/scrollbar`'s overlay
+ * opts out. It is not a new design: it is `src/shell/OverlayScrollbar`'s overlay
  * thumb, the one `ClusterBar` and `SecondaryPanel` already draw, restated as
  * ordinary browser chrome rather than a hand-measured `motion.div` — see
  * `overlayScrollbar.css` for the values this copies (5px, no border-radius,

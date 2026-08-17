@@ -43,10 +43,31 @@ Rules that follow from it:
    only file that calls `invoke` or `listen`. A component that needs backend data
    calls a typed wrapper there, and if the wrapper does not exist yet, the fix is
    to add one — not to reach past it.
-2. **No region imports another region's source.** The sixteen shell regions are
+2. **No region imports another region's source.** The fifteen shell regions are
    built against `src/shell/contract.ts` and nothing else. They receive what they need
    as props typed there and hand back what they produce the same way. This is
    what lets them be worked on in parallel without growing into each other.
+
+   A region is a part of the interface that is *drawn*. Two things that are not:
+
+   - **`src/shell/state/` is the verb layer, not a region.** It draws nothing. It
+     is the strip between `contract.ts` and `bindings.ts` where "send this back to
+     Rust" lives, and §1 above already says a region's job is to render a snapshot
+     *and send verbs back*. Counting it as a peer put seven regions in violation
+     for doing exactly that, and the only conforming alternative was to thread
+     nine more function props through `WindowRoot`. The arrow still points one
+     way, and that half is enforced: `state` may not import a region.
+   - **Anything two regions need lives directly under `src/shell/`**, beside
+     `contract.ts` — `motion.ts`, `dropZones.ts`, `toolWindowRegistry.ts`,
+     `appsMenu.ts`, `OverlayScrollbar.tsx`, `MenuItemList.tsx`. A shared widget
+     kept inside one of the regions that draws it makes the other reach across,
+     and moving it up is the fix rather than an exemption. The `scrollbar` region
+     was exactly this and no longer exists.
+
+   Where the shared piece is a *component* rather than a module, the standard's
+   own answer applies instead: pass it in. `ToolWindow` draws the pane tree and
+   the terminal emulator through `renderPanes` and `renderTerminal` props typed
+   in `contract.ts`, and `WindowRoot` — which is not a region — supplies both.
 3. **The protocol crates depend on nothing above them.** `helve-rpc` and
    `helve-tool-manifest` are consumed by this repo *and* by every tool
    repository. They must not learn about the orchestrator. If a change to one of
@@ -57,9 +78,11 @@ Rules that follow from it:
    an app be extracted into its own tool repo later, or a tool absorbed into
    this one, without its interface code changing.
 
-Rule 2 is enforced by ESLint (§10), with the 23 imports that already crossed a
-region boundary grandfathered. The region list lives in `eslint.config.js` and
-has to be extended by hand when a directory is added under `src/shell/`.
+Rule 2 is enforced by ESLint (§10) with nothing grandfathered. The region list
+lives in `eslint.config.js` and has to be extended by hand when a directory is
+added under `src/shell/` — leaving a new directory off the list is how a shared
+leaf module is declared, so the omission has to be deliberate and is worth a
+comment there.
 
 ---
 
@@ -68,6 +91,13 @@ has to be extended by hand when a directory is added under `src/shell/`.
 Two files exist purely to be chokepoints. Their value is entirely in being the
 *only* way through, so adding a bypass — even a small, obviously-fine one —
 costs more than the bypass saves.
+
+Both are chokepoints in the same sense, and `@helve/bridge` is the third. The
+shell reaches its wire types through the `@helve/bridge/protocol` and
+`@helve/bridge/errors` subpaths rather than the package root, because the root
+builds a client that reaches for `window.parent` at module load — the tool half
+of the transport, which the *host* must not instantiate. The subpaths are types,
+two constants and an error table, and have no such side effect.
 
 ### `src/bindings.ts` — the backend boundary
 
