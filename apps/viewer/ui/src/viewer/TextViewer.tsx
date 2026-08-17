@@ -25,7 +25,15 @@
 import { useEffect, useRef, useState } from "react";
 import { pick, type ViewerProps } from "./registry";
 import { clearActiveEditor, setActiveEditor } from "./activeEditor";
-import { bindSave, createGitGutter, createModel, mountEditor, retargetModel } from "./monaco";
+import {
+  bindSave,
+  createGitGutter,
+  createModel,
+  loadEditorSettings,
+  mountEditor,
+  retargetModel,
+  type EditorSettings,
+} from "./monaco";
 import { gitHunks } from "./gitHunks";
 import { gitHead } from "./gitHead";
 import { documents, requestReload, saveDocument, type TabDocument } from "../tabs/useOpenFiles";
@@ -37,6 +45,16 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
   const [error, setError] = useState<string | null>(null);
   /** Set when a write lost a race, carrying the mtime it lost to. */
   const [conflict, setConflict] = useState<{ mtime: number | null } | null>(null);
+  /**
+   * The `editor.*` settings, `null` until the first fetch lands.
+   *
+   * The mount effect below waits for them rather than building an editor it
+   * would then have to rebuild — Monaco takes these at construction, and a
+   * remount would throw away the caret and the undo stack the effect exists to
+   * preserve. `loadEditorSettings` memoises a single bridge call, so the wait
+   * is only ever on the first file this frame opens.
+   */
+  const [editorSettings, setEditorSettings] = useState<EditorSettings | null>(null);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
 
@@ -52,6 +70,19 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
    */
   const latest = useRef({ onDirty, registerSave, reopenWith });
   latest.current = { onDirty, registerSave, reopenWith };
+
+  // Never rejects — a settings read that fails resolves to this build's own
+  // defaults, because an app has to open files whether or not its host can
+  // answer. See `loadSettings` in `../settings`.
+  useEffect(() => {
+    let cancelled = false;
+    void loadEditorSettings().then((next) => {
+      if (!cancelled) setEditorSettings(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Get the buffer for this path: the one already open, or a fresh read.
@@ -112,10 +143,13 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
    * tab switch is exactly the leak-in-reverse that would throw away undo
    * history. A standalone editor only disposes a model it created itself, and
    * this one was handed one, so `editor.dispose()` leaves it alone.
+   *
+   * Runs once `editorSettings` has arrived, and again if it ever changed — it
+   * does not today, since it is set once and never re-fetched.
    */
   useEffect(() => {
     const host = hostRef.current;
-    if (!doc || !host) return;
+    if (!doc || !host || !editorSettings) return;
 
     // A rename can change the extension under a buffer that was deliberately
     // *not* re-read, so the model may still be tokenizing the old file type.
@@ -127,7 +161,7 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
     }
 
     const readOnly = doc.truncatedAt !== null;
-    const editor = mountEditor(host, doc.model, readOnly);
+    const editor = mountEditor(host, doc.model, readOnly, editorSettings);
     if (doc.viewState) editor.restoreViewState(doc.viewState);
     editor.focus();
 
@@ -228,7 +262,7 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
       editor.setModel(null);
       editor.dispose();
     };
-  }, [doc, file.path, file.ext]);
+  }, [doc, editorSettings, file.path, file.ext]);
 
   if (error) {
     return <p className="app__error text__failed">{error}</p>;

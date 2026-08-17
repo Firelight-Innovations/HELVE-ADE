@@ -56,4 +56,30 @@ mod tests {
 
         assert_eq!(registry.list().len(), 1);
     }
+
+    /// Held against the servers this build actually registers, not against a
+    /// fixture. `registry.rs` has the same check over its own test doubles,
+    /// which proves the rule and not the shipped set — and the shipped set is
+    /// the one where an id becomes a URL path (`/mcp/<id>`) and a `.mcp.json`
+    /// key (`helve-<id>`). The same rule `helve-tool-manifest` holds tool ids
+    /// to, for the same reason.
+    #[test]
+    fn every_registered_server_id_is_url_safe() {
+        let registry = Registry::default();
+        seed(&registry);
+
+        for server in registry.list() {
+            let mut chars = server.id.chars();
+            assert!(
+                matches!(chars.next(), Some(c) if c.is_ascii_lowercase()),
+                "server id {:?} must start with a lowercase letter",
+                server.id
+            );
+            assert!(
+                chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "server id {:?} must match ^[a-z][a-z0-9-]*$",
+                server.id
+            );
+        }
+    }
 }

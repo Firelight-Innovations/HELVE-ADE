@@ -45,16 +45,74 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
-/// How much of a file `files/read` will hand back.
+/// The File Explorer's own settings section.
+///
+/// **The worked example of an app declaring settings**, and the thing
+/// `docs/settings.md` points at. A `static` here, one line in
+/// `apps::settings_groups`, and the section appears on the screen under the
+/// shell's own — no registration call, no ordering to negotiate, and nothing
+/// this module has to know about how the screen is drawn.
+///
+/// The two rows are deliberately of the two different kinds, because both exist
+/// and they behave differently: `readLimitKb` is read here, in Rust, when a file
+/// is opened, and `confirmDelete` is read by this app's *frontend* over
+/// `apps::SETTINGS_METHOD`. A section is not obliged to be one or the other.
+pub static SETTINGS: crate::settings::Group = crate::settings::Group {
+    id: "files",
+    title: "File Explorer",
+    description: "Browsing and editing the open project.",
+    order: 100,
+    settings: SETTINGS_ROWS,
+};
+
+static SETTINGS_ROWS: &[crate::settings::Setting] = &[
+    crate::settings::Setting {
+        key: KEY_READ_LIMIT_KB,
+        title: "Open at most",
+        description: "How much of a large text file the viewer loads. Past this it shows the \
+                      first chunk and says it did, rather than holding the interface while \
+                      megabytes cross the bridge.",
+        control: crate::settings::Control::Number {
+            default: 256,
+            min: 32,
+            max: 8192,
+            step: 32,
+            unit: "KB",
+        },
+        applies: crate::settings::Applies::Next {
+            what: "the next file you open",
+        },
+    },
+    crate::settings::Setting {
+        key: "files.confirmDelete",
+        title: "Ask before deleting",
+        description: "Deleting moves to the system trash either way, so this is a speed bump \
+                      rather than a safety net. Switching it off still asks when something \
+                      under the target has unsaved edits — the trash holds the last saved \
+                      version, so those are the one thing it cannot give back.",
+        control: crate::settings::Control::Toggle { default: true },
+        applies: crate::settings::Applies::Now,
+    },
+];
+
+const KEY_READ_LIMIT_KB: &str = "files.readLimitKb";
+
+/// How much of a file `files/read` will hand back, from the setting above.
 ///
 /// A viewer that has to stay responsive cannot be handed a 400 MB log, and the
 /// answer to one that big is not a slower read — it is a different feature
 /// (paging, or a stream). Until that exists, this reads the first chunk and says
 /// so, which is honest in a way that a spinner over a hung IPC call is not.
-const MAX_READ_BYTES: u64 = 256 * 1024;
+///
+/// Read per call rather than cached, so a change reaches the next file opened
+/// without the frame that opens it having to be told. `Applies::Next` on the
+/// descriptor says exactly that.
+fn max_read_bytes(app: &AppHandle) -> u64 {
+    crate::settings::number(app, KEY_READ_LIMIT_KB).max(1) as u64 * 1024
+}
 
 /// How much of a file `files/read-bytes` will hand back — and, unlike
-/// [`MAX_READ_BYTES`], a limit it *refuses* at rather than truncates to.
+/// [`max_read_bytes`], a limit it *refuses* at rather than truncates to.
 ///
 /// Half a PNG is not a smaller PNG. Everything that calls this passes the bytes
 /// to a decoder, and a decoder handed a prefix either fails somewhere far from
@@ -400,9 +458,10 @@ fn list(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Resul
     }))
 }
 
-/// One text file's contents, up to [`MAX_READ_BYTES`].
+/// One text file's contents, up to [`max_read_bytes`].
 fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
     let path = resolve_path(app, context, params)?;
+    let limit = max_read_bytes(app);
 
     let metadata = std::fs::metadata(&path).map_err(|e| {
         RpcError::new(
@@ -417,7 +476,7 @@ fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Resul
         ));
     }
 
-    let truncated = metadata.len() > MAX_READ_BYTES;
+    let truncated = metadata.len() > limit;
     let bytes = if truncated {
         use std::io::Read;
         let file = std::fs::File::open(&path).map_err(|e| {
@@ -426,15 +485,13 @@ fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Resul
                 format!("could not open {}: {e}", path.display()),
             )
         })?;
-        let mut buffer = Vec::with_capacity(MAX_READ_BYTES as usize);
-        file.take(MAX_READ_BYTES)
-            .read_to_end(&mut buffer)
-            .map_err(|e| {
-                RpcError::new(
-                    INTERNAL_ERROR,
-                    format!("could not read {}: {e}", path.display()),
-                )
-            })?;
+        let mut buffer = Vec::with_capacity(limit as usize);
+        file.take(limit).read_to_end(&mut buffer).map_err(|e| {
+            RpcError::new(
+                INTERNAL_ERROR,
+                format!("could not read {}: {e}", path.display()),
+            )
+        })?;
         buffer
     } else {
         std::fs::read(&path).map_err(|e| {
@@ -453,7 +510,7 @@ fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Resul
         // property of the file — the cut landed inside a multi-byte character.
         // Dropping that partial tail is correct; treating the file as binary
         // because of it would be a bug that only shows up on files whose
-        // 256 KiB mark happens to fall inside a non-ASCII character.
+        // cap happens to fall inside a non-ASCII character.
         Err(e) if truncated && e.error_len().is_none() => {
             String::from_utf8_lossy(&bytes[..e.valid_up_to()]).into_owned()
         }
@@ -474,7 +531,7 @@ fn read(app: &AppHandle, context: &CallContext, params: Option<&Value>) -> Resul
         // got without knowing the number. It used to write "first 256 KiB" in
         // its own source, which is one constant spelled twice in two languages
         // — and the copy that would go stale is the one a person reads.
-        "limit": MAX_READ_BYTES,
+        "limit": limit,
         "mtime": mtime_of(&metadata),
     }))
 }

@@ -400,3 +400,183 @@ export function finishBoot(): Promise<void> {
 export function bootStatus(): Promise<BootStatus> {
   return invoke<BootStatus>("boot_status");
 }
+
+/* --- settings --------------------------------------------------------------
+ *
+ * What can be changed, what it is worth changing to, and what has been changed.
+ * The schema is Rust's — `src-tauri/src/settings/schema.rs` and every app's own
+ * group — and this file mirrors it rather than restating it, which is the whole
+ * reason the settings screen needs no per-setting frontend code. Adding a
+ * setting is a Rust edit and nothing here changes.
+ */
+
+/** Mirrors `settings::SelectOption`. */
+export interface SelectOption {
+  value: string;
+  label: string;
+  /** A sentence under the label. Empty for an option whose label says it all. */
+  description: string;
+}
+
+/**
+ * Mirrors `settings::Control`. Internally tagged on `kind`, so narrowing on it
+ * gives you the fields that control has and no others.
+ *
+ * The default is *inside* the control rather than beside it, deliberately: a
+ * default has to be a value its own control can produce. See the Rust type.
+ */
+export type SettingControl =
+  | { kind: "toggle"; default: boolean }
+  | { kind: "number"; default: number; min: number; max: number; step: number; unit: string }
+  | { kind: "text"; default: string; placeholder: string }
+  | { kind: "select"; default: string; options: SelectOption[] };
+
+/**
+ * Mirrors `settings::Applies` — when a change takes effect.
+ *
+ * Drawn under the control rather than dropped, because most settings are read
+ * when something is *made* (a pty spawned, an editor mounted) and a control
+ * that silently does nothing to what is already on screen is how a settings
+ * screen loses trust.
+ */
+export type SettingApplies = { when: "now" } | { when: "next"; what: string } | { when: "restart" };
+
+/** Mirrors `settings::Setting`. */
+export interface Setting {
+  /** `search.maxMatches`. The part before the first dot is its group's id. */
+  key: string;
+  title: string;
+  description: string;
+  control: SettingControl;
+  applies: SettingApplies;
+}
+
+/** Mirrors `settings::Group` — one section of the screen, and everything in it. */
+export interface SettingsGroup {
+  id: string;
+  title: string;
+  description: string;
+  /** Lower sorts earlier. The shell takes 0–99; an app takes 100+. */
+  order: number;
+  settings: Setting[];
+}
+
+/**
+ * Mirrors `settings::Snapshot`.
+ *
+ * `values` is **sparse**: a setting still at its default is absent rather than
+ * present at that value. That is what lets a later build change a default and
+ * have the new one reach everybody who never disagreed with the old one — so a
+ * reader must fall back to `setting.control.default`, never treat a missing key
+ * as unset-and-therefore-off.
+ */
+export interface SettingsSnapshot {
+  groups: SettingsGroup[];
+  values: Record<string, SettingValue>;
+}
+
+/** What a setting can hold. The three shapes the four controls produce. */
+export type SettingValue = boolean | number | string;
+
+export const SETTINGS_CHANGED_EVENT = "settings:changed";
+
+/** Every group and every changed value. The whole screen, in one call. */
+export function settingsSnapshot(): Promise<SettingsSnapshot> {
+  return invoke<SettingsSnapshot>("settings_snapshot");
+}
+
+/**
+ * Change one, resolving with the value that was actually stored.
+ *
+ * Not necessarily the one passed in — a number is clamped into its declared
+ * range rather than refused — so a control should redraw from what comes back
+ * rather than from what it sent.
+ *
+ * Rejects with a sentence meant to be shown: an unknown key, a value of the
+ * wrong type, or a choice outside the options.
+ */
+export function setSetting(key: string, value: SettingValue): Promise<SettingValue> {
+  return invoke<SettingValue>("settings_set", { key, value });
+}
+
+/** Put one back to what it ships with, resolving with that default. */
+export function resetSetting(key: string): Promise<SettingValue> {
+  return invoke<SettingValue>("settings_reset", { key });
+}
+
+/**
+ * Put a whole section back, resolving with how many settings actually moved.
+ *
+ * Zero is a state, not a failure — nothing in that section had been changed.
+ */
+export function resetSettingsGroup(id: string): Promise<number> {
+  return invoke<number>("settings_reset_group", { id });
+}
+
+/**
+ * Subscribe to settings changes, from this window or any other.
+ *
+ * The payload is the whole `values` map rather than the key that moved, for
+ * `presets:changed`'s reason: it is small, and a window that mounted late could
+ * never have heard the deltas it missed since Tauri events have no replay.
+ */
+export function onSettingsChanged(
+  cb: (values: Record<string, SettingValue>) => void,
+): Promise<UnlistenFn> {
+  return listen<Record<string, SettingValue>>(SETTINGS_CHANGED_EVENT, (e) => cb(e.payload));
+}
+
+/* --- MCP -------------------------------------------------------------------
+ *
+ * The servers HELVE hosts for whatever coding agent is running in one of its
+ * terminals. Design and the rule about what may be added are in
+ * `docs/mcp-server-manager.md`.
+ */
+
+/** Mirrors `mcp::ServerInfo`. */
+export interface McpServerInfo {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** The route it answers on, `/mcp/<id>`. Shown so a connection can be checked by hand. */
+  path: string;
+  /** The key it takes in a project's `.mcp.json`, `helve-<id>`. */
+  configKey: string;
+  toolCount: number;
+}
+
+/**
+ * Mirrors `mcp::commands::EndpointStatus`.
+ *
+ * `port` is `null` when the listener never bound — a machine that would not
+ * hand out a loopback socket — and the UI has to say so rather than draw a
+ * connected state over nothing. **There is deliberately no token field**, here
+ * or on the Rust side: nothing on screen needs it, and a secret that crosses
+ * into a renderer is a secret in a devtools console.
+ */
+export interface McpStatus {
+  port: number | null;
+  servers: McpServerInfo[];
+}
+
+export function mcpStatus(): Promise<McpStatus> {
+  return invoke<McpStatus>("mcp_status");
+}
+
+/**
+ * Switch a server on or off, resolving with whether anything changed.
+ *
+ * Rewrites every open project's `.mcp.json` on the way out — that file is what
+ * a client reads, so a toggle that changed only our own state would leave the
+ * two disagreeing until the next launch.
+ */
+export function setMcpServerEnabled(id: string, enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("mcp_set_server_enabled", { id, enabled });
+}
+
+/** Rewrite `.mcp.json` for every open project. The file is the user's, and they
+ *  may have edited or deleted it. */
+export function syncMcpConfig(): Promise<void> {
+  return invoke<void>("mcp_sync_config");
+}

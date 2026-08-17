@@ -37,6 +37,7 @@ const REGIONS = [
   "panes",
   "scrollbar",
   "search",
+  "settings",
   "state",
   "statusbar",
   "stubs",

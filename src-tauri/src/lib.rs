@@ -18,6 +18,7 @@ mod presets;
 mod project;
 mod pty;
 mod search;
+mod settings;
 mod shell_state;
 mod shell_store;
 mod state;
@@ -83,6 +84,11 @@ pub fn run() {
         // stays empty on a machine that would not give us a socket — which
         // costs the MCP feature and nothing else.
         .manage(mcp::Endpoint::default())
+        // What can be changed, and what has been. Empty until `settings::seed`
+        // registers the shell's groups and every app's — a registry with no
+        // groups answers every read with "no such setting", which is why the
+        // seed happens before anything on screen can ask.
+        .manage(settings::Registry::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -130,6 +136,13 @@ pub fn run() {
         // its own thread. `AppHandle` is cheap to clone by design — it's a
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
+            // First, because everything below this line may read a setting and
+            // a registry that has not been seeded answers every read with "no
+            // such setting". It depends on nothing itself: registration puts
+            // static descriptors on a list, and the only file it touches is its
+            // own.
+            settings::seed(app.handle());
+
             // Before the layout, because `restore_session` reads the old global
             // open project out of this store to migrate it onto a cluster. The
             // launch terminal below opens *inside* whatever cluster the main
@@ -176,25 +189,36 @@ pub fn run() {
             // of work a `Default` impl has no business doing.
             //
             // A failure is not fatal: a machine with no usable shell should
-            // still get an orchestrator, with an empty panel and a working "+".
+            // still get an orchestrator, with an empty band and a working "+".
             // It is reported rather than swallowed, though — this is the one
             // step in a terminal's life that can fail for reasons no amount of
-            // reading the code will reveal, and a silently empty panel gives
+            // reading the code will reveal, and a silently empty band gives
             // whoever hits it nothing to go on.
             //
-            // Skipped entirely when a session was restored: that session
-            // brought its own terminals back, and adding one more on every
-            // launch would grow the panel by a tab a day.
-            if handle.state::<ShellState>().snapshot().terminals.is_empty() {
-                if let Err(e) = commands::open_terminal(
-                    &handle,
-                    &handle.state::<ShellState>(),
-                    &handle.state::<PtySessions>(),
-                    "main",
-                    80,
-                    24,
-                ) {
-                    eprintln!("helve: could not open the launch terminal: {e}");
+            // Skipped when a session was restored: it brought its own terminals
+            // back, and one more every launch would grow the band by an entry a
+            // day. Into `main`'s active cluster, which a terminal names now — a
+            // window with no cluster gets none and needs none, no band is drawn.
+            //
+            // And skipped entirely when `terminal.openOnLaunch` is off. That is
+            // the one setting in this build declared `Applies::Restart`, and
+            // this line is why: there is no later moment at which switching it
+            // on could open the launch terminal, because the launch is over.
+            let want_launch_terminal =
+                settings::flag(&handle, settings::keys::TERMINAL_OPEN_ON_LAUNCH);
+            let none_restored = handle.state::<ShellState>().snapshot().terminals.is_empty();
+            if want_launch_terminal && none_restored {
+                if let Some(cluster_id) = handle.state::<ShellState>().active_cluster_of("main") {
+                    if let Err(e) = commands::open_terminal(
+                        &handle,
+                        &handle.state::<ShellState>(),
+                        &handle.state::<PtySessions>(),
+                        &cluster_id,
+                        80,
+                        24,
+                    ) {
+                        eprintln!("helve: could not open the launch terminal: {e}");
+                    }
                 }
             }
 
@@ -249,6 +273,10 @@ pub fn run() {
             mcp::commands::mcp_status,
             mcp::commands::mcp_set_server_enabled,
             mcp::commands::mcp_sync_config,
+            settings::commands::settings_snapshot,
+            settings::commands::settings_set,
+            settings::commands::settings_reset,
+            settings::commands::settings_reset_group,
             git::git_cluster_diff,
             git::git_cluster_stage,
             git::git_cluster_unstage,
@@ -393,18 +421,19 @@ fn migrate_global_project(app: &tauri::AppHandle, shell: &ShellState) {
 /// with nothing to send them to — which looks like HELVE being broken rather
 /// than like one shell being unavailable.
 ///
-/// Each one respawns in **its own window's** project, resolved at this moment
-/// the same way `commands::terminal_cwd` resolves it for a fresh terminal. A
-/// terminal belongs to a window's panel and not to any cluster, so there is no
-/// project stored with it to restore; what there is instead is the project the
-/// window is pointed at now, which is the same answer opening a terminal there
-/// would give. Two windows on two projects therefore come back with their
-/// shells in the right two directories rather than all of them in one.
+/// Each one respawns in **its own cluster's** project, resolved at this moment
+/// the same way `commands::terminal_cwd` resolves it for a fresh terminal.
+/// There is no working directory stored with a session to restore; what there is
+/// instead is the project its cluster is pointed at now, which is the same answer
+/// opening a terminal there would give. Two clusters on two projects therefore
+/// come back with their shells in the right two directories rather than all of
+/// them in one — which is a sharper answer than this could give while a terminal
+/// named a window, since one window can hold both of those clusters.
 fn respawn_terminals(app: &tauri::AppHandle, shell: &ShellState) {
     let ptys = app.state::<PtySessions>();
 
     for terminal in shell.snapshot().terminals {
-        let cwd = project::window_path(app, &terminal.window_label)
+        let cwd = project::cluster_path(app, &terminal.cluster_id)
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
         if let Err(e) = ptys.open(app, &terminal.id, &cwd, 80, 24) {

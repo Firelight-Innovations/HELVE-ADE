@@ -14,6 +14,7 @@
 //! config — see `docs/mcp-server-manager.md` §6.
 
 use super::{config_key, route, Registry};
+use crate::settings::{self, keys};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -36,9 +37,20 @@ pub enum ConfigError {
 ///
 /// Reads what is there, merges, writes back. A project with no `.mcp.json` and
 /// no enabled servers is left alone rather than given an empty file.
+///
+/// `mcp.writeProjectConfig` off does not skip this — it merges as though
+/// nothing were enabled. A stale `helve-` row pointing at a route nobody
+/// advertises is worse than no row at all, so a file that already exists still
+/// gets rewritten with those rows removed; only a project with no file to begin
+/// with stays untouched, via the same `existing.is_none()` check below that
+/// already covers "no file, nothing enabled".
 pub fn sync(app: &AppHandle, project: &Path) {
     let path = config_path(project);
-    let enabled = app.state::<Registry>().enabled_ids();
+    let enabled = if settings::flag(app, keys::MCP_WRITE_PROJECT_CONFIG) {
+        app.state::<Registry>().enabled_ids()
+    } else {
+        Vec::new()
+    };
 
     let existing = match std::fs::read_to_string(&path) {
         Ok(raw) => match serde_json::from_str::<Value>(&raw) {
@@ -220,6 +232,34 @@ mod tests {
             "a stale row is dropped"
         );
         assert!(servers.contains_key("github"), "and only ours are touched");
+    }
+
+    /// What `sync` does when `mcp.writeProjectConfig` reads false: it passes
+    /// `merge` an empty enabled list rather than skipping the write, so a
+    /// `helve-` row already in the file is removed instead of left pointing at
+    /// a route nobody advertises. Exercised here at the `merge` level, which is
+    /// pure, rather than through `sync` itself, which needs a Tauri
+    /// `AppHandle` to read the setting.
+    #[test]
+    fn the_toggle_being_off_merges_as_though_nothing_were_enabled() {
+        let existing = json!({
+            "mcpServers": {
+                "helve-echo": { "type": "http", "url": "http://127.0.0.1:1/mcp/echo" },
+                "github": { "type": "http", "url": "https://api.github.com/mcp" },
+            },
+        });
+
+        let merged = merge(Some(existing), &[]).unwrap();
+        let servers = servers_of(&merged);
+
+        assert!(
+            !servers.contains_key("helve-echo"),
+            "a stale row is removed when discovery is switched off"
+        );
+        assert!(
+            servers.contains_key("github"),
+            "the user's own server survives"
+        );
     }
 
     #[test]

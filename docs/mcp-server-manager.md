@@ -197,3 +197,126 @@ no second party.
 4. Env injection in `pty.rs`, and the `.mcp.json` merge on project open.
 5. Status bar state and the settings surface.
 6. Forger's server, once Forger exists.
+
+## 10. Adding a server
+
+Sections 1–9 are the design. This one is the recipe, and it is meant to be
+followable without reading them.
+
+**Before anything else, apply the rule in section 1**, which is restated at the
+bottom of this section because it is the step people skip.
+
+### 1. Create `src-tauri/src/mcp/servers/<id>.rs`
+
+The id matches `^[a-z][a-z0-9-]*$`, the same rule app ids and tool ids are held
+to, because it becomes the URL path `/mcp/<id>` and the `.mcp.json` key
+`helve-<id>`. `every_registered_server_id_is_url_safe` in `servers/mod.rs` holds
+the shipped set to it, so a bad id fails `cargo test` rather than appearing as a
+route nobody can reach. (`registry.rs` has a same-named check over its own test
+doubles; that one proves the rule, not the set.)
+
+Open the module with a doc comment saying what question this server answers that
+a harness could not answer for itself. That is the same question section 1 asks,
+and writing the answer down is what stops it being re-litigated later.
+
+### 2. Declare the tools and the server
+
+Follow `src-tauri/src/mcp/servers/echo.rs` exactly; read it before writing, and
+mirror its structure rather than inventing a variation. What that file has, in
+order:
+
+- `static TOOLS: &[McpTool]`, one entry per tool. `name`, `description`, and
+  `schema`.
+- `schema` is a **`fn() -> Value`**, not a pre-built `Value` and not a JSON
+  string. A `static` cannot hold a built `Value`, and a `&'static str` of JSON
+  would move a malformed schema from a compile error to a runtime one nobody
+  would see until a client asked for `tools/list`. Each returns a JSON Schema
+  object with `"additionalProperties": false`.
+- `pub static SERVER: McpServer`, naming `id`, `name`, `description`, `tools:
+  TOOLS`, and `call`.
+- `fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<Value,
+  RpcError>`, matching on the tool name. `Registry::call` checks the name against
+  `TOOLS` before dispatching, so the final arm is a genuine impossibility rather
+  than a second copy of that error message — say so in a comment, as `echo.rs`
+  does, rather than leaving it looking like real error handling.
+
+Two things `echo.rs` demonstrates that are easy to skip. Refuse a missing or
+mistyped parameter with `INVALID_PARAMS` and a sentence naming what was wanted,
+not a category. And write descriptions for the **model**, not for a developer: a
+tool with a vague description gets called speculatively, and the description is
+the only thing standing between a diagnostic tool and an agent using it during
+real work.
+
+### 3. Register it
+
+Two lines in `src-tauri/src/mcp/servers/mod.rs`:
+
+```rust
+pub mod <id>;
+
+pub fn seed(registry: &Registry) {
+    registry.register(&echo::SERVER);
+    registry.register(&<id>::SERVER);   // this one
+}
+```
+
+Registering an id twice replaces rather than duplicates, so `seed` is safe to
+call again.
+
+### 4. Nothing else
+
+That is the end of the list, and each of these is a place you might reasonably
+expect an edit and will not find one:
+
+- **No route to add.** The listener mounts every registered server at
+  `/mcp/<id>` (section 4).
+- **No `.mcp.json` edit.** That file is generated from the registry, and only the
+  `helve-*` keys are ours to write or remove (section 6). It is gated on the
+  `mcp.writeProjectConfig` setting.
+- **No frontend change.** The settings screen lists whatever the registry holds,
+  including servers that are switched off.
+- **No `crates/` work, and no `rmcp` in your file.** The protocol is implemented
+  once, a layer down (section 3).
+
+Tests go in the server's own module, beside `echo.rs`'s: what the tools are
+called, what each one refuses, and what a valid call returns.
+
+### The rule, restated
+
+From `src-tauri/src/mcp/servers/mod.rs`, and it decides whether steps 1–4 should
+happen at all:
+
+> **If the harness can already do it, it does not get a server.** No file
+> reading, writing or listing, no search, no git. Every agent worth pointing at
+> HELVE arrives with those, and a second worse copy costs a permission surface
+> and a pile of tool descriptions competing for the model's attention against its
+> own.
+>
+> What earns a server is something that exists only inside HELVE and has no
+> filesystem equivalent — Forger's design model is the first real case, because
+> an agent cannot read a spec's *boundaries* by opening a file.
+
+## 11. The settings section is the only custom panel in the product
+
+Every other section of the settings screen is generated from its schema: a
+`Group` of `Setting` descriptors, drawn by four generic controls, with no
+per-section frontend code. `docs/settings.md` describes that, and it is the
+property the whole design exists to protect.
+
+MCP is the exception. The section is drawn with a **custom panel** above its
+settings — the server list, one row per registered server, each with its own
+toggle.
+
+The reason is that the servers are not settings. They are a list the registry
+owns, built at boot and allowed to change while a client is connected (section
+5), and the number of rows is not a fact any schema knows. Representing them as
+settings would mean inventing a control — a list-of-toggles-with-labels — that
+exists to describe one thing, that no other section could use, and that would put
+the registry's contents into the schema where they do not belong. A `Group` whose
+rows appeared and disappeared at runtime would also break the one promise the
+schema makes: that what a build declares is what the screen draws.
+
+So the escape hatch is used once, knowingly. A second section reaching for it is
+a signal that something is being modelled wrong — either it is really a list, and
+belongs somewhere other than a settings screen, or it is really settings, and
+should be written as some.

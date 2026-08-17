@@ -35,7 +35,7 @@ mod trash;
 
 use crate::project;
 use crate::shell_state::ShellState;
-use helve_rpc::{RpcError, METHOD_NOT_FOUND};
+use helve_rpc::{RpcError, INTERNAL_ERROR, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -371,6 +371,13 @@ pub fn call(
     method: &str,
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
+    // Answered by the host, before the app is looked up at all. See
+    // `docs/settings.md` §7 for why this is central rather than per-app.
+    if method == SETTINGS_METHOD {
+        return serde_json::to_value(app.state::<crate::settings::Registry>().snapshot())
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not read settings: {e}")));
+    }
+
     let Some(registered) = REGISTRY.iter().find(|a| a.id == id) else {
         return Err(RpcError::new(
             METHOD_NOT_FOUND,
@@ -379,6 +386,21 @@ pub fn call(
     };
     (registered.call)(app, context, method, params)
 }
+
+/// What any app frontend calls to read the settings, over the ordinary bridge.
+///
+/// A method rather than a Tauri command because an app has no door to Tauri, and
+/// because a tool in its own process will want the same call later.
+pub const SETTINGS_METHOD: &str = "settings/all";
+
+/// Every settings section an app declares — `docs/settings.md` §6. Deliberately
+/// not a field on [`Registered`], so that a *tool* can register through this
+/// same list without ever being in `REGISTRY`.
+pub fn settings_groups() -> &'static [&'static crate::settings::Group] {
+    APP_SETTINGS
+}
+
+static APP_SETTINGS: &[&crate::settings::Group] = &[&files::SETTINGS];
 
 #[cfg(test)]
 mod tests {
