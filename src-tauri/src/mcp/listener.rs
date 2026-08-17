@@ -11,7 +11,7 @@ use base64::Engine;
 use rand::RngCore;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorData,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorData,
     Implementation, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
@@ -252,7 +252,7 @@ impl ServerHandler for Bridge {
         // the client this is the whole list. A server's tool count is a handful
         // by construction — see the rule in `servers` — so there is nothing to
         // page through.
-        Ok(ListToolsResult::with_all_items(tools))
+        Ok(uncacheable(ListToolsResult::with_all_items(tools)))
     }
 
     /// A tool that fails comes back as a **result** carrying `is_error`, not as
@@ -287,6 +287,28 @@ impl ServerHandler for Bridge {
 
         Ok(result.into())
     }
+}
+
+/// Say explicitly that a tool list must not be cached. Two reasons, both real.
+///
+/// **Correctness.** The list changes when a settings toggle moves, so a client
+/// holding one past that moment is reasoning about a HELVE that no longer
+/// exists.
+///
+/// **Interop.** `ttlMs` and `cacheScope` are *required* by MCP 2026-07-28.
+/// `rmcp` makes them optional and omits them when unset, to stay compatible
+/// with the older versions it also speaks — so a client validating against the
+/// newer spec rejects the whole response, citing a field the server never
+/// mentioned. Claude Code 2.1.233 does exactly this, and its `expected number,
+/// received undefined` at `ttlMs` looks nothing like its cause.
+///
+/// Setting them satisfies every version: legal and optional in the old ones,
+/// mandatory in the new.
+///
+/// Only the list needs it. `CallToolResult` has no caching fields at all — a
+/// tool's answer is never cacheable — so there is nothing there to declare.
+fn uncacheable(result: ListToolsResult) -> ListToolsResult {
+    result.with_ttl_ms(0).with_cache_scope(CacheScope::Private)
 }
 
 /// A registry descriptor as `rmcp` wants it.
@@ -374,6 +396,33 @@ mod tests {
         assert_eq!(tool.name, "ping");
         assert_eq!(tool.description.as_deref(), Some("Answers."));
         assert_eq!(tool.input_schema.get("type"), Some(&"object".into()));
+    }
+
+    /// **The regression this exists for:** `rmcp` omits `ttlMs` and
+    /// `cacheScope` when they are unset, and a client validating against MCP
+    /// 2026-07-28 — where they are required — rejects the whole response. The
+    /// error it reports names a field we never sent, so nothing about it points
+    /// back here. Serialising the real payload is the only way to catch it.
+    #[test]
+    fn a_tool_list_carries_the_caching_fields_the_newer_spec_requires() {
+        let result = uncacheable(ListToolsResult::with_all_items(Vec::new()));
+        let json = serde_json::to_value(&result).expect("a tool list serialises");
+
+        assert_eq!(
+            json["ttlMs"], 0,
+            "omitting this fails validation clientside"
+        );
+        assert_eq!(json["cacheScope"], "private");
+    }
+
+    /// Zero rather than merely short. Our answers describe state a settings
+    /// toggle can change between one call and the next, so there is no window
+    /// in which a stale one is still true.
+    #[test]
+    fn nothing_we_return_may_be_cached_for_any_length_of_time() {
+        let listed = uncacheable(ListToolsResult::with_all_items(Vec::new()));
+        assert_eq!(listed.ttl_ms, Some(0));
+        assert_eq!(listed.cache_scope, Some(CacheScope::Private));
     }
 
     /// A schema that is not an object costs that one tool its arguments. It must
