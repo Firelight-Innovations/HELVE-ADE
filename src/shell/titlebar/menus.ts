@@ -136,16 +136,9 @@ export interface MenuHandlers {
  *
  * This file used to say "accelerators are displayed only". It no longer does.
  * Every accelerator that appears below is one the keystroke actually performs,
- * by one of two routes:
- *
- *   - `keys/useKeyboard.ts` binds it. That is the File and View menus, and
- *     Terminal's two.
- *   - **The focused text surface already binds it.** That is the whole Edit
- *     menu: Ctrl+Z, Ctrl+X, Ctrl+F and the rest are Monaco's own keybindings
- *     inside the Files iframe, and the browser's inside a shell `<input>`. A
- *     second binding in `useKeyboard` would be the shell racing the surface the
- *     user is typing in for a key that already works — the exact failure that
- *     hook's header was written to avoid.
+ * by one of two routes: `keys/useKeyboard.ts` binds it — the File and View
+ * menus, and Terminal's two — or the focused text surface already binds it,
+ * which is the whole Edit menu, noted on that menu below.
  *
  * Anything that could be neither is not shown. New Window has no accelerator
  * because it has no action; Kill Terminal and Clear lost theirs because Ctrl+K
@@ -153,9 +146,6 @@ export interface MenuHandlers {
  *
  * They are also Windows glyphs now — `Ctrl+N`, not `⌘N`. This is a Windows-only
  * app and the Mac forms were never anything but decoration.
- *
- * Run and Help keep both their inert items and their Mac glyphs, deliberately:
- * they are out of this work's scope and were to be left exactly as they are.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
   const { app, edit, apps, file, view, terminal } = handlers;
@@ -236,6 +226,12 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         },
       ],
     },
+    // **The focused text surface already binds every one of these.** Ctrl+Z,
+    // Ctrl+X, Ctrl+F and the rest are Monaco's own keybindings inside the Files
+    // iframe, and the browser's inside a shell `<input>`. A second binding in
+    // `useKeyboard` would be the shell racing the surface the user is typing in
+    // for a key that already works — the exact failure that hook's header was
+    // written to avoid.
     {
       label: "Edit",
       items: [
@@ -292,6 +288,9 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         },
       ],
     },
+    // Run and Help keep both their inert items and their Mac glyphs,
+    // deliberately: they are out of this work's scope and were to be left
+    // exactly as they are.
     {
       label: "Run",
       items: [

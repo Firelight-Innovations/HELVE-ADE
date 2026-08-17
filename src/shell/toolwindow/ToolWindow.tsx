@@ -49,73 +49,31 @@ import { registerToolWindow, unregisterToolWindow } from "../toolWindowRegistry"
 import "./toolwindow.css";
 
 /**
- * The tool window — the container every docked tool mounts into, plus its
- * boot and empty states.
+ * The tool window — the container every docked tool mounts into, plus its boot
+ * and empty states.
  *
  * Owns the shell half of transport B (docs/tool-protocol.md §3): every tool
- * iframe's `hello` lands here, and this is the only place that answers
- * `ready`. Centralising the listener (rather than one per `ToolMount`) is
- * what makes the security property possible — there is exactly one place
- * that resolves a tool id from `event.source`, and exactly one map of
- * trusted sources to check it against.
+ * iframe's `hello` lands here, and this is the only place that answers `ready`.
+ * Centralising the listener (rather than one per `ToolMount`) is what makes the
+ * security property possible — there is exactly one place that resolves a tool
+ * id from `event.source`, and exactly one map of trusted sources to check it
+ * against.
  *
- * It is also where a frame's `request` messages are routed, and the two kinds
- * of surface part company at exactly that point. A first-party app's call goes
- * to `app_call`, which answers in the orchestrator's own process. A tool's
- * would have to reach its core over the broker, which is not built — so a tool
- * gets an error naming that, rather than the silence that used to be here.
- * Silence is the worse answer: the bridge times a pending call out after thirty
- * seconds, so a tool asking a question this build cannot answer would hang for
- * half a minute before finding out.
- *
- * The one other message the shell answers itself is `helve/painted`, which is a
- * frame reporting that it has drawn its first meaningful content. That is not
- * an app's question to answer — the frame is claiming something about itself,
- * and only the shell can say *which* frame is claiming it — and what waits on
- * the answer is the splash window, which stays up until every app has reported.
- *
- * Traffic runs the other way too, and there are now two kinds of it. A Tauri
- * event the backend broadcasts is forwarded into app frames as a transport-B
- * `event` message. And a **menu command** — the title bar's File/Edit/View
- * items — is posted to the *active* frame alone as a transport-B `command`
- * message, through the handle below. Those two are the only ways anything
- * reaches a frame unprompted; every other message here answers one the frame
- * sent first.
- *
- * A command never travels through Rust. Both ends are already in this browser,
- * and a round trip through the backend would buy nothing but a chance for the
- * two to disagree about which frame is active.
- *
- * ## Frames talking to each other
- *
- * The fourth direction, and the newest: `helve/open` and `helve/publish` let
- * one frame reach another *sideways*, through this component, without either
- * of them learning the other exists. File Explorer sends `helve/open` naming
- * the app kind `viewer`; the shell finds or opens one in that cluster and
- * delivers the payload as an `OPENED_EVENT`. File Viewer publishes which file
- * it is showing; the shell retains that and relays it to its cluster-mates,
- * replaying it to any frame that mounts later.
- *
- * The shell routes both without understanding either. An `appId` is matched
- * against the layout and a `topic` is a `Map` key — no payload is inspected, no
- * intent is enumerated, and adding a fifth thing two apps want to say to each
- * other is not an edit to this file. That is the same discipline `helve/
- * commands` is built on, and it is what keeps the shell from accumulating a
- * table of every app's vocabulary.
- *
- * These also never travel through Rust, for the reason a command does not: both
- * frames are in this browser, and the layout that decides *which* frame is a
- * fact this component already holds.
- *
- * The shell does not know what any command *means*, and must not: it holds a
- * set of strings per frame, sends one when a menu item is chosen, and greys out
- * everything the active frame has not declared. `helve/commands` is how a frame
- * declares — which is what keeps a list of one app's capabilities out of the
- * shell, so the next app to arrive does not break the menu.
+ * Four directions of traffic, each argued where it is handled: a frame's
+ * `request` messages and the `helve/*` methods the shell answers itself, in
+ * `onMessage`; a Tauri broadcast relayed inward, at the `project:changed`
+ * effect; a menu command posted outward, at `ToolWindowHandle.send`; and the
+ * sideways channel — `helve/open` and `helve/publish` — at `answerOpen` and
+ * `answerPublish`. Only the Tauri broadcast travels through Rust; for the rest
+ * both ends are already in this browser, and a round trip would buy nothing but
+ * a chance for the two to disagree about which frame is which.
  */
 export interface ToolWindowHandle {
   /**
-   * Post a menu command to the frame showing `instanceId`.
+   * Post a menu command — a title bar File/Edit/View item — to the frame showing
+   * `instanceId`, as a transport-B `command` message. That and the Tauri event
+   * relayed inward below are the only ways anything reaches a frame unprompted;
+   * every other message here answers one the frame sent first.
    *
    * An *instance* id, not an app id, and that is the whole point of this
    * refactor arriving here. The old version scanned for the first frame whose
@@ -599,7 +557,20 @@ const ToolWindow = forwardRef<
       setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
     }
 
-    /** `helve/open`: put something on screen in a cluster-mate, and tell it. */
+    /**
+     * `helve/open`: put something on screen in a cluster-mate, and tell it.
+     *
+     * Half of the sideways channel — one frame reaching another through this
+     * component, without either of them learning the other exists. File Explorer
+     * sends `helve/open` naming the app kind `viewer`; the shell finds or opens
+     * one in that cluster and delivers the payload as an `OPENED_EVENT`.
+     *
+     * Routed without being understood: an `appId` is matched against the layout,
+     * no payload is inspected and no intent is enumerated, so adding a fifth
+     * thing two apps want to say to each other is not an edit to this file. That
+     * is the same discipline `helve/commands` is built on, and what keeps the
+     * shell from accumulating a table of every app's vocabulary.
+     */
     function answerOpen(
       params: unknown,
       respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
@@ -632,7 +603,15 @@ const ToolWindow = forwardRef<
         );
     }
 
-    /** `helve/publish`: retain a fact for this cluster, and fan it out. */
+    /**
+     * `helve/publish`: retain a fact for this cluster, and fan it out.
+     *
+     * The other half of the sideways channel. File Viewer publishes which file
+     * it is showing; the shell retains that and relays it to its cluster-mates,
+     * replaying it to any frame that mounts later. A `topic` is a `Map` key and
+     * nothing more — routed without being understood, exactly as `answerOpen`
+     * above is.
+     */
     function answerPublish(
       params: unknown,
       respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
@@ -701,7 +680,9 @@ const ToolWindow = forwardRef<
 
       // `helve/*` belongs to the host, exactly as `hello` above does — this one
       // is a frame saying it has drawn its first meaningful content, and it is
-      // answered here rather than forwarded on to an app's Rust half.
+      // answered here rather than forwarded on to an app's Rust half. Not an
+      // app's question to answer: the frame is claiming something about itself,
+      // and only the shell can say *which* frame is claiming it.
       //
       // What the report is *for* is the splash window: boot holds it open until
       // every first-party app has said this, so that the window it hands off to
@@ -740,6 +721,12 @@ const ToolWindow = forwardRef<
       // commands it can carry out right now. Host business, not an app's Rust
       // half's — the menu being greyed out is a fact about this window's title
       // bar, and the backend has no part in it.
+      //
+      // The shell does not know what any command *means*, and must not: it holds
+      // a set of strings per frame, sends one when a menu item is chosen, and
+      // greys out everything the active frame has not declared. That is what
+      // keeps a list of one app's capabilities out of the shell, so the next app
+      // to arrive does not break the menu.
       //
       // A tool may declare too. Its *requests* cannot be served (the broker is
       // not built), but a declaration asks nothing of a core: it is the frame
@@ -780,6 +767,13 @@ const ToolWindow = forwardRef<
         return;
       }
 
+      // Where the two kinds of surface part company. A first-party app's call
+      // goes to `app_call` below, which answers in the orchestrator's own
+      // process. A tool's would have to reach its core over the broker, which is
+      // not built — so a tool gets an error naming that, rather than the silence
+      // that used to be here. Silence is the worse answer: the bridge times a
+      // pending call out after thirty seconds, so a tool asking a question this
+      // build cannot answer would hang for half a minute before finding out.
       if (!frame.isApp) {
         respond({
           id,
@@ -838,9 +832,9 @@ const ToolWindow = forwardRef<
   const showing = useRef(clusterId);
   showing.current = clusterId;
 
-  // The third direction: Rust -> shell -> app frame. `project:changed` is the
-  // first thing to travel it, and everything below is deliberately generic
-  // about the payload — the shell relays, it does not interpret.
+  // The third direction: Rust -> shell -> app frame, as a transport-B `event`
+  // message. `project:changed` is the first to travel it; everything below is
+  // generic about the payload — the shell relays, it does not interpret.
   //
   // Apps only. A tool frame is a separate repository's code whose core this
   // build cannot reach at all (see the `isApp` branch above, which answers its
@@ -907,8 +901,7 @@ const ToolWindow = forwardRef<
   const activeKey = [...activeByPane].map(([pane, tab]) => `${pane}:${tab ?? ""}`).join("|");
 
   /**
-   * The surface each pane was showing until a moment ago, kept drawn over the
-   * one that replaced it.
+   * The surface each pane was showing a moment ago, kept over its replacement.
    *
    * This is the white flash on a tab switch. Hiding a surface with
    * `visibility: hidden` is what keeps its iframe mounted, and that part is not
@@ -920,26 +913,12 @@ const ToolWindow = forwardRef<
    * compositor has nothing to draw but the document's bare canvas — which, in
    * an iframe, is white unless the document says otherwise.
    *
-   * Two fixes, and both are here because they cover different halves of it.
-   * The canvas is no longer white (`apps/shared/app.css`, and the `<style>` in
-   * each app's `index.html` for the window before that sheet has loaded), so
-   * the worst case is now the shell's own colour rather than a white slab.
-   * And the outgoing surface stays on screen over the incoming one until the
-   * incoming one has had time to draw, so in the ordinary case there is nothing
-   * to see at all.
-   *
-   * "Time to draw" is counted in animation frames, not milliseconds — two of
-   * them, which is what it takes for a change committed now to have been
-   * rastered — and only the fade that follows is a duration, taken from
-   * `instantOut`. `helve/painted` would be the exact signal to wait on instead,
-   * and it is not usable here: `reportPainted` in `packages/bridge/src/index.ts`
-   * latches on first call, so a frontend sends it once in its life. It answers
-   * "has this app booted", which is what the splash window needs, and not "has
-   * this frame drawn since you unhid it".
-   *
-   * Nothing here changes what is mounted. An outgoing surface is the same
-   * element it always was, still holding the same iframe; the only thing that
-   * moves is when it stops being visible.
+   * Two fixes, covering different halves of it. The canvas is no longer white
+   * (`apps/shared/app.css`, and the `<style>` in each app's `index.html` for the
+   * window before that sheet has loaded), so the worst case is the shell's own
+   * colour rather than a white slab. And the outgoing surface stays on screen
+   * over the incoming one until that one has had time to draw, so in the
+   * ordinary case there is nothing to see at all.
    */
   const [outgoing, setOutgoing] = useState<{ ids: ReadonlySet<string>; fading: boolean }>(() => ({
     ids: new Set<string>(),
@@ -995,6 +974,19 @@ const ToolWindow = forwardRef<
 
   // Running it. Two animation frames at full opacity — enough for the surface
   // underneath to have been rastered — then the fade, then hidden again.
+  //
+  // "Time to draw" is counted in animation frames, not milliseconds: two of them
+  // is what it takes for a change committed now to have been rastered. Only the
+  // fade that follows is a duration, taken from `instantOut`. `helve/painted`
+  // would be the exact signal to wait on instead, and it is not usable here —
+  // `reportPainted` in `packages/bridge/src/index.ts` latches on first call, so
+  // a frontend sends it once in its life. It answers "has this app booted",
+  // which is what the splash window needs, and not "has this frame drawn since
+  // you unhid it".
+  //
+  // Nothing here changes what is mounted. An outgoing surface is the same
+  // element it always was, still holding the same iframe; the only thing that
+  // moves is when it stops being visible.
   //
   // Keyed on the set itself rather than on the switch that produced it, so this
   // holds no state of its own and re-running it is free.

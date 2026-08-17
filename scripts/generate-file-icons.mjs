@@ -10,34 +10,6 @@
  *
  * Both are gitignored. The npm package is the source of truth; nothing here is
  * vendored into the tree.
- *
- * ## `public/icons/material/` is emptied on every run
- *
- * The `rmSync` further down is a full recursive delete of that directory, so it
- * holds nothing but what this script puts there — and since it is gitignored,
- * anything else dropped in is gone at the next `pnpm build` with no copy to
- * restore. That is why HELVE's own hand-drawn icons live in the sibling
- * `public/icons/helve/`, which is tracked and which nothing deletes. See the
- * header of `packages/file-icons/src/index.ts`, which resolves the two
- * sets in that order.
- *
- * ## Why `public/` rather than the module graph
- *
- * `build.assetsInlineLimit` defaults to 4096 bytes, and essentially every icon
- * in this set is under 4 KB — so importing them would silently inline all 1115
- * as base64 data URIs inside JS, paid for on every load whether or not a single
- * one is drawn. Files in `public/` are copied through verbatim, fetched only
- * when a row that needs one scrolls into view, and cached by the browser
- * afterwards. Rendering is a plain `<img src="/icons/material/folder-src.svg">`
- * with zero JS weight.
- *
- * ## Why `generateManifest()` rather than the prebuilt `dist/material-icons.json`
- *
- * They are byte-identical by default — but the default has `activeIconPack:
- * "angular"`, which claims `.service.ts`, `.guard.ts`, `.pipe.ts` and 30 other
- * extensions for Angular glyphs. Calling the generator lets us pass `""` and
- * turn the pack off, so a `service.ts` in a repo that has never heard of
- * Angular reads as TypeScript.
  */
 
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -51,9 +23,26 @@ const require = createRequire(import.meta.url);
 const packageRoot = dirname(require.resolve("material-icon-theme/package.json"));
 const sourceIcons = join(packageRoot, "icons");
 
+/**
+ * Why `public/` rather than the module graph: `build.assetsInlineLimit`
+ * defaults to 4096 bytes, and essentially every icon in this set is under 4 KB
+ * — so importing them would silently inline all 1115 as base64 data URIs inside
+ * JS, paid for on every load whether or not a single one is drawn. Files in
+ * `public/` are copied through verbatim, fetched only when a row that needs one
+ * scrolls into view, and cached by the browser afterwards. Rendering is a plain
+ * `<img src="/icons/material/folder-src.svg">` with zero JS weight.
+ */
 const outIcons = join(repoRoot, "public", "icons", "material");
 const outManifest = join(repoRoot, "packages", "file-icons", "src", "manifest.generated.ts");
 
+/**
+ * Why `generateManifest()` rather than the prebuilt `dist/material-icons.json`:
+ * they are byte-identical by default — but the default has `activeIconPack:
+ * "angular"`, which claims `.service.ts`, `.guard.ts`, `.pipe.ts` and 30 other
+ * extensions for Angular glyphs. Calling the generator lets us pass `""` and
+ * turn the pack off, so a `service.ts` in a repo that has never heard of
+ * Angular reads as TypeScript.
+ */
 const manifest = generateManifest({ activeIconPack: "" });
 
 /**
@@ -136,18 +125,8 @@ for (const key of Object.keys(fileExtensions)) {
  * keep the 929 bare keys and let the resolver normalise; `bareForm` here and
  * the stripping in `folderIconUrl` must stay the same rule.
  *
- * Two things have to hold before an alias can be dropped, and this is exactly
- * how the optimisation breaks silently if they don't:
- *
- *   1. the stripped form must be a key that survives. An alias whose bare form
- *      is absent — `__pycache__` with no `pycache` — would turn a hit into a
- *      miss and fall back to the plain folder icon with nothing to notice. Those
- *      are kept verbatim rather than dropped, which is why the resolver tries an
- *      exact lookup before it normalises.
- *   2. the alias and its bare form must agree, in *both* tables. If the theme
- *      ever gives `.dev` a different icon from `dev`, dropping `.dev` silently
- *      changes what is drawn. That is a build failure, not a fallback — there is
- *      no right answer to guess at.
+ * Two things have to hold before an alias can be dropped, checked in the loop
+ * below; each is exactly how the optimisation breaks silently if it doesn't.
  */
 const SURROUNDING_UNDERSCORES = /^__(.+)__$/;
 const LEADING_DECORATION = /^[._-]+/;
@@ -161,10 +140,19 @@ for (const name of Object.keys(folderNames)) {
   if (bareFolderNames.has(name)) continue;
   const bare = bareForm(name);
 
+  // 1. The stripped form must be a key that survives. An alias whose bare form
+  //    is absent — `__pycache__` with no `pycache` — would turn a hit into a
+  //    miss and fall back to the plain folder icon with nothing to notice. Those
+  //    are kept verbatim rather than dropped, which is why the resolver tries an
+  //    exact lookup before it normalises.
   if (!bareFolderNames.has(bare)) {
     keptAliases.push(name);
     continue;
   }
+  // 2. The alias and its bare form must agree, in *both* tables. If the theme
+  //    ever gives `.dev` a different icon from `dev`, dropping `.dev` silently
+  //    changes what is drawn. That is a build failure, not a fallback — there is
+  //    no right answer to guess at.
   if (folderNames[bare] !== folderNames[name]) {
     throw new Error(
       `folder alias ${name} -> ${folderNames[name]} disagrees with ${bare} -> ${folderNames[bare]}`,
@@ -197,6 +185,15 @@ const svgFiles = [
   ...new Set([...referenced].map((key) => basename(definitions[key].iconPath))),
 ].sort();
 
+/**
+ * `public/icons/material/` is emptied on every run. This is a full recursive
+ * delete of that directory, so it holds nothing but what this script puts there
+ * — and since it is gitignored, anything else dropped in is gone at the next
+ * `pnpm build` with no copy to restore. That is why HELVE's own hand-drawn
+ * icons live in the sibling `public/icons/helve/`, which is tracked and which
+ * nothing deletes. See the header of `packages/file-icons/src/index.ts`, which
+ * resolves the two sets in that order.
+ */
 rmSync(outIcons, { recursive: true, force: true });
 mkdirSync(outIcons, { recursive: true });
 for (const svg of svgFiles) copyFileSync(join(sourceIcons, svg), join(outIcons, svg));

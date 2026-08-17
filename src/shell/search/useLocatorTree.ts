@@ -12,20 +12,11 @@
  * `revealed` only grows, hit after hit, so a pane that has already shown
  * three hits in three different folders keeps all three paths open instead
  * of flickering closed every time the hover moves. Which row is *marked* as
- * the target is a separate fact that is never cached: `flatten` below reads
- * it straight off the `focus` argument on every call, never off anything a
- * walk decided, so a walk still in flight when the hover moves on can never
- * paint a target that is no longer current — see the note on the reveal
- * effect for why that isn't just an aspiration.
- *
- * What it deliberately does not do, same as its model:
- *
- * - **Watch the filesystem.** A directory is listed once. Nothing re-checks
- *   it, because nothing here has a reason to — this pane exists only while
- *   the search overlay is open.
- * - **Sort.** `files/list` already returns directories first, then
- *   case-insensitively by name, and `flatten` below draws entries in the
- *   order they arrive.
+ * the target is never cached: `flatten` below reads it straight off the
+ * `focus` argument on every call, never off anything a walk decided, so a
+ * walk still in flight when the hover moves on can never paint a target
+ * that is no longer current — see the reveal effect for why that isn't
+ * just an aspiration.
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { callApp } from "../state/apps";
@@ -110,6 +101,9 @@ export function useLocatorTree(
 
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(() => new Map());
 
+  /** Lists one directory, once. Nothing re-checks it: this pane deliberately
+   *  does not watch the filesystem, same as its model — it exists only while
+   *  the search overlay is open. */
   const load = (path: string, myGeneration: number): Promise<Entry[]> => {
     const flight = inFlight.current;
     const existing = flight.get(path);
@@ -229,6 +223,10 @@ export function useLocatorTree(
  * The revealed tree, depth-first, as one array — same shape as
  * `useTree.ts`'s `flatten`, minus the filter half of that function, which
  * this pane has no equivalent of.
+ *
+ * Deliberately does not sort: `files/list` already returns directories first,
+ * then case-insensitively by name, and entries are drawn in the order they
+ * arrive.
  */
 function flatten(
   dir: string,

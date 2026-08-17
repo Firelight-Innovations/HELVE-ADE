@@ -6,20 +6,10 @@
  * and what a file *looks* like is `viewer/registry.ts`. Each can be read
  * without reading this one.
  *
- * ## What changed when this stopped being half of Files
- *
  * Four things used to be React props between a tree and a tab strip in one
- * component. They are messages now, and each one is a listener or a publish
- * below rather than a line in someone's JSX:
- *
- * - **A file to open** arrives as `OPENED_EVENT`, from an Explorer that does not
- *   know this app exists. It asked the shell for "a viewer in my cluster".
- * - **Which file is showing** goes out as `ACTIVE_PATH`, for the Explorer to
- *   mark a row with. This app does not know whether anyone is listening.
- * - **What is unsaved** goes out as `DIRTY_PATHS`, so a delete confirmation
- *   raised over *there* can still name work that only exists over *here*. That
- *   is the one thing the split genuinely took away, and this is the repair.
- * - **A rename or a delete** crosses both ways as `TREE_CHANGE`.
+ * component. They are messages now — `OPENED_EVENT` in, `ACTIVE_PATH` and
+ * `DIRTY_PATHS` out, `TREE_CHANGE` both ways — and each is a listener or a
+ * publish below rather than a line in someone's JSX.
  *
  * What it deliberately does not own, unchanged from before: the list of file
  * formats. Adding a viewer touches `viewer/registry.ts` and one new component,
@@ -43,12 +33,11 @@ export default function App() {
   const files = useOpenFiles();
 
   /**
-   * The project root, for the tab strip's relative paths.
-   *
-   * Read here rather than passed in because this app is rooted the same way the
-   * Explorer is — `files/root` is answered against whichever cluster the shell
-   * resolved this frame into, so two Viewers in two clusters get two answers
-   * without either of them asking a different question.
+   * The project root, for the tab strip's relative paths. Read here rather than
+   * passed in because this app is rooted the same way the Explorer is —
+   * `files/root` is answered against whichever cluster the shell resolved this
+   * frame into, so two Viewers in two clusters get two answers without either
+   * of them asking a different question.
    */
   const loadRoot = useCallback(() => {
     void getRoot()
@@ -63,11 +52,10 @@ export default function App() {
 
   /**
    * The project changed under us — a different folder is open in this cluster.
-   *
    * Open tabs are left alone rather than closed, unchanged from when this was
-   * half of Files: a file that is still on disk is still readable, and closing
-   * someone's editor because they switched projects would lose work to a guess
-   * about intent. Only the root is re-read, for the tab strip's paths.
+   * half of Files: a file still on disk is still readable, and closing someone's
+   * editor because they switched projects would lose work to a guess about
+   * intent. Only the root is re-read, for the tab strip's paths.
    */
   useEffect(() => on("project:changed", loadRoot), [loadRoot]);
 
@@ -96,12 +84,11 @@ export default function App() {
   );
 
   /**
-   * A rename or a delete landed on disk, wherever it was started.
-   *
-   * The Explorer's tree is the usual source, but this app publishes the same
-   * topic when a delete is confirmed from a tab, so a second Viewer in the
-   * cluster closes its tab too. The shell excludes a publisher from its own
-   * broadcast, so nothing here can hear itself.
+   * A rename or a delete landed on disk, wherever it was started. The
+   * Explorer's tree is the usual source, but this app publishes the same topic
+   * when a delete is confirmed from a tab, so a second Viewer in the cluster
+   * closes its tab too. The shell excludes a publisher from its own broadcast,
+   * so nothing here can hear itself.
    *
    * `rename` must run before anything polls: a tab still pointing at the old
    * path would `stat`, find nothing, and mark itself missing — a phantom
@@ -120,17 +107,18 @@ export default function App() {
 
   /**
    * Which file is showing, and what is unsaved — announced rather than asked
-   * for.
+   * for, and this app does not know whether anyone is listening. The dirty list
+   * is the repair for the one thing the split genuinely took away: a delete
+   * confirmation raised in the Explorer can still name work that only exists
+   * here.
    *
    * Both are de-duplicated inside the bridge against the last value sent, which
-   * is what makes it safe to call them from an effect that runs on every
-   * render. `activePath` is published as `null` when nothing is open, because
-   * that is true and because a retained stale path would leave a row
-   * highlighted in a tree under a closed editor.
-   *
-   * The dirty list is sorted so that two renders producing the same set in a
-   * different order do not read as a change — the same reasoning
-   * `declareCommands` gives for sorting before it compares.
+   * is what makes it safe to call them from an effect that runs on every render.
+   * `activePath` is published as `null` when nothing is open, because that is
+   * true and because a retained stale path would leave a row highlighted in a
+   * tree under a closed editor. The dirty list is sorted so two renders
+   * producing the same set in a different order do not read as a change — the
+   * same reasoning `declareCommands` gives for sorting before it compares.
    */
   useEffect(() => {
     publish(ACTIVE_PATH, files.activePath);
@@ -141,20 +129,19 @@ export default function App() {
   }, [files.dirty]);
 
   /**
-   * The splash window waits for this pane before the main window is shown —
-   * but only when a Viewer is in the restored layout, since `boot::expected`
-   * narrows the roster to what is actually open.
+   * The splash window waits for this pane before the main window is shown — but
+   * only when a Viewer is in the restored layout, since `boot::expected` narrows
+   * the roster to what is actually open.
    *
    * Reported once the first render is committed, including the empty one. An
-   * empty viewer is a *finished* screen: there is no call in flight and no
-   * version of it that looks more complete, which is the same reason
-   * `apps/README.md` gives for an error state counting.
+   * empty viewer is a *finished* screen: no call in flight and no version of it
+   * that looks more complete, the same reason `apps/README.md` gives for an
+   * error state counting.
    */
   useEffect(reportPainted, []);
 
   /**
    * Ctrl+S at the document level, so it works with focus anywhere in the app.
-   *
    * Monaco binds its own Ctrl+S inside the editor and that one wins there; this
    * catches the case where focus is in the tab strip. Both end up at the same
    * `save` the viewer registered.
@@ -170,12 +157,11 @@ export default function App() {
   }, [files]);
 
   /**
-   * The delete confirmation for a delete started from a tab.
-   *
-   * This app can still answer the question it always could — it is the side
-   * that knows about open buffers — and it tells everyone else afterwards
-   * rather than before: `TREE_CHANGE` is published on success so the Explorer
-   * re-lists and any other Viewer closes its tabs.
+   * The delete confirmation for a delete started from a tab. This app can still
+   * answer the question it always could — it is the side that knows about open
+   * buffers — and it tells everyone else afterwards rather than before:
+   * `TREE_CHANGE` is published on success so the Explorer re-lists and any
+   * other Viewer closes its tabs.
    */
   const del = useDelete({
     unsavedUnder: files.unsavedUnder,

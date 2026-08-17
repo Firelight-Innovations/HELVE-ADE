@@ -7,29 +7,6 @@
  * browser, so there is no expanding, no filter and no keyboard tree: every item
  * here is flat by nature, since a deleted folder is one item and not a subtree
  * you can walk.
- *
- * ## It only ever shows this project
- *
- * `trash/list` is scoped in the backend to items whose original location was
- * inside the project root, and restore and purge look their id up in that same
- * scoped set. That matters more than it sounds: the system Recycle Bin holds
- * everything the user has ever deleted anywhere, and showing it raw would put
- * their personal files inside a game editor. Nothing in this file widens that —
- * it renders what it is given. See `src-tauri/src/apps/trash.rs`.
- *
- * ## Freshness
- *
- * The Recycle Bin changes outside this app — the user can empty it from
- * Explorer, restore something from there, or delete a file with any other
- * program. So this list is a *snapshot*, and it says when it was taken rather
- * than pretending to be live. It re-reads whenever the view is opened, whenever
- * the refresh button is pressed, and after any action taken here. There is no
- * watcher and no poll, for the same reason `useOpenFiles` has neither.
- *
- * The honest consequence: an item can disappear between the list and the click.
- * The backend answers that with "not in this project's Recycle Bin — it may have
- * been restored, purged, or emptied since the list was read", which is shown as
- * it arrives.
  */
 import { useCallback, useEffect, useState } from "react";
 import NoticeBar, { type Notice } from "../NoticeBar";
@@ -58,13 +35,37 @@ export default function TrashView({
 }) {
   const [items, setItems] = useState<TrashItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** When the snapshot below was taken. See the header on freshness. */
+  /**
+   * When the snapshot below was taken.
+   *
+   * The Recycle Bin changes outside this app — the user can empty it from
+   * Explorer, restore something from there, or delete a file with any other
+   * program. So this list is a *snapshot*, and it says when it was taken rather
+   * than pretending to be live. It re-reads whenever the view is opened,
+   * whenever the refresh button is pressed, and after any action taken here.
+   * There is no watcher and no poll, for the same reason `useOpenFiles` has
+   * neither.
+   *
+   * The honest consequence: an item can disappear between the list and the
+   * click. The backend answers that with "not in this project's Recycle Bin —
+   * it may have been restored, purged, or emptied since the list was read",
+   * which is shown as it arrives.
+   */
   const [readAt, setReadAt] = useState<number | null>(null);
   /** The item a purge is being confirmed for. At most one. */
   const [purging, setPurging] = useState<TrashItem | null>(null);
   /** An id with a call out, so its row can say so and stop taking clicks. */
   const [busy, setBusy] = useState<string | null>(null);
 
+  /**
+   * Read the bin. It only ever shows this project: `trash/list` is scoped in
+   * the backend to items whose original location was inside the project root,
+   * and restore and purge look their id up in that same scoped set. That
+   * matters more than it sounds — the system Recycle Bin holds everything the
+   * user has ever deleted anywhere, and showing it raw would put their personal
+   * files inside a game editor. Nothing in this file widens that; it renders
+   * what it is given. See `src-tauri/src/apps/trash.rs`.
+   */
   const read = useCallback(() => {
     setError(null);
     void trashList()

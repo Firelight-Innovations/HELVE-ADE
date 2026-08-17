@@ -197,12 +197,11 @@ pub fn run() {
             // shell behind it does — and spawning a process is exactly the kind
             // of work a `Default` impl has no business doing.
             //
-            // A failure is not fatal: a machine with no usable shell should
-            // still get an orchestrator, with an empty band and a working "+".
-            // It is reported rather than swallowed, though — this is the one
-            // step in a terminal's life that can fail for reasons no amount of
-            // reading the code will reveal, and a silently empty band gives
-            // whoever hits it nothing to go on.
+            // A failure is not fatal: a machine with no usable shell should still get an
+            // orchestrator, with an empty band and a working "+". It is reported rather than
+            // swallowed, though — this is the one step in a terminal's life that can fail for
+            // reasons no amount of reading the code will reveal, and a silently empty band
+            // gives whoever hits it nothing to go on.
             //
             // Skipped when a session was restored: it brought its own terminals
             // back, and one more every launch would grow the band by an entry a
@@ -397,12 +396,11 @@ fn restore_session(app: &tauri::AppHandle) {
 
 /// **The one-time migration** from the old global open project to a cluster.
 ///
-/// Before this change, "the open project" was one value for the whole process,
-/// stored in `projects.json`. Braden has a live session on disk right now, so a
-/// build that simply started reading `Cluster::project` would open to a
-/// workspace with nothing in it and no indication that anything had moved. The
-/// old value is taken and given to the first cluster of the main window — the
-/// one that *was* showing it, since there was only one project to show.
+/// Before this change, "the open project" was one value for the whole process, stored in
+/// `projects.json`. Braden has a live session on disk right now, so a build that simply started
+/// reading `Cluster::project` would open to a workspace with nothing in it and no indication that
+/// anything had moved. The old value is taken and given to the first cluster of the main window —
+/// the one that *was* showing it, since there was only one project to show.
 ///
 /// Two things make this run exactly once and no more.
 ///

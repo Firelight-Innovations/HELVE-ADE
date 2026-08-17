@@ -2,31 +2,12 @@
  * Comment-density checks for Rust and TypeScript, with a ratchet.
  *
  * STANDARDS.md §4 asks this codebase to explain itself in prose, and it does —
- * but prose has a runaway mode, and two shapes of it are worth catching:
- *
- *   RATIO  a file that is more than half comment. At that point the code is
- *          an illustration inside an essay rather than the other way round.
- *
- *   RUN    an unbroken wall of more than 15 comment lines. This is the one
- *          that actually prompted the check. `src-tauri/src/apps/files.rs` is
- *          only 32% comment overall and still reads as overwhelming, because
- *          its 610 comment lines arrive in long uninterrupted blocks. Ratio
- *          alone does not see that; run length does.
- *
+ * but prose has a runaway mode, and two shapes of it are worth catching: RATIO
+ * and RUN, each documented on the `MAX_RATIO` and `MAX_RUN` constants below.
  * The two catch genuinely different files, which is why both are on. Neither
  * is a statement that the prose is wrong — §4 is still the standard, and a
  * long comment that records a rejected alternative is the most valuable thing
  * in the repo. These are limits on *concentration*, not on total.
- *
- * Grandfathering works like scripts/clippy-baseline.mjs: `comment-baseline.json`
- * records what each offending file looks like today, and a file may not get
- * worse than the larger of its baseline and the cap. New files must meet the
- * cap outright.
- *
- * Known limitation: this is line-based, not a parser. A line inside a template
- * literal that begins with `//` counts as a comment. In practice that is rare
- * enough not to justify pulling in two real parsers, but it is why the caps are
- * generous rather than tight.
  *
  * Usage:
  *   node scripts/check-comments.mjs            check against the baseline
@@ -44,18 +25,24 @@ const baselinePath = join(repoRoot, "comment-baseline.json");
 const update = process.argv.includes("--update");
 const report = process.argv.includes("--report");
 
-/** Above this share of non-blank lines being comments, a file fails. */
+/**
+ * Above this share of non-blank lines being comments, a file fails. Past half,
+ * the code is an illustration inside an essay rather than the other way round.
+ */
 const MAX_RATIO = 0.5;
 
 /**
- * Longer than this many consecutive comment lines, a file fails.
+ * Longer than this many consecutive comment lines, a file fails. An unbroken
+ * wall of comment is the shape that actually prompted the check, and ratio
+ * alone does not see it: `src-tauri/src/apps/files.rs` is only 32% comment
+ * overall and still reads as overwhelming, because its 610 comment lines
+ * arrive in long uninterrupted blocks.
  *
  * Calibrated against the tree rather than picked. Among files that exceed any
  * cap, the median unbroken run is 28 lines and the longest is 85, so a cap of
  * 15 would have flagged 116 of 168 files — a number that describes an ambition
  * rather than this codebase. 20 still catches every wall worth calling a wall,
- * including the one that prompted the rule: `src-tauri/src/apps/files.rs` is
- * only 32% comment overall but has a 35-line unbroken block.
+ * including that same `files.rs`, whose longest block is 35 lines.
  *
  * 20 lines is also about as much prose as fits on screen beside the code it
  * describes, which is the practical version of the same judgement.
@@ -104,6 +91,11 @@ function walk(dir, out = []) {
  * Blank lines count towards neither total nor run: a blank line between two
  * paragraphs of the same comment block should not reset the run, and padding a
  * file with blank lines should not dilute its ratio.
+ *
+ * Known limitation: this is line-based, not a parser. A line inside a template
+ * literal that begins with `//` counts as a comment. In practice that is rare
+ * enough not to justify pulling in two real parsers, but it is why the caps are
+ * generous rather than tight.
  */
 function measure(path) {
   let text;
@@ -212,8 +204,12 @@ const failures = [];
 
 for (const f of measured) {
   const allowed = baseline[f.path];
-  // A grandfathered file is held to its own current shape; everything else to
-  // the cap. Either way a file is never allowed to get worse than it is now.
+  // Grandfathering works like scripts/clippy-baseline.mjs: `comment-baseline.json`
+  // records what each offending file looks like today, so a grandfathered file is
+  // held to its own current shape and everything else to the cap — a file may not
+  // get worse than the larger of its baseline and the cap. Either way a file is
+  // never allowed to get worse than it is now, and new files must meet the cap
+  // outright.
   const ratioLimit = Math.max(MAX_RATIO, allowed?.ratio ?? 0);
   const runLimit = Math.max(MAX_RUN, allowed?.maxRun ?? 0);
 

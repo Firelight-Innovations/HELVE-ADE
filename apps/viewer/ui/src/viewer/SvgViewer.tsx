@@ -6,17 +6,6 @@
  * the registry hands the same file to Monaco; see the note on `reopenWith` in
  * `registry.ts`, which names this as one of its two reasons for existing.
  *
- * **The markup is never injected into this document.** The file is rendered
- * through a `Blob` object URL in an `<img>`, exactly as `ImageViewer` does it,
- * and that is a security boundary rather than a convenience. An `<img>` renders
- * SVG in a restricted mode: scripts do not run, external references are not
- * fetched, and nothing inside the file can see this frame. Inlining the same
- * bytes — `dangerouslySetInnerHTML`, or a `<use>` of the file — would hand an
- * arbitrary file on disk script access to a pane sitting inside the shell, and
- * "the user opened it in a file explorer" is not consent to execute it. The
- * cost of the safe version is that animations driven by script do not play. That
- * is the right trade for a viewer.
- *
  * What it deliberately does not do: a 1:1 toggle. An SVG has no pixels to be
  * honest about, so "actual size" would be reporting a number the format does not
  * really have. It scales to the pane and keeps its aspect ratio, which is the
@@ -28,6 +17,18 @@ import type { ViewerProps } from "./registry";
 import "./media.css";
 
 export default function SvgViewer({ file, reopenWith }: ViewerProps) {
+  /**
+   * **The markup is never injected into this document.** The file is rendered
+   * through a `Blob` object URL in an `<img>`, exactly as `ImageViewer` does it,
+   * and that is a security boundary rather than a convenience. An `<img>` renders
+   * SVG in a restricted mode: scripts do not run, external references are not
+   * fetched, and nothing inside the file can see this frame. Inlining the same
+   * bytes — `dangerouslySetInnerHTML`, or a `<use>` of the file — would hand an
+   * arbitrary file on disk script access to a pane sitting inside the shell, and
+   * "the user opened it in a file explorer" is not consent to execute it. The
+   * cost of the safe version is that animations driven by script do not play. That
+   * is the right trade for a viewer.
+   */
   const state = useBlobUrl(file.path, mimeFor(file.ext));
 
   if (state.status === "loading") {

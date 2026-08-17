@@ -5,42 +5,13 @@
  * Mounted by the source-control panel (`worktree/SourceControlView.tsx`),
  * which imports it lazily: this module pulls in Monaco and its worker chunk on
  * evaluation, and the panel is mounted for the life of the window whether or
- * not anyone opens a diff. The `lazy` boundary there is what keeps that cost
- * on the first click rather than on startup.
+ * not anyone opens a diff. The `lazy` boundary there keeps that cost on the
+ * first click rather than on startup.
  *
- * Files (`apps/files`) also uses Monaco, wired separately in
- * `apps/files/ui/src/viewer/monaco.ts`. The two do not collide: an app runs in
- * its own iframe, so each has its own `self.MonacoEnvironment` and its own
- * theme registry. They do share chunks — both entries reach the same
- * `monaco-editor` modules, so Rollup hoists them into one shared dynamic
- * chunk. That is fine and deliberate: it is dynamic on both sides, so
- * `index.html` preloads none of it.
- *
- * Imported from `monaco-editor/editor/editor.api`, not `.../editor.main` —
- * `editor.main` registers every bundled language, and the IntelliSense
- * infrastructure behind them, as a side effect of import. None of that is
- * needed to show a read-only diff.
- *
- * The cost of that choice is that Monaco arrives here knowing no *bundled*
- * language, so `language` below is honoured for exactly one value: `"toml"`,
- * registered by the `registerToml` call further down. Every other id resolves
- * to nothing and renders as plain text — which is the same answer the prop gave
- * for every id before, so no caller regresses.
- *
- * That asymmetry is not an oversight, it is the shape of the fix. TOML is
- * hand-written (`@helve/monaco-languages`) precisely because Monaco does not
- * ship it, and a hand-written Monarch grammar can be handed to a bare
- * `editor.api` instance for free. Every other language would arrive by
- * importing its own entry under `languages/definitions/`, one lazy chunk each,
- * and that is a bundle decision for whoever decides a source-control diff should be
- * fully coloured — not a side effect of teaching this editor the one format
- * HELVE's own config files are written in.
- *
- * (The short specifier is not a shorthand for the long one: monaco-editor
- * 0.56's `exports` map is `"./*": "./esm/vs/*.js"`, so
- * `monaco-editor/esm/vs/editor/editor.api` would resolve to
- * `esm/vs/esm/vs/editor/editor.api.js` and fail. The code below has always been
- * right; this comment used to name a path that does not exist.)
+ * Why the import below is `editor.api` and not `.../editor.main`, why `"toml"`
+ * is consequently the only language this editor tokenizes and why that is the
+ * shape of the fix rather than an oversight, and how chunks are shared with the
+ * Files app's Monaco: docs/design-notes/shell-worktree.md, under this path.
  */
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor/editor/editor.api";
@@ -48,13 +19,11 @@ import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import { registerToml } from "@helve/monaco-languages";
 import "./diff.css";
 
-// One worker, wired here rather than in a global entry file — this module
-// (and the worker chunk it pulls in) is only evaluated once something
-// actually imports `DiffView`, so nothing pays for Monaco until the diff view
-// is used. `ts.worker` / `json.worker` / `css.worker` / `html.worker` are
-// deliberately not wired: this is a read-only diff, not a language service,
-// and each of those workers is its own multi-hundred-KB chunk on top of this
-// one.
+// One worker, wired here rather than in a global entry file — this module and
+// its worker chunk are evaluated only once something imports `DiffView`, so
+// nothing pays for Monaco until the diff view is used. `ts` / `json` / `css` /
+// `html` workers are deliberately not wired: this is a read-only diff, not a
+// language service, and each is its own multi-hundred-KB chunk on top of this.
 self.MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
 };
@@ -62,33 +31,21 @@ self.MonacoEnvironment = {
 // TOML, the only language this editor can tokenize — see the file header for
 // why it is the only one and why that is deliberate rather than partial.
 //
-// Idempotent: `search/previewMonaco.ts` calls this too, and that module is
-// shell-side like this one, so both chunks can be live in one JS context and
-// would otherwise register the same id twice against one global registry. The
-// guard lives in `@helve/monaco-languages` so neither caller has to remember.
+// Idempotent: `search/previewMonaco.ts` calls this too and is shell-side like
+// this module, so both chunks can be live in one JS context and would
+// otherwise register the same id twice against one global registry. The guard
+// lives in `@helve/monaco-languages` so neither caller has to remember.
 registerToml(monaco);
 
 // Defined once at module scope, not per-mount — `defineTheme` writes into
 // Monaco's global theme registry, so redefining it on every DiffView mount
 // would be repeated work for no visual change.
 //
-// Colours are lifted from src/tokens.css, not chosen here. `editor.background`
-// and `editor.foreground` reuse --bg and --text directly. The diff
-// insert/remove backgrounds reuse --ok and --err — the same pair
-// `CHANGE_TOKEN` in contract.ts already uses for added ("A") and deleted
-// ("D") files — at two alphas: a low "wash" alpha for the full-line
-// background, matching the --accent-wash convention already in tokens.css,
-// and a stronger alpha for the character-level highlight within a changed
-// line.
-//
-// The four diff colours are 8-digit hex rather than `rgba(...)`, and that is
-// not a style preference. Monaco parses a theme colour with `Color.fromHex`,
-// which is `parseHex(hex) || Color.red` (base/common/color.js:182), and
-// `parseHex` accepts only `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA`. A
-// perfectly valid CSS `rgba()` string is not rejected loudly — it silently
-// becomes **opaque red**. These four were written that way and did render red;
-// nothing mounts this component, so nobody had seen it. The alpha byte is
-// round(alpha * 255): 0.08 is 0x14, 0.25 is 0x40.
+// Every colour below is lifted from src/tokens.css, and the four diff colours
+// must be 8-digit hex, never `rgba(...)`: Monaco parses a theme colour with
+// `parseHex(hex) || Color.red`, so a perfectly valid CSS `rgba()` string
+// silently becomes opaque red. Which token each reuses, and how that bug went
+// unseen, are in the design note named in the file header.
 monaco.editor.defineTheme("helve-dark", {
   base: "vs-dark",
   inherit: true,
@@ -106,21 +63,16 @@ monaco.editor.defineTheme("helve-dark", {
 export interface DiffViewProps {
   original: string;
   modified: string;
-  /** Passed straight to Monaco's model. See the file header for which ids
-   *  actually tokenize here: `"toml"` does, everything else renders as plain
-   *  text until someone decides this editor should carry Monaco's bundled
-   *  grammars. `@helve/monaco-languages`'s `isTomlPath` is how a caller with a
-   *  path and no Monaco import works out whether to pass it. */
+  /** Passed straight to Monaco's model, but only `"toml"` actually tokenizes
+   *  here; everything else renders as plain text until someone decides this
+   *  editor should carry Monaco's bundled grammars. `@helve/monaco-languages`'s
+   *  `isTomlPath` is how a caller with a path and no Monaco import decides. */
   language?: string;
-  /**
-   * Two columns, or one with the removals and additions interleaved.
-   *
-   * Defaults to two because that is what a diff opened in the tool window
-   * wants. The source-control panel passes `false`: it is
-   * `--w-panel-default` (380px) wide, and two columns of code in half of that
-   * wraps every meaningful line — the same reason VS Code's own SCM view
-   * flips to inline when it is docked narrow.
-   */
+  /** Two columns, or one with removals and additions interleaved. Defaults to
+   *  two because that is what a diff opened in the tool window wants. The
+   *  source-control panel passes `false`: it is `--w-panel-default` (380px)
+   *  wide, and two columns of code in half of that wraps every meaningful line
+   *  — the same reason VS Code's SCM view flips to inline when docked narrow. */
   renderSideBySide?: boolean;
 }
 
@@ -132,10 +84,9 @@ export default function DiffView({
 }: DiffViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Re-created whenever the text changes rather than fed through
-  // `setValue` — a diff view has no caret or selection worth preserving
-  // across an `original`/`modified` swap, so there's nothing an in-place
-  // update would buy over just building a fresh pair of models.
+  // Re-created whenever the text changes rather than fed through `setValue` —
+  // a diff view has no caret or selection worth preserving across an
+  // `original`/`modified` swap, so an in-place update buys nothing.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -153,10 +104,10 @@ export default function DiffView({
       modified: monaco.editor.createModel(modified, language),
     });
 
-    // Disposing the diff editor does not dispose the two models it was
-    // handed — Monaco assumes a model may be shared or reused elsewhere.
-    // These were created fresh above for this instance alone, so they are
-    // ours to dispose too, or they leak on every unmount.
+    // Disposing the diff editor does not dispose the two models it was handed
+    // — Monaco assumes a model may be shared or reused elsewhere. These were
+    // created fresh above for this instance alone, so they are ours to dispose
+    // too, or they leak on every unmount.
     //
     // Order matters, and not subtly: the widget listens for its own models
     // being disposed, and disposing one while it is still attached throws

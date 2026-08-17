@@ -12,17 +12,7 @@
  * selected, its diff, the commit message) is view-local and deliberately reset
  * when the shown cluster changes: none of it means anything in another repo.
  *
- * ## Scoped to a cluster, not a tool
- *
- * This used to take a tool id, and every call it made resolved through
- * `git.rs`'s `repo()` — which looks an id up in `StackSnapshot.tools`, the
- * `helve.toml` stack-component pins. Those are a different id space from the
- * shell's own apps, and `discovery.rs`'s `ENABLED_TOOLS` is `&[]`, so that list
- * is empty for every project. The lookup could therefore only ever fail: every
- * call from here came back `UnknownTool`, and the panel rendered "Git
- * unavailable" where the change list should have been. A cluster id resolves
- * through `project::cluster_path` instead, which follows the worktree-or-project
- * precedence a cluster actually has.
+ * Scoped to a cluster, not a tool — see the `clusterId` prop below.
  *
  * No motion, for the same reason `WorktreeView` had none — the handoff's
  * motion section is explicit that this list stays at native scroll speed.
@@ -46,7 +36,20 @@ const DiffView = lazy(() => import("../diff/DiffView"));
 
 export interface SourceControlViewProps {
   control: GitControl;
-  /** `null` when no cluster is active — the empty state. */
+  /**
+   * `null` when no cluster is active — the empty state.
+   *
+   * A cluster id, not a tool id. This view used to take the latter, and every
+   * call it made resolved through `git.rs`'s `repo()` — which looks an id up in
+   * `StackSnapshot.tools`, the `helve.toml` stack-component pins. Those are a
+   * different id space from the shell's own apps, and `discovery.rs`'s
+   * `ENABLED_TOOLS` is `&[]`, so that list is empty for every project. The
+   * lookup could therefore only ever fail: every call from here came back
+   * `UnknownTool`, and the panel rendered "Git unavailable" where the change
+   * list should have been. A cluster id resolves through
+   * `project::cluster_path` instead, which follows the worktree-or-project
+   * precedence a cluster actually has.
+   */
   clusterId: string | null;
   git: GitStatusHandle;
 }

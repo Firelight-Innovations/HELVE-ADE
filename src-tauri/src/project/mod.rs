@@ -1,72 +1,21 @@
 //! What a HELVE project is, and which one is open.
 //!
-//! A project is **a folder**. That is the whole of the definition, and it is
-//! chosen rather than defaulted to: a game is already a tree of files that a
-//! person moves, copies to another machine, and puts under version control, and
-//! any definition that made the project something other than that folder would
-//! immediately have to explain what happens when the folder moves without it.
+//! A project is **a folder** — chosen, not defaulted to: a game is already a
+//! tree of files a person moves, copies and version-controls, and any other
+//! definition owes an answer for what happens when the folder moves without it.
 //!
 //! A folder becomes a *HELVE* project when it holds a `<name>.helve` manifest —
-//! see [`marker`] for why that name and not `.helve`. But an un-marked folder
-//! still opens. That matters more than it sounds: it means HELVE can be pointed
-//! at a game that already exists, today, before the format is finished, and the
-//! answer to "what happens to my project when the `.helve` format changes" is
-//! never "it stops opening". [`ProjectInfo::initialized`] is how the frontend
-//! tells the two apart, so it can offer to set one up rather than refusing it.
+//! see [`marker`] for why that name and not `.helve`. An un-marked folder still
+//! opens, so HELVE can be pointed at a game that exists today, before the
+//! format is finished, and "what happens when the `.helve` format changes" is
+//! never answered with "it stops opening"; [`ProjectInfo::initialized`] tells
+//! the two apart, so the frontend can offer to set one up rather than refuse it.
 //!
-//! ## A project belongs to a cluster, not to the process
-//!
-//! This module used to own "the open project" as a single global, stored beside
-//! the Recent list in `projects.json`. It does not any more, and the change is
-//! the reason most of what follows reads the way it does.
-//!
-//! **[`crate::shell_state::Cluster::project`] is the authority.** A cluster is
-//! one thing being worked on, so the folder that work is in is a fact about the
-//! cluster — which means two windows on two monitors can show two projects at
-//! the same time, and a project switch in one of them touches nothing in the
-//! other. A global made that unexpressible rather than merely awkward: whichever
-//! window opened something last would have re-rooted every Files in the process
-//! and retitled every window.
-//!
-//! What is left here is everything that was never per-cluster. The Recent list
-//! *is* global — it is this machine's history with projects, not a property of
-//! any one place you are working — so it stays in [`store::Stored`] and stays in
-//! `projects.json`. So does the filesystem knowledge: what makes a folder a
-//! project, what its manifest says, whether it is still there. Opening one is
-//! still this module's verb; it now takes the cluster it is opening *into*.
-//!
-//! ## The broadcast
-//!
-//! Every mutator below returns the whole new [`ProjectSnapshot`], and Home
-//! renders the answer it got back — Home reaches Rust over transport B, which
-//! carries request/response, and a surface that asked the question can just
-//! read the reply.
-//!
-//! Home is not the only surface that draws this, and the second one cannot work
-//! that way. Files renders a tree rooted at its cluster's project and has to
-//! redraw when that changes, with no request of its own to hang the answer off
-//! — nothing asked it anything. So [`open`] and [`close`] also emit
-//! [`PROJECT_CHANGED_EVENT`], exactly the way `ShellState` emits `shell:state`.
-//! The shell window listens for it and forwards it into app frames as a
-//! transport-B `event` message (`src/shell/toolwindow/ToolWindow.tsx`).
-//!
-//! **The event names its cluster, and the relay is filtered by it.** That is not
-//! an optimisation. An unfiltered relay would wake every Files in the process
-//! when one cluster's project changed, and each of them would re-root itself at
-//! a project it is not in — which is precisely the bug the per-cluster model
-//! exists to prevent, reintroduced on the way out. [`ProjectChanged`] therefore
-//! carries `clusterId` alongside the snapshot, and `ToolWindow` posts it only
-//! into frames whose instance is in that cluster.
-//!
-//! The payload is the whole snapshot rather than a delta, for `shell:state`'s
-//! reasons: it is small, it changes only on deliberate user action, and a
-//! subscriber can never apply half of it. A delta would additionally oblige an
-//! app that mounted late to have heard every earlier one, which nothing here
-//! can promise — Tauri events have no replay.
-//!
-//! What this is not is a filesystem watcher. It fires when *which project a
-//! cluster is pointed at* changes, and never because something inside one did.
-//! An app that needs to notice a file appearing still has to ask again.
+//! **[`crate::shell_state::Cluster::project`] is the authority** on which
+//! project is open. What stays here was never per-cluster: the global Recent
+//! list in [`store::Stored`], and the filesystem knowledge. Why that moved, and
+//! why every mutator broadcasts [`PROJECT_CHANGED_EVENT`] with a whole snapshot
+//! stamped with its cluster, is in `docs/design-notes/backend-project.md`.
 
 mod marker;
 mod store;
@@ -81,25 +30,26 @@ use std::sync::RwLock;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// The event a project switch broadcasts on, carrying a [`ProjectChanged`] —
-/// the whole new snapshot, and the cluster it is about. See the module doc.
+/// the whole new snapshot, and the cluster it is about. Not a filesystem
+/// watcher: it fires when *which project a cluster is pointed at* changes, and
+/// never because something inside one did.
 pub const PROJECT_CHANGED_EVENT: &str = "project:changed";
 
 /// One project, as a frontend needs to see it.
 ///
-/// Paths are `String`, not `PathBuf`, because this crosses into JSON and a
-/// Windows path is not guaranteed to be UTF-8 — `PathBuf` would serialize as
-/// whatever `Display` produced anyway. Doing the conversion here makes that one
-/// decision in one place instead of an accident at the boundary.
+/// Paths are `String`, not `PathBuf`: this crosses into JSON, a Windows path is
+/// not guaranteed to be UTF-8, and `PathBuf` would serialize as whatever
+/// `Display` produced anyway. Converting here makes it one decision in one place
+/// instead of an accident at the boundary.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
     pub name: String,
     pub path: String,
-    /// The manifest's stable id, when there is a manifest. `None` for a folder
-    /// that isn't set up yet — which is why the *path* is what identifies a row
-    /// on the frontend, not this. It is here because it is the only handle that
-    /// survives the folder being renamed or moved, and the first thing anything
-    /// cross-referencing projects later will want.
+    /// The manifest's stable id, when there is one. `None` for a folder not set
+    /// up yet — which is why the *path* identifies a frontend row, not this.
+    /// Here because it is the only handle that survives a rename or a move, and
+    /// the first thing anything cross-referencing projects will want.
     pub id: Option<String>,
     /// Whether a `<name>.helve` manifest was found. `false` is a plain folder
     /// HELVE has been pointed at — openable, and offered a setup.
@@ -108,9 +58,8 @@ pub struct ProjectInfo {
     /// project it names — a moved folder, an unplugged drive — and a row that
     /// silently failed on click would be worse than one drawn as unavailable.
     pub exists: bool,
-    /// The manifest's `format`, when there is one. Greater than
-    /// [`marker::FORMAT`] means a newer HELVE wrote it and this build is reading
-    /// it partially.
+    /// The manifest's `format`. Greater than [`marker::FORMAT`] means a newer
+    /// HELVE wrote it and this build is reading it partially.
     pub format: Option<i64>,
     /// Milliseconds since the Unix epoch, when HELVE last opened it. `None` for
     /// a project opened for the first time this session.
@@ -120,13 +69,11 @@ pub struct ProjectInfo {
     pub modified: Option<u64>,
 }
 
-/// One cluster's project and the global history, in one payload — see the
-/// module doc on why every mutator returns the whole thing.
+/// One cluster's project and the global history, in one payload.
 ///
-/// `open` is the *asking cluster's* project, not a process-wide one. Two Home
-/// surfaces in two clusters therefore get two different answers to `home/state`,
-/// which is the whole point: each of them draws the project of the work it is
-/// sitting in.
+/// `open` is the *asking cluster's* project, not a process-wide one: two Home
+/// surfaces in two clusters get two different answers to `home/state`, each
+/// drawing the project of the work it is sitting in.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSnapshot {
@@ -138,7 +85,10 @@ pub struct ProjectSnapshot {
 ///
 /// A [`ProjectSnapshot`] with the cluster stamped on it. The stamp is the
 /// load-bearing part: `ToolWindow` relays this into app frames, and it must
-/// relay it *only* into frames in `cluster_id` — see the module doc.
+/// relay it *only* into frames in `cluster_id` — an unfiltered relay would
+/// re-root every Files in the process at a project it is not in, the bug the
+/// per-cluster model exists to prevent. Why the payload is a whole snapshot
+/// rather than a delta is in `docs/design-notes/backend-project.md`.
 ///
 /// Written out rather than composed with `#[serde(flatten)]` so the wire shape
 /// is legible from this one declaration; the frontend reads `clusterId`, `open`
@@ -153,9 +103,9 @@ pub struct ProjectChanged {
 
 /// The Recent list, behind a lock.
 ///
-/// All that is left in this state after the open project moved onto the
-/// cluster. `RwLock` for the same reason `AppState` and `ShellState` use one:
-/// read on every Home render, written only when someone opens something.
+/// All that is left in this state once the open project moved onto the cluster.
+/// `RwLock` for the same reason `AppState` and `ShellState` use one: read on
+/// every Home render, written only when someone opens something.
 #[derive(Default)]
 pub struct ProjectState {
     inner: RwLock<store::Stored>,
@@ -176,17 +126,15 @@ pub fn restore(app: &AppHandle) {
 
 /// Take the pre-per-cluster global open project, consuming it.
 ///
-/// **The migration, and it runs once by construction.** `Stored::open` is the
-/// field this module used to be built around; it is now written by nothing and
-/// read only here, so `lib.rs` can move Braden's existing session onto the first
-/// cluster instead of opening the upgraded build to an empty workspace.
-///
-/// Consuming it — taking the value and persisting the `None` — is what makes
-/// "once" a property of the data rather than of a flag someone has to remember
-/// to set. Without that, closing the project in cluster 1 would leave the seed
-/// still sitting in `projects.json`, and the next launch would helpfully open it
-/// again. See [`store::Stored::open`] for why the field is kept at all rather
-/// than deleted outright.
+/// **The migration, and it runs once by construction.** Nothing writes
+/// `Stored::open` now and only this reads it, so `lib.rs` can move an existing
+/// session onto the first cluster instead of opening the upgraded build to an
+/// empty workspace. Consuming it — taking the value and persisting the `None` —
+/// makes "once" a property of the data rather than of a flag someone has to
+/// remember to set; without that, closing the project in cluster 1 would leave
+/// the seed sitting in `projects.json` and the next launch would helpfully open
+/// it again. See [`store::Stored::open`] for why the field is kept rather than
+/// deleted.
 pub fn take_migration_seed(app: &AppHandle) -> Option<PathBuf> {
     let state = app.state::<ProjectState>();
     let mut guard = state.inner.write_or_panic();
@@ -197,47 +145,34 @@ pub fn take_migration_seed(app: &AppHandle) -> Option<PathBuf> {
     taken.filter(|p| p.is_dir())
 }
 
-/// Where a cluster's work actually happens, for everything that needs to
-/// start somewhere: a Files app's root, a new terminal's working directory,
-/// a search's scope.
-///
-/// A worktree wins over the project whenever the cluster has one — see
-/// `ShellState::cluster_root` for why. `None` when that root is no longer on
-/// disk, on top of the plain "no cluster, no root" cases — a caller wanting
-/// a directory to work in should not be handed a path that was true last
-/// week.
-///
-/// That disk filter is why [`cluster_pointer`] exists beside this. The two
-/// differ on exactly one case and it is a case that has to be drawn rather
-/// than hidden: a project whose folder has been deleted or unplugged. This
-/// one says "nowhere to work", which is what a terminal and a file tree need
-/// to hear; that one says "still pointed there", which is what Home needs in
-/// order to draw the row as unavailable instead of claiming nothing is open.
+/// Where a cluster's work actually happens, for everything that needs to start
+/// somewhere: a Files app's root, a new terminal's working directory, a
+/// search's scope. A worktree wins over the project when the cluster has one,
+/// and `None` covers "that root is no longer on disk" as well as "no cluster,
+/// no root" — a caller wanting a directory to work in should not be handed a
+/// path that was true last week. That disk filter is the one case where this
+/// differs from [`cluster_pointer`], and it is drawn rather than hidden;
+/// `docs/design-notes/backend-project.md` has the argument in full.
 pub fn cluster_path(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
     cluster_root_pointer(app, cluster_id).filter(|p| p.is_dir())
 }
 
-/// What a cluster is pointed at, whether or not it is still there.
-///
-/// This is the *project*, never the worktree — deliberately, and unlike
-/// [`cluster_path`] and [`cluster_root_pointer`], which follow a worktree
-/// when one is set. Home draws a deleted project's row as unavailable rather
-/// than as closed, and the title bar names the project a cluster is *about*;
-/// both would misreport if this followed the worktree instead. Nothing here
-/// touches the disk, which is also what makes it the right thing for the
-/// window title to read: retitling should not cost a `stat` on a network
-/// share every time somebody clicks a chip.
+/// What a cluster is pointed at, whether or not it is still there. The
+/// *project*, never the worktree — deliberately, and unlike [`cluster_path`]
+/// and [`cluster_root_pointer`], which follow a worktree when one is set.
+/// Nothing here touches the disk, which is what makes it the right thing for
+/// the window title to read; `docs/design-notes/backend-project.md` has why
+/// both of those choices are load-bearing for Home and the title bar.
 pub fn cluster_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
     app.state::<ShellState>()
         .cluster_project(cluster_id)
         .map(PathBuf::from)
 }
 
-/// What a cluster's work is pointed at, whether or not it is still there —
-/// the worktree-aware counterpart to [`cluster_pointer`], which stays on the
-/// project on purpose. See [`cluster_path`] for the disk-existence filter
-/// this deliberately omits, and `ShellState::cluster_root` for the
-/// precedence itself.
+/// What a cluster's work is pointed at, whether or not it is still there — the
+/// worktree-aware counterpart to [`cluster_pointer`], which stays on the project
+/// on purpose. See [`cluster_path`] for the disk-existence filter this
+/// deliberately omits, and `ShellState::cluster_root` for the precedence itself.
 pub fn cluster_root_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
     app.state::<ShellState>()
         .cluster_root(cluster_id)
@@ -247,22 +182,21 @@ pub fn cluster_root_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf
 /// Everything Home draws, from the asking cluster's point of view.
 ///
 /// `cluster_id` is `None` for a caller with no cluster to speak of — an app
-/// frame whose instance has just been closed, or the shell asking before any
-/// cluster exists. That reads as "nothing open", which is the truthful answer:
-/// there is no cluster whose project could be reported.
+/// frame whose instance has just closed, or the shell asking before any cluster
+/// exists. That reads as "nothing open", the truthful answer: no cluster exists
+/// whose project could be reported.
 pub fn snapshot(app: &AppHandle, cluster_id: Option<&str>) -> ProjectSnapshot {
     let stored = app.state::<ProjectState>().read();
-    // `cluster_pointer`, not `cluster_path`: a project whose folder has been
-    // deleted or unplugged is still the one this cluster is open on, and Home
-    // draws it as unavailable — that is what `ProjectInfo::exists` is for.
-    // Filtering it out here would report "nothing is open" for a cluster whose
-    // title bar is still naming the project, and would silently swap Home's
-    // "this folder is gone" state for its "pick a project" one.
+    // `cluster_pointer`, not `cluster_path`: a project whose folder is deleted
+    // or unplugged is still the one this cluster is open on, and Home draws it
+    // as unavailable — that is `ProjectInfo::exists`. Filtering it out would
+    // report "nothing is open" under a title bar still naming the project, and
+    // swap Home's "this folder is gone" state for its "pick a project" one.
     let open_path = cluster_id.and_then(|id| cluster_pointer(app, id));
 
-    // `last_opened` for the open project comes from the recents entry, which is
-    // the same record — opening a project and recording it are one act, even
-    // though one of them is now the cluster's and the other is global.
+    // `last_opened` for the open project comes from the recents entry, the same
+    // record — opening a project and recording it are one act, even though one
+    // is now the cluster's and the other global.
     let open = open_path.as_ref().map(|path| {
         let last_opened = stored
             .recents
@@ -285,21 +219,20 @@ pub fn snapshot(app: &AppHandle, cluster_id: Option<&str>) -> ProjectSnapshot {
 /// with no manifest opens as one that is not initialized, and the frontend
 /// offers to fix that.
 ///
-/// Two stores are touched and they are deliberately different in scope. The
-/// cluster is pointed at the folder, which is what "open" means now; and the
-/// Recent list is touched, which stays global because it is this machine's
-/// history rather than anything about the place you are working. Opening the
-/// same project in a second cluster is one recent entry, not two.
-/// Finishes via `commands::apply_project_open_preset`, hooked here rather
-/// than at each caller since `create` and `initialize` both end by calling `open`.
+/// Two stores are touched, deliberately different in scope: the cluster is
+/// pointed at the folder, which is what "open" means now, and the Recent list
+/// stays global, so opening the same project in a second cluster is one recent
+/// entry, not two. Finishes via `commands::apply_project_open_preset`, hooked
+/// here rather than at each caller since `create` and `initialize` both end by
+/// calling `open`.
 pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSnapshot> {
     if !path.is_dir() {
         return Err(AppError::NotAProject(path.display().to_string()));
     }
 
-    // The manifest's name wins over the folder's. They are usually the same, but
-    // when they differ it is because someone renamed the folder — and the name
-    // they typed into the project is the one they meant.
+    // The manifest's name wins over the folder's: when they differ it is because
+    // someone renamed the folder, and the name they typed into the project is
+    // the one they meant.
     let name = marker::find(path)
         .and_then(|m| marker::load(&m).ok())
         .map(|m| m.name)
@@ -313,42 +246,38 @@ pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSna
     }
 
     // The lock above is dropped first, for the reason `changed` documents: this
-    // goes through `ShellState::mutate`, which emits and writes to disk, and
-    // holding one store's lock across another's broadcast is how a deadlock
-    // gets written.
+    // goes through `ShellState::mutate`, which emits and writes to disk, and one
+    // store's lock held across another's broadcast is how a deadlock is written.
     let shell = app.state::<ShellState>();
 
-    // The worktree goes before the project does, and it is not optional. A
-    // worktree belongs to the repository it was cut from, so a cluster that was
-    // working in one and is now pointed at a *different* project holds a binding
-    // to a checkout of something else entirely — and since a worktree outranks
-    // the project in `cluster_root`, leaving it set would send this cluster's
-    // terminals, file tree and search into the old project's worktree while the
-    // title bar named the new one. Opening a project is the one moment we know
-    // for certain the old binding cannot still be right.
-    //
-    // Ordered first so that no subscriber ever observes the pair mid-swap: the
-    // intermediate state is "new project, no worktree", which is exactly what a
-    // freshly opened project looks like anyway.
+    // Clearing the worktree is not optional. A worktree belongs to the
+    // repository it was cut from, so a cluster now pointed at a *different*
+    // project holds a binding to a checkout of something else — and since a
+    // worktree outranks the project in `cluster_root`, leaving it set would send
+    // this cluster's terminals, file tree and search into the old project's
+    // worktree while the title bar named the new one. Opening is the one moment
+    // we know for certain the old binding cannot still be right. It goes first
+    // so no subscriber observes the pair mid-swap: the intermediate state is
+    // "new project, no worktree", which is what a freshly opened project looks
+    // like anyway.
     shell.set_cluster_worktree(app, cluster_id, None);
     shell.set_cluster_project(app, cluster_id, Some(path.display().to_string()));
 
     retitle(app);
     commands::apply_project_open_preset(app, cluster_id);
 
-    // The emit lives here rather than in each mutator, because `create` and
-    // `initialize` both finish by calling this: one user-visible change, one
-    // event. Emitting in all four would fire twice for a create, and a
-    // subscriber cannot tell that from two real switches.
+    // The emit lives here rather than in each mutator: `create` and `initialize`
+    // both finish by calling this, so emitting in all four would fire twice for
+    // a create, and a subscriber cannot tell that from two real switches.
     Ok(changed(app, cluster_id))
 }
 
 /// Make `dir` a HELVE project and open it in `cluster_id`.
 ///
-/// The project's name is the folder's, which is why this takes no name argument:
-/// the native folder picker already lets someone create and name a folder, and a
-/// second name field on the way in would be a second thing to keep in agreement
-/// with the first. The manifest can be renamed later; the folder is the project.
+/// The project's name is the folder's, which is why this takes no name
+/// argument: the native folder picker already names a folder, and a second name
+/// field would be a second thing to keep in agreement with the first. The
+/// manifest can be renamed later; the folder is the project.
 pub fn create(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<ProjectSnapshot> {
     std::fs::create_dir_all(dir).map_err(|source| AppError::Io {
         path: dir.display().to_string(),
@@ -359,14 +288,13 @@ pub fn create(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<ProjectSn
     open(app, dir, cluster_id)
 }
 
-/// Write a manifest into a folder that is already open without one — the
-/// "set this up as a HELVE project" action.
+/// Write a manifest into a folder that is already open without one — the "set
+/// this up as a HELVE project" action.
 ///
-/// Separate from [`create`] even though it does nearly the same thing, because
-/// the two answer differently when the folder is already a project: creating
-/// over one is a mistake worth refusing, while initializing one that got
-/// initialized in the meantime is just a no-op the user should not see an error
-/// for.
+/// Separate from [`create`] despite doing nearly the same thing, because the two
+/// answer differently when the folder is already a project: creating over one is
+/// a mistake worth refusing, while initializing one that got initialized in the
+/// meantime is a no-op the user should not see an error for.
 pub fn initialize(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<ProjectSnapshot> {
     if marker::find(dir).is_none() {
         marker::create(dir, &folder_name(dir))?;
@@ -376,16 +304,15 @@ pub fn initialize(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<Proje
 
 /// Point `cluster_id` at nothing, without touching the history.
 ///
-/// Scoped to the one cluster, like every other mutator here. Closing the project
+/// Scoped to the one cluster, like every other mutator here: closing the project
 /// in the cluster you are looking at leaves the cluster on the next monitor
-/// exactly where it was — which is the difference this whole change is about.
+/// exactly where it was.
 pub fn close(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
     let shell = app.state::<ShellState>();
 
-    // Both, for the reason `open` spells out: a worktree left behind by a closed
-    // project outranks the `None` project in `cluster_root`, so a cluster that
-    // was supposed to have nothing open would still be handing out a directory
-    // to work in. Closing the project closes the checkout it was working in.
+    // Both, for the reason `open` spells out: a worktree left behind outranks
+    // the `None` project in `cluster_root`, so a cluster meant to have nothing
+    // open would still hand out a directory to work in.
     shell.set_cluster_worktree(app, cluster_id, None);
     shell.set_cluster_project(app, cluster_id, None);
 
@@ -396,17 +323,15 @@ pub fn close(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
 /// Drop one entry from the Recent list. Deletes nothing on disk — this is the
 /// history forgetting a project, not HELVE removing one.
 ///
-/// The Recent list is global, so this is global too: forgetting a project
-/// forgets it everywhere, whichever cluster asked. `cluster_id` is only here so
-/// the snapshot handed back reports the *asking* cluster's open project, which
-/// is what Home redraws with.
+/// The Recent list is global, so this is too: forgetting forgets everywhere,
+/// whichever cluster asked. `cluster_id` is only here so the snapshot handed
+/// back reports the *asking* cluster's project, which is what Home redraws with.
 ///
 /// The only mutator that does not broadcast, and provably safely: `Stored::
 /// forget` touches `recents` and never any cluster's project, so nothing a
-/// subscriber to `project:changed` acts on can differ afterwards. Home draws the
-/// Recent list and gets the new one as this call's return value. Firing here
-/// would wake every app frame in the cluster to tell it the thing it watches did
-/// not change.
+/// `project:changed` subscriber acts on can differ afterwards. Home gets the new
+/// list as this call's return value; firing would wake every app frame in the
+/// cluster to say the thing it watches did not change.
 pub fn forget(app: &AppHandle, path: &Path, cluster_id: Option<&str>) -> ProjectSnapshot {
     {
         let state = app.state::<ProjectState>();
@@ -425,16 +350,14 @@ pub fn forget(app: &AppHandle, path: &Path, cluster_id: Option<&str>) -> Project
 ///
 /// Same posture as `ShellState::mutate`, deliberately: `app.emit` with the
 /// result dropped. A failed emit means there is no webview left to hear it,
-/// which is not a condition a mutator can act on or a caller can fix — and
-/// turning it into an error would fail an `open` that had already succeeded.
-/// Every caller has dropped the store's write lock before reaching here, for
-/// the reason `mutate` documents: `emit` goes into Tauri's event machinery, and
-/// holding a lock across a call that may want to read the same state is how a
-/// deadlock gets written.
+/// which no mutator can act on and no caller can fix — and turning it into an
+/// error would fail an `open` that had already succeeded.
 ///
-/// The `cluster_id` on the wire is what makes the relay in `ToolWindow` able to
-/// be selective; see the module doc on why an unfiltered relay would undo the
-/// whole change.
+/// Every caller has dropped the store's write lock before reaching here, for the
+/// reason `mutate` documents: `emit` goes into Tauri's event machinery, and a
+/// lock held across a call that may want to read the same state is how a
+/// deadlock gets written. The `cluster_id` on the wire is what lets the relay in
+/// `ToolWindow` be selective; see [`ProjectChanged`].
 fn changed(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
     let snapshot = snapshot(app, Some(cluster_id));
     let _ = app.emit(
@@ -450,11 +373,10 @@ fn changed(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
 
 /// Build a [`ProjectInfo`] by asking the filesystem what is true right now.
 ///
-/// Every field but the cached name is read fresh on each call rather than stored
-/// — a project can be initialized, renamed, or deleted by something that is not
-/// HELVE, and a Recent list that reported its own last belief instead of the
-/// disk's current state would be confidently wrong in exactly the cases that
-/// matter.
+/// Every field but the cached name is read fresh on each call rather than
+/// stored: a project can be initialized, renamed, or deleted by something that
+/// is not HELVE, and a Recent list reporting its own last belief instead of the
+/// disk's would be confidently wrong in exactly the cases that matter.
 fn describe(path: &Path, cached_name: Option<&str>, last_opened: Option<u64>) -> ProjectInfo {
     let exists = path.is_dir();
     let found = if exists { marker::find(path) } else { None };
@@ -503,18 +425,11 @@ fn folder_name(path: &Path) -> String {
 
 /// Put each window's own project in its OS window title.
 ///
-/// The shell draws its own title bar, so this is not what the user reads inside
-/// the app — it is what the taskbar, the alt-tab switcher, and a screen reader
-/// announce. Those are the places where "which HELVE window is this" is a real
-/// question, and the only ones that can answer it are outside the webview.
-///
-/// **Per window, from the cluster that window is showing.** It used to hardcode
-/// `main`, which was correct while there was one project in the process and
-/// silently wrong the moment there were several: two windows working on two
-/// projects would have shown one name in the taskbar, or two entries with the
-/// same one. A window showing a cluster with no project — or showing no cluster
-/// at all — falls back to plain "HELVE" rather than inheriting a neighbour's
-/// name, which would be the same lie in a quieter form.
+/// **Per window, from the cluster that window is showing.** A window showing a
+/// cluster with no project — or showing no cluster at all — falls back to plain
+/// "HELVE" rather than inheriting a neighbour's name. Why the title is per
+/// window at all, and what it is read by, is in
+/// `docs/design-notes/backend-project.md`.
 ///
 /// Called after anything that can change the answer: a project opening or
 /// closing, and every cluster command in `commands.rs` (adding, closing,

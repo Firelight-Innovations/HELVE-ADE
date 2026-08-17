@@ -20,26 +20,20 @@ import "./terminal.css";
  * correct behaviour if either ever did change is to re-wire the transport,
  * not to silently keep talking to the old one.
  *
- * `onTitle` and `onFocus` do not get the same treatment. `TerminalDeck` binds
- * both fresh per session on every render — `onTitle` has to, the callback
- * needs to know which session's title changed, and `onFocus` follows the same
- * shape for the pane it marks focused — so each has a new identity most of
- * the times this component re-renders. Listing either as a dep would tear
- * down and recreate the `Terminal` instance on nearly every render of
- * whatever's above this in the tree, which is exactly the churn the paragraph
- * above says must not happen. Both are read from a ref instead: the effect
- * always calls whatever the latest callback is, without its identity ever
- * being a reason to re-run the effect.
- *
- * `ref` exposes one imperative method, `clear`. Split's "clear the active
- * pane" is the one action here that has to reach into a *specific* mounted
- * instance from outside — `SecondaryPanel`'s action bar isn't a parent of
- * this component, `TerminalDeck` is, so `TerminalDeck` forwards a ref map and
- * this is what each entry in it points at.
+ * `onTitle` and `onFocus` do not get the same treatment; see the refs holding
+ * them below.
  */
 export interface XTermHandle {
-  /** Clears the emulator's own screen. Sends nothing to the pty — see the
-   *  comment on `TerminalDeck`'s `clear` for why that distinction matters. */
+  /**
+   * Clears the emulator's own screen. Sends nothing to the pty — see the
+   * comment on `TerminalDeck`'s `clear` for why that distinction matters.
+   *
+   * The one imperative method `ref` exposes, because split's "clear the active
+   * pane" is the one action here that has to reach into a *specific* mounted
+   * instance from outside: `SecondaryPanel`'s action bar isn't a parent of this
+   * component, `TerminalDeck` is, so `TerminalDeck` forwards a ref map and this
+   * is what each entry in it points at.
+   */
   clear: () => void;
 }
 
@@ -65,6 +59,15 @@ function XTermView(
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
+  // Read from refs rather than listed as effect deps. `TerminalDeck` binds both
+  // fresh per session on every render — `onTitle` has to, the callback needs to
+  // know which session's title changed, and `onFocus` follows the same shape for
+  // the pane it marks focused — so each has a new identity most of the times
+  // this component re-renders. Listing either as a dep would tear down and
+  // recreate the `Terminal` instance on nearly every render of whatever's above
+  // this in the tree, which is exactly the churn the header says must not
+  // happen. This way the effect always calls whatever the latest callback is,
+  // without its identity ever being a reason to re-run the effect.
   const onTitleRef = useRef(onTitle);
   onTitleRef.current = onTitle;
   const onFocusRef = useRef(onFocus);

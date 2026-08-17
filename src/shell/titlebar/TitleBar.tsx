@@ -1,15 +1,14 @@
 /**
- * The title bar — logo, six menus (or their hamburger collapse), the
- * centred window title, and the three window controls.
+ * The title bar — logo, six menus (or their hamburger collapse), the centred
+ * window title, and the three window controls.
  *
  * Every geometry number below is lifted from `docs/handoffs/shell-spec.html`
  * (search `>File<` and the `REFERENCE` table's Title bar row) rather than
  * chosen — see `titlebar.css`'s header comment for the one place that isn't.
  *
- * This component does not set the bar's height or background: `Frame`
- * already renders it into `.frame__titlebar`, which is 34px with the surface
- * colour and the bottom hairline. Setting either here would be two owners of
- * one property.
+ * This component does not set the bar's height or background: `Frame` already
+ * renders it into `.frame__titlebar`, which is 34px with the surface colour and
+ * the bottom hairline. Setting either here would be two owners of one property.
  */
 import type { Menu, WindowKind } from "../contract";
 import { BrandGlyph } from "../../ui/Icon";
@@ -32,12 +31,11 @@ export interface TitleBarProps {
    * The active cluster's worktree branch, or `null`.
    *
    * A **placeholder shape rather than a live value**: nothing populates
-   * `Cluster.worktree` yet, so the segment is simply absent and the layout is
-   * right for the day it is not. It used to draw `useGitStatus`'s branch — the
-   * checkout the *stack manifest* resolved, which was never this cluster's
-   * worktree and only looked like it while there was one project in the process.
-   * Naming the wrong branch beside the right project is worse than naming none,
-   * so it waits for the git work rather than approximating.
+   * `Cluster.worktree` yet, so the segment is absent and the layout is right for
+   * the day it is not. It used to draw `useGitStatus`'s branch — the checkout the
+   * *stack manifest* resolved, which was never this cluster's worktree and only
+   * looked like it while one project was in the process. Naming the wrong branch
+   * beside the right project is worse than naming none, so it waits for the git work.
    */
   worktree: string | null;
   /**
@@ -52,12 +50,11 @@ export interface TitleBarProps {
  * The title is two segments the tabs cannot show.
  *
  * The spec's title was "HELVE Engine — [tool]", and that has been replaced: the
- * surface you are looking at is already named by the tab you clicked to get to
- * it, an arm's length below this, so repeating it here spent the most legible
- * strip in the window on the one fact nothing else could hide. What the tabs
- * cannot say is *which project* and *which checkout* — both change under you
- * (Open Recent, a branch switched in a terminal) and both decide what every
- * other action in this window will touch.
+ * surface you are looking at is already named by the tab an arm's length below,
+ * so repeating it here spent the most legible strip in the window on the one
+ * fact nothing else could hide. What the tabs cannot say is *which project* and
+ * *which checkout* — both change under you (Open Recent, a branch switched in a
+ * terminal) and both decide what every other action in this window will touch.
  */
 export default function TitleBar({ kind, project, worktree, menus }: TitleBarProps) {
   const narrow = useNarrowTitlebar();

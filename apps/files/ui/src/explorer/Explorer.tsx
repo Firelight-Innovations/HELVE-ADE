@@ -10,11 +10,6 @@
  * contents are `useTree.ts`, which slice of them is in the DOM is
  * `useVirtualRows.ts`, and a row's markup is `TreeRow.tsx`.
  *
- * What it deliberately does not own: which file is open. That is `App.tsx`'s,
- * arriving as `selectedPath` and leaving as `onOpenFile`. The tree can be
- * driven from the tab strip for free as a result, and clicking a row does not
- * have to know what a tab is.
- *
  * No motion anywhere, and no framer-motion import at all — see `TreeRow.tsx`'s
  * header, and `src/shell/worktree/WorktreeView.tsx` for the rule both inherit.
  * It used to appear here for exactly one thing, the pane's own width during a
@@ -171,7 +166,14 @@ const Explorer = forwardRef<
     root: Root | null;
     /** A change means "drop the cache and re-list whatever is open". */
     reloadNonce: number;
-    /** The file showing in the viewer, which may have been opened from a tab. */
+    /**
+     * The file showing in the viewer, which may have been opened from a tab.
+     *
+     * Which file is open is deliberately not this file's to own. It is
+     * `App.tsx`'s, arriving here and leaving as `onOpenFile`. The tree can be
+     * driven from the tab strip for free as a result, and clicking a row does
+     * not have to know what a tab is.
+     */
     selectedPath: string | null;
     /**
      * The root has been listed, or has failed to be — the point at which this
@@ -806,14 +808,6 @@ function emptyNote(
 }
 
 /**
- * Re-read the open folders.
- *
- * Tabler's outline "refresh" at 2px in a 24×24 box, per the rule in
- * `src/ui/Icon.tsx` for a glyph the handoff never drew. Authored here rather
- * than imported for the reason given on `TreeRow.tsx`'s chevron: an app does
- * not reach into `src/`.
- */
-/**
  * Toggle to the deleted list.
  *
  * Tabler's outline "trash" at 2px in a 24×24 box, authored here for the same
@@ -840,6 +834,14 @@ function Bin() {
   );
 }
 
+/**
+ * Re-read the open folders.
+ *
+ * Tabler's outline "refresh" at 2px in a 24×24 box, per the rule in
+ * `src/ui/Icon.tsx` for a glyph the handoff never drew. Authored here rather
+ * than imported for the reason given on `TreeRow.tsx`'s chevron: an app does
+ * not reach into `src/`.
+ */
 function Refresh() {
   return (
     <svg

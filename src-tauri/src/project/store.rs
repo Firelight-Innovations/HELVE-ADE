@@ -11,18 +11,10 @@
 //! machine has opened is not a fact about any one of them, so it stays here.
 //!
 //! It lives in the OS's config directory for this app, not in the repo and not
-//! beside any project. It is about *this machine's* history with projects, which
-//! is not a fact about any one of them and must not end up in someone's version
-//! control.
+//! beside any project: it is about *this machine's* history with projects, and
+//! must not end up in someone's version control.
 //!
-//! ## Never fatal
-//!
-//! Every read here degrades to [`Stored::default`]. A recents file that is
-//! missing, truncated by a power cut, or written by a future build must not stop
-//! HELVE from starting — the worst honest outcome of a corrupt file is an empty
-//! Recent list, and that is a great deal better than an app that will not open.
-//! The write side is what makes that rare: it writes a temp file and renames it,
-//! so a reader either sees the whole previous file or the whole new one.
+//! Reading it is never fatal — see [`load`].
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -47,14 +39,13 @@ pub struct Stored {
     /// field this module was built around. A project belongs to a cluster now,
     /// so the authority moved to `Cluster::project` in `layout.json`.
     ///
-    /// Kept rather than deleted, and the choice is worth stating because
-    /// deleting it is the tidier-looking option. It is kept because there is a
-    /// real user with a real `projects.json` — Braden's — holding a path this
-    /// build would otherwise throw away on its first save, and the upgraded
-    /// session would come back with an empty workspace and no way to find out
-    /// why. `project::take_migration_seed` reads it exactly once, moves it onto
-    /// the first cluster, and writes `None` back; from then on it serializes as
-    /// `null` and costs one line in a JSON file.
+    /// Kept rather than deleted, though deleting is the tidier-looking option,
+    /// because there is a real user with a real `projects.json` — Braden's —
+    /// holding a path this build would otherwise throw away on its first save,
+    /// leaving the upgraded session with an empty workspace and no way to find
+    /// out why. `project::take_migration_seed` reads it exactly once, moves it
+    /// onto the first cluster, and writes `None` back; from then on it
+    /// serializes as `null` and costs one line in a JSON file.
     ///
     /// It is not kept as a fallback for "no cluster has a project". That state
     /// is legal and ordinary — a new cluster, or one whose project was closed —
@@ -105,7 +96,13 @@ impl Stored {
     }
 }
 
-/// Read the store, or start empty. Never fails — see the module doc.
+/// Read the store, or start empty. **Never fatal:** every read here degrades to
+/// [`Stored::default`]. A recents file that is missing, truncated by a power
+/// cut, or written by a future build must not stop HELVE from starting — the
+/// worst honest outcome of a corrupt file is an empty Recent list, and that is a
+/// great deal better than an app that will not open. [`save`] is what makes that
+/// rare: it writes a temp file and renames it, so a reader either sees the whole
+/// previous file or the whole new one.
 pub fn load(app: &AppHandle) -> Stored {
     let Some(path) = file(app) else {
         return Stored::default();

@@ -5,29 +5,13 @@
 //! `docs/tool-protocol.md`. What differs is where the two halves come from, and
 //! that difference is the whole reason apps are their own concept.
 //!
-//! A **tool** is another repository. Its frontend is served out of its own
-//! checkout, and its Rust core is a child process the shell spawns and talks to
-//! over the standard streams — two processes, two transports, joined by a broker
-//! that is not built yet.
-//!
-//! An **app** ships inside the orchestrator. Its frontend is an extra entry
-//! point in this repo's own Vite config, so it is served by the same asset host
-//! the shell is, and its Rust half is a module right here — reached over
-//! transport B, dispatched by [`call`] below, with no child process and no
-//! broker in between.
-//!
-//! That last part is a deliberate choice, not a shortcut. Home and Files exist
-//! to show what the orchestrator already knows: the stack snapshot, the open
-//! project, the filesystem. Putting a pipe between the shell and a process that
-//! would only have to ask the shell for all of it again is shipping an IPC
-//! boundary in order to talk to ourselves. A tool needs that boundary because it
-//! is someone else's code on its own release cycle; an app is this code.
-//!
-//! What the two do share is the *frontend* contract. An app's UI imports
-//! `@helve/bridge` and calls `invoke("home/stack")` exactly as a tool's UI calls
-//! `invoke("echo")`, and neither one knows which kind of host answered. So an
-//! app can become a tool later — or a tool be absorbed into the shell — without
-//! its interface code changing.
+//! A **tool** is another repository: its frontend is served out of its own
+//! checkout, its Rust core is a child process the shell spawns and talks to over
+//! the standard streams — two processes, two transports, joined by a broker that
+//! is not built yet. An **app** ships inside the orchestrator: its frontend is an
+//! extra entry point in this repo's own Vite config, its Rust half a module right
+//! here, reached over transport B and dispatched by [`call`] below — no child
+//! process, no broker in between.
 
 mod files;
 mod home;
@@ -74,18 +58,19 @@ pub struct AppInfo {
 /// then touches this declaration and [`resolve`](Self::resolve) and nothing
 /// else — where widening a positional parameter would touch every `Dispatch` in
 /// the registry and every call site inside them.
-///
-/// Both fields are `Option`, and both `None` is an ordinary state rather than a
-/// failure: a call can arrive with no instance id (the shell's own menu
-/// actions), from an instance whose tab has just closed, or from a cluster
-/// nobody has pointed at a project yet. Each app decides what it can still do —
-/// Files falls back to the stack root, Home draws the pick-a-project state.
 #[derive(Debug, Clone, Default)]
 pub struct CallContext {
     /// The cluster the calling surface is in. What Home *writes* a project to.
+    ///
+    /// `None` is an ordinary state rather than a failure: a call can arrive with
+    /// no instance id (the shell's own menu actions) or from an instance whose
+    /// tab has just closed. Home draws the pick-a-project state for it.
     pub cluster_id: Option<String>,
     /// That cluster's project, already checked against the disk. What Files
     /// *reads* a root from.
+    ///
+    /// `None` when nobody has pointed this cluster at a project yet — again an
+    /// ordinary state, and Files falls back to the stack root for it.
     pub project: Option<PathBuf>,
 }
 
@@ -136,6 +121,14 @@ impl CallContext {
 }
 
 /// An app's Rust half: the function every `invoke` from its frontend lands in.
+///
+/// A function pointer and not a child process, deliberately, and not as a
+/// shortcut. Home and Files exist to show what the orchestrator already knows —
+/// the stack snapshot, the open project, the filesystem — and putting a pipe
+/// between the shell and a process that would only have to ask the shell for it
+/// all again ships an IPC boundary in order to talk to ourselves. A tool needs
+/// that boundary because it is someone else's code on its own release cycle; an
+/// app is this code.
 ///
 /// `helve/hello` never reaches one of these. The shell answers the handshake
 /// itself in `ToolWindow.tsx` — it is the side that knows the session, and an
@@ -276,33 +269,20 @@ pub struct Openable {
 
 /// Everything the Apps menu can open: every app, then a terminal.
 ///
-/// ## Why this is a second list and not a wider `REGISTRY`
-///
-/// `REGISTRY`'s definition of an app is precise and load-bearing — a frontend
-/// that is an entry point of this repo's own Vite build, and a Rust half in this
-/// module reached over transport B. A terminal has neither. It has no frontend
-/// to serve, no `Dispatch` to route an `invoke` to, and a `SurfaceKind` of its
-/// own. An entry in `REGISTRY` with an absent URL and an absent dispatch would
-/// not be an app with two holes in it; it would be a different kind of thing
-/// wearing an app's struct, and every consumer of `REGISTRY` would need a new
-/// branch to say so.
-///
-/// Three of those consumers make the cost concrete, and all three are silent
-/// failures rather than compile errors:
-///
-///   * [`roster`] is what boot blocks on until each app reports a painted
-///     frame. A terminal has no frame to report, so a terminal in the roster is
-///     a splash screen that waits out its full timeout on **every launch**.
-///   * [`is_app`] gates `tool_frontend::resolve`, and a `true` there sends
-///     something looking for a frontend down a path that has none.
-///   * [`call`] would find a row with no dispatch to call.
+/// A second list and not a wider `REGISTRY`, because `REGISTRY`'s definition of
+/// an app is precise and load-bearing — a frontend that is an entry point of
+/// this repo's own Vite build, and a Rust half in this module reached over
+/// transport B — and a terminal has neither. A row there with an absent URL and
+/// an absent dispatch would not be an app with two holes in it; it would be a
+/// different kind of thing wearing an app's struct, and [`roster`], [`is_app`]
+/// and [`call`] would each need a new branch to say so — three silent failures
+/// rather than three compile errors. `docs/design-notes/backend-apps.md` spells
+/// out what each of the three does today.
 ///
 /// So the union happens here, in one function, and nowhere else. It is in this
 /// file rather than in the frontend because the menu's list has always come from
-/// Rust — an app added to `REGISTRY` appears in both menu surfaces without a
-/// second edit in a file whose author would have no reason to look — and that
-/// property is worth keeping even for the one row that will never be in
-/// `REGISTRY`.
+/// Rust: an app added to `REGISTRY` appears in both menu surfaces without a
+/// second edit in a file whose author would have no reason to look.
 ///
 /// The terminal comes last, after the apps, because the apps are the things this
 /// build is *about* and the ordering should not shuffle when one is added.
@@ -375,6 +355,12 @@ pub fn entry_url(id: &str) -> String {
 /// none of them holds per-instance state. What the instance decides is not
 /// which handler runs but *where* it runs — see [`CallContext`], which the
 /// caller has already resolved.
+///
+/// This is the half an app does *not* share with a tool; the *frontend* contract
+/// it does. An app's UI imports `@helve/bridge` and calls `invoke("home/stack")`
+/// exactly as a tool's UI calls `invoke("echo")`, and neither one knows which
+/// kind of host answered. So an app can become a tool later — or a tool be
+/// absorbed into the shell — without its interface code changing.
 pub fn call(
     app: &AppHandle,
     context: &CallContext,
@@ -462,19 +448,18 @@ mod tests {
     /// [`CallContext::resolve`] takes the instance id the shell resolved from
     /// `event.source` and asks which cluster's pane tree holds it. Nothing on
     /// that path — not `resolve`, not `cluster_of_instance`, not
-    /// `project::cluster_path` — is handed an app id at all, so a `viewer`
-    /// frame in a cluster resolves the same project, and the same worktree, as
-    /// a `files` frame beside it. This test cannot reach into that path (it
-    /// needs an `AppHandle`), but it guards the one thing that would make the
-    /// argument stop holding: the day someone gives the Viewer a dispatch of
-    /// its own is the day it could start resolving a root differently, and this
-    /// fails then rather than silently.
+    /// `project::cluster_path` — is handed an app id, so a `viewer` frame
+    /// resolves the same project, and the same worktree, as a `files` frame
+    /// beside it. This test cannot reach into that path (it needs an
+    /// `AppHandle`), but it guards what would make the argument stop holding:
+    /// the day the Viewer gets a dispatch of its own is the day it could start
+    /// resolving a root differently, and this fails then rather than silently.
     ///
-    /// Why it matters concretely: `files/git-status`, `files/git-hunks` and
-    /// `files/git-head` decorate against whatever checkout the context names.
-    /// A Viewer that resolved a different one would draw a dirty-diff gutter
+    /// Why it matters: `files/git-status`, `files/git-hunks` and
+    /// `files/git-head` decorate against whatever checkout the context names. A
+    /// Viewer that resolved a different one would draw a dirty-diff gutter
     /// against the wrong worktree — no error, no failed call, just wrong hunks,
-    /// which is the shape of bug that outlives everyone who could recognise it.
+    /// the shape of bug that outlives everyone who could recognise it.
     #[test]
     fn two_apps_in_one_cluster_resolve_the_same_context() {
         let dispatch = |id: &str| {

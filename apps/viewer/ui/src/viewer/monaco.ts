@@ -3,94 +3,46 @@
  *
  * Everything Monaco-shaped is here — the worker environment, the feature
  * contributions, the language registrations, the theme, and the two factory
- * functions a component needs — so that `TextViewer.tsx` reads as a React
- * component and nothing else in `apps/files/` imports Monaco at all. The one
- * exception is a *type-only* import in `tabs/useOpenFiles.ts`, which `import
- * type` erases before Rollup ever sees it; see the note there.
+ * functions a component needs — so `TextViewer.tsx` reads as a React component
+ * and nothing else in `apps/files/` imports Monaco at all. The one exception is
+ * a *type-only* import in `tabs/useOpenFiles.ts`, which `import type` erases
+ * before Rollup ever sees it; see the note there.
  *
  * That matters beyond tidiness. `apps/` is not a pnpm workspace member, so
  * Monaco sits in the repository root's dependencies with nothing scoping it to
- * this app. The only thing keeping it out of the Files entry chunk — and out of
- * the shell's — is that the sole runtime path to this file is the dynamic
- * `import()` behind the `text` viewer in `registry.ts`. **Nothing may import
- * this module statically from anything reachable at load.**
- *
- * What this deliberately does not do:
- *
- * - No `editor.main`. That barrel registers every bundled language *and* the
- *   full TypeScript/CSS/HTML/JSON IntelliSense infrastructure as an import side
- *   effect — four more worker chunks and every Monarch grammar Monaco ships,
- *   for an editor that needs a dozen of them.
- * - No `languages/features/typescript`. TypeScript and JavaScript get the
- *   Monarch tokenizer from `languages/definitions/` — colour, brackets,
- *   comments — but no IntelliSense, because `ts.worker` is the single largest
- *   chunk Monaco can produce and this is a file editor, not an IDE. Same
- *   reasoning for `languages/features/css` and `.../html`, whose definitions
- *   entries also give tokenization without a language service. JSON is the one
- *   exception, argued for below.
- * - No diff editor wiring. `src/shell/diff/DiffView.tsx` has its own; see the
- *   theme note below for what happens when that one moves in here.
+ * this app; the only thing keeping it out of the Files entry chunk, and out of
+ * the shell's, is that the sole runtime path here is the dynamic `import()`
+ * behind the `text` viewer in `registry.ts`. **Nothing may import this module
+ * statically from anything reachable at load.** What it deliberately does not
+ * do — no `editor.main`, no `languages/features/typescript`, no diff editor
+ * wiring — and why, is in `docs/design-notes/viewer-renderers.md`.
  */
 import * as monaco from "monaco-editor/editor/editor.api";
 import type { GitHunk } from "./gitHunks";
 import { loadSettings, type SettingsReader } from "../settings";
 
 /**
- * Every editor contribution Monaco ships.
+ * Every editor contribution Monaco ships. `editor.api` alone has no
+ * find/replace, no context menu, no folding, no bracket matching, no
+ * multi-cursor, no comment toggle, no clipboard actions and no Alt+↑/↓ — none of
+ * which are optional in a text editor.
  *
- * `editor.api` on its own is bare API. An editable pane built from it alone has
- * no find/replace, no context menu, no folding, no bracket matching, no
- * multi-cursor, no comment toggle, no clipboard actions and no Alt+↑/↓ — none
- * of which are optional in a text editor.
- *
- * The whole barrel, and that is a *measured* decision rather than the lazy one.
- * DO NOT REDO THIS EXPERIMENT; here is what it found (monaco-editor 0.56, Vite
- * 7, `pnpm build`, chunk sizes as Vite reports them):
- *
- *   chunk               register.all      curated        delta
- *   TextViewer.js         3,859.44 kB   3,440.32 kB    -419.12 kB
- *   jsonMode.js              54.16 kB     478.73 kB    +424.57 kB
- *   TOTAL minified        3,913.60 kB   3,919.05 kB      +5.45 kB
- *   TOTAL gzip            1,014.41 kB   1,017.36 kB      +2.95 kB
- *
- * The curated build dropped ten contributions that are provably inert in this
- * app — codelens, dropOrPasteInto, gpu, inlayHints, inlineCompletions,
- * linkedEditing, parameterHints, rename, semanticTokens, stickyScroll — every
- * one of which needs a provider that nothing here registers. It looked like it
- * saved 419 kB off `TextViewer`. **It saved nothing.** Almost exactly that much
- * reappeared in `jsonMode`: those modules were reachable from the dropped
- * features' static graph, and with the features gone Rollup could no longer
- * hoist them out of the one dynamic chunk that still needs them. Total bytes
- * went *up* by 5.45 kB.
- *
- * So the trade was: 419 kB deferred out of the chunk every text file loads and
- * into the chunk only a `.json` file loads, at the price of 54 hand-maintained
- * import lines whose failure mode — a feature silently absent — is invisible,
- * and which would have to be revisited the day a language service is added (a
- * TypeScript worker turns rename, parameterHints, inlayHints and semanticTokens
- * back into live features). Under the ~500 kB bar this was weighed against, and
- * a wash in total bytes, that is not worth the correctness margin: this is a
- * lazily-loaded chunk served off Tauri's local asset host, so the cost is parse
- * time, once, with no network in it.
- *
- * What would actually move this number is not curation. It is the ~28 MB of
- * `esm/vs` that the core editor pulls in regardless of which contributions are
- * listed. If this chunk ever has to shrink for real, that is where to look.
+ * The whole barrel is a *measured* decision, not the lazy one. **DO NOT REDO
+ * THIS EXPERIMENT**: curating the list saved 419 kB off `TextViewer` and put
+ * almost exactly that much back into `jsonMode`, for +5.45 kB in total. The
+ * numbers, the ten contributions dropped, the trade refused, and what would
+ * actually move this figure are in `docs/design-notes/viewer-renderers.md`.
  */
 import "monaco-editor/features/register.all";
 
 /**
- * A curated set of languages, one `register.js` each.
- *
- * Each of these registers an id and a *lazy* loader, so the grammar itself is a
- * chunk fetched the first time a file of that language opens. The cost of
- * listing one here is therefore a few hundred bytes, not a grammar.
- *
- * `javascript` is its own entry: the `typescript` definition registers only the
- * `typescript` id, and a `.js` file left to it gets no highlighting at all.
- * (Verified by reading both `register.js` files, not assumed.)
- *
- * Adding a language is one line here plus one row in `LANGUAGE_BY_EXTENSION`.
+ * A curated set of languages, one `register.js` each. Each registers an id and a
+ * *lazy* loader, so the grammar itself is a chunk fetched the first time a file
+ * of that language opens: listing one here costs a few hundred bytes, not a
+ * grammar, and adding a language is one line here plus one row in
+ * `LANGUAGE_BY_EXTENSION`. `javascript` is its own entry — the `typescript`
+ * definition registers only the `typescript` id, and a `.js` file left to it
+ * gets no highlighting at all. (Verified by reading both `register.js` files.)
  */
 import "monaco-editor/languages/definitions/rust/register";
 import "monaco-editor/languages/definitions/typescript/register";
@@ -106,12 +58,11 @@ import "monaco-editor/languages/definitions/xml/register";
 import "monaco-editor/languages/definitions/ini/register";
 
 /**
- * JSON is the exception: a real language service, not just a tokenizer.
- *
- * There is no `languages/definitions/json` — this module *is* how the `json`
- * language id comes to exist, and it brings validation, hover, completion,
- * folding, colour decorators and formatting with it. Worth its worker for a
- * file editor whose users open `package.json` and `tsconfig.json` daily.
+ * JSON is the exception: a real language service, not just a tokenizer. There is
+ * no `languages/definitions/json` — this module *is* how the `json` id comes to
+ * exist, and it brings validation, hover, completion, folding, colour decorators
+ * and formatting with it. Worth its worker for a file editor whose users open
+ * `package.json` and `tsconfig.json` daily.
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
@@ -128,33 +79,22 @@ import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker
  * `createWorker` a language service supplied. So a single-worker environment
  * does not merely skip the JSON service, it actively breaks it — the first JSON
  * hover, completion, colour decorator or folding request is handed the generic
- * editor worker, which has no `jsonWorker` module, and the request never
- * settles. `diagnosticsOptions.validate: false` does not prevent that; the
- * other nine `modeConfiguration` flags all default to true.
- *
- * The alternative was to keep one worker and switch every JSON mode flag except
- * `tokens` off. Rejected: it costs the whole JSON language service to save a
- * chunk that is lazily fetched anyway, and it leaves a live footgun — anyone
- * turning a flag back on gets a hang rather than a missing feature.
- *
- * Expect two JSON worker chunks in the build regardless. `workerManager.js`
- * contains a literal `new Worker(new URL('json.worker.js', import.meta.url))`
- * that Vite's `vite:worker-import-meta-url` plugin emits by static analysis,
- * reachable at runtime or not. The `?worker` import above is the second. That
- * is expected, not a bug.
+ * editor worker, which has no `jsonWorker` module, and never settles.
+ * `diagnosticsOptions.validate: false` does not prevent that; the other nine
+ * `modeConfiguration` flags all default to true. The rejected one-worker
+ * alternative, and why two JSON worker chunks in the build are expected rather
+ * than a bug, are in `docs/design-notes/viewer-renderers.md`.
  */
 self.MonacoEnvironment = {
   getWorker: (_workerId, label) => (label === "json" ? new JsonWorker() : new EditorWorker()),
 };
 
 /**
- * No schema fetching, ever.
- *
- * `false` is already the default, pinned here because it is a network-egress
- * property rather than a preference: a desktop file editor that quietly fetched
- * `$schema` URLs off the internet whenever someone opened a JSON file would be
- * doing something its user did not ask for. Structural validation still works;
- * only remote schema resolution is off.
+ * No schema fetching, ever. `false` is already the default, pinned here because
+ * it is a network-egress property rather than a preference: a desktop file
+ * editor that quietly fetched `$schema` URLs off the internet whenever someone
+ * opened a JSON file would be doing something its user did not ask for.
+ * Structural validation still works; only remote schema resolution is off.
  */
 jsonDefaults.setDiagnosticsOptions({
   ...jsonDefaults.diagnosticsOptions,
@@ -164,51 +104,37 @@ jsonDefaults.setDiagnosticsOptions({
 /**
  * TOML, which Monaco does not ship and this app cannot do without.
  *
- * The grammar used to be `./toml.ts`, written for this editor. It has moved to
- * `@helve/monaco-languages`, unchanged, because there are now three editors in
- * HELVE that need it and only two of them are in this app's half of the
- * repository — `src/` and `apps/files/` may not import each other, so a package
- * is the only ground all three can stand on. That file still argues for its own
- * existence and still lists what the `ini` stand-in it replaced got wrong.
- *
- * Called here rather than at import time inside the package so that the rule at
- * the top of this file still holds: one module touches `monaco-editor`, and the
- * package it takes the grammar from touches it only as a type.
+ * The grammar has moved from `./toml.ts` to `@helve/monaco-languages`,
+ * unchanged, because three editors in HELVE now need it and `src/` and
+ * `apps/files/` may not import each other — a package is the only ground all
+ * three can stand on. That file still argues for its own existence and still
+ * lists what the `ini` stand-in it replaced got wrong. Called here rather than
+ * at import time inside the package, so the rule at the top of this file holds:
+ * the package touches `monaco-editor` only as a type.
  */
 registerToml(monaco);
 
 /**
- * The editor theme, defined once at module scope.
- *
- * Not per-mount: `defineTheme` writes into Monaco's global theme registry, so
- * redefining it on every editor would be repeated work for no visual change.
+ * The editor theme, defined once at module scope — not per-mount: `defineTheme`
+ * writes into Monaco's global theme registry, so redefining it on every editor
+ * would be repeated work for no visual change.
  *
  * Named `helve-dark`, the same as `src/shell/diff/DiffView.tsx`'s copy. Two
  * definitions of one name is a real hazard — whichever module evaluates last
- * wins — and it is tolerated only because the two never load together today:
- * nothing in the shell imports `DiffView`. That copy retires when the diff
- * viewer moves into Files and can extend this one.
+ * wins — tolerated only because the two never load together today: nothing in
+ * the shell imports `DiffView`. That copy retires when the diff viewer moves in.
  *
  * **Every colour below is a value from `src/tokens.css`, named in the comment
- * beside it.** Monaco's theme API takes colour *strings*, so this is the one
- * place in the app where a literal hex is unavoidable — which is exactly why
- * the comments are mandatory rather than decorative.
- *
- * Alphas are 8-digit `#RRGGBBAA`, not `rgba()`. Monaco parses theme colours
- * with `Color.fromHex`, which understands `#RGB`, `#RGBA`, `#RRGGBB` and
- * `#RRGGBBAA` and **silently returns opaque red for anything else** — including
- * a perfectly valid `rgba(...)` string. The two-hex-digit suffix is
- * `round(alpha * 255)`; the alphas themselves follow the `--accent-wash`
- * convention already in tokens.css.
+ * beside it**, and alphas are 8-digit `#RRGGBBAA`, never `rgba()`: `Color.fromHex`
+ * **silently returns opaque red** for anything else, a valid `rgba(...)`
+ * included. That, and why each group takes the token it does, is in
+ * `docs/design-notes/viewer-renderers.md`.
  */
 export const THEME = "helve-dark";
 
 monaco.editor.defineTheme(THEME, {
   base: "vs-dark",
-  // Syntax token colours are inherited from vs-dark rather than restated. The
-  // handoff's palette names UI surfaces, not grammar scopes, so inventing a
-  // token colour here would be inventing a colour, which this file may not do.
-  inherit: true,
+  inherit: true, // syntax token colours stay vs-dark's; see the design note
   rules: [],
   colors: {
     // --- the page ---------------------------------------------------------
@@ -218,26 +144,17 @@ monaco.editor.defineTheme(THEME, {
     "editorLineNumber.foreground": "#4a505b", // --text-faint
     "editorLineNumber.activeForeground": "#949cab", // --text-dim
 
-    // The current line, one step up from the page — the same step `--surface`
-    // makes against `--bg` everywhere else in the product. The border is set to
-    // the same value rather than to a transparent black, so vs-dark's default
-    // outline disappears without this file naming a colour that is not a token.
+    // --- the current line -------------------------------------------------
     "editor.lineHighlightBackground": "#1b1e24", // --surface
     "editor.lineHighlightBorder": "#1b1e24", // --surface
 
     // --- selection and cursor ---------------------------------------------
-    // Accent, because tokens.css gives `--accent` to focus, and a selection is
-    // where focus is. Three strengths: the live selection, the same selection
-    // once the editor loses focus, and other occurrences of the selected text.
     "editor.selectionBackground": "#d98a3f40", // --accent @ 0.25
     "editor.inactiveSelectionBackground": "#d98a3f1f", // --accent @ 0.12
     "editor.selectionHighlightBackground": "#d98a3f14", // --accent-wash
     "editorCursor.foreground": "#d98a3f", // --accent
 
-    // --- find -------------------------------------------------------------
-    // `--warn`, not `--accent`: a find match is not focus, and drawing it in
-    // the focus colour next to a selection drawn in the focus colour would make
-    // the two unreadable against each other.
+    // --- find (`--warn`, not `--accent`: a match is not focus) -------------
     "editor.findMatchBackground": "#d9a93f59", // --warn @ 0.35
     "editor.findMatchHighlightBackground": "#d9a93f2e", // --warn @ 0.18
     "editor.findRangeHighlightBackground": "#d9a93f14", // --warn @ 0.08
@@ -245,8 +162,7 @@ monaco.editor.defineTheme(THEME, {
     // --- structure --------------------------------------------------------
     "editorBracketMatch.background": "#22262e", // --surface-2
     "editorBracketMatch.border": "#d98a3f73", // --accent-line
-    // The numbered keys are 0.56's; the unsuffixed `editorIndentGuide.*` names
-    // are deprecated aliases and are not restated.
+    // The numbered keys are 0.56's; the unsuffixed aliases are deprecated.
     "editorIndentGuide.background1": "#2c313b", // --line
     "editorIndentGuide.activeBackground1": "#3a404b", // --line-2
     "editorWhitespace.foreground": "#3a404b", // --line-2
@@ -258,23 +174,13 @@ monaco.editor.defineTheme(THEME, {
     "scrollbarSlider.hoverBackground": "#3a404bb3", // --line-2 @ 0.70
     "scrollbarSlider.activeBackground": "#3a404b", // --line-2
 
-    // --- minimap ----------------------------------------------------------
-    // The minimap is page, not chrome, so it takes `--bg` and disappears into
-    // the editor beside it — vs-dark's default would draw a lighter column
-    // along the right edge and read as a second pane.
-    //
-    // Its slider is the scrollbar's, one step quieter at rest: the minimap
-    // *is* a scrollbar, and two different sliders on one edge would look like
-    // two different controls.
+    // --- minimap (page, not chrome; its slider is the scrollbar's) ---------
     "minimap.background": "#14161a", // --bg
     "minimapSlider.background": "#2c313b4d", // --line @ 0.30
     "minimapSlider.hoverBackground": "#2c313b80", // --line @ 0.50
     "minimapSlider.activeBackground": "#3a404bb3", // --line-2 @ 0.70
 
-    // --- the widgets the feature barrel brings with it ---------------------
-    // Find, hover, suggest and the context menu all float above the page, so
-    // they take `--surface` and a `--line` hairline like every other floating
-    // panel in the shell.
+    // --- the widgets the feature barrel brings with it (floating panels) ---
     "editorWidget.background": "#1b1e24", // --surface
     "editorWidget.foreground": "#e4e7ec", // --text
     "editorWidget.border": "#2c313b", // --line
@@ -296,9 +202,7 @@ monaco.editor.defineTheme(THEME, {
     "input.border": "#3a404b", // --line-2
     focusBorder: "#d98a3f", // --accent
 
-    // --- diagnostics ------------------------------------------------------
-    // Only JSON produces these today; the mapping is the shell's, so it stays
-    // right when a second language service arrives.
+    // --- diagnostics (only JSON produces these today) ----------------------
     "editorError.foreground": "#d9635f", // --err
     "editorWarning.foreground": "#d9a93f", // --warn
     "editorInfo.foreground": "#949cab", // --text-dim
@@ -311,12 +215,10 @@ export type CodeEditor = monaco.editor.IStandaloneCodeEditor;
 export type EditorViewState = monaco.editor.ICodeEditorViewState;
 
 /**
- * Extension → language id. The one place a filename becomes a grammar.
- *
- * Keys are lowercase and dot-less, matching `extensionOf` in `../rpc`. Anything
- * absent gets no language and renders as plain text, which is the correct
- * answer for a file this app has no grammar for — a wrong grammar is worse than
- * none.
+ * Extension → language id, the one place a filename becomes a grammar. Keys are
+ * lowercase and dot-less, matching `extensionOf` in `../rpc`. Anything absent
+ * gets no language and renders as plain text, the correct answer for a file this
+ * app has no grammar for — a wrong grammar is worse than none.
  */
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   rs: "rust",
@@ -361,22 +263,17 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   cfg: "ini",
 
   /**
-   * TOML, and HELVE's own two files with it.
+   * TOML, and HELVE's own two files with it. These used to point at `ini` as an
+   * admitted stand-in; they now point at a real grammar.
    *
-   * These used to point at `ini` as an admitted stand-in. They now point at a
-   * real grammar — `./toml.ts` — which is the follow-up the old note here asked
-   * for by name.
-   *
-   * `helve` is in this table rather than being left to the plaintext fallback
-   * because a `<project>.helve` marker *is* TOML: `project/marker.rs` reads one
-   * with `raw.parse::<toml::Table>()`, and `create` writes one with `[helve]`
-   * and `[project]` tables in it. The extension is HELVE's; the format is not,
-   * and pretending otherwise would mean a second grammar to keep in step with
-   * this one.
-   *
-   * This is also the pairing that makes the icon work land: `.helve` gets the
-   * HELVE glyph from `packages/file-icons/src/index.ts` *and* the colour of the format it
-   * actually is.
+   * `helve` is in this table rather than left to the plaintext fallback because
+   * a `<project>.helve` marker *is* TOML: `project/marker.rs` reads one with
+   * `raw.parse::<toml::Table>()`, and `create` writes one with `[helve]` and
+   * `[project]` tables in it. The extension is HELVE's; the format is not, and
+   * pretending otherwise would mean a second grammar to keep in step with this
+   * one. It is also the pairing that makes the icon work land: `.helve` gets the
+   * HELVE glyph from `packages/file-icons/src/index.ts` *and* the colour of the
+   * format it actually is.
    */
   toml: "toml",
   helve: "toml",
@@ -388,22 +285,18 @@ export function languageFor(extension: string): string | undefined {
 }
 
 /**
- * The buffer behind one open tab.
- *
- * Given a `file:` URI so that anything keyed on document identity — JSON's
- * `fileMatch` associations, and any future language service — sees a real path
- * rather than an anonymous `inmemory://` model.
- *
- * The caller owns the result and must `dispose()` it; see `useOpenFiles.ts`.
+ * The buffer behind one open tab, given a `file:` URI so that anything keyed on
+ * document identity — JSON's `fileMatch` associations, and any future language
+ * service — sees a real path rather than an anonymous `inmemory://` model. The
+ * caller owns the result and must `dispose()` it; see `useOpenFiles.ts`.
  */
 export function createModel(text: string, path: string, extension: string): TextModel {
   const uri = monaco.Uri.file(path);
   const language = languageFor(extension);
 
-  // Monaco refuses to create a second model at the same URI, and would throw
-  // in the middle of opening a file. That can only happen if a dispose was
-  // missed somewhere, and re-using the model is strictly better for the person
-  // in front of it than a stack trace: the text is replaced either way.
+  // Monaco refuses to create a second model at the same URI, and would throw in
+  // the middle of opening a file. That can only happen if a dispose was missed,
+  // and re-using the model beats a stack trace: the text is replaced either way.
   const existing = monaco.editor.getModel(uri);
   if (existing) {
     existing.setValue(text);
@@ -420,26 +313,20 @@ export function createModel(text: string, path: string, extension: string): Text
  * Exists for renames. `documents.rekey` moves a live buffer to a new path
  * without disposing it — which is what makes a rename keep unsaved changes and
  * undo history — but the model was given its language when it was created, so
- * renaming `notes.txt` to `notes.md` leaves Markdown being tokenized as plain
- * text until the tab is closed and opened again.
- *
- * Falls back to `plaintext` rather than leaving the old language in place: an
- * extension this app has no grammar for should look like text, and keeping the
- * previous file type's colouring would be actively misleading — the same
- * argument `LANGUAGE_BY_EXTENSION` makes for a wrong grammar being worse than
- * none.
- *
- * The model's *URI* still says the old path, and there is no API to change it.
- * See `rekey` for why that is survivable today.
+ * renaming `notes.txt` to `notes.md` leaves Markdown tokenized as plain text
+ * until the tab is closed and opened again. Falls back to `plaintext` rather
+ * than leaving the old language in place: the same argument
+ * `LANGUAGE_BY_EXTENSION` makes for a wrong grammar being worse than none. The
+ * model's *URI* still says the old path, and there is no API to change it; see
+ * `rekey` for why that is survivable today.
  */
 export function retargetModel(model: TextModel, extension: string): void {
   monaco.editor.setModelLanguage(model, languageFor(extension) ?? "plaintext");
 }
 
 /**
- * The `editor.*` settings group, in the vocabulary Monaco takes.
- *
- * A value rather than a live view. Every row in the group is declared
+ * The `editor.*` settings group, in the vocabulary Monaco takes. A value rather
+ * than a live view: every row in the group is declared
  * `Applies::Next { what: "the next editor you open" }`, and the editor keeps
  * what it was built with until it is reopened; see {@link mountEditor}.
  */
@@ -464,29 +351,26 @@ function oneOf<T extends string>(value: string, options: readonly T[], fallback:
 }
 
 /**
- * The editor settings, fetched once and shared by every editor this frame
- * mounts.
+ * The editor settings, fetched once and shared by every editor this frame mounts.
  *
- * Read here rather than threaded down from `App.tsx`, because this is the only
- * module that knows what a Monaco option is called and the alternative puts
- * `editor.*` keys in two more files that have no other reason to know they
- * exist. The caller awaits this and hands the result to {@link mountEditor},
- * which stays synchronous: an editor is created inside an effect whose cleanup
- * disposes it, and an `await` in there is a mount that can outlive its unmount.
+ * Read here rather than threaded down from `App.tsx`: this is the only module
+ * that knows what a Monaco option is called, and the alternative puts `editor.*`
+ * keys in two more files with no other reason to know they exist. The caller
+ * awaits this and hands the result to {@link mountEditor}, which stays
+ * synchronous — an editor is created inside an effect whose cleanup disposes it,
+ * and an `await` there is a mount that can outlive its unmount.
  */
 export function loadEditorSettings(): Promise<EditorSettings> {
   return loadSettings().then(editorSettingsFrom);
 }
 
 /**
- * Each key with the value this pane drew before the setting existed.
- *
- * `fontSize`, `wordWrap`, the font stack and the minimap had literals below and
- * keep them. The other three were left to Monaco's own defaults and take the
- * value the schema ships instead, so a settings read that failed still lands
- * somewhere the settings screen would agree with — the one visible difference
- * being `renderWhitespace`, whose Monaco default is `"selection"`, a mode the
- * schema does not offer at all.
+ * Each key with the value this pane drew before the setting existed. `fontSize`,
+ * `wordWrap`, the font stack and the minimap had literals below and keep them;
+ * the other three were left to Monaco's own defaults and take the schema's
+ * instead, so a settings read that failed still lands somewhere the settings
+ * screen would agree with — the one visible difference being `renderWhitespace`,
+ * whose Monaco default `"selection"` the schema does not offer at all.
  */
 function editorSettingsFrom(settings: SettingsReader): EditorSettings {
   return {
@@ -509,62 +393,37 @@ function editorSettingsFrom(settings: SettingsReader): EditorSettings {
  *
  * Appended rather than substituted: a font this machine does not have has to
  * degrade to the rest of the product's monospace rather than to whatever the
- * webview would pick, which is the same promise the schema's description makes.
- * The stack is read from the token rather than restated, so the editor cannot
- * drift from the rest of the product — that is what the literal this replaces
- * was for — and falls back to the generic family only if tokens.css somehow did
- * not load.
+ * webview would pick, the same promise the schema's description makes. The stack
+ * is read from the token rather than restated — that is what the literal this
+ * replaces was for — falling back to the generic family only if tokens.css
+ * somehow did not load.
  */
 function fontStack(named: string): string {
   const stack = readToken("--mono") || "monospace";
   if (named === "") return stack;
-  // Quoted, so a family name with a space or a comma in it cannot break the
-  // list it is prepended to. Quotes and backslashes are dropped rather than
-  // escaped, neither being legal inside a CSS family name in the first place.
+  // Quoted, so a family name with a space or comma cannot break the list it is
+  // prepended to. Quotes and backslashes are dropped rather than escaped,
+  // neither being legal inside a CSS family name in the first place.
   return `"${named.replace(/["\\]/g, "")}", ${stack}`;
 }
 
 /**
  * Mount an editor over an existing model.
  *
- * The model is passed in rather than created from `value`, which is what makes
- * a tab's undo history and view state outlive its viewer: a standalone editor
+ * The model is passed in rather than created from `value`, which is what makes a
+ * tab's undo history and view state outlive its viewer: a standalone editor
  * disposes only the model it created itself, so `dispose()` here leaves the
  * caller's model alone.
  *
  * `settings` is read at construction and never pushed at a live editor
  * afterwards. `editor.updateOptions()` would make *this* editor follow a change
- * and leave every other mounted frame on what it was built with, which would
- * turn "applies to the next editor you open" — the label the settings screen
- * draws under every one of these rows — into a lie for whichever pane happened
- * to be in front. There is no channel that pushes `settings:changed` into a
- * mounted app frame yet; when there is one, this is where it lands.
- *
- * `automaticLayout: true` matches `DiffView`'s posture: the pane's size is
- * decided by a flexbox and a draggable splitter rather than by anything that
- * could call `layout()` at the right moment. It is also what keeps the minimap
- * honest — the map's width is a function of the editor's, and a splitter drag
- * that did not re-layout would leave it drawn at the old width.
- *
- * Whether the minimap is drawn at all is `editor.minimap`. The three settings
- * beside it are not, because they are about *this* pane rather than about
- * minimaps:
- *
- * - `renderCharacters: false`. The character-accurate map is a canvas of real
- *   glyphs at sub-pixel size; the block rendering says the same thing about
- *   shape and indentation, reads better next to a small editor, and is much
- *   cheaper to repaint on every keystroke.
- * - `maxColumn: 80`. Uncapped, the map is as wide as the longest line in the
- *   file, and a minified line would eat a third of a pane that is already
- *   sharing its width with the tree.
- * - `showSlider: "mouseover"`. At rest the map is a picture of the file; the
- *   viewport box appears when the pointer arrives, which is when it is a
- *   control.
- *
- * Not `size: "fill"` or `"proportional"`: the default `"actual"` draws one map
- * line per file line and stops, so a short file gets a short map instead of one
- * stretched to the pane's height, and the map's vertical position agrees with
- * the scrollbar beside it.
+ * and leave every other mounted frame on what it was built with, turning
+ * "applies to the next editor you open" — the label the settings screen draws
+ * under every one of these rows — into a lie for whichever pane happened to be
+ * in front. When a channel exists that pushes `settings:changed` into a mounted
+ * app frame, this is where it lands. Why `automaticLayout` is on, and why the
+ * minimap's other three options are fixed here rather than exposed, is in
+ * `docs/design-notes/viewer-renderers.md`.
  */
 export function mountEditor(
   container: HTMLElement,
@@ -605,52 +464,41 @@ export function mountEditor(
 }
 
 /**
- * Bind Ctrl+S / ⌘S inside the editor.
- *
- * Needed on top of the document-level handler in `App.tsx`: Monaco's keybinding
- * service consumes keydown at the editor's own DOM node and stops it
- * propagating, so with focus in the editor the document listener never sees it.
- * `saveDocument` de-duplicates concurrent calls anyway, so the two firing
- * together would be harmless rather than a double write.
+ * Bind Ctrl+S / ⌘S inside the editor. Needed on top of the document-level
+ * handler in `App.tsx`: Monaco's keybinding service consumes keydown at the
+ * editor's own DOM node and stops it propagating, so with focus in the editor
+ * the document listener never sees it. `saveDocument` de-duplicates concurrent
+ * calls anyway, so the two firing together are harmless, not a double write.
  */
 export function bindSave(editor: CodeEditor, run: () => void): void {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, run);
 }
 
 /**
- * The dirty-diff gutter: a coloured bar beside every changed line, each of
- * which opens an inline peek on click. The caller holds one of these per
- * mounted editor and disposes it exactly where it disposes the editor — see
- * `TextViewer.tsx`.
+ * The dirty-diff gutter: a coloured bar beside every changed line, each of which
+ * opens an inline peek on click. The caller holds one per mounted editor and
+ * disposes it exactly where it disposes the editor — see `TextViewer.tsx`. The
+ * peek's row cap and sizing are in `docs/design-notes/viewer-renderers.md`.
  */
 export interface GitGutter {
   /**
    * Replace the set of hunks this editor is showing bars for, and the text of
    * HEAD they were computed against.
    *
-   * `headText` does not change from one call to the next within a single
-   * file open — a save changes the working copy, not HEAD — so the caller is
-   * expected to fetch it once and pass the same string on every subsequent
-   * call; this only takes it as a parameter rather than a constructor
-   * argument so a peek opened before the first successful fetch has
-   * something other than `undefined` to close over.
-   *
-   * Always closes an open peek first. A peek is anchored to a line number
-   * that only means what it did for the hunks it was opened against — after
-   * a save, the same line can belong to a different hunk or none at all, and
-   * a peek left open across that swap would show text next to a bar it no
-   * longer describes.
+   * `headText` is fetched once per file open and passed unchanged on every call
+   * — a save changes the working copy, not HEAD. It is a parameter rather than a
+   * constructor argument only so a peek opened before the first successful fetch
+   * has something other than `undefined` to close over. Always closes an open
+   * peek first: a peek is anchored to a line number that only means what it did
+   * for the hunks it was opened against.
    */
   update(hunks: GitHunk[], headText: string): void;
   dispose(): void;
 }
 
 /**
- * Rows of vertical space one peek needs, in the editor's own line height
- * rather than a fixed pixel count — which is load-bearing now that `fontSize`
- * is `editor.fontSize` rather than a literal: it lines up with the surrounding
- * text at whatever size the editor is actually drawing, and does not clip at
- * the top of the range.
+ * Rows of vertical space one peek needs, in the editor's own line height rather
+ * than a fixed pixel count — load-bearing now that `fontSize` is a setting.
  */
 function peekHeightPx(editor: CodeEditor, rows: number): number {
   const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -658,11 +506,9 @@ function peekHeightPx(editor: CodeEditor, rows: number): number {
 }
 
 /**
- * Whether `line` falls inside the current-file span a hunk covers.
- *
- * A deletion covers no current line at all — its `lines` is 0 — so it can
- * only ever match the one line its wedge is drawn against, which is `start`
- * itself; see `hunkDecoration` below for why that is where the wedge sits.
+ * Whether `line` falls inside the current-file span a hunk covers. A deletion
+ * covers no current line at all — its `lines` is 0 — so it can only ever match
+ * `start`, the line its wedge is drawn against; see `hunkDecoration` below.
  */
 function hunkCoversLine(hunk: GitHunk, line: number): boolean {
   if (hunk.kind === "deleted") return line === hunk.start;
@@ -670,15 +516,11 @@ function hunkCoversLine(hunk: GitHunk, line: number): boolean {
 }
 
 /**
- * One hunk, as a Monaco line decoration.
- *
- * `isWholeLine` is what makes `linesDecorationsClassName` paint every line
- * the range crosses rather than only the one its column sits on — without it
- * a three-line addition would show a bar on its first line alone.
- *
- * A deletion's range covers only `start`, on both ends: it has no lines of
- * its own to span, and `start` is exactly the line the CSS wedge in
- * `text.css` is drawn to point at.
+ * One hunk, as a Monaco line decoration. `isWholeLine` is what makes
+ * `linesDecorationsClassName` paint every line the range crosses rather than
+ * only the one its column sits on. A deletion's range covers only `start`, on
+ * both ends: it has no lines of its own to span, and `start` is exactly the line
+ * the CSS wedge in `text.css` points at.
  */
 function hunkDecoration(hunk: GitHunk): monaco.editor.IModelDeltaDecoration {
   const last = hunk.kind === "deleted" ? hunk.start : hunk.start + hunk.lines - 1;
@@ -692,25 +534,19 @@ function hunkDecoration(hunk: GitHunk): monaco.editor.IModelDeltaDecoration {
 }
 
 /**
- * HEAD's text, split into lines.
- *
- * `\r?\n` and not a plain `"\n"`: this project is developed on Windows, and
- * git hands back whichever line ending the file's `core.autocrlf` handling
- * produced. Splitting on `"\n"` alone would leave a trailing `\r` on every
- * line, which renders as an invisible difference on a line that is actually
- * identical to the one below it in the peek — a confusing thing to debug from
- * a screenshot, since the two lines look the same.
+ * HEAD's text, split into lines. `\r?\n` and not a plain `"\n"`: this project is
+ * developed on Windows, and git hands back whichever line ending `core.autocrlf`
+ * produced. A trailing `\r` renders as an invisible difference between two peek
+ * lines that look identical.
  */
 function headLines(headText: string): string[] {
   return headText === "" ? [] : headText.split(/\r?\n/);
 }
 
 /**
- * One row of the peek, coloured by which side of the diff it came from.
- *
- * A `div` rather than a line inside one shared `<pre>`: each row needs its
- * own background tint, and a background painted per line is what makes this
- * read as a diff instead of two blocks of plain text.
+ * One row of the peek, coloured by which side of the diff it came from. A `div`
+ * rather than a line inside one shared `<pre>`: a background painted per line is
+ * what makes this read as a diff instead of two blocks of plain text.
  */
 function peekRow(kind: "removed" | "added", text: string): HTMLElement {
   const row = document.createElement("div");
@@ -723,25 +559,20 @@ function peekRow(kind: "removed" | "added", text: string): HTMLElement {
  * The most rows a peek will draw, across both of its blocks.
  *
  * A ceiling rather than a preference. The peek is a view zone, so its height is
- * real document flow — an uncapped one over a hunk that deleted four thousand
- * lines is a peek several screens tall that pushes the rest of the file out of
- * view, and since a peek is closed by clicking the same gutter bar that opened
- * it, that bar is now scrolled far off screen. One click, stuck editor.
- *
- * Forty is chosen for what this view is for: glancing at what changed, not
- * reading the file. Anything longer is a job for the diff view.
+ * real document flow: an uncapped one scrolls the gutter bar that closes it far
+ * off screen — one click, stuck editor. Forty is chosen for what this view is
+ * for, glancing at what changed rather than reading the file; anything longer is
+ * a job for the diff view.
  */
 const PEEK_MAX_ROWS = 40;
 
 /**
  * How many rows each side of the peek may draw.
  *
- * Split rather than first-come, because a hunk that removed three thousand
- * lines and added five would otherwise spend the entire budget on the removed
- * side and show none of what replaced it — which is the half the reader is
- * usually looking for. Each side is guaranteed half the budget, and whatever
- * the other side does not need is handed back, so the common case of a small
- * hunk is capped by nothing at all.
+ * Split rather than first-come, because a hunk that removed three thousand lines
+ * and added five would otherwise spend the entire budget on the removed side and
+ * show none of what replaced it. Each side is guaranteed half, and whatever the
+ * other does not need is handed back, so a small hunk is capped by nothing.
  */
 function peekBudget(removed: number, added: number): [number, number] {
   if (removed + added <= PEEK_MAX_ROWS) return [removed, added];
@@ -752,11 +583,9 @@ function peekBudget(removed: number, added: number): [number, number] {
 }
 
 /**
- * A dim row standing in for what the cap left out.
- *
- * Present so that a truncated peek cannot be mistaken for the whole change —
- * a reader who saw forty rows and no marker would reasonably conclude that was
- * all of it, which is a worse failure than showing nothing.
+ * A dim row standing in for what the cap left out, so a truncated peek cannot be
+ * mistaken for the whole change: a reader who saw forty rows and no marker would
+ * reasonably conclude that was all of it, a worse failure than showing nothing.
  */
 function peekMore(count: number): HTMLElement {
   const row = document.createElement("div");
@@ -766,19 +595,15 @@ function peekMore(count: number): HTMLElement {
 }
 
 /**
- * The peek's content: HEAD's lines for this hunk, then the current file's,
- * each read straight from its source rather than cached anywhere.
+ * The peek's content: HEAD's lines for this hunk, then the current file's, each
+ * read straight from its source rather than cached anywhere.
  *
  * HEAD's side comes from `headText`, fetched once when the file opened —
  * `originalStart` is 1-based like the rest of `GitHunk`, so the slice below
  * subtracts 1 before indexing. The current side is read off the model itself
  * rather than off the last `files/read`, so a peek can never disagree with an
- * edit typed since the last save.
- *
- * Both slices fall out of one rule with no per-`kind` branching needed: an
- * addition has `originalLines: 0`, so its HEAD slice is empty and only the
- * added rows draw; a deletion has `lines: 0`, so only the removed rows draw.
- * A modification draws both, in the order a unified diff would.
+ * edit typed since the last save. Both slices fall out of one rule with no
+ * per-`kind` branching; see `docs/design-notes/viewer-renderers.md`.
  */
 function buildPeek(hunk: GitHunk, model: TextModel, headText: string): HTMLElement {
   const root = document.createElement("div");
@@ -809,13 +634,11 @@ function buildPeek(hunk: GitHunk, model: TextModel, headText: string): HTMLEleme
 }
 
 /**
- * How tall the peek's view zone has to be, in editor lines.
- *
- * Derived from what `buildPeek` will actually draw rather than from the hunk's
- * own counts, because the two stopped agreeing the moment the cap above
- * existed — a zone sized to four thousand lines around forty rows of content
- * is the same stuck editor by another route. The `+1` covers a truncation
- * marker; one spare row costs nothing and a clipped last line looks broken.
+ * How tall the peek's view zone has to be, in editor lines. Derived from what
+ * `buildPeek` will actually draw rather than from the hunk's own counts, because
+ * the two stopped agreeing the moment the cap above existed — a zone sized to
+ * four thousand lines around forty rows is the same stuck editor by another
+ * route. The `+1` covers a truncation marker; a clipped last line looks broken.
  */
 function peekHeight(hunk: GitHunk, model: TextModel, headText: string): number {
   const before = Math.min(
@@ -833,15 +656,12 @@ function peekHeight(hunk: GitHunk, model: TextModel, headText: string): number {
  * Mount the gutter and its click-to-peek behaviour over an already-mounted
  * editor.
  *
- * A decorations *collection* rather than the older `deltaDecorations(old,
- * new)` call: `.set()` replaces the whole set in one step and `.clear()` is
- * the teardown, which is exactly update/dispose and one fewer id for this
- * module to track by hand.
- *
- * The mouse listener is registered once, for the life of the editor, and
- * reads `hunks` out of a closure variable `update` reassigns — cheaper than
- * tearing the listener down and rebuilding it on every save, which is when
- * `update` is called a second time for the same editor.
+ * A decorations *collection* rather than the older `deltaDecorations(old, new)`
+ * call: `.set()` replaces the whole set in one step and `.clear()` is the
+ * teardown, which is exactly update/dispose and one fewer id to track by hand.
+ * The mouse listener is registered once, for the life of the editor, and reads
+ * `hunks` out of a closure variable `update` reassigns — cheaper than rebuilding
+ * the listener on every save, which is when `update` is called a second time.
  */
 export function createGitGutter(editor: CodeEditor): GitGutter {
   const decorations = editor.createDecorationsCollection();

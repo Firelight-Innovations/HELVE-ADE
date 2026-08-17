@@ -2,13 +2,12 @@
  * The first-party apps this build ships.
  *
  * Mirrors `src-tauri/src/apps/mod.rs`. Asked for once and never again: the
- * registry is compiled in, so unlike the stack snapshot there is nothing on
- * disk that could change the answer while the shell is running, and no
- * "re-scan apps" to offer.
+ * registry is compiled in, so nothing on disk can change the answer while the
+ * shell runs, and there is no "re-scan apps" to offer.
  *
- * Starts as an empty array rather than `null`. The distinction the stack
- * snapshot needs — "not loaded yet" against "loaded and empty" — buys nothing
- * here: the switcher simply gains its app tabs a frame later.
+ * Starts as an empty array rather than `null`. The stack snapshot's "not loaded
+ * yet" against "loaded and empty" buys nothing here: the switcher gains its app
+ * tabs a frame later.
  */
 import { useEffect, useState } from "react";
 import {
@@ -58,9 +57,8 @@ export function useOpenables(): Openable[] {
     let live = true;
     void listOpenables()
       .then((result) => live && setOpenables(result))
-      // An empty Apps menu is the symptom, and it looks exactly like a feature
-      // that was never wired up — so it is reported rather than swallowed, for
-      // the reason `useApps` gives about its own failure.
+      // An empty Apps menu looks exactly like a feature nobody wired up, so it
+      // is reported rather than swallowed, for the reason `useApps` gives.
       .catch((err: unknown) => console.error("helve: could not list openables:", err));
 
     return () => {
@@ -78,13 +76,12 @@ export function useOpenables(): Openable[] {
  * every app call in the shell goes through this one line, which is where a
  * different backend would be reached from. Its rejection shape is `appCall`'s.
  *
- * `scope` says which surface is asking, which is what decides *which project*
- * the call is answered against now that a project belongs to a cluster. It is
- * the caller's to supply and not this function's to guess: `ToolWindow` knows
- * the instance because it resolved the message's `event.source`, and the title
- * bar's menu items know the cluster their window is showing. Omitting it is
- * allowed and means "no cluster" — every app already handles that, since it is
- * the same state as a cluster nobody has opened anything in.
+ * `scope` says which surface is asking, which decides *which project* the call
+ * is answered against now that a project belongs to a cluster. The caller's to
+ * supply, not this function's to guess: `ToolWindow` knows the instance from
+ * the message's `event.source`, and the title bar's menu items know the cluster
+ * their window is showing. Omitting it means "no cluster", which every app
+ * already handles — the same state as a cluster nobody has opened anything in.
  */
 export function callApp(
   id: string,

@@ -201,6 +201,20 @@ Concretely:
 What not to write: comments that restate the line below them, `// TODO` without a
 name or a condition for removal, and commented-out code. Delete it; git has it.
 
+**Where the long form goes.** `scripts/check-comments.mjs` caps *concentration*
+— half a file, twenty unbroken lines — and none of the above is negotiable
+because of it. A header over the cap gets three things done to it, in order:
+distributed onto the specific items each paragraph is about, tightened, and only
+then moved to `docs/design-notes/`, verbatim, with the source pointing at the
+page. Nothing is summarised on the way out. `src-tauri/src/project/mod.rs` is the
+worked example: a 69-line header became eighteen lines that still state every
+claim, with the argument for why a project belongs to a cluster in
+`docs/design-notes/backend-project.md`.
+
+Distribution is the preferred outcome and usually the whole answer, because §4.4
+already wants the mechanics at the point of use. Relocation is for the rationale
+that is about the module rather than about anything in it.
+
 **Tone.** Plain declarative sentences. It is fine to be blunt about a limitation
 ("Clone is deliberately inert", "the tutorials column is drawn but dead"). It is
 not fine to be vague about one.
@@ -286,14 +300,14 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 240 tests, all passing:
+What exists today — 333 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
-| `src-tauri/src/**` | 183 | `cargo test` |
+| `src-tauri/src/**` | 274 | `cargo test` |
 | `crates/helve-rpc` | 15 | `cargo test` |
 | `crates/helve-tool-manifest` | 11 | `cargo test` |
-| `examples/echo-tool` | 3 | `cargo test` |
+| `examples/echo-tool` | 5 | `cargo test` |
 | `packages/bridge` | 28 | vitest |
 
 The protocol layer is covered because it is a published contract. The state
@@ -364,7 +378,14 @@ all run, and `pnpm lint` is the single command that runs the three checks.
 | §6.5 hooks own state | `react-hooks/rules-of-hooks` |
 | comment concentration | `scripts/check-comments.mjs` |
 
-Two of those are narrower than they look. `missing_docs` and `unreachable_pub`
+Two rules answer §5's ban on `unwrap`/`expect` in a way worth knowing about,
+because clippy cannot tell a genuine invariant from a fallible call. Tests are
+exempt wholesale (`clippy.toml`), and the one invariant shipping code leans on —
+a lock this process owns being un-poisoned — is answered once, in
+`src-tauri/src/sync.rs` and `crates/helve-rpc/src/sync.rs`, rather than at each
+of its forty call sites. Those two modules are the comment §5 asks for.
+
+Two of the rules above are narrower than they look. `missing_docs` and `unreachable_pub`
 are set in `crates/*/src/lib.rs`, not workspace-wide, because both are about a
 *published surface* — what another repository imports and has to understand.
 `src-tauri` has no such surface; its `pub` items exist to cross module
@@ -374,23 +395,51 @@ boundaries inside one binary. Applying them everywhere produced 1115 warnings,
 ### Baselines
 
 Every rule above was switched on against a codebase written without it, so all
-three checks are **ratchets** rather than gates. Existing violations are
-recorded; the check fails when a count goes up, not when it is non-zero.
+three checks were **ratchets** rather than gates: existing violations were
+recorded, and the check failed when a count went up rather than when it was
+non-zero.
+
+**All three baselines are now empty.**
 
 | File | Holds |
 |---|---|
-| `eslint-suppressions.json` | 43 findings, ESLint's own bulk-suppression format |
-| `clippy-baseline.json` | 298 warnings, per file and lint |
-| `comment-baseline.json` | 106 files above the density caps |
+| `eslint-suppressions.json` | `{}` — was 43 findings |
+| `clippy-baseline.json` | `{}` — was 298 warnings |
+| `comment-baseline.json` | `{}` — was 106 files |
 
-The rule for all three is the same: **a baseline may shrink, and may not grow.**
-Adding a violation to a file that already has some still fails, because the
-count is per file and per rule. After a cleanup pass, `pnpm baseline` rewrites
-all three and the diff shows exactly what was paid down.
+They stay in the repository, and the machinery stays wired, because the ratchet
+is still the right shape for the next rule anyone turns on. What has changed is
+that a violation today is a violation, not a number to compare against.
+
+The rule is unchanged: **a baseline may shrink, and may not grow.** From empty,
+that means it may not be written to at all without a decision. `pnpm baseline`
+rewrites all three at once and would absorb whatever is currently broken, which
+is the exact thing they exist to prevent — reach for the single-check form
+(`node scripts/clippy-baseline.mjs --update`) and say why in the commit.
 
 Re-baselining to make a check pass is a decision, not a formality. If a new
 violation is genuinely correct, the honest move is usually to change the rule
 and say why here, rather than to widen the baseline silently.
+
+### `slop`
+
+`pnpm slop` (agent-slop-lint, configured in `.slop.toml`) is a fourth check and
+is **not** part of `pnpm lint`, because it needs Python, `fd` and `rg` on PATH
+and `pnpm verify` should not fail on a machine that has a working toolchain for
+this repository. It passes today: zero violations, and the advisory-severity
+rules still print what they find.
+
+One rule there is deliberately reported rather than gated, and it is worth
+knowing why before turning it back up. `structural.hotspots` classifies a file
+as a hotspot when its complexity *and* its LOC growth are both at or above the
+75th percentile **of the files measured in that run**. That is a ranking, not a
+threshold: about a quarter of the tree is above each cut by construction, the
+two overlap, and so the quadrant is never empty however good the code gets.
+Worse for a gate, its churn axis counts commits in the window, so a refactor
+that halves a file's complexity still raises its growth. A ranking answers
+"what would I refactor next", which is worth printing every run; it cannot
+answer "is this branch clean". `.slop.toml` records the same reasoning at the
+rule.
 
 ### Still not enforced
 

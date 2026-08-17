@@ -1,52 +1,28 @@
+/**
+ * The recursive pane layout — splits and dividers, and nothing else.
+ *
+ * **No tabs.** Every pane used to draw its own strip, so a window with two
+ * splits listed the same surfaces across three rows at once — the cluster bar
+ * and one strip per pane. They are all in the cluster bar now (see
+ * `switcher/ClusterBar.tsx`); a pane here is a rectangle with a focus outline.
+ * A tab listed in two rows is two things that can disagree about which is
+ * active, and the second row never told anyone anything the first could not.
+ *
+ * That bar now draws a pane holding several surfaces as one grouped region,
+ * worth naming here because it is the thing a reader of the paragraph above
+ * will suspect has quietly come back. It has not: there is still exactly one
+ * row and every surface still appears in it exactly once. What the bar gained
+ * is grouping that mirrors this tree — not a second listing of it, and nothing
+ * this component renders. `ClusterBar.tsx` has the argument in full.
+ *
+ * **No surfaces either**, and that separation is a correctness requirement
+ * rather than a tidiness one; see `Pane`'s `pane__host` below.
+ */
 import { useCallback, useRef } from "react";
 import { useDropZone } from "../dropZones";
 import type { PaneNode, PaneTreeProps, SplitDir } from "../contract";
 import "./panes.css";
 
-/**
- * The recursive pane layout — splits and dividers, and nothing else.
- *
- * ## What this component does not contain
- *
- * **Tabs.** Every pane used to draw its own strip, which meant a window with
- * two splits listed the same handful of surfaces across three rows at once —
- * the cluster bar, and one strip per pane. They are all in the cluster bar now
- * (see `switcher/ClusterBar.tsx`), and this draws none of them: a pane is a
- * rectangle with a focus outline. A tab listed in two rows is two things that
- * can disagree about which one is active, and the second row was never telling
- * anyone anything the first could not.
- *
- * That bar now draws a pane holding several surfaces as one grouped region,
- * which is worth naming here because it is the thing a reader of the paragraph
- * above will suspect has quietly come back. It has not: there is still exactly
- * one row and every surface still appears in it exactly once. What the bar
- * gained is grouping that mirrors this tree — not a second listing of it, and
- * nothing this component renders. `ClusterBar.tsx` has the argument in full.
- *
- * **The surfaces.** Every pane is an empty content box and reports its element
- * up through `onHostChange`; `ToolWindow` positions the actual iframes over
- * those boxes from a flat list that never reorders.
- *
- * That separation is a correctness requirement, not a tidiness one, and
- * `TerminalDeck` already learned it the hard way — read its doc comment. Moving
- * a mounted element to a new position in the React tree is indistinguishable,
- * to React, from unmounting it and mounting a new one. A surface here is an
- * iframe, and an iframe that remounts *reloads the app inside it*. If this
- * component owned its panes' contents, every split, every divider drag and
- * every tab dragged between panes would throw away the Files app's open file
- * and scroll position. `createPortal` does not save you either: changing a
- * portal's container remounts its children too.
- *
- * So the layout is a tree and the surfaces are a flat list, and the only thing
- * that crosses between them is a measured rectangle.
- *
- * ## Sizes
- *
- * `sizes` are fractions of the parent, one per child, summing to 1 — the same
- * numbers `layout::PaneNode` stores, because the window is resizable and a
- * layout in pixels would have to be recomputed on every resize and would
- * restore wrongly onto a different monitor.
- */
 // `PaneTreeProps` is in `contract.ts`, not here: `toolwindow` computes every
 // field of it and hands it back through a `renderPanes` prop, which it could not
 // type without importing this region (STANDARDS.md §1.2).
@@ -165,7 +141,11 @@ function Split({
           ref={(el) => {
             childRefs.current[i] = el;
           }}
-          // The authored share. A divider drag overwrites this inline for the
+          // The authored share: a fraction of the parent, one per child,
+          // summing to 1 — the same numbers `layout::PaneNode` stores, because
+          // the window is resizable and a layout in pixels would have to be
+          // recomputed on every resize and would restore wrongly onto a
+          // different monitor. A divider drag overwrites this inline for the
           // duration of the gesture; the next render from `shell:state` puts
           // the committed value back, which is the same number.
           style={{ flexBasis: `${(split.sizes[i] ?? 1 / split.children.length) * 100}%` }}
@@ -219,7 +199,23 @@ function Pane({
       ref={paneZone}
     >
       {/* What `ToolWindow` measures. Deliberately empty, and now the pane's
-          whole area rather than everything below a strip. */}
+          whole area rather than everything below a strip: every pane is an
+          empty content box that reports its element up through `onHostChange`,
+          and `ToolWindow` positions the actual iframes over those boxes from a
+          flat list that never reorders.
+
+          That separation is a correctness requirement, not a tidiness one, and
+          `TerminalDeck` already learned it the hard way — read its doc comment.
+          Moving a mounted element to a new position in the React tree is
+          indistinguishable, to React, from unmounting it and mounting a new
+          one. A surface here is an iframe, and an iframe that remounts *reloads
+          the app inside it*. If this component owned its panes' contents, every
+          split, every divider drag and every tab dragged between panes would
+          throw away the Files app's open file and scroll position.
+          `createPortal` does not save you either: changing a portal's container
+          remounts its children too. So the layout is a tree and the surfaces
+          are a flat list, and the only thing that crosses between them is a
+          measured rectangle. */}
       <div className="pane__host" ref={hostRef} />
 
       {/* Drop indicators sit above the surface, which is a live iframe — an

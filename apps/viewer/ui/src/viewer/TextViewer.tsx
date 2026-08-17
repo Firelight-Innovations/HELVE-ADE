@@ -11,16 +11,11 @@
  *
  * - **Monaco.** Every import of it is in `./monaco`, so this file is a React
  *   component and a state machine and nothing else.
- * - **The buffer.** The model, its saved version, its base mtime and its view
- *   state live in `documents` (`../tabs/useOpenFiles`), keyed by path and
- *   outliving this component. That is the whole reason undo history, cursor and
- *   scroll survive a tab switch: switching tabs unmounts this, and if the model
- *   were a `useRef` here it would go with it.
+ * - **The buffer.** See the effect that fetches it below.
  * - **Writing.** `saveDocument` is the one implementation; this file decides
  *   what to draw when it fails, not what to send.
  * - **Which viewer a file belongs to.** The one exception is the way *back*
- *   from a source toggle; see `rendered` below, which asks `pick` rather than
- *   knowing anything about SVG or Mermaid.
+ *   from a source toggle; see `rendered` below.
  */
 import { useEffect, useRef, useState } from "react";
 import { pick, type ViewerProps } from "./registry";
@@ -86,6 +81,12 @@ export default function TextViewer({ file, onDirty, registerSave, reopenWith }: 
 
   /**
    * Get the buffer for this path: the one already open, or a fresh read.
+   *
+   * This component does not own the buffer. The model, its saved version, its
+   * base mtime and its view state live in `documents` (`../tabs/useOpenFiles`),
+   * keyed by path and outliving this component. That is the whole reason undo
+   * history, cursor and scroll survive a tab switch: switching tabs unmounts
+   * this, and if the model were a `useRef` here it would go with it.
    *
    * Keyed on the path alone. A reload is a *remount* — `App.tsx` puts the tab's
    * nonce in this component's key — and the store is emptied before the nonce

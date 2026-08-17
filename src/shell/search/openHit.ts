@@ -1,70 +1,27 @@
 /**
  * Opening a search hit: Enter on the focused result, or a double-click on any
  * row, puts that file on screen in the Files app, in the cluster the search was
- * run against.
- *
- * Both gestures land here through the same one-argument call, which is why the
- * two can disagree about *which* row without this module having to care — the
- * keyboard resolves its row from the cursor, the pointer resolves its row from
- * itself, and both hand over a finished path. See `SearchOverlayProps.onOpen`
- * for why that distinction is load-bearing rather than tidy.
- *
- * Deliberately not a hook and not a component — the overlay's key handling is
- * someone else's code (see `SearchOverlay.tsx`), and this module exists
- * precisely so that code can call one function without importing the tool
- * window's internals to do it. That is also why the two things this needs —
- * "which window am I" and "which frame belongs to that window" — are both
- * resolved from module-scope lookups (`windowLabel()`, `toolWindowBridge()`)
- * rather than taken as parameters: a caller with no props to lean on can
- * still say what it means, because both sides already agree on the address.
- *
- * ## What this does not do
- *
- * It does not focus the pane Files ends up in, or the search overlay's own
- * closing — both are the caller's job, and both need state (`activePaneId`,
- * `searchExpanded`) that lives in `WindowRoot.tsx` and has no business being
- * threaded through here.
- *
- * It reveals the file in Files' tree only as far as that tree already reaches
- * on its own: opening a tab sets `activePath`, which `App.tsx` passes to
- * `Explorer` as `selectedPath`, and `Explorer` puts the keyboard cursor there
- * and gives the row the "open" treatment — but only if the row already exists,
- * which means every ancestor folder between the project root and this file has
- * already been expanded. A folder nobody has browsed to has no rows loaded for
- * it at all (`explorer/useTree.ts` is lazy on purpose), so revealing a file
- * under a folder nobody has opened would mean walking every ancestor and
- * awaiting a `files/list` at each level before the leaf row exists to put a
- * cursor on — real work, and none of the machinery for it exists on either
- * side of the app boundary today. Opening the tab is the whole of what this
- * does; see the handoff summary for the trade.
+ * run against. Why this is a plain function rather than a hook or a component,
+ * why both gestures hand over a finished path, and what it deliberately does
+ * not do (focus, closing the overlay, revealing the file in Files' tree) are
+ * all in `docs/design-notes/shell-search.md`.
  */
 import type { Cluster, SurfaceInstance } from "../contract";
 import { paneTabs } from "../contract";
 import { activateInstance, fetchShellState, openInstance, windowLabel } from "../state/shellState";
 import { toolWindowBridge } from "../toolWindowRegistry";
 
-/**
- * The event this module pushes into a mounted Files frame. Colon-separated,
- * like the shell's other push event (`project:changed`) — never
- * `files/open-path`, which would read as an RPC method Files answers rather
- * than an instruction the shell is pushing at it unprompted. The one listener
- * is `apps/files/ui/src/App.tsx`.
- */
+/** The event this module pushes into a mounted Files frame. Colon-separated,
+ *  like the shell's other push event (`project:changed`) — never
+ *  `files/open-path`, which would read as an RPC method Files answers rather
+ *  than an instruction the shell pushes at it. Listener: Files' `App.tsx`. */
 const OPEN_PATH_EVENT = "files:open-path";
 
-/**
- * Open `path` in the Files app showing `clusterId`, bringing that Files
- * forward if another surface is showing instead and opening a new Files if
- * the cluster has none.
- *
- * `clusterId` mirrors `PreviewPane.tsx`'s own convention in this directory:
- * `null` means no cluster rather than an absent one, and there is nothing
- * sensible to open into, so this resolves without doing anything. That is not
- * a case the overlay should ever produce — a hit only exists because a search
- * ran against some cluster's project — but it costs nothing to make the
- * no-op explicit rather than let a `null` reach `paneTabs` further down as an
- * unexplained early return.
- */
+/** Open `path` in the Files app showing `clusterId`, bringing that Files
+ *  forward if another surface is showing and opening a new Files if the
+ *  cluster has none. A `null` `clusterId` means no cluster — `PreviewPane.tsx`'s
+ *  convention here — so there is nothing to open into and this resolves as an
+ *  explicit no-op; see the design note for why it is not left implicit. */
 export async function openHitInFiles(path: string, clusterId: string | null): Promise<void> {
   if (clusterId === null) return;
 
@@ -86,24 +43,17 @@ export async function openHitInFiles(path: string, clusterId: string | null): Pr
     // `onOpenRecent` in `WindowRoot.tsx` applies to Home.
     void activateInstance(instanceId);
   } else {
-    // No pane or split axis to aim at: this call has no `activePaneId` to
-    // measure from (that is `WindowRoot.tsx`'s local state, not something a
-    // standalone module can reach), so a first Files opens as a tab in the
-    // active cluster's first pane rather than splitting toward wherever the
-    // user was last looking. Reasonable for what is, today, a single
-    // deliberate open rather than a habitual one.
+    // No `activePaneId` to aim at (that is `WindowRoot.tsx`'s local state), so
+    // a first Files opens as a tab in the active cluster's first pane rather
+    // than splitting toward where the user was last looking — see the note.
     instanceId = await openInstance(label, "files");
   }
 
-  // The frame this instance mounts into may not exist yet — `openInstance`
-  // above resolves before `ToolWindow` has mounted the iframe or completed its
-  // hello/ready handshake, and even the *existing*-instance branch races a
-  // Files that is still booting from a previous open. `sendEventWhenReady`
-  // queues across that gap and delivers the moment the frame says ready; see
-  // `ToolWindow.tsx`. If this window's `ToolWindow` has not registered a
-  // bridge at all yet, there is nothing to queue into — a race no keystroke
-  // can actually land inside, since there is no overlay to press Enter in
-  // until the window holding it has painted once.
+  // The frame may not exist yet: `openInstance` resolves before `ToolWindow`
+  // has mounted the iframe, and the existing-instance branch races a Files
+  // still booting. `sendEventWhenReady` queues across that gap and delivers
+  // when the frame says ready (see `ToolWindow.tsx`); no registered bridge at
+  // all is a race no keystroke can land inside — see the design note.
   toolWindowBridge(label)?.sendEventWhenReady(instanceId, OPEN_PATH_EVENT, { path });
 }
 

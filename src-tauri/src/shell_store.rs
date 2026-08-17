@@ -1,34 +1,23 @@
 //! The layout, on disk.
 //!
-//! Restarting a machine should not cost you your workspace. This writes the
-//! shell's layout — every window, where it sits, the clusters it holds, the
-//! pane trees inside them, the tab order, what was focused — and reads it back
-//! at launch, so HELVE opens in the state it closed in.
+//! Restarting a machine should not cost you your workspace. This writes the shell's layout — every
+//! window, where it sits, the clusters it holds, the pane trees inside them, the tab order, what
+//! was focused — and reads it back at launch, so HELVE opens in the state it closed in.
 //!
-//! This is the second thing in the orchestrator to touch the disk, after
-//! `project::store`, and it is deliberately built to the same four rules:
-//!
-//!   * **Never fatal.** Every read degrades to `Stored::default()`. A layout
-//!     file that cannot be parsed costs you your window arrangement, which is
-//!     annoying; refusing to start costs you the application, which is not a
-//!     trade any layout is worth.
-//!   * **Atomic write.** Temp file, then rename — atomic on NTFS and POSIX
-//!     alike. A crash mid-write leaves the previous layout intact rather than
-//!     half of two.
-//!   * **Forward-compatible.** `#[serde(default)]` throughout, unknown fields
-//!     ignored. An older build must not choke on a file a newer one wrote.
+//! Second thing here to touch the disk, after `project::store`, and built to its same four rules:
+//!   * **Never fatal.** Every read degrades to `Stored::default()`. An unparseable layout costs
+//!     your window arrangement; refusing to start costs the application, which no layout is worth.
+//!   * **Atomic write.** Temp file, then rename — atomic on NTFS and POSIX alike. A crash
+//!     mid-write leaves the previous layout intact rather than half of two.
+//!   * **Forward-compatible.** `#[serde(default)]` throughout, unknown fields ignored. An older
+//!     build must not choke on a file a newer one wrote.
 //!   * **Not in the repo.** The config directory, never beside a project.
 //!
-//! ## When it is written
-//!
-//! On every mutation, from inside `ShellState::mutate`, and never on exit. That
-//! is not a preference, it is the only correct place. `WindowEvent::Destroyed`
-//! fires for *every* window when the application quits, so anything that saved
-//! on the way out would be saving a state that `reclaim` had already collapsed
-//! into a single window — you would close HELVE with three windows and open it
-//! with one, every time, and the bug would look like a serialization fault
-//! rather than a lifecycle one. `project::store` already writes inside every
-//! mutator for the same reason.
+//! Written on every mutation, from inside `ShellState::mutate`, and never on exit — not a
+//! preference but the only correct place. `WindowEvent::Destroyed` fires for *every* window when
+//! the app quits, so saving on the way out would save a state `reclaim` had already collapsed into
+//! one window: close HELVE with three windows, open with one, every time, and the bug looks like a
+//! serialization fault, not a lifecycle one. `project::store` writes inside every mutator too.
 
 use crate::shell_state::{
     ShellSnapshot, SurfaceInstance, TerminalSession, WindowGeometry, WindowPlacement,

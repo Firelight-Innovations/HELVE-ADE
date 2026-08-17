@@ -16,17 +16,6 @@
  * clusters on the same repository leaves the top alone and replaces the
  * bottom, which is the whole reason they are drawn as two independent
  * sections rather than one scrolling list.
- *
- * ## `activeBranch`
- *
- * `WorktreeControl.list` returns every worktree of the *repository*, with no
- * field saying which one (if any) belongs to this cluster — that binding is
- * `Cluster.worktree`, which lives on the record `contract.ts` deliberately
- * keeps out of this file (see the header comment there on regions never
- * importing each other's source). So the caller resolves it — from
- * `cluster.worktree?.branch`, falling back to the checked-out branch of the
- * project itself — and hands it down rather than this component guessing at
- * a path match that could pick the wrong one when two clusters share a repo.
  */
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { isTomlPath, TOML_LANGUAGE_ID } from "@helve/monaco-languages";
@@ -97,6 +86,17 @@ export interface WorktreePanelProps {
    *  what made this whole section render an error instead of a change list. */
   gitControl: GitControl;
   git: GitStatusHandle;
+  /**
+   * Resolved by the caller, not here. `WorktreeControl.list` returns every
+   * worktree of the *repository*, with no field saying which one (if any)
+   * belongs to this cluster — that binding is `Cluster.worktree`, which lives
+   * on the record `contract.ts` deliberately keeps out of this file (see the
+   * header comment there on regions never importing each other's source). So
+   * the caller resolves it — from `cluster.worktree?.branch`, falling back to
+   * the checked-out branch of the project itself — and hands it down rather
+   * than this component guessing at a path match that could pick the wrong one
+   * when two clusters share a repo.
+   */
   activeBranch: string | null;
 }
 

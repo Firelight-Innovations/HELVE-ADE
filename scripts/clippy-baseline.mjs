@@ -4,23 +4,10 @@
  * `cargo clippy -- -D warnings` is the goal, but this repository was written
  * before clippy was configured and has 298 pre-existing warnings. Turning them
  * into errors on day one would mean either a weekend of refactoring or a wall
- * of `#![allow]` at the top of twenty files.
- *
- * The alternative used here is a counted baseline. `clippy-baseline.json`
- * records how many warnings of each lint each file currently has. This script
- * fails only when a count goes *up*, or when a lint appears in a file that had
- * none. Existing code is grandfathered; new code is not, and neither is a new
- * violation added to an old file.
- *
- * Why not `#![allow(...)]` per file, which is the usual Rust answer:
- *
- *   - It edits source files, and the request that prompted this was explicitly
- *     "do not refactor existing code yet".
- *   - A file-level allow is permanent and unbounded. It hides the twelve
- *     `expect()` calls that exist today *and* the thirteenth added tomorrow.
- *     A count catches the thirteenth.
- *   - Shrinking it is self-documenting: `--update` after a cleanup pass leaves
- *     a diff showing exactly what was paid down.
+ * of `#![allow]` at the top of twenty files. What is used instead is a counted
+ * baseline, described at the comparison below. The full account — including why
+ * `#![allow(...)]` per file, the usual Rust answer, was rejected — is in
+ * `docs/design-notes/scripts.md`.
  *
  * Usage:
  *   node scripts/clippy-baseline.mjs            check against the baseline
@@ -117,6 +104,10 @@ const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
 const regressions = [];
 let improved = 0;
 
+// `clippy-baseline.json` records how many warnings of each lint each file
+// currently has, so this fails only when a count goes *up*, or when a lint
+// appears in a file that had none. Existing code is grandfathered; new code is
+// not, and neither is a new violation added to an old file.
 for (const [key, count] of Object.entries(current)) {
   const allowed = baseline[key] ?? 0;
   if (count > allowed) regressions.push({ key, count, allowed });

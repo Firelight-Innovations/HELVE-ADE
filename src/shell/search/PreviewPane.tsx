@@ -3,22 +3,20 @@
  * file the results list or the locator tree currently has focused.
  *
  * The user can never edit, save, or type into this pane — `readOnly` and
- * `domReadOnly` are both hard-coded `true` in `./previewMonaco.ts` and nothing
- * here ever flips either. That is also why this component owns no dirty state,
- * no save handler and no conflict banner: those all exist in
- * `apps/files/ui/src/viewer/TextViewer.tsx` because that pane is written to.
- * This one only ever reads.
+ * `domReadOnly` are hard-coded `true` in `./previewMonaco.ts` and nothing here
+ * flips either. That is why this component owns no dirty state, no save handler
+ * and no conflict banner; `apps/files/ui/src/viewer/TextViewer.tsx` has those
+ * because that pane is written to. This one only ever reads.
  *
  * Everything Monaco-shaped is in `./previewMonaco.ts`, mirroring the split
  * `TextViewer.tsx`/`monaco.ts` draw in `apps/files/`: this file is a React
- * component and a state machine, and the only monaco-editor types it holds are
- * the opaque ones `previewMonaco.ts` exports.
+ * component and a state machine, holding only that module's opaque types.
  *
- * Meant to be reached the way `DiffView` is — a `lazy(() => import("./PreviewPane"))`
- * one level up, so Monaco and its worker chunk are not paid for until the
- * search overlay actually mounts a preview. This module pulls in Monaco on
- * evaluation (via `./previewMonaco`), so the `lazy` boundary belongs at this
- * file, not inside it.
+ * Meant to be reached the way `DiffView` is — a `lazy(() => import(…))` one
+ * level up — so Monaco and its worker chunk are not paid for until the search
+ * overlay actually mounts a preview. This module pulls Monaco in on evaluation
+ * (via `./previewMonaco`), so the `lazy` boundary belongs at this file, not
+ * inside it.
  */
 import { useEffect, useRef, useState } from "react";
 import type { LocatorFocus } from "./types";

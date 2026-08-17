@@ -8,17 +8,6 @@
  * those three rows, verbatim: the type column, the label, and (internally,
  * since `SearchResult` itself carries no `SearchType`) the `SearchType` each
  * belongs to, so `query` has something to filter on.
- *
- * `query` filters by `types` only — matching the handoff crop where the
- * three unchecked-adjacent types simply have no rows, not dimmed ones. See
- * SearchSlot.tsx for the "hidden vs greyed" call this fixture backs.
- *
- * Text matching is intentionally lenient (a case-insensitive substring match
- * with trailing punctuation stripped from the query) rather than exact, so
- * the crop's own query — `forge_` — still turns up "Forge district — quest
- * table" alongside the two `forge_*` filenames. A strict substring match on
- * the literal underscore would silently drop that row and fail to reproduce
- * the drawing.
  */
 import type { SearchIndex, SearchResult, SearchType } from "../contract";
 
@@ -35,6 +24,13 @@ const FIXTURE: FixtureEntry[] = [
   { searchType: "content", type: "content", label: "Forge district — quest table" },
 ];
 
+/**
+ * Lenient on purpose — a case-insensitive substring match with trailing
+ * punctuation stripped, rather than exact. The crop's own query, `forge_`, has
+ * to turn up "Forge district — quest table" alongside the two `forge_*`
+ * filenames; a strict match on the literal underscore would silently drop that
+ * row and fail to reproduce the drawing.
+ */
 function normalize(text: string): string {
   return text
     .trim()
@@ -43,6 +39,11 @@ function normalize(text: string): string {
 }
 
 export const stubSearchIndex: SearchIndex = {
+  /**
+   * Filters by `types` only — matching the handoff crop, where the three
+   * unchecked types simply have no rows rather than dimmed ones. See
+   * SearchSlot.tsx for the "hidden vs greyed" call this fixture backs.
+   */
   query(text: string, types: SearchType[]): SearchResult[] {
     const needle = normalize(text);
     return FIXTURE.filter((entry) => types.includes(entry.searchType))

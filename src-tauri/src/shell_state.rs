@@ -1,55 +1,21 @@
 //! What every HELVE window has to agree on.
 //!
-//! The shell runs in more than one window: the main one, plus a real OS window
-//! for anything that has been dragged out of it. Most of what a window knows is
-//! its own business — how wide its panel is, which popover is open — but the
-//! layout cannot be, because two windows disagreeing about it would be a
-//! visible bug. So the layout lives here, in the backend, and each window is a
-//! projection of it: it subscribes to `shell:state` and renders whatever its
-//! entry says it holds. Nothing is copied between windows, which means nothing
-//! can drift out of sync.
+//! The shell runs in more than one window: the main one, plus a real OS window for anything that
+//! has been dragged out of it. Most of what a window knows is its own business — how wide its
+//! panel is, which popover is open — but the layout cannot be, because two windows disagreeing
+//! about it would be a visible bug. So the layout lives here, in the backend, and each window is a
+//! projection of it: it subscribes to `shell:state` and renders whatever its entry says it holds.
+//! Nothing is copied between windows, which means nothing can drift out of sync.
 //!
-//! ## The shape
+//! A **window** holds zero or more **clusters** and shows one of them. A cluster is one thing being
+//! worked on: a pane tree of app surfaces, the **project** every surface in it resolves against,
+//! and — once Braden's git work lands — the worktree it operates on. Switching cluster tabs swaps
+//! the whole layout beneath the switcher bar, and the project underneath it. An **instance** is one
+//! live surface. See [`SurfaceInstance`], [`WindowPlacement::clusters`], [`Cluster::project`] and
+//! [`TerminalSession`] for what each of those words is carrying.
 //!
-//! A **window** holds zero or more **clusters** and shows one of them. A cluster
-//! is one thing being worked on: a pane tree of app surfaces, the **project**
-//! every surface in it resolves against, and — once Braden's git work lands —
-//! the worktree it operates on. Switching cluster tabs swaps the whole layout
-//! beneath the switcher bar, and the project underneath it.
-//!
-//! The project is the cluster's and not the process's, which is the reason
-//! `Cluster::project` exists at all. Two windows on two monitors, each showing a
-//! cluster of its own, are meant to be able to work on two different projects at
-//! once — and a single global "the open project" makes that unexpressible, not
-//! merely awkward: whichever window opened something last would have retitled
-//! and re-rooted the other one.
-//!
-//! "Zero or more" is deliberate too, and it is a change. A window used to be
-//! guaranteed a cluster; closing the last one is now allowed, and the app area
-//! draws an empty state. Dragging the last one out to another window is allowed
-//! for the same reason: see `move_cluster_pure`, which used to refuse that.
-//!
-//! An **instance** is one live surface. `files-1` and `files-2` are two Files,
-//! side by side, with their own open files and their own scroll positions. This
-//! is the distinction the whole module exists to draw: `files` is a *type*, and
-//! it stopped being an identity the moment two of them could be on screen.
-//!
-//! Terminals were already built this way — `term-1`, `term-2`, moveable between
-//! the places that draw them. One names a **cluster**, where it used to name a
-//! window; see [`TerminalSession::cluster_id`] for what that replaced.
-//!
-//! ## Where a surface lives
-//!
-//! There is exactly one answer, and it is the tree. An instance is in whichever
-//! cluster's `tree` contains its id, and nowhere else. A terminal is in its
-//! cluster's band *unless* its id appears in a tree — any cluster's tree, in any
-//! window — in which case it has been dragged into the layout and is drawn there
-//! as a surface instead. No second field records this, so no second field can
-//! contradict it, and a terminal can never draw in two places at once.
-//!
-//! The same rule is why a terminal carries only a `cluster_id`: the window is
-//! the one holding that cluster, derived rather than stored, so moving a cluster
-//! between windows cannot leave a terminal and its window disagreeing.
+//! Where a surface lives has exactly one answer, and it is the tree — see [`Cluster::tree`] for
+//! that rule and [`TerminalSession::cluster_id`] for the terminal half of it.
 
 use crate::layout::{PaneNode, SplitDir};
 use crate::presets;
@@ -94,6 +60,10 @@ pub enum SurfaceKind {
 }
 
 /// One live surface.
+///
+/// `files-1` and `files-2` are two Files, side by side, with their own open files and their own
+/// scroll positions. This is the distinction the whole module exists to draw: `files` is a *type*,
+/// and it stopped being an identity the moment two of them could be on screen.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceInstance {
@@ -172,22 +142,31 @@ pub struct Cluster {
     pub id: String,
     pub name: String,
     /// The pane tree. Holds instance ids; see `layout`.
+    ///
+    /// This is the one answer to where a surface lives: an instance is in whichever cluster's tree
+    /// contains its id, and nowhere else. A terminal is in its cluster's band *unless* its id
+    /// appears in a tree — any cluster's tree, in any window — in which case it has been dragged
+    /// into the layout and is drawn there as a surface instead. No second field records this, so
+    /// no second field can contradict it, and a terminal can never draw in two places at once.
     pub tree: PaneNode,
-    /// The folder this cluster's work is in, or `None` for a cluster that has
-    /// not been pointed at one yet — a brand-new cluster, which draws Home's
-    /// pick-a-project state rather than inheriting whatever the last one was
-    /// looking at.
+    /// The folder this cluster's work is in, or `None` for a cluster that has not been pointed at
+    /// one yet — a brand-new cluster, which draws Home's pick-a-project state rather than
+    /// inheriting whatever the last one was looking at.
     ///
-    /// A `String` and not a `PathBuf`, matching [`WorktreeRef::path`] and for
-    /// the reason [`crate::project::ProjectInfo`] spells out: this crosses into
-    /// JSON, a Windows path is not guaranteed to be UTF-8, and doing the
-    /// conversion at one boundary is better than doing it by accident at
-    /// several.
+    /// The project is the cluster's and not the process's, which is the reason this field exists
+    /// at all. Two windows on two monitors, each showing a cluster of its own, are meant to work
+    /// on two different projects at once — and a single global "the open project" makes that
+    /// unexpressible, not merely awkward: whichever window opened something last would have
+    /// retitled and re-rooted the other one.
     ///
-    /// `default` because a `layout.json` written before a cluster owned a
-    /// project has no such key, and a layout that failed to load is a session
-    /// lost. It arrives as `None` and the migration in `lib.rs` seeds the first
-    /// cluster from the old global.
+    /// A `String` and not a `PathBuf`, matching [`WorktreeRef::path`] and for the reason
+    /// [`crate::project::ProjectInfo`] spells out: this crosses into JSON, a Windows path is not
+    /// guaranteed to be UTF-8, and doing the conversion at one boundary beats doing it by accident
+    /// at several.
+    ///
+    /// `default` because a `layout.json` written before a cluster owned a project has no such key,
+    /// and a layout that failed to load is a session lost. It arrives as `None` and the migration
+    /// in `lib.rs` seeds the first cluster from the old global.
     #[serde(default)]
     pub project: Option<String>,
     pub worktree: Option<WorktreeRef>,
@@ -235,6 +214,10 @@ pub struct WindowPlacement {
     /// window per tool" true by construction — there was no second label a
     /// second Files could have had.
     pub label: String,
+    /// "Zero or more" is deliberate, and it is a change. A window used to be guaranteed a cluster;
+    /// closing the last one is now allowed, and the app area draws an empty state. Dragging the
+    /// last one out to another window is allowed for the same reason: see `move_cluster_pure`,
+    /// which used to refuse that.
     pub clusters: Vec<Cluster>,
     pub active_cluster_id: Option<String>,
     /// `None` until the window has reported where it is. Only ever written from
@@ -254,6 +237,12 @@ impl WindowPlacement {
     }
 }
 
+/// One shell session, moveable between the places that draw it.
+///
+/// Terminals were already built this way — `term-1`, `term-2` — with an id that names a
+/// **cluster** where it used to name a window; see [`cluster_id`](Self::cluster_id) for what that
+/// replaced. The window is derived rather than stored: it is whichever one holds that cluster, so
+/// moving a cluster between windows cannot leave a terminal and its window disagreeing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSession {
@@ -261,37 +250,23 @@ pub struct TerminalSession {
     pub title: String,
     /// Which cluster's band holds it. Not which window, and that is a reversal.
     ///
-    /// It named a **window** while the terminal panel was the window's
-    /// furniture: a shell opened while looking at `auth` stayed put when you
-    /// switched to `billing`, so it could watch one worktree while the layout in
-    /// front of it was about another. That was sound for the panel it was
-    /// written about — a strip down the right-hand side, beside the work.
+    /// It named a **window** while the terminal panel was the window's furniture. The panel is
+    /// gone: terminals live in a band drawn *inside* the cluster's half of the window, so the
+    /// scope follows the drawing — a terminal belongs to the cluster whose band holds it, spawns
+    /// in that cluster's project, and is killed with it. The cross-cluster shell the old rule
+    /// protected is still expressible (put the cluster on its own monitor, or drag the terminal
+    /// into a pane); it is just no longer what every terminal gets whether it wanted it or not.
+    /// The full argument, including what the old arrangement was right about, is in
+    /// `docs/design-notes/backend-core.md`.
     ///
-    /// The panel is gone. Terminals live in a band under the tool window, drawn
-    /// *inside* the cluster's half of the window, and a band showing the
-    /// window's terminals under a cluster's layout would claim the two belong
-    /// together while the state said they did not. The visible cost is the old
-    /// arrangement's own argument inverted: opening a terminal to work on `auth`
-    /// and finding it still there — same cwd, same history — under `billing` is
-    /// a shell pointed at the wrong worktree with nothing on screen to say so.
+    /// Defaulted rather than required, and the empty string is a real state rather than a
+    /// placeholder: a `layout.json` written while terminals named a window has a `windowLabel` here
+    /// and no cluster id at all, and nothing in it says which of the window's clusters should have
+    /// claimed each shell. So it deserializes to "no cluster" and [`adopt_orphan_terminals`] gives
+    /// it one at restore, where the whole snapshot is in hand and there is a cluster to point at.
     ///
-    /// So the scope follows the drawing. A terminal belongs to the cluster whose
-    /// band holds it, spawns in that cluster's project, and is killed with it.
-    /// The cross-cluster shell the old rule protected is still expressible — put
-    /// the cluster on its own monitor, or drag the terminal into a pane — it is
-    /// no longer what every terminal gets whether it wanted it or not.
-    ///
-    /// Defaulted rather than required, and the empty string is a real state
-    /// rather than a placeholder: a `layout.json` written while terminals named
-    /// a window has a `windowLabel` here and no cluster id at all, and there is
-    /// nothing in that file that says which of the window's clusters should have
-    /// claimed each shell. So it deserializes to "no cluster" and
-    /// [`adopt_orphan_terminals`] gives it one at restore, where the whole
-    /// snapshot is in hand and there is a first cluster to point at.
-    ///
-    /// An id naming no live cluster is otherwise unreachable: every path that
-    /// creates or moves a terminal names a cluster that exists, and
-    /// `close_cluster` takes its terminals with it.
+    /// An id naming no live cluster is otherwise unreachable: every path that creates or moves a
+    /// terminal names a cluster that exists, and `close_cluster` takes its terminals with it.
     #[serde(default)]
     pub cluster_id: String,
     /// The dot on a terminal tab: *this agent finished*. Not tool health.
@@ -817,28 +792,25 @@ impl ShellState {
         });
     }
 
-    /// Close a cluster and everything in it. Returns the instance and terminal
-    /// ids that went with it, so the caller can dispose of what sat behind them
-    /// — a pty in particular, which this module deliberately knows nothing
-    /// about and must not be left running with nothing on screen for it.
+    /// Close a cluster and everything in it. Returns the instance and terminal ids that went with
+    /// it, so the caller can dispose of what sat behind them — a pty in particular, which this
+    /// module deliberately knows nothing about and must not be left running with nothing on screen.
     ///
-    /// "In it" means two things now, and it used to mean only the first: every
-    /// tab in its tree, **and** every terminal in its band. The band's terminals
-    /// used to be exempt because they were the window's and outlived every
-    /// cluster in it; they name this cluster now, so exempting them would leave
-    /// shells running with nothing anywhere that draws them. Both are on screen
+    /// "In it" means two things now, and it used to mean only the first: every tab in its tree,
+    /// **and** every terminal in its band. The band's terminals used to be exempt because they
+    /// were the window's and outlived every cluster in it; they name this cluster now, so exempting
+    /// them would leave shells running with nothing anywhere that draws them. Both are on screen
     /// inside the thing being closed, which is the whole test.
     ///
-    /// **The last cluster in a window may be closed.** There is no guard here
-    /// and its absence is deliberate: a window that answered "no, it is the only
-    /// one" would be refusing the one thing the × means. What it is left with is
-    /// an empty app area — `NoClustersState` says so and names the way out.
+    /// **The last cluster in a window may be closed.** There is no guard here and its absence is
+    /// deliberate: a window that answered "no, it is the only one" would be refusing the one thing
+    /// the × means. What it is left with is an empty app area — `NoClustersState` says so and names
+    /// the way out.
     ///
-    /// `move_cluster_pure` reaches the same window state by the other route, and
-    /// deliberately: it used to refuse to move the last cluster out, on the
-    /// grounds that emptying the source was a side effect nobody asked for, and
-    /// that refusal is gone. The two now agree, which is one fewer rule to hold
-    /// and one fewer gesture the interface has to hide.
+    /// `move_cluster_pure` reaches the same window state by the other route, and deliberately: it
+    /// used to refuse to move the last cluster out, on the grounds that emptying the source was a
+    /// side effect nobody asked for, and that refusal is gone. The two now agree, which is one
+    /// fewer rule to hold and one fewer gesture the interface has to hide.
     pub fn close_cluster(&self, app: &AppHandle, cluster_id: &str) -> (Vec<String>, Vec<String>) {
         let mut instances = Vec::new();
         let mut terminals = Vec::new();
@@ -1489,34 +1461,22 @@ impl ShellState {
 
     /// Publish a session **straight into a cluster's tree**, never into a band.
     ///
-    /// The counterpart of [`add_terminal`](Self::add_terminal) for the Apps
-    /// menu's Terminal row and for a preset's terminal slot, and it is one
-    /// mutation rather than "add it, then move it" for a reason that is visible
-    /// on screen. `add_terminal` selects what it just opened, because the band's
-    /// `+` should show you the terminal you asked for. Doing that and then moving
-    /// the session into a pane broadcasts twice: the band jumps to a terminal
-    /// that is about to leave it, and `reseat_active_terminals` then repairs the
-    /// selection to *some* band terminal, which is not necessarily the one you
-    /// were reading. Opening a terminal in a pane would change which terminal the
-    /// band is showing — a side effect nobody asked for, and a visible flicker
-    /// on the way to it.
+    /// The counterpart of [`add_terminal`](Self::add_terminal) for the Apps menu's Terminal row
+    /// and for a preset's terminal slot, and one mutation rather than "add it, then move it" for a
+    /// reason that is visible on screen. `add_terminal` selects what it just opened, because the
+    /// band's `+` should show you the terminal you asked for; doing that and then moving the
+    /// session into a pane broadcasts twice, so the band jumps to a terminal about to leave it and
+    /// `reseat_active_terminals` then repairs the selection to *some* band terminal, not
+    /// necessarily the one you were reading — a side effect nobody asked for, with a visible
+    /// flicker on the way to it. So there is no intermediate state: the session is published with
+    /// its id already in the tree, and `reseat_active_terminals` sees the finished picture and
+    /// leaves the cluster's still-valid band selection exactly where it was.
     ///
-    /// So there is no intermediate state. The session is published with its id
-    /// already in the tree, `reseat_active_terminals` sees the finished picture,
-    /// finds the cluster's existing band selection still valid, and leaves it
-    /// exactly where it was.
-    ///
-    /// A `pane_id` that no longer names a pane leaves the session in the band
-    /// instead of nowhere. That is a real shell with an entry you can find, which
-    /// is the failure worth having — the alternative is a live process with
-    /// nothing on screen for it.
-    ///
-    /// `dir` asks for a pane of its own rather than a tab, on exactly the terms
-    /// `open_instance` above does and through the same `PaneNode::open_into`.
-    /// The Apps menu lists Terminal beside the apps, so a row in that menu that
-    /// split and a row that stacked would be two behaviours in one list. A
-    /// preset's terminal slot passes `None` with an `index`, because a preset
-    /// has already decided the shape.
+    /// `dir` asks for a pane of its own rather than a tab, on exactly the terms `open_instance`
+    /// above does and through the same `PaneNode::open_into`. The Apps menu lists Terminal beside
+    /// the apps, so a row that split and a row that stacked would be two behaviours in one list. A
+    /// preset's terminal slot passes `None` with an `index`, because a preset has already decided
+    /// the shape.
     #[allow(clippy::too_many_arguments)]
     pub fn add_terminal_in_pane(
         &self,
@@ -1565,6 +1525,10 @@ impl ShellState {
                     // A terminal is never Home, so this always applies — see
                     // `dismiss_takeover`.
                     dismiss_takeover(&mut c.tree, pane_id, instances);
+                    // A `pane_id` that no longer names a pane leaves the session in the band
+                    // instead of nowhere. That is a real shell with an entry you can find, which
+                    // is the failure worth having — the alternative is a live process with nothing
+                    // on screen for it.
                     c.tree.open_into(pane_id, id, index, split);
                     return;
                 }
@@ -1765,27 +1729,19 @@ fn slot_of_tab(snapshot: &ShellSnapshot, id: &str) -> Option<presets::PresetSlot
 
 // --- A takeover surface's dismissal -------------------------------------------
 //
-// Home and Tutorials **cover** the cluster rather than taking a pane beside it
-// — `WindowRoot.tsx`'s `TAKEOVER_APPS` and `ToolWindow`'s `soloInstanceId` are
-// the drawing half of that. Neither draws a tab of its own in the switcher row
-// (see that file's `members`), on purpose: they are the screen you are already
-// on, not a fourth thing competing with Files, the viewer and a terminal for a
+// Home and Tutorials **cover** the cluster rather than taking a pane beside it — `WindowRoot.tsx`'s
+// `TAKEOVER_APPS` and `ToolWindow`'s `soloInstanceId` are the drawing half of that. Neither draws a
+// tab of its own in the switcher row (see that file's `members`), on purpose: they are the screen
+// you are already on, not a fourth thing competing with Files, the viewer and a terminal for a
 // place in the row.
-//
-// The cost of that is that neither has a close button anywhere — there is no
-// gesture left, once something else is visible in its pane, that could ever
-// bring it back into view there. So this module closes it for the user, the
-// instant that happens, rather than leaving a live instance nobody can reach
-// and nobody asked to keep.
-//
-// One takeover surface arriving over another is the exception, and it is why
-// `open_instance` guards on `is_takeover_app` rather than on the id `"home"`.
-// Opening Tutorials from a card on Home must not evict the Home underneath: it
-// is covered, not replaced, and closing the tutorial has to put back the screen
-// the reader left. Evicting would strand a fresh cluster with nothing in it.
 
-/// Apps that cover the cluster instead of taking a pane. Mirrors
-/// `TAKEOVER_APPS` in `src/shell/WindowRoot.tsx`; the two are a pair.
+/// Apps that cover the cluster instead of taking a pane. Mirrors `TAKEOVER_APPS` in
+/// `src/shell/WindowRoot.tsx`; the two are a pair.
+///
+/// One takeover surface arriving over another is the exception, and it is why `open_instance`
+/// guards on this rather than on the id `"home"`. Opening Tutorials from a card on Home must not
+/// evict the Home underneath: it is covered, not replaced, and closing the tutorial has to put back
+/// the screen the reader left. Evicting would strand a fresh cluster with nothing in it.
 fn is_takeover_app(app_id: &str) -> bool {
     matches!(app_id, "home" | "tutorial")
 }
@@ -1797,9 +1753,13 @@ fn is_takeover(instances: &[SurfaceInstance], id: &str) -> bool {
         .any(|i| i.id == id && is_takeover_app(&i.app_id))
 }
 
-/// If `pane_id` currently holds Home, close it — the tab and the instance
-/// both, exactly what `close_instance` does for anything else. `None` if it
-/// did not.
+/// If `pane_id` currently holds Home, close it — the tab and the instance both, exactly what
+/// `close_instance` does for anything else. `None` if it did not.
+///
+/// A takeover surface has no close button anywhere: once something else is visible in its pane
+/// there is no gesture left that could bring it back into view there. So this closes it for the
+/// user, the instant that happens, rather than leaving a live instance nobody can reach and nobody
+/// asked to keep.
 ///
 /// Called from every path that can put something new into a pane:
 /// `open_instance` and `add_terminal_in_pane`, both *before* they call
@@ -1948,42 +1908,22 @@ fn take_cluster(w: &mut WindowPlacement, cluster_id: &str) -> Option<Cluster> {
     Some(gone)
 }
 
-/// Move a cluster into `to_label`'s window, creating that window's entry if it
-/// does not have one. The whole of `ShellState::move_cluster`, minus the lock
-/// and the broadcast, so that it can be tested against a bare `ShellSnapshot`.
+/// Move a cluster into `to_label`'s window, creating that window's entry if it does not have one.
+/// The whole of `ShellState::move_cluster`, minus the lock and the broadcast, so that it can be
+/// tested against a bare `ShellSnapshot`.
 ///
-/// One refusal, returning `false` with nothing changed: **a cluster nobody
-/// holds**, which has already been closed or never existed.
-///
-/// **The last cluster in a window may be moved out**, and that is a change. It
-/// used to be the second refusal, on the reasoning that emptying the source
-/// window was a side effect of a gesture that had only named a destination. That
-/// reasoning does not survive contact with the machine this feature exists for.
-/// A window with no clusters is a legal state — `close_cluster` makes one,
-/// `NoClustersState` draws it, and the terminal panel beside it is the window's
-/// own and keeps working — so there was no invariant left to defend, only a
-/// preference about what a gesture should imply. Against that preference: the
-/// whole point of dragging a cluster onto another monitor is that the cluster
-/// should be *there* and not *here*, and someone with one cluster open wants
-/// that at least as much as someone with four. Refusing them meant the interface
-/// had to hide the drag handle to avoid offering a gesture it would not honour,
-/// so the feature simply vanished from the window where it was most obviously
-/// wanted, with nothing on screen to say why. An empty source window is one +
-/// away from useful; a gesture that is not offered is not discoverable at all.
-///
-/// Moving a cluster to the window it is already in is not a refusal either:
-/// nothing happens and `true` is returned, because the cluster *is* where the
+/// One refusal, returning `false` with nothing changed: **a cluster nobody holds**, which has
+/// already been closed or never existed. **The last cluster in a window may be moved out**, and
+/// that is a change — it used to be a second refusal, and the argument for dropping it is in
+/// `docs/design-notes/backend-core.md`. Moving a cluster to the window it is already in is not a
+/// refusal either: nothing happens and `true` is returned, because the cluster *is* where the
 /// caller asked for it to be.
 ///
-/// What travels with it: the tree, therefore every tab in the tree, and — since
-/// terminals name a cluster — every terminal in its band, with nothing here
-/// having to move any of them. This used to rewrite a `window_label` on every
-/// terminal held in the tree, because that field said which window's panel would
-/// draw one, and a terminal on screen in window B claiming to belong to A's
-/// panel landed in the wrong window the moment it was dragged out of the tree.
-/// There is no such field now and so no such fixup. Instances never needed one:
-/// they are a flat global list keyed by id, and the tree is the only thing that
-/// says where any of them are.
+/// What travels with it: the tree, therefore every tab in the tree, and — since terminals name a
+/// cluster — every terminal in its band, with nothing here having to move any of them. This used
+/// to rewrite a `window_label` on every terminal held in the tree; that field is gone, and the
+/// docs page above records the bug its absence removed. Instances never needed one: they are a
+/// flat global list keyed by id, and the tree is the only thing that says where any of them are.
 fn move_cluster_pure(s: &mut ShellSnapshot, cluster_id: &str, to_label: &str) -> bool {
     let Some(source) = s
         .windows

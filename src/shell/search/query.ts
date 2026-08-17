@@ -4,25 +4,18 @@
  *
  * "Just do what VS Code does" is the brief, but VS Code splits this across two
  * boxes — a search term and a separate glob-only include/exclude field. This
- * overlay has one field for both, because the filter buttons and the field
- * share state (see `toQueryString`'s header): a click has to write into the
- * same string a keystroke edits, so there is only one string to parse. What
- * follows is that single grammar: bare globs, a trailing-slash directory,
- * `path:`/`ext:`/`kind:` prefixes, `!`/`-` negation, and a quoted phrase, all
- * mixed with plain words that are the thing being searched *for* rather than
- * filtered *by*.
+ * overlay has one field for both: the filter buttons and the field share state
+ * (see `toQueryString`), so a click writes into the same string a keystroke
+ * edits and there is only one string to parse. That grammar is bare globs, a
+ * trailing-slash directory, `path:`/`ext:`/`kind:` prefixes, `!`/`-` negation
+ * and a quoted phrase, mixed with plain words searched *for*, not filtered *by*.
  *
- * Pure by design — no React, no Monaco, no Tauri, no DOM (the one exception,
- * `RegExp`, is a language builtin, not a platform one). That is what lets a
- * Rust-backed search source and a React hook both depend on it without either
- * dragging the other's runtime along, and what makes every function here
- * testable by construction rather than by mounting something.
- *
- * What this module does not do: it does not run a search. `compilePathFilter`
- * answers "does this path pass," and `compileNeedle` turns a needle into a
- * `RegExp`, but walking a tree or reading a file is `searchSource.ts`'s job
- * (today a name-only walk; a content index later). This module only compiles
- * intent into something a walker can apply per file.
+ * Pure by design — no React, no Monaco, no Tauri, no DOM (`RegExp` is a
+ * language builtin, not a platform one), so a Rust-backed search source and a
+ * React hook both depend on it without dragging the other's runtime along, and
+ * every function is testable by construction. It does not run a search:
+ * walking a tree or reading a file is `searchSource.ts`'s job; this module
+ * only compiles intent into something a walker can apply per file.
  */
 import { ALL_KINDS, extensionOf, kindOf } from "./kinds";
 import type { SearchKind } from "./types";
@@ -47,7 +40,10 @@ export interface ParsedQuery {
   paths: string[];
   /** `kind:script` — must validate against SearchKind in ./types. */
   kinds: SearchKind[];
-  /** `ext:rs` — bare extension filters, lowercased, dot-less. */
+  /** `ext:rs` — bare extension filters, lowercased, dot-less. Never collides
+   *  with `kinds` even when the two share a token's text (`ext:script` beside
+   *  `kind:script`): both are always spelled with their own prefix keyword on
+   *  both ends of the round trip. */
   extensions: string[];
 }
 
@@ -252,45 +248,21 @@ export function parseQuery(raw: string): ParsedQuery {
 /**
  * Renders a `ParsedQuery` back to field text.
  *
- * This is the half the type-filter popover actually depends on: clicking
- * "Rust" toggles `kinds`, and the popover writes the field by calling this on
- * the updated `ParsedQuery`, not by string-splicing the old field text. For
- * that to read back correctly on the next keystroke, `parseQuery(toQueryString(p))`
- * must deep-equal `p` for every `p` `parseQuery` can produce. The cases worth
- * writing down:
+ * This is the half the type-filter popover depends on: clicking "Rust" toggles
+ * `kinds`, and the popover writes the field by calling this on the updated
+ * `ParsedQuery`, not by string-splicing the old text. So
+ * `parseQuery(toQueryString(p))` must deep-equal `p` for every `p` `parseQuery`
+ * can produce. An empty needle is omitted rather than emitted as `""`; one that
+ * would misparse as a token is quoted — see `serializeNeedle`. The full
+ * case-by-case account is in `docs/design-notes/shell-search.md`.
  *
- * - **Empty needle.** Omitted entirely rather than emitted as `""` — an empty
- *   token stream parses back to `needle: ""` on its own, so there is nothing
- *   to round-trip.
- * - **A needle that looks like a token** (`*.md`, `path:x`, a lone `-`
- *   followed by more text). `needsQuoting` below flags exactly the shapes
- *   `classifyToken` would otherwise misparse and `serializeNeedle` wraps the
- *   needle in a quoted phrase, which `parseQuery` always reads as needle text
- *   regardless of what's inside. Both checks are written to mirror each
- *   other's thresholds (`length > 1` before treating a leading `!`/`-` as a
- *   marker, same for a trailing `/`) — under-quoting a needle that needed it
- *   is a parse bug, so the mirrored check leans safe wherever the two could
- *   disagree.
- * - **A multi-word needle** (`render scene`). Emitted as bare words, not as
- *   one quoted phrase — see `serializeNeedle`. Quoting here would round-trip
- *   correctly and still be wrong, because it rewrites text the user typed.
- * - **A quoted phrase**, including one containing `"` or `\`. `quoteNeedle`
- *   backslash-escapes both before wrapping, and `tokenize` reverses exactly
- *   that escaping — this is not a lossy case, just one that needs the escape
- *   pass to not be.
- * - **An extension that is also a kind name** (`ext:script` alongside
- *   `kind:script`). No collision: `extensions` and `kinds` are always spelled
- *   with their own prefix keyword on both ends of the round trip, so the two
- *   arrays never share a token's meaning even when they share a token's text.
- *
- * **Where the round trip is genuinely lossy:** a glob, directory, extension,
- * or path scope value that contains whitespace. The needle has quoting to
- * fall back on; nothing else does, matching how VS Code's and GitHub's own
- * filter syntaxes don't support embedded spaces in a bare pattern either.
- * `parseQuery` can't produce such a value from typed text in the first place
- * (a space always ends the token), so this only bites a `ParsedQuery` built
- * by hand rather than by `parseQuery` — which is outside what the round-trip
- * guarantee above promises to cover.
+ * **Where the round trip is genuinely lossy:** a glob, directory, extension
+ * or path scope value containing whitespace. The needle has quoting to fall
+ * back on; nothing else does, matching how VS Code's and GitHub's own filter
+ * syntaxes don't support embedded spaces in a bare pattern either.
+ * `parseQuery` can't produce such a value from typed text (a space always ends
+ * the token), so this only bites a `ParsedQuery` built by hand rather than by
+ * `parseQuery` — outside what the round-trip guarantee covers.
  */
 export function toQueryString(parsed: ParsedQuery): string {
   const parts: string[] = [
@@ -312,23 +284,20 @@ export function toQueryString(parsed: ParsedQuery): string {
  * The needle, written so it reads back as itself.
  *
  * A multi-word needle is **not** quoted just for containing spaces. It arrived
- * as several plain-word tokens joined with a space, and emitting it as several
- * plain words is what reads back identically — quoting it would round-trip
- * correctly but *visibly rewrite the user's own text*, turning `render scene`
- * into `"render scene"` the first time they clicked a filter chip. That is the
- * one thing the shared-state design must never do: a click rewrites the field,
- * so a click must leave everything it did not change byte-identical.
+ * as plain-word tokens joined with a space, so emitting it as plain words is
+ * what reads back identically; quoting would round-trip correctly but *visibly
+ * rewrite the user's own text*, turning `render scene` into `"render scene"`
+ * the first time they clicked a filter chip. A click rewrites the field, so it
+ * must leave everything it did not change byte-identical.
  *
  * Quoting is therefore per-needle rather than per-word: if any single word
  * would misparse on its own (`*.md`, `path:x`, `-v`), the whole needle is
- * quoted, because splitting it into some bare words and some quoted ones would
- * parse back to the same needle but look nothing like what was typed.
+ * quoted — mixing bare and quoted words would look nothing like what was typed.
  *
- * The shape guard is what keeps the bare path honest. A needle holding a tab, a
- * newline, or a run of two spaces cannot be written as space-joined words
- * without changing it, so it is quoted. `parseQuery` can never produce such a
- * needle — it joins on a single space — so this only guards a hand-built
- * `ParsedQuery`.
+ * The shape guard keeps the bare path honest: a needle holding a tab, a
+ * newline or a run of two spaces cannot be space-joined without changing it,
+ * so it is quoted. `parseQuery` never produces one — it joins on a single
+ * space — so this only guards a hand-built `ParsedQuery`.
  */
 function serializeNeedle(value: string): string {
   if (!/^\S+(?: \S+)*$/.test(value)) return quoteNeedle(value);
@@ -338,8 +307,10 @@ function serializeNeedle(value: string): string {
 }
 
 /** Would this single word, written bare into the field, be reparsed as
- *  something other than needle text? See `toQueryString`'s header for why each
- *  check here mirrors a threshold in `classifyToken`.
+ *  something other than needle text? Each check mirrors a threshold in
+ *  `classifyToken` (`length > 1` before treating a leading `!`/`-` as a marker,
+ *  same for a trailing `/`) — under-quoting a needle that needed it is a parse
+ *  bug, so the mirrored check leans safe wherever the two could disagree.
  *
  *  Takes one word, never a phrase — whitespace is `serializeNeedle`'s problem,
  *  and a check for it here would make every multi-word needle look unsafe. */
@@ -353,6 +324,9 @@ function needsQuoting(value: string): boolean {
   return false;
 }
 
+/** Wraps a needle as a quoted phrase, backslash-escaping `"` and `\` first —
+ *  `tokenize` reverses exactly that escaping, so a phrase containing either
+ *  survives the round trip rather than being a lossy case. */
 function quoteNeedle(value: string): string {
   const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `"${escaped}"`;
@@ -589,23 +563,19 @@ function containsSubsequence(haystack: string[], needle: string[]): boolean {
  * `paths`, `kinds`, `extensions` — into one reusable predicate.
  *
  * A factory rather than a one-shot `(path, parsed) => boolean` because the
- * intended caller is `runSearch`'s directory walk: one query, up to
- * `MAX_HITS` files and `MAX_DIRECTORIES` listings, and recompiling every
- * glob's `RegExp` on every single entry would make the filter the slow part
- * of the walk. Call this once per search and reuse the returned function.
+ * caller is `runSearch`'s directory walk: one query, up to `MAX_HITS` files
+ * and `MAX_DIRECTORIES` listings, and recompiling every glob's `RegExp` per
+ * entry would make the filter the slow part. Call once per search and reuse.
  *
- * `include`/`exclude`/`paths`/`kinds`/`extensions` being empty each means "no
- * restriction on that axis," not "match nothing." In particular an empty
- * `kinds` array does not reject every path here — `useSearchSession` already
- * treats "no kind selected" as "stop the search before it starts" for its own
- * UI reason, and baking that same policy into a general-purpose predicate
- * would make it wrong for any other caller that wants "unfiltered" to mean
- * what it says.
+ * An empty array on any axis means "no restriction on that axis," not "match
+ * nothing." In particular an empty `kinds` does not reject every path here —
+ * `useSearchSession` already treats "no kind selected" as "stop the search
+ * before it starts" for its own UI reason, and baking that policy into a
+ * general-purpose predicate would make it wrong for any other caller.
  *
- * Case-sensitive throughout — for glob text as much as for `path:` segments
- * — matching the rest of this module's plainness rather than guessing at the
- * filesystem's own case sensitivity, which differs by platform and even by
- * volume.
+ * Case-sensitive throughout — glob text as much as `path:` segments — rather
+ * than guessing at the filesystem's own case sensitivity, which differs by
+ * platform and even by volume.
  */
 export function compilePathFilter(parsed: ParsedQuery): (path: string) => boolean {
   const includeGlobs = parsed.include.map(compileGlob);

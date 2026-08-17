@@ -5,42 +5,6 @@
  * `MenuItem[]` the same way — one list component rather than two, so the two
  * responsive states can never drift into showing different trees for the same
  * menu.
- *
- * An item that cannot act is `disabled: true` — a real native `disabled`
- * button, which neither fires `onSelect` nor closes the menu, because a click
- * that lands on a control with nothing to do should not read as having done
- * something. That is the only inert state left worth having: an item with no
- * `onSelect` at all now means the Run and Help menus, which are the two this
- * work deliberately did not touch.
- *
- * `hint` rides on the `<li>` rather than the button for the reason the contract
- * gives: a `disabled` button takes no pointer events, so a `title` on it would
- * be readable on precisely the items that never need explaining.
- *
- * ## It has state now, and it did not before
- *
- * Two rows are no longer plain buttons — one opens a submenu, one opens a text
- * field — and both of those are *open or closed*, which is state. It lives here
- * rather than in each of the three surfaces that render this list, because all
- * three would otherwise need identical copies of it and the whole point of one
- * list component is that they do not have to agree about anything.
- *
- * At most one of either is open at a time, so the two share one `openLabel`:
- * opening the second closes the first, which is what a menu does.
- *
- * ## Why the extra surfaces are portalled
- *
- * All three hosts clip. `.menubar__dropdown` and `.addapp__menu` are both
- * `overflow: hidden`, and `.addapp__menu` additionally lives under a bar whose
- * `.switcher__tabs` is a horizontal scroll container — the problem that file's
- * header describes at length. A submenu drawn inside any of them would be cut
- * off at the parent's edge. So it is a portal into `document.body`, positioned
- * from the row's measured rectangle, and flipped to the row's left when there is
- * no room on its right.
- *
- * The container is `document.body` always, never a moving element, so the
- * remount-on-container-change hazard `ToolWindow` and `PaneTree` document does
- * not arise — and there is no iframe in a menu to reload if it did.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -103,6 +67,14 @@ export default function MenuItemList({
   // Keyed by the same `label-index` the rows are keyed by, so two rows sharing a
   // label — which nothing produces today, but a preset named "Save" would —
   // cannot open each other.
+  //
+  // Two rows are no longer plain buttons — one opens a submenu, one opens a text
+  // field — and both of those are *open or closed*, which is state. It lives here
+  // rather than in each of the three surfaces that render this list, because all
+  // three would otherwise need identical copies of it and the whole point of one
+  // list component is that they do not have to agree about anything. At most one
+  // of either is open at a time, so the two share one `openLabel`: opening the
+  // second closes the first, which is what a menu does.
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   return (
@@ -111,6 +83,10 @@ export default function MenuItemList({
         const key = `${item.label}-${i}`;
         const branch = item.submenu !== undefined || item.prompt !== undefined;
 
+        // `hint` rides on the `<li>` rather than the button for the reason the
+        // contract gives: a `disabled` button takes no pointer events, so a
+        // `title` on it would be readable on precisely the items that never
+        // need explaining.
         return (
           <li key={key} role="none" title={item.hint}>
             {item.separatorBefore && <div className="menu-list__separator" role="separator" />}
@@ -138,6 +114,17 @@ export default function MenuItemList({
   );
 }
 
+/**
+ * One row: a leaf that acts and closes the menu, or a branch that opens a
+ * surface beside it.
+ *
+ * An item that cannot act is `disabled: true` — a real native `disabled`
+ * button, which neither fires `onSelect` nor closes the menu, because a click
+ * that lands on a control with nothing to do should not read as having done
+ * something. That is the only inert state left worth having: an item with no
+ * `onSelect` at all now means the Run and Help menus, which are the two this
+ * work deliberately did not touch.
+ */
 function MenuRow({
   item,
   open,
@@ -192,6 +179,14 @@ function MenuRow({
 
 /**
  * A surface portalled beside a row, flipping to its left when the right is full.
+ *
+ * All three hosts clip — `.menubar__dropdown` and `.addapp__menu` are both
+ * `overflow: hidden`, and `.addapp__menu` additionally lives under a bar whose
+ * `.switcher__tabs` is a horizontal scroll container, the problem that file's
+ * header describes at length — so a submenu drawn inside one would be cut off at
+ * the parent's edge. The container is `document.body` always, never a moving
+ * element, so the remount-on-container-change hazard `ToolWindow` and `PaneTree`
+ * document does not arise — and there is no iframe in a menu to reload if it did.
  *
  * Measured once, on open, from the row's own rectangle — and *after* layout,
  * with `useLayoutEffect`, so the first painted frame is already in the right

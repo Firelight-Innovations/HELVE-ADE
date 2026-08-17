@@ -47,22 +47,7 @@ export interface PlacedCommit {
 /**
  * Assigns every commit a lane (column index) by walking the list newest to
  * oldest and tracking, per lane, which sha that lane is waiting to see next.
- *
- * The invariant that makes this work: a lane's value is always "the sha that
- * will justify this lane's next line downward." A commit claims whichever
- * lane is already waiting for its own sha — that is what makes a fork's two
- * children land in different lanes while their shared parent lands back in
- * the lane that got there first, drawing the two lanes converging into one.
- * A commit nothing is waiting for (a branch tip, or the very first commit
- * this function sees) has no lane to inherit, so it takes the first free
- * column or opens a new one on the right.
- *
- * Once a commit has its lane, that lane is handed to its first parent — the
- * ordinary, non-merge case, where a lane just continues downward under a new
- * sha. Every *additional* parent (two or more means this commit is a merge)
- * opens another lane for itself, reusing a free column before appending one,
- * so a history with many merges does not grow one column per merge forever.
- * A commit with no parents (a root) hands its lane nothing, which closes it.
+ * The two placement rules are documented on the statements that apply them.
  *
  * Because lanes are only ever reused or appended, never removed, `lane` is
  * never negative and never `NaN`, and a parent sha that never appears later
@@ -78,6 +63,14 @@ export function layoutCommits(commits: GitCommit[]): PlacedCommit[] {
   for (const commit of commits) {
     const lanesBefore = lanes.slice();
 
+    // The invariant that makes this work: a lane's value is always "the sha
+    // that will justify this lane's next line downward." A commit claims
+    // whichever lane is already waiting for its own sha — that is what makes a
+    // fork's two children land in different lanes while their shared parent
+    // lands back in the lane that got there first, drawing the two lanes
+    // converging into one. A commit nothing is waiting for (a branch tip, or
+    // the very first commit this function sees) has no lane to inherit, so it
+    // takes the first free column or opens a new one on the right.
     let lane = lanes.indexOf(commit.sha);
     if (lane === -1) {
       lane = lanes.indexOf(null);
@@ -94,6 +87,12 @@ export function layoutCommits(commits: GitCommit[]): PlacedCommit[] {
       if (i !== lane && lanes[i] === commit.sha) lanes[i] = null;
     }
 
+    // The lane is handed to the first parent — the ordinary, non-merge case,
+    // where a lane just continues downward under a new sha. Every *additional*
+    // parent (two or more means this commit is a merge) opens another lane for
+    // itself, reusing a free column before appending one, so a history with
+    // many merges does not grow one column per merge forever. A commit with no
+    // parents (a root) hands its lane nothing, which closes it.
     lanes[lane] = commit.parents[0] ?? null;
     for (let p = 1; p < commit.parents.length; p++) {
       let mergeLane = lanes.indexOf(null);

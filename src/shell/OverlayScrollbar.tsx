@@ -1,67 +1,21 @@
 /**
  * A hover-revealed scrollbar that floats over a horizontally-scrolling strip
- * instead of reserving track space at its edge.
+ * instead of reserving track space at its edge. The two strips it draws for —
+ * `.panel__tabs-strip` and `.switcher__tabs` — hide their native scrollbar
+ * outright (see the comments beside `scrollbar-width: none` in panel.css and
+ * switcher.css for why that property specifically); what replaces it is a
+ * `motion.div` thumb, sized and positioned by hand from the container's own
+ * `scrollLeft`/`scrollWidth`/`clientWidth`, which framer-motion can fade.
  *
- * The two strips this draws for — `.panel__tabs-strip` and `.switcher__tabs`
- * — now hide their native scrollbar outright (see the comments beside
- * `scrollbar-width: none` in panel.css and switcher.css for why that
- * property, specifically, is what makes it disappear in this app's
- * WebView2/WebKit). What replaces it is this: a `motion.div` thumb, sized
- * and positioned by hand from the scroll container's own `scrollLeft` /
- * `scrollWidth` / `clientWidth`, which `framer-motion` can fade the way a
- * native scrollbar never could be.
+ * This component draws only the thumb, never the scroll container: the element
+ * with `overflow-x: auto` stays the caller's, reached only through `targetRef`,
+ * because a thumb that *was* its child would scroll away with the content. The
+ * caller owns *where* this JSX mounts — an ancestor box sized to exactly the
+ * strip it tracks, that is not itself the thing that scrolls.
  *
- * This component draws only the thumb, never the scroll container. The
- * element with `overflow-x: auto` stays the caller's — reached here only
- * through `targetRef`, read but never rendered — because a thumb that *was*
- * that container's own child would scroll away with its content: an
- * absolutely positioned element's containing block is still the box it
- * scrolls inside, not the viewport of it. What the caller owns instead is
- * *where* this component's JSX is mounted — some ancestor box, sized to
- * exactly the strip it's tracking, that is not itself the thing that
- * scrolls. See panel.css / switcher.css for which existing box already is
- * that ancestor in each of the two callers, and why.
- *
- * The thumb is draggable — this replaces two scrollbars that were, and a
- * fade-in indicator that couldn't be dragged would be a regression dressed up
- * as a redesign. Dragging writes `targetRef.current.scrollLeft` directly
- * rather than going through anything else that might scroll the strip, which
- * is also why it needs no coordination with the tab/cluster drag gesture in
- * `useDrag.tsx`: the two never run at once, because a pointerdown that lands
- * on the thumb (see `overlay-scrollbar__thumb`'s `pointer-events: auto`) is a
- * pointerdown that never reaches a chip underneath it, and there is no other
- * way to start that gesture. It rests at the ordinary arrow cursor
- * (`cursor: default`) rather than `grab`, though, and only switches to
- * `grabbing` once a drag actually starts — `useDrag.tsx`'s own tab handles
- * already claim `grab` on hover to mean "drag this tab out", and this thumb
- * sitting right over the bottom of the same chips cannot reuse that cursor
- * on hover without making the two gestures look identical before either one
- * has started.
- *
- * `el` also gains one behaviour that isn't the thumb's own rendering at all:
- * a `wheel` handler that redirects a plain mouse wheel's `deltaY` into
- * `scrollLeft`. Native scrolling already handles a trackpad's horizontal
- * swipe or a held-Shift wheel (both report on `deltaX`) — this is only for
- * the axis nothing else drives, which is otherwise the only way a mouse
- * (no trackpad, no shift) could ever move these strips besides this thumb.
- * It lives in the same effect that measures `el`, rather than in the two
- * callers, so neither has to remember to wire it up separately. The thumb
- * carries the same redirection itself, through its own `onWheel` — it is
- * `el`'s sibling rather than its descendant (see above), so a wheel tick
- * that lands on the thumb never bubbles to `el`'s listener at all, and
- * without this a wheel spun exactly over the visible scrollbar would do
- * nothing.
- *
- * Hover is tracked the same rect-based way `dropZones.ts` resolves a drop —
- * `pointermove` on `window`, checked against `el.getBoundingClientRect()` —
- * rather than `pointerenter`/`pointerleave` on `el` itself. Those follow
- * real hit-testing, and the thumb sitting on top of `el`'s own bottom edge
- * once it's visible means the moment it mounts over the cursor, `el` stops
- * being hit-tested and fires `pointerleave` — which drops `hovering`,
- * unmounts the thumb, hands the cursor back to `el`, fires `pointerenter`
- * again, and remounts it: a loop, several times a frame, each lap landing on
- * a different element with a different resting cursor. Geometry doesn't
- * care which element is on top, so it can't feed back on itself this way.
+ * The thumb is draggable, redirects a plain wheel's `deltaY` into `scrollLeft`,
+ * and tracks hover by rect rather than `pointerenter`. Reasons for all three,
+ * and why it needs no `useDrag.tsx` coordination: `docs/design-notes/shell-core.md`.
  */
 import {
   useEffect,
@@ -162,38 +116,14 @@ export default function OverlayScrollbar({ targetRef }: OverlayScrollbarProps) {
     if (!el) return;
 
     // `el`'s rect, cached rather than re-read on every `pointermove` — see
-    // `onWindowPointerMove` below for why the naive version of this is a real
-    // cost here, not a theoretical one. Kept alongside `measure`'s other
-    // reads because it needs the same invalidation `measure` already has:
-    // `ResizeObserver` fires whenever `el`'s own box changes size for *any*
-    // reason (the window resizing, the panel dragged wider, the search field
-    // collapsing and handing `.switcher__tabs` its width back), and
-    // `MutationObserver` fires when its content does (a tab or a cluster
-    // opening, closing, or switching). Both already exist below to keep
-    // `scrollWidth`/`clientWidth` current for the thumb itself; this rides
-    // along for free rather than adding a third observer.
-    //
-    // Two cases that sound like gaps aren't, in this app specifically:
-    //
-    // - The window moving (not resizing) doesn't change `getBoundingClientRect`
-    //   at all — it's already viewport-relative, and moving the OS window
-    //   carries the viewport, and everything positioned in it, along with it.
-    // - The panel *collapsing* isn't a live reposition of this element with
-    //   neither observer noticing — it's `SecondaryPanel` swapping
-    //   `.panel__tabs-strip` out for an entirely different `CollapsedStrip`
-    //   tree (see `SecondaryPanel.tsx`'s `if (collapsed) return
-    //   <CollapsedStrip ... />`), which unmounts this component along with
-    //   it. Restoring the panel mounts a fresh instance with a fresh
-    //   `measure()` call; there's no live instance carrying a stale rect
-    //   through the transition.
-    //
-    // What this genuinely depends on: every bar `.panel__tabs-strip` and
-    // `.switcher__tabs` can sit in has a *fixed* height
-    // (`--h-titlebar`/`--h-switcher`/`--h-paneltabs`, none ever changed at
-    // runtime), so nothing in this shell repositions either strip vertically
-    // without also resizing something in the observed chain. If that ever
-    // stops being true — a bar gains a dynamic height — this cache would need
-    // an observer on whatever grew, not on `el`.
+    // `onWindowPointerMove` below for why the naive version is a real cost here,
+    // not a theoretical one. Kept alongside `measure`'s other reads because it
+    // needs the same invalidation `measure` already has: `ResizeObserver` fires
+    // whenever `el`'s own box changes size for *any* reason, `MutationObserver`
+    // when its content does, and both already exist below — this rides along
+    // rather than adding a third observer. Two cases that sound like gaps are
+    // not, and the one thing this genuinely depends on (every bar these strips
+    // sit in having a fixed height), are in `docs/design-notes/shell-core.md`.
     let rect: DOMRect | null = null;
 
     const measure = () => {
@@ -217,25 +147,18 @@ export default function OverlayScrollbar({ targetRef }: OverlayScrollbarProps) {
       window.clearTimeout(idleTimer.current);
       idleTimer.current = window.setTimeout(() => setScrolling(false), SCROLL_IDLE_MS);
     };
-    // See the file header for why this is rect containment on `window`
-    // `pointermove` rather than `pointerenter`/`pointerleave` on `el` — hit-
-    // testing and the thumb occluding `el`'s own bottom edge fight each other
-    // otherwise.
+    // Rect containment on `window` `pointermove` rather than
+    // `pointerenter`/`pointerleave` on `el`; the file header says why.
     //
-    // Reads the cache above rather than calling `getBoundingClientRect`
-    // itself, and that part is not a micro-optimisation.
-    // `getBoundingClientRect` forces a synchronous style and layout flush
-    // whenever the DOM is dirty, and in this shell it usually is:
-    // framer-motion is mid-flight on a `layoutId` handoff (`cluster-fill`,
-    // `tool-rule`, `panel-rule`) for much of any interaction, and `useDrag` is
-    // mutating the DOM through exactly the gestures that fire `pointermove`
-    // hardest. Reading fresh on every move — even coalesced to once per
-    // animation frame — would still force that flush every frame for the
-    // length of any drag or hover, which is the same class of jank this
-    // component exists to remove elsewhere. Reading the cache costs a
-    // property lookup; setting the same boolean the result usually produces
-    // is a no-op render under React's `Object.is` bail-out, so the common
-    // case — a move that doesn't cross the boundary — costs nothing further.
+    // Reads the cache above rather than calling `getBoundingClientRect` itself,
+    // and that is not a micro-optimisation: the call forces a synchronous style
+    // and layout flush whenever the DOM is dirty, and in this shell it usually
+    // is — framer-motion mid-flight on a `layoutId` handoff for much of any
+    // interaction, and `useDrag` mutating the DOM through exactly the gestures
+    // that fire `pointermove` hardest. Even coalesced to once a frame that is
+    // the same class of jank this component exists to remove. Reading the cache
+    // costs a property lookup, and setting the same boolean is a no-op render
+    // under React's `Object.is` bail-out.
     const onWindowPointerMove = (ev: PointerEvent) => {
       if (!rect) return;
       setHovering(

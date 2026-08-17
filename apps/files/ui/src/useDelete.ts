@@ -7,21 +7,8 @@
  * a way the user can act on. That sequence is here once. `NoticeBar` is the
  * only thing either caller has to render.
  *
- * ## What the confirmation is careful about
- *
- * - **It names the file.** "Are you sure?" on its own is a dialog people learn
- *   to dismiss without reading.
- * - **It says where the file goes**, from what the backend reports rather than
- *   an assumption: `files/delete` moves to the Recycle Bin and refuses when it
- *   cannot. If that changes, `Deleted.trashed` does, and so does this sentence.
- * - **It counts a folder's contents** before asking, because a recursive delete
- *   is an amount the user cannot see from the row they right-clicked.
- * - **It names unsaved work by file.** Deleting a file with unsaved changes
- *   discards them, and that must never be a surprise afterwards.
- * - **Cancel is first, and `NoticeBar` focuses it.** Delete is marked
- *   destructive, drawn in `--err`, and last. Return cancels; Escape cancels.
- * - **It can be switched off**, by `files.confirmDelete` — with one exception
- *   that stays. Argued for at `ask` below.
+ * What the confirmation is careful to say is on `confirmation` at the foot of
+ * this file; how its buttons are ordered is on `DeleteFlow.notice`.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Notice } from "./NoticeBar";
@@ -36,7 +23,12 @@ export interface DeleteTarget {
 }
 
 export interface DeleteFlow {
-  /** The bar to render, or `null` when nothing is being asked or reported. */
+  /**
+   * The bar to render, or `null` when nothing is being asked or reported.
+   *
+   * Cancel is first, and `NoticeBar` focuses it. Delete is marked destructive,
+   * drawn in `--err`, and last. Return cancels; Escape cancels.
+   */
   notice: Notice | null;
   /** Begin. Puts the question up; nothing has been touched yet. */
   ask: (target: DeleteTarget) => void;
@@ -69,7 +61,8 @@ export function useDelete({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   /**
-   * `files.confirmDelete`, from the settings screen.
+   * `files.confirmDelete`, from the settings screen — the question can be
+   * switched off, with one exception that stays. Argued for at `ask` below.
    *
    * `true` until the read lands, and `true` again if it fails. Asking is the
    * safe answer, and a delete that skipped the question because a bridge call
@@ -214,11 +207,20 @@ export function useDelete({
 }
 
 /**
- * The sentence the user reads before they lose something.
+ * The sentence the user reads before they lose something. Assembled from what
+ * is actually known rather than from a template with holes — a folder whose
+ * count has not arrived says "everything inside it", which is true, instead of
+ * "0 items", which is not.
  *
- * Assembled from what is actually known rather than from a template with holes
- * — a folder whose count has not arrived says "everything inside it", which is
- * true, instead of "0 items", which is not.
+ * - **It names the file.** "Are you sure?" on its own is a dialog people learn
+ *   to dismiss without reading.
+ * - **It says where the file goes**, from what the backend reports rather than
+ *   an assumption: `files/delete` moves to the Recycle Bin and refuses when it
+ *   cannot. If that changes, `Deleted.trashed` does, and so does this sentence.
+ * - **It counts a folder's contents** before asking, because a recursive delete
+ *   is an amount the user cannot see from the row they right-clicked.
+ * - **It names unsaved work by file.** Deleting a file with unsaved changes
+ *   discards them, and that must never be a surprise afterwards.
  */
 function confirmation(
   target: DeleteTarget,

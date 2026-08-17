@@ -291,35 +291,25 @@ pub fn set_pane_sizes(
 
 // --- clusters ---------------------------------------------------------------
 //
-// Every command in this section finishes with `project::retitle`, and it is the
-// same reason each time: the OS window title names the project of the cluster
-// its window is *showing*, so anything that changes which cluster that is —
-// adding one, closing one, clicking a chip, dragging one to another monitor —
-// changes the title without touching a single project. `project::open` and
-// `project::close` retitle for the other half of it, when the cluster stays and
-// the project under it moves.
+// Every command in this section finishes with `project::retitle`, for the same reason: the OS
+// window title names the project of the cluster its window is *showing*, so adding, closing,
+// clicking a chip, or dragging a cluster elsewhere changes the title without touching a project.
+// `project::open` and `project::close` cover the other half, when the cluster stays and the
+// project under it moves.
 
 /// Add a cluster, and open Home in it.
 ///
-/// Home rather than nothing, for the same reason `seed_first_run` opens it on a
-/// first launch: a cluster is where a piece of work starts, and Home is the one
-/// surface that can start one — it is where a project is opened. An empty
-/// cluster would hand you a blank window and the Apps menu, which is a puzzle
-/// rather than a starting point.
+/// Home rather than nothing, for the reason `seed_first_run` opens it on first launch: a cluster is
+/// where work starts, and Home is the one surface that can start it — where a project is opened. An
+/// empty cluster would hand you a blank window and the Apps menu — a puzzle, not a starting point.
 ///
-/// Composed here rather than folded into `ShellState::add_cluster`, which stays
-/// a primitive that does exactly what its name says. That costs a second
-/// broadcast and a second write of `layout.json`; both are cheap, and the
-/// alternative is a state method that quietly opens a surface nobody asked it
-/// for. `open_instance` needs no cluster id because `add_cluster` has already
-/// made this one active.
-///
-/// The new cluster has **no project**, and Home is what that gets you: the
-/// pick-a-project state, which is the state a session starts on. Deliberately
-/// not the previous cluster's project and deliberately not a folder picker
-/// raised unbidden — a new cluster is a new piece of work, and guessing which
-/// one would be wrong about half the time while a picker nobody asked for is
-/// wrong about all of it.
+/// Composed here rather than folded into `ShellState::add_cluster`, which stays a primitive doing
+/// exactly what its name says. That costs a second broadcast and a second `layout.json` write; both
+/// cheap, and the alternative is a state method that quietly opens a surface nobody asked it for.
+/// The new cluster has **no project**, and Home is what that gets you: the pick-a-project state a
+/// session starts on. Deliberately not the previous cluster's project, and not a folder picker
+/// raised unbidden — a new cluster is new work; guessing the project would be wrong about half the
+/// time, and a picker nobody asked for is wrong about all of it.
 #[tauri::command]
 pub fn add_cluster(
     app: tauri::AppHandle,
@@ -328,10 +318,10 @@ pub fn add_cluster(
     name: String,
 ) -> Option<String> {
     let cluster_id = shell.add_cluster(&app, &label, &name)?;
-    // No direction, so no split: the cluster's one pane is empty and Home fills
-    // it. `open_into` would refuse a split here anyway — an empty pane is the
-    // first of the two cases it declines — but there is also nothing on screen
-    // to have measured, and passing an axis nobody measured would be a lie.
+    // No cluster id needed: `add_cluster` has already made this one active. No direction, so no
+    // split — the cluster's one pane is empty and Home fills it. `open_into` would refuse a split
+    // here anyway (an empty pane is the first of the two cases it declines), but there is also
+    // nothing on screen to have measured, and passing an axis nobody measured would be a lie.
     shell.open_instance(
         &app,
         &label,
@@ -444,30 +434,23 @@ pub fn new_window(app: tauri::AppHandle, shell: State<'_, ShellState>) -> Result
 
 /// Drag a whole cluster clear of its window — the multi-monitor gesture.
 ///
-/// `to_label` is where it lands. `Some(label)` moves it into a HELVE window that
-/// is already open, which is what a release over another window means; `None`
-/// gives it a window of its own.
+/// `to_label` is where it lands. `Some(label)` moves it into a HELVE window that is already open,
+/// which is what a release over another window means; `None` gives it a window of its own.
 ///
-/// That first case is deliberately built here where the same thing for a single
-/// tab was deliberately left out (see the `detach` case in
-/// `src/shell/drag/useDrag.tsx`). The reason a tab could not do it is that
-/// `window_at_cursor` answers with a label and cannot say *where inside* the
-/// window the cursor was, so a pane would have to be guessed. A cluster is not
-/// dropped into a pane: it is appended to the window's cluster list, and the
-/// label is the whole of the address. There is nothing left to guess, so the
-/// two gestures differing is not an inconsistency to be tidied up later.
+/// That first case is deliberately built here where the same thing for a single tab was
+/// deliberately left out (see the `detach` case in `src/shell/drag/useDrag.tsx`). A tab could not
+/// do it because `window_at_cursor` answers with a label and cannot say *where inside* the window
+/// the cursor was, so a pane would have to be guessed. A cluster is not dropped into a pane: it is
+/// appended to the window's cluster list, and the label is the whole of the address. There is
+/// nothing left to guess, so the two gestures differing is not an inconsistency to tidy up later.
 ///
-/// A `to_label` that names no window in the shared state falls back to making
-/// one, rather than being an error: the only caller passes what
-/// `window_at_cursor` just returned, and a window that has since closed should
-/// still leave the cluster somewhere on screen.
-///
-/// The `Err` below therefore says one thing only — no window holds that cluster,
-/// so it was closed between the release and this call. It used to also carry
-/// "that was the last cluster in its window", a refusal that is gone; see
-/// `move_cluster_pure`. The frontend reports whatever comes back rather than
-/// dropping it, because a detach that quietly does nothing is the single hardest
-/// failure in this gesture to diagnose from the outside.
+/// A `to_label` that names no window in the shared state falls back to making one, rather than
+/// being an error: the only caller passes what `window_at_cursor` just returned, and a window that
+/// has since closed should still leave the cluster somewhere on screen. The `Err` below therefore
+/// says one thing only — no window holds that cluster, so it was closed between the release and
+/// this call. It used to also carry "that was the last cluster in its window", a refusal that is
+/// gone; see `move_cluster_pure`. The frontend reports whatever comes back rather than dropping it,
+/// because a detach that quietly does nothing is the hardest failure here to diagnose.
 #[tauri::command]
 pub fn detach_cluster(
     app: tauri::AppHandle,
@@ -649,39 +632,26 @@ fn spawn_terminal(
     Ok((id, title))
 }
 
-/// Open a terminal **into a pane of the active cluster**, rather than into that
-/// cluster's band.
+/// Open a terminal **into a pane of the active cluster**, rather than into that cluster's band.
 ///
-/// ## There are two ways to make a terminal, and it is not a contradiction
+/// There are two ways to make a terminal, and it is not a contradiction. The band's own `+` still
+/// makes one in the band, still the default and still right: it is where a shell goes when it is
+/// *beside* the work rather than part of the arrangement, and can be resized, shut and pulled back
+/// up without disturbing a pane. This is the other one: a terminal that is *part of an
+/// arrangement* — the bottom pane of "Files & Viewer over Terminal", or wherever someone drags one
+/// by hand — sized by the layout, moving when the layout does. That is VS Code's terminal panel
+/// against a terminal in the editor area, answering different questions: *what am I watching*
+/// against *what am I working in*. Both had to keep working, and both do. What changed is that
+/// they no longer differ in **lifetime** — both belong to the cluster and close with it — so the
+/// choice is only about where the thing is drawn, which is the choice it looked like all along.
 ///
-/// The band's own `+` still makes a terminal in the band, and that is still the
-/// default and still right: it is the place a shell goes when it is *beside* the
-/// work rather than part of the arrangement, and it can be resized, shut, and
-/// pulled back up without disturbing a single pane.
-///
-/// This is the other one: a terminal that is *part of an arrangement* — the
-/// bottom pane of "Files & Viewer over Terminal", or wherever someone drags one
-/// by hand. It is sized by the layout and moves when the layout does.
-///
-/// That is VS Code's terminal panel against a terminal in the editor area, and
-/// the two answer different questions: *what am I watching* against *what am I
-/// working in*. Both entry points had to keep working, and both do. What changed
-/// is that they no longer differ in **lifetime** as well — both belong to the
-/// cluster and both close with it — so the choice is now only about where the
-/// thing is drawn, which is the choice it looked like all along.
-///
-/// ## Why it is not a third spawn path
-///
-/// A terminal in a pane *is* a session whose id appears in a tree — there is no
-/// second representation of one, by design, so that a terminal can never draw in
-/// two places at once. So the shell is spawned the one way shells are spawned
-/// (`spawn_terminal`, shared with the panel's route), and the session is
-/// published with its id already in the tree. Putting an id in a tree is exactly
-/// what dragging a terminal's tab into a pane does; this just does it at birth.
-///
-/// It is published in one step rather than opened-then-moved because the
-/// two-step version has a visible cost — see `ShellState::add_terminal_in_pane`,
-/// which is where that is written down.
+/// It is not a third spawn path. A terminal in a pane *is* a session whose id appears in a tree —
+/// there is no second representation of one, by design, so that a terminal can never draw in two
+/// places at once. The shell is spawned the one way shells are spawned (`spawn_terminal`, shared
+/// with the panel's route) and the session is published with its id already in the tree, which is
+/// exactly what dragging a terminal's tab into a pane does; this just does it at birth. One step
+/// rather than opened-then-moved because the two-step version has a visible cost — see
+/// `ShellState::add_terminal_in_pane`, which is where that is written down.
 fn open_terminal_into_pane(
     app: &tauri::AppHandle,
     shell: &ShellState,
@@ -932,48 +902,24 @@ pub fn list_openables() -> Vec<apps::Openable> {
 
 /// One `invoke` from an app's frontend, routed to that app's Rust half.
 ///
-/// This is the shell end of transport B for apps. The iframe posts a `request`
-/// message, `ToolWindow` forwards it here, and the reply goes back as a
-/// `response` — so an app's UI calls `invoke("files/list")` through
-/// `@helve/bridge` exactly as a tool's UI would, and never learns that its host
-/// answered in-process rather than over a pipe.
+/// This is the shell end of transport B for apps. The iframe posts a `request` message,
+/// `ToolWindow` forwards it here, and the reply goes back as a `response` — so an app's UI calls
+/// `invoke("files/list")` through `@helve/bridge` exactly as a tool's UI would, and never learns
+/// that its host answered in-process rather than over a pipe. The error type is `RpcError`, not
+/// this crate's `AppError`: it carries the JSON-RPC `code` the bridge turns back into a
+/// `HelveRpcError`, which is what lets a frontend tell "no such method" from "that file isn't text"
+/// without parsing an error string.
 ///
-/// The error type is `RpcError`, not this crate's `AppError`: it carries the
-/// JSON-RPC `code` the bridge turns back into a `HelveRpcError`, which is what
-/// lets a frontend tell "no such method" from "that file isn't text" without
-/// parsing an error string.
-///
-/// ## Why this runs on a blocking thread
-///
-/// A synchronous `#[tauri::command]` runs on the **main thread**, and an app's
-/// Rust half does things that must not happen there. `home/open-project` opens a
-/// native folder picker, which needs the main thread to pump events while it is
-/// up — called from the main thread it would be waiting for a thread it is
-/// itself occupying, and the app would hang with a dialog that never appears.
-/// `files/read` is a milder case of the same thing: a quarter-megabyte read off
-/// a slow disk freezes every window for as long as it takes.
-///
-/// So the whole dispatch moves to a blocking worker and this command awaits it.
-/// The cost is one thread hop per `invoke`; the property bought is that an app's
-/// Rust half can do ordinary blocking work without having to know it is running
-/// somewhere that forbids it.
-///
-/// ## Why it takes an instance id
-///
-/// `id` names the app — the code that answers. `instance_id` names the surface
-/// that asked, and it is what decides *which project* the answer is about now
-/// that a project belongs to a cluster: Rust resolves the instance to the
-/// cluster whose pane tree holds it, and that cluster to its project (see
-/// [`apps::CallContext`]). Without it two Files in two clusters would be
-/// indistinguishable here and both would root at whichever project answered
-/// first.
-///
-/// It is `Option` because not every caller has one and pretending otherwise
-/// would mean inventing one. The shell's own File > Open… is a title-bar menu
-/// item with no frame behind it; it passes `cluster_id` instead, which is the
-/// same question answered from the other end. A call with neither gets a
-/// context with no cluster and no project, which every app already has to
-/// handle — it is the same state as a cluster nobody has opened anything in.
+/// `id` names the app — the code that answers. `instance_id` names the surface that asked, and it
+/// is what decides *which project* the answer is about now that a project belongs to a cluster:
+/// Rust resolves the instance to the cluster whose pane tree holds it, and that cluster to its
+/// project (see [`apps::CallContext`]). Without it two Files in two clusters would be
+/// indistinguishable here and both would root at whichever project answered first. It is `Option`
+/// because not every caller has one and pretending otherwise would mean inventing one: the shell's
+/// own File > Open… is a title-bar menu item with no frame behind it, and passes `cluster_id`
+/// instead, which is the same question answered from the other end. A call with neither gets a
+/// context with no cluster and no project, which every app already has to handle — the same state
+/// as a cluster nobody has opened anything in.
 #[tauri::command]
 pub async fn app_call(
     app: tauri::AppHandle,
@@ -983,11 +929,19 @@ pub async fn app_call(
     method: String,
     params: Option<serde_json::Value>,
 ) -> std::result::Result<serde_json::Value, helve_rpc::RpcError> {
+    // The whole dispatch moves to a blocking worker and this command awaits it. A synchronous
+    // `#[tauri::command]` runs on the **main thread**, and an app's Rust half does things that must
+    // not happen there: `home/open-project` opens a native folder picker, which needs the main
+    // thread to pump events while it is up — called from the main thread it would be waiting for a
+    // thread it is itself occupying, and the app would hang with a dialog that never appears.
+    // `files/read` is a milder case of the same thing, a quarter-megabyte read off a slow disk
+    // freezing every window for as long as it takes. The cost is one thread hop per `invoke`; the
+    // property bought is that an app's Rust half can do ordinary blocking work without having to
+    // know it is running somewhere that forbids it.
     tauri::async_runtime::spawn_blocking(move || {
-        // Resolved on the worker rather than before the hop, so the lookup sees
-        // the layout as it is when the call runs. A context read on the main
-        // thread and then carried across could name a cluster that closed while
-        // the call was queued.
+        // Resolved on the worker rather than before the hop, so the lookup sees the layout as it
+        // is when the call runs. A context read on the main thread and then carried across could
+        // name a cluster that closed while the call was queued.
         let context =
             apps::CallContext::resolve(&app, instance_id.as_deref(), cluster_id.as_deref());
         apps::call(&app, &context, &id, &method, params)

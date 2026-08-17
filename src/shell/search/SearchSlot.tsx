@@ -13,6 +13,11 @@ export interface SearchSlotProps {
    * The shared query, kinds and cursor. Optional so the collapsed slot still
    * renders standalone — in a detached window, or anywhere the overlay is not
    * mounted, the field is decoration and has nothing to drive.
+   *
+   * The query and the selected kinds live out here, in `useSearchSession`,
+   * rather than in this component: they have to be shared with the overlay,
+   * and the field is the wrong owner for state that two regions read — the
+   * field is simply the surface you type into.
    */
   session?: SearchSession;
   /**
@@ -37,29 +42,15 @@ export interface SearchSlotProps {
  * lives inside the 36px `.frame__switcher` box the bar already owns.
  *
  * Open: ⌘K (Ctrl+K on non-mac) from anywhere, or a click on the collapsed
- * slot — both drawn from the handoff's caption verbatim. Close: Escape or the
- * close glyph, same caption. The handoff does not describe closing on an
- * outside click, so this deliberately doesn't add one; the type-filter
- * popover, which the handoff never distinguishes from the shell's other
- * popovers, does follow the outside-click-or-Escape convention every other
- * popover in the shell uses (HealthPopover, SettingsPopover).
- *
- * ## What this no longer owns
+ * slot. Close: Escape or the close glyph. Both drawn from the handoff's
+ * caption verbatim; the handoff does not describe closing on an outside
+ * click, so this deliberately doesn't add one.
  *
  * It used to draw its own result list in a dropdown below the field, from a
  * three-row fixture. Results now live in `SearchOverlay`, which covers the
  * whole split row — there is far more to show than a dropdown can hold once
  * each result also has to drive a locator tree and a preview. What is left
  * here is the field itself, its type filter and its close button.
- *
- * The query and the selected kinds moved out with the list, into
- * `useSearchSession`. They have to be shared with the overlay, and the field
- * is the wrong owner for state that two regions read — the field is simply
- * the surface you type into.
- *
- * Arrow keys stay bound here rather than on the overlay, because the field
- * keeps focus the entire time search is open. The list below is not tabbable
- * and never takes focus, so its own keydown handler would never fire.
  */
 export default function SearchSlot({
   expanded: expandedProp,
@@ -99,8 +90,10 @@ export default function SearchSlot({
     if (expanded) inputRef.current?.focus();
   }, [expanded]);
 
-  // The type-filter popover: dismiss like every other popover in the shell,
-  // a click outside or Escape — without collapsing the field underneath it.
+  // The type-filter popover: dismiss on a click outside or Escape, without
+  // collapsing the field underneath it. The handoff never distinguishes this
+  // popover from the shell's other popovers, so it follows the same convention
+  // every other popover in the shell uses (HealthPopover, SettingsPopover).
   useEffect(() => {
     if (!filterOpen) return;
 
@@ -126,6 +119,9 @@ export default function SearchSlot({
     setFilterOpen(false);
   }
 
+  // Arrow keys stay bound here rather than on the overlay, because the field
+  // keeps focus the entire time search is open. The list below is not tabbable
+  // and never takes focus, so its own keydown handler would never fire.
   function onFieldKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.stopPropagation();

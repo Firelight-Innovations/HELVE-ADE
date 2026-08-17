@@ -1,33 +1,23 @@
-//! Real terminals: a pseudo-terminal per session, and the seam every byte
-//! crosses.
+//! Real terminals: a pseudo-terminal per session, and the seam every byte crosses.
 //!
-//! A pseudo-terminal ("pty") is a pair of file handles that impersonate a
-//! physical terminal. We hold the *master* end; the shell we spawn is given the
-//! *slave* end and cannot tell the difference between it and a real console.
-//! That is what makes full-screen TUIs work — the program asks the terminal how
-//! big it is, whether it can move the cursor, whether it can use colour, and
-//! gets real answers instead of the "this is a pipe" answers it would get from
-//! `std::process::Command`.
+//! A pseudo-terminal ("pty") is a pair of file handles that impersonate a physical terminal. We
+//! hold the *master* end; the shell we spawn is given the *slave* end and cannot tell the
+//! difference between it and a real console. That is what makes full-screen TUIs work — the program
+//! asks the terminal how big it is, whether it can move the cursor, whether it can use colour, and
+//! gets real answers instead of the "this is a pipe" answers `std::process::Command` would give.
 //!
-//! `portable-pty` is the abstraction over the three OS mechanisms for this
-//! (ConPTY on Windows, `openpty` on macOS and Linux). We use it rather than
-//! writing that ourselves for the obvious reason, and it is the same crate
-//! WezTerm ships, so it is exercised heavily by something that is only a
-//! terminal.
+//! `portable-pty` abstracts the three OS mechanisms for this (ConPTY on Windows, `openpty` on
+//! macOS and Linux). Used rather than written ourselves for the obvious reason, and the same crate
+//! WezTerm ships — exercised heavily by something that is only a terminal.
 //!
-//! # The interception seam
-//!
-//! Everything here funnels through [`tap_output`] and [`tap_input`], and nothing
-//! else in the orchestrator may talk to a pty directly. That is the whole point
-//! of this module's shape. A coding harness — Claude Code, Codex — is a program
-//! that reads a terminal and writes a terminal, so owning both directions of its
-//! byte stream is enough to wrap it: to notice what it did, to answer a prompt
-//! on its behalf, to stop it. Those two functions are where that goes, and they
-//! return `Cow` rather than `()` so a wrapper can *rewrite* a stream and not
-//! merely watch it.
-//!
-//! Both are pass-through today. The seam exists before the feature does so the
-//! feature never has to be threaded through the transport later.
+//! **The interception seam.** Everything here funnels through [`tap_output`] and [`tap_input`], and
+//! nothing else in the orchestrator may talk to a pty directly — the whole point of this module's
+//! shape. A coding harness — Claude Code, Codex — reads a terminal and writes a terminal, so owning
+//! both directions of its byte stream is enough to wrap it: to notice what it did, to answer a
+//! prompt on its behalf, to stop it. Those two functions are where that goes; they return `Cow`
+//! rather than `()` so a wrapper can *rewrite* a stream, not merely watch it. Both are pass-through
+//! today; the seam exists before the feature does so the feature never has to be threaded through
+//! the transport later.
 
 use crate::error::{AppError, Result};
 use crate::sync::MutexExt;
