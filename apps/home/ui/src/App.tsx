@@ -371,9 +371,20 @@ export default function App() {
                     </li>
                   ))}
                 </ul>
-                <p className="home__empty">
-                  {tutorials.completed} of {tutorials.total} read.
-                </p>
+                {/* The only door to the rest of them. The cards above open one
+                    tutorial each and there are three of them, so without this
+                    the other seven are reachable only by opening one and using
+                    the rail inside it — and Tutorials is deliberately absent
+                    from the Apps menu and the switcher's `+`, being a surface
+                    that covers the cluster rather than taking a pane. */}
+                <button
+                  type="button"
+                  className="home__all-tutorials"
+                  onClick={() => void openIn("tutorial")}
+                >
+                  All {tutorials.total} tutorials
+                  {tutorials.completed > 0 && ` · ${tutorials.completed} read`}
+                </button>
               </>
             )}
           </section>

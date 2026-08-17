@@ -199,11 +199,10 @@ const REGISTRY: &[Registered] = &[
         id: "tutorial",
         name: "Tutorials",
         description: "Learn HELVE — short walkthroughs of the window, projects and the stack.",
-        // Last, because the switcher bar reads left to right as "what this
-        // build is for" and a tutorial is about the build rather than part of
-        // the work. It is also the only app that reads nothing on the machine:
-        // `tutorial::call` never touches the project, so a Tutorials tab in a
-        // cluster with nothing open is as useful as one beside a checkout.
+        // Registered like any other app and deliberately never *listed*: the
+        // frontend filters it and Home out of the Apps menu, both covering the
+        // cluster rather than taking a pane. This row is still what makes
+        // `helve/open` resolve a frontend. See `docs/tutorials.md` §8.
         call: tutorial::call,
     },
 ];

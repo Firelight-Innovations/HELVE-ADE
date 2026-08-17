@@ -1092,10 +1092,10 @@ export default function WindowRoot({
 
   // Everything this build can open here, from Rust rather than a literal list,
   // so a row added in `apps::openables` appears without a second edit here —
-  // with one exception, filtered back out below: Home is reachable through the
-  // already-active cluster chip now (`onSelectCluster`), and a menu row doing
-  // the same "find it, or open one" job would be a second door that could only
-  // ever agree with the chip by luck. Rust's own list is untouched.
+  // minus the takeover surfaces, filtered back out below. Each already has its
+  // own door (the cluster chip for Home, Home's cards for Tutorials), and a
+  // menu row doing the same "find it, or open one" job would be a second one
+  // that could only ever agree with the first by luck. Rust's list is untouched.
   //
   // `openables` and not `apps`: a terminal is offered in this menu and is not an
   // app — it has no frontend to mount, so it is not in the list `ToolWindow`
@@ -1112,7 +1112,7 @@ export default function WindowRoot({
   // change at all to gain either.
   const appsHandlers = useMemo(
     () => ({
-      available: openables.filter((o) => o.id !== "home"),
+      available: openables.filter((o) => !isTakeover(o.id)),
       open: onOpenSurface,
       // A surface opens into a pane, and a window with no clusters has none —
       // Rust refuses the open for exactly that reason. Said on the items rather

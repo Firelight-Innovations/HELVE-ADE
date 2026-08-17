@@ -245,11 +245,23 @@ Only in the door. Home's is the chip of the cluster you are already on, and it
 has no other; a cluster that already had a Home keeps it when uncovered, because
 that door costs nothing to take again.
 
-Tutorials keeps its place in the Apps menu, and Home's cards open it over
-`helve/open`. Being *open* is what makes it cover — there is no separate
-"wanted" flag, because nothing opens Tutorials except somebody asking to read
-it. It is therefore **closed** rather than merely uncovered: a live instance
-with no tab and no chip would be a pane nobody can reach.
+Tutorials' door is Home's right-hand column: a card opens one tutorial, and the
+link under them opens the index. Both go through `helve/open`.
+
+Neither surface appears in the title bar's Apps menu or the switcher's `+`.
+`appsHandlers.available` in `WindowRoot.tsx` filters both out of the one list
+that feeds both menus. A menu row would be a second door doing the same "find
+it, or open one" job as the first, and two doors agree only by luck.
+
+**Rust still registers Tutorials as an ordinary app**, and `apps::openables`
+still lists it. That is what makes `helve/open` resolve a frontend for it — the
+filtering is a fact about which menus offer it, not about what it is. Dropping
+it from the registry would take the app with it.
+
+Being *open* is what makes Tutorials cover, so it needs no "wanted" flag: nothing
+opens it except somebody asking to read it. It is therefore **closed** rather
+than merely uncovered — a live instance with no tab and no menu row would be a
+pane nobody can reach.
 
 ## 9. What is deliberately absent
 

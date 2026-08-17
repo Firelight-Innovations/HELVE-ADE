@@ -152,7 +152,13 @@ walkthroughs of what HELVE does today, with a tick against the ones you have
 read. `docs/tutorials.md` is how to add one.
 
 It is the only app that reads nothing on the machine: `tutorial::call` ignores
-its `CallContext`, so a Tutorials tab reads the same in a cluster with no project
-as in one with a checkout — which is the state a person reading "your first
-project" is most likely to be in. The catalog is in Rust because Home draws it
-too; the prose is in the frontend because it is a view.
+its `CallContext`, so a tutorial reads the same in a cluster with no project as
+in one with a checkout — which is the state a person reading "your first project"
+is most likely to be in. The catalog is in Rust because Home draws it too; the
+prose is in the frontend because it is a view.
+
+Like Home, it **covers** the cluster rather than taking a pane: no tab in the
+switcher, no row in the Apps menu or the `+`, and gone as soon as you choose
+something else. Home's cards are its door. It is still an ordinary registry entry
+all the same — that is what resolves its frontend when `helve/open` asks for one,
+and the filtering is a fact about which menus offer it. `docs/tutorials.md` §8.
