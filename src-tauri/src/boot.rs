@@ -26,6 +26,7 @@ use crate::discovery;
 use crate::error::AppError;
 use crate::manifest::{self, Manifest};
 use crate::state::AppState;
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -255,10 +256,7 @@ pub fn start(app: AppHandle, waiting_for: Vec<(String, String)>) {
 /// on screen.
 pub fn painted(id: &str) {
     if let Some(reports) = PAINTED.get() {
-        let _ = reports
-            .lock()
-            .expect("boot report channel poisoned")
-            .send(id.to_string());
+        let _ = reports.lock_or_panic().send(id.to_string());
     }
 }
 

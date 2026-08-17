@@ -53,6 +53,7 @@
 
 use crate::layout::{PaneNode, SplitDir};
 use crate::presets;
+use crate::sync::RwLockExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{RwLock, RwLockReadGuard};
@@ -104,6 +105,34 @@ pub struct SurfaceInstance {
     pub app_id: String,
     pub kind: SurfaceKind,
     pub title: String,
+}
+
+/// What `ShellState::open_instance` is being asked to put on screen.
+///
+/// A struct rather than five more positional arguments: three of them are
+/// strings in a row, and the compiler cannot tell one from another. Not
+/// serialized — the frontend sends the two fields it knows about and
+/// `commands::open_instance` resolves the rest.
+pub struct OpenRequest<'a> {
+    /// `files`. Which app or tool, never an identity.
+    pub app_id: &'a str,
+    /// Resolved from the registry by the caller, never trusted from the
+    /// frontend: it decides where an `invoke` from the resulting frame lands.
+    pub kind: SurfaceKind,
+    /// What the tab reads until the surface reports a title of its own.
+    pub title: &'a str,
+    /// Which pane the open is *relative to*; `None` falls back to the active
+    /// cluster's first pane. It used to mean "and put it in that pane", which
+    /// is no longer what an open does — see `dir`.
+    pub pane_id: Option<&'a str>,
+    /// The axis the frontend measured the target pane along. `Some` asks for a
+    /// **pane of its own** beside it rather than a tab inside it;
+    /// `PaneNode::open_into` owns that rule, the two cases that refuse it, and
+    /// the ceiling. `None` is what the callers with no pane on screen to have
+    /// measured pass: seeding a window, seeding a cluster, and filling a
+    /// preset's gap — a preset builds its own tree and must not have this
+    /// splitting underneath it.
+    pub dir: Option<SplitDir>,
 }
 
 /// Where a cluster's work is happening on disk.
@@ -383,16 +412,11 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
 }
 
 impl ShellState {
-    /// The state, read-locked.
-    ///
-    /// One `expect` for every reader in the type rather than the same line
-    /// written out at each of them. The panic is deliberate and is the same
-    /// judgement `mutate` makes: a poisoned lock means another thread panicked
-    /// while holding the layout half-written, and every reader after it would be
-    /// answering from a state nobody designed. Failing loudly at the first read
-    /// is better than serving that quietly to every window.
+    /// The state, read-locked — the one door every reader in the type goes
+    /// through. Panicking on a poisoned lock is `sync`'s decision, made there
+    /// once for the whole binary.
     fn read(&self) -> RwLockReadGuard<'_, ShellSnapshot> {
-        self.inner.read().expect("shell state lock poisoned")
+        self.inner.read_or_panic()
     }
 
     pub fn snapshot(&self) -> ShellSnapshot {
@@ -407,7 +431,7 @@ impl ShellState {
     /// reach whichever the lookup found first.
     pub fn restore(&self, snapshot: ShellSnapshot) {
         {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             *counters = counters_for(&snapshot);
         }
         let mut snapshot = snapshot;
@@ -419,7 +443,7 @@ impl ShellState {
         // after every change; a restore is the one way state arrives without
         // going through it.
         reseat_active_terminals(&mut snapshot);
-        *self.inner.write().expect("shell state lock poisoned") = snapshot;
+        *self.inner.write_or_panic() = snapshot;
     }
 
     /// Run a mutation, tell every window, and write it down.
@@ -440,7 +464,7 @@ impl ShellState {
     /// invalidate it, and only one of them is obviously about the panel.
     fn mutate<F: FnOnce(&mut ShellSnapshot)>(&self, app: &AppHandle, f: F) {
         let updated = {
-            let mut guard = self.inner.write().expect("shell state lock poisoned");
+            let mut guard = self.inner.write_or_panic();
             f(&mut guard);
             reseat_active_terminals(&mut guard);
             guard.clone()
@@ -452,21 +476,21 @@ impl ShellState {
     // --- windows -----------------------------------------------------------
 
     pub fn claim_window_label(&self) -> String {
-        let mut counters = self.counters.write().expect("counter lock poisoned");
+        let mut counters = self.counters.write_or_panic();
         counters.windows += 1;
         format!("win-{}", counters.windows)
     }
 
     /// Announce that a window is about to be closed on purpose. See `closing`.
     pub fn mark_closing(&self, label: &str) {
-        let mut closing = self.closing.write().expect("closing lock poisoned");
+        let mut closing = self.closing.write_or_panic();
         if !closing.iter().any(|l| l == label) {
             closing.push(label.to_string());
         }
     }
 
     fn take_closing(&self, label: &str) -> bool {
-        let mut closing = self.closing.write().expect("closing lock poisoned");
+        let mut closing = self.closing.write_or_panic();
         let Some(i) = closing.iter().position(|l| l == label) else {
             return false;
         };
@@ -484,7 +508,7 @@ impl ShellState {
     /// making.
     pub fn add_window(&self, app: &AppHandle, label: &str) {
         let seed = {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             seed_window(&mut counters, label)
         };
         self.mutate(app, |s| {
@@ -504,7 +528,7 @@ impl ShellState {
         // mutation persists it, and so does a window closing (`flush` for
         // `main`, `reclaim_window`'s own `mutate` for anything else — see
         // `windows::request_close`).
-        let mut guard = self.inner.write().expect("shell state lock poisoned");
+        let mut guard = self.inner.write_or_panic();
         if let Some(w) = guard.windows.iter_mut().find(|w| w.label == label) {
             w.geometry = Some(geometry);
         }
@@ -562,7 +586,7 @@ impl ShellState {
 
     pub fn add_cluster(&self, app: &AppHandle, label: &str, name: &str) -> Option<String> {
         let (cluster_id, pane_id) = {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             counters.clusters += 1;
             counters.panes += 1;
             (
@@ -1021,20 +1045,8 @@ impl ShellState {
 
     // --- instances ---------------------------------------------------------
 
-    /// Mint an instance and put it on screen.
-    ///
-    /// `pane_id` names which pane the open is *relative to*; `None` falls back
-    /// to the active cluster's first pane. It used to mean "and put it in that
-    /// pane", which is no longer what an open does — see `dir`.
-    ///
-    /// `dir` is the axis the frontend measured the target pane along, and
-    /// passing one asks for the surface to get a **pane of its own** beside it
-    /// rather than a tab inside it. `PaneNode::open_into` owns that rule, the
-    /// two cases that refuse it, and the ceiling; nothing about it is decided
-    /// here. `None` is the old behaviour, and is what the callers with no pane
-    /// on screen to measure pass: seeding a window, seeding a cluster, and
-    /// filling a preset's gap — a preset builds its own tree and must not have
-    /// this splitting underneath it.
+    /// Mint an instance and put it on screen. See `OpenRequest` for what each
+    /// field of the request decides.
     ///
     /// Unless `app_id` is `"home"` itself, this closes Home if it is holding
     /// `target` — see `dismiss_takeover`. Doing that first, rather than after
@@ -1045,12 +1057,15 @@ impl ShellState {
         &self,
         app: &AppHandle,
         label: &str,
-        app_id: &str,
-        kind: SurfaceKind,
-        title: &str,
-        pane_id: Option<&str>,
-        dir: Option<SplitDir>,
+        request: OpenRequest<'_>,
     ) -> Option<String> {
+        let OpenRequest {
+            app_id,
+            kind,
+            title,
+            pane_id,
+            dir,
+        } = request;
         // Both taken before `mutate` takes the state lock, which is the order
         // every other minting site here uses and is not merely convention:
         // `counters` is a second lock, and taking it *inside* the closure would
@@ -1058,7 +1073,7 @@ impl ShellState {
         // classic way to write a deadlock that only shows up under two windows
         // opening at once.
         let instance_id = {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             let ordinal = counters.instances.entry(app_id.to_string()).or_insert(0);
             *ordinal += 1;
             format!("{app_id}-{ordinal}")
@@ -1068,7 +1083,7 @@ impl ShellState {
         // simply unused, which costs a gap in the numbering and nothing else.
         // Minting unconditionally would burn two ids on every Home seed.
         let split_ids = dir.map(|_| {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             counters.splits += 1;
             counters.panes += 1;
             (
@@ -1254,7 +1269,7 @@ impl ShellState {
         before: bool,
     ) -> bool {
         let (split_id, new_pane_id) = {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             counters.splits += 1;
             counters.panes += 1;
             (
@@ -1317,7 +1332,7 @@ impl ShellState {
     /// leave an empty frame on screen.
     pub fn detach_instance(&self, app: &AppHandle, instance_id: &str, new_label: &str) -> bool {
         let (cluster_id, pane_id) = {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             counters.clusters += 1;
             counters.panes += 1;
             (
@@ -1360,7 +1375,7 @@ impl ShellState {
                 .windows
                 .iter()
                 .flat_map(|w| w.clusters.iter())
-                .find(|c| c.tree.tabs().iter().any(|t| *t == instance_id))
+                .find(|c| c.tree.tabs().contains(&instance_id))
                 .and_then(|c| c.project.clone());
 
             for w in s.windows.iter_mut() {
@@ -1416,7 +1431,7 @@ impl ShellState {
     /// state until there is a real shell behind it — otherwise a failed spawn
     /// leaves a tab that looks alive and silently eats every keystroke.
     pub fn claim_terminal_id(&self) -> (String, u32) {
-        let mut counters = self.counters.write().expect("counter lock poisoned");
+        let mut counters = self.counters.write_or_panic();
         counters.terminals += 1;
         (format!("term-{}", counters.terminals), counters.terminals)
     }
@@ -1515,7 +1530,7 @@ impl ShellState {
     ) {
         // Before the lock, for the reason `open_instance` writes out in full.
         let split_ids = dir.map(|_| {
-            let mut counters = self.counters.write().expect("counter lock poisoned");
+            let mut counters = self.counters.write_or_panic();
             counters.splits += 1;
             counters.panes += 1;
             (
@@ -1677,7 +1692,7 @@ impl ShellState {
         }
 
         let updated = {
-            let mut guard = self.inner.write().expect("shell state lock poisoned");
+            let mut guard = self.inner.write_or_panic();
             let Some(t) = guard.terminals.iter_mut().find(|t| t.id == id) else {
                 return;
             };
@@ -1704,7 +1719,7 @@ fn cluster_of_instance_pure(s: &ShellSnapshot, instance_id: &str) -> Option<Stri
     s.windows
         .iter()
         .flat_map(|w| w.clusters.iter())
-        .find(|c| c.tree.tabs().iter().any(|t| *t == instance_id))
+        .find(|c| c.tree.tabs().contains(&instance_id))
         .map(|c| c.id.clone())
 }
 
@@ -1871,7 +1886,7 @@ fn rearrange(
 /// nothing else — a counter that went backwards on a refusal would be the far
 /// worse trade.
 fn mint_preset_ids(counters: &RwLock<Counters>, root: &presets::PresetNode) -> presets::Ids {
-    let mut counters = counters.write().expect("counter lock poisoned");
+    let mut counters = counters.write_or_panic();
     let panes = (0..root.pane_count())
         .map(|_| {
             counters.panes += 1;

@@ -49,8 +49,9 @@ semver = "1"
 # §5 — no `unwrap()` or `expect()` on anything that depends on the filesystem, a
 # process, or user input. Clippy cannot tell a genuine invariant from a fallible
 # call, so two escape hatches carry the difference: tests are exempted wholesale
-# in clippy.toml, and the pre-existing sites in shipping code carry a file-level
-# allow marked GRANDFATHERED.
+# in clippy.toml, and the one invariant shipping code leans on — a lock this
+# process owns being un-poisoned — is answered once in `src-tauri/src/sync.rs`
+# (and `crates/helve-rpc/src/sync.rs`) rather than at each of its forty sites.
 unwrap_used = "warn"
 expect_used = "warn"
 

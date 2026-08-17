@@ -139,12 +139,12 @@ fn status_in(cwd: &Path) -> Result<GitStatus> {
     // A repository with no commits yet has no resolvable HEAD, and one with no
     // upstream has nothing to count against. Both are ordinary states of a
     // fresh checkout, so neither failure is allowed to sink the whole status.
-    let branch = run_git(&cwd, "rev-parse", &["rev-parse", "--abbrev-ref", "HEAD"])
+    let branch = run_git(cwd, "rev-parse", &["rev-parse", "--abbrev-ref", "HEAD"])
         .map(|out| out.trim().to_string())
         .unwrap_or_default();
 
     let (ahead, behind) = run_git(
-        &cwd,
+        cwd,
         "rev-list",
         &["rev-list", "--left-right", "--count", "HEAD...@{u}"],
     )

@@ -99,7 +99,7 @@ impl CallContext {
     /// (`ToolWindow.tsx`), never from anything a frame asserts about itself.
     ///
     /// `cluster_id` is the fallback, and it is for the shell's own calls — File
-    /// > Open…, which is a title-bar menu item rather than a frame's request.
+    /// \> Open…, which is a title-bar menu item rather than a frame's request.
     /// The shell knows which cluster its window is showing and has no instance
     /// to name. It loses to a resolved instance deliberately: where both are
     /// present, the one derived from the frame is the one that cannot be stale.

@@ -17,7 +17,9 @@ use crate::manifest::{self, Manifest};
 use crate::presets;
 use crate::project;
 use crate::pty::{self, PtySessions};
-use crate::shell_state::{EngineState, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry};
+use crate::shell_state::{
+    EngineState, OpenRequest, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry,
+};
 use crate::state::AppState;
 use crate::tool_frontend;
 use crate::windows;
@@ -193,7 +195,17 @@ pub fn open_instance(
         .unwrap_or_else(|| app_id.clone());
 
     shell
-        .open_instance(&app, &label, &app_id, kind, &title, pane_id.as_deref(), dir)
+        .open_instance(
+            &app,
+            &label,
+            OpenRequest {
+                app_id: &app_id,
+                kind,
+                title: &title,
+                pane_id: pane_id.as_deref(),
+                dir,
+            },
+        )
         .ok_or_else(|| AppError::UnknownTool(app_id))
 }
 
@@ -320,7 +332,17 @@ pub fn add_cluster(
     // it. `open_into` would refuse a split here anyway — an empty pane is the
     // first of the two cases it declines — but there is also nothing on screen
     // to have measured, and passing an axis nobody measured would be a lie.
-    shell.open_instance(&app, &label, "home", SurfaceKind::App, "Home", None, None);
+    shell.open_instance(
+        &app,
+        &label,
+        OpenRequest {
+            app_id: "home",
+            kind: SurfaceKind::App,
+            title: "Home",
+            pane_id: None,
+            dir: None,
+        },
+    );
     project::retitle(&app);
     Some(cluster_id)
 }
@@ -402,7 +424,17 @@ pub fn new_window(app: tauri::AppHandle, shell: State<'_, ShellState>) -> Result
     // different things depending on which menu item made it. No direction, for
     // the reason `add_cluster` gives: the window it would be measured in does
     // not exist yet.
-    shell.open_instance(&app, &label, "home", SurfaceKind::App, "Home", None, None);
+    shell.open_instance(
+        &app,
+        &label,
+        OpenRequest {
+            app_id: "home",
+            kind: SurfaceKind::App,
+            title: "Home",
+            pane_id: None,
+            dir: None,
+        },
+    );
     let created = windows::create(&app, &label, None, true);
     // After the window exists, not before: `retitle` sets titles on windows it
     // can look up, and one that has not been built yet is not one of them.
@@ -1137,11 +1169,13 @@ fn fill_preset_gaps(
                 let Some(instance_id) = shell.open_instance(
                     app,
                     label,
-                    &app_id,
-                    kind,
-                    &title,
-                    Some(&gap.pane_id),
-                    None,
+                    OpenRequest {
+                        app_id: &app_id,
+                        kind,
+                        title: &title,
+                        pane_id: Some(&gap.pane_id),
+                        dir: None,
+                    },
                 ) else {
                     eprintln!("helve: could not open `{app_id}` for a preset slot");
                     continue;

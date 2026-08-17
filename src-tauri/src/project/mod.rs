@@ -74,6 +74,7 @@ mod store;
 use crate::commands;
 use crate::error::{AppError, Result};
 use crate::shell_state::ShellState;
+use crate::sync::RwLockExt;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -162,10 +163,7 @@ pub struct ProjectState {
 
 impl ProjectState {
     fn read(&self) -> store::Stored {
-        self.inner
-            .read()
-            .expect("project store lock poisoned")
-            .clone()
+        self.inner.read_or_panic().clone()
     }
 }
 
@@ -173,10 +171,7 @@ impl ProjectState {
 /// layout is restored — the migration below reads `Stored::open` out of it.
 pub fn restore(app: &AppHandle) {
     let stored = store::load(app);
-    *app.state::<ProjectState>()
-        .inner
-        .write()
-        .expect("project store lock poisoned") = stored;
+    *app.state::<ProjectState>().inner.write_or_panic() = stored;
 }
 
 /// Take the pre-per-cluster global open project, consuming it.
@@ -194,7 +189,7 @@ pub fn restore(app: &AppHandle) {
 /// than deleted outright.
 pub fn take_migration_seed(app: &AppHandle) -> Option<PathBuf> {
     let state = app.state::<ProjectState>();
-    let mut guard = state.inner.write().expect("project store lock poisoned");
+    let mut guard = state.inner.write_or_panic();
     let taken = guard.open.take();
     if taken.is_some() {
         store::save(app, &guard);
@@ -312,7 +307,7 @@ pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSna
 
     {
         let state = app.state::<ProjectState>();
-        let mut guard = state.inner.write().expect("project store lock poisoned");
+        let mut guard = state.inner.write_or_panic();
         guard.touch(path, &name, marker::now_ms());
         store::save(app, &guard);
     }
@@ -415,7 +410,7 @@ pub fn close(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
 pub fn forget(app: &AppHandle, path: &Path, cluster_id: Option<&str>) -> ProjectSnapshot {
     {
         let state = app.state::<ProjectState>();
-        let mut guard = state.inner.write().expect("project store lock poisoned");
+        let mut guard = state.inner.write_or_panic();
         guard.forget(path);
         store::save(app, &guard);
     }

@@ -7,6 +7,7 @@
 
 use crate::boot::BootStatus;
 use crate::discovery::StackSnapshot;
+use crate::sync::RwLockExt;
 use std::sync::RwLock;
 
 #[derive(Default)]
@@ -28,10 +29,8 @@ pub struct AppState {
 
 impl AppState {
     pub fn store(&self, snapshot: StackSnapshot) {
-        // A lock is "poisoned" if a thread panicked while holding it. There is
-        // nothing sensible to do about that here, so we surface it loudly rather
-        // than carrying on with state we can't trust.
-        *self.snapshot.write().expect("stack snapshot lock poisoned") = Some(snapshot);
+        // Poisoning is a panic here, not an error — see `sync`.
+        *self.snapshot.write_or_panic() = Some(snapshot);
     }
 
     /// A clone of the last snapshot, or `None` before the first load.
@@ -39,17 +38,14 @@ impl AppState {
     /// Cloning keeps the lock held for the shortest possible time — the caller
     /// gets its own copy instead of a guard it might hold across an await.
     pub fn get(&self) -> Option<StackSnapshot> {
-        self.snapshot
-            .read()
-            .expect("stack snapshot lock poisoned")
-            .clone()
+        self.snapshot.read_or_panic().clone()
     }
 
     /// Overwrite the latest boot status. Called from `boot::emit`, always
     /// immediately before the same value goes out over the `boot:status`
     /// event — see that function for why the ordering matters.
     pub fn store_boot_status(&self, status: BootStatus) {
-        *self.boot_status.write().expect("boot status lock poisoned") = Some(status);
+        *self.boot_status.write_or_panic() = Some(status);
     }
 
     /// The latest boot status, or `None` if `boot::start` hasn't reported one
@@ -58,9 +54,6 @@ impl AppState {
     /// frontend — this stays symmetric with `get`'s `Option<StackSnapshot>`
     /// rather than inventing a placeholder `BootStatus` here.
     pub fn boot_status(&self) -> Option<BootStatus> {
-        self.boot_status
-            .read()
-            .expect("boot status lock poisoned")
-            .clone()
+        self.boot_status.read_or_panic().clone()
     }
 }

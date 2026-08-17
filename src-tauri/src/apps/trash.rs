@@ -301,7 +301,7 @@ mod platform {
 fn list(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
     let root = scope_root(app, context)?;
     let mut items = platform::scoped(&root)?;
-    items.sort_by(|a, b| b.time_deleted.cmp(&a.time_deleted));
+    items.sort_by_key(|item| std::cmp::Reverse(item.time_deleted));
 
     Ok(json!({
         "root": root.display().to_string(),

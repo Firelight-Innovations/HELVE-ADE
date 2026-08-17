@@ -22,6 +22,7 @@ mod settings;
 mod shell_state;
 mod shell_store;
 mod state;
+mod sync;
 mod tool;
 mod tool_frontend;
 mod windows;
@@ -34,7 +35,7 @@ use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let launched = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // Tool frontends mount as iframes on their own origin. In a release
         // build that origin is this scheme, backed by each tool's built `dist`
@@ -42,11 +43,19 @@ pub fn run() {
         // the tools' own dev servers instead, so this never gets hit.
         .register_uri_scheme_protocol(tool_frontend::SCHEME, |ctx, request| {
             let (status, mime, body) = tool_frontend::serve(ctx.app_handle(), request.uri().path());
+            // `serve` only ever returns a status and a mime this builder accepts,
+            // so the error arm is unreachable in practice. It is answered rather
+            // than panicked on anyway: one malformed asset header should cost that
+            // request, not the whole webview.
             tauri::http::Response::builder()
                 .status(status)
                 .header(tauri::http::header::CONTENT_TYPE, mime)
                 .body(body)
-                .expect("tool asset response is well-formed")
+                .unwrap_or_else(|_| {
+                    let mut fallback = tauri::http::Response::new(Vec::new());
+                    *fallback.status_mut() = tauri::http::StatusCode::INTERNAL_SERVER_ERROR;
+                    fallback
+                })
         })
         // `manage` puts a value into Tauri's type-keyed state map. Any command
         // that asks for `State<'_, AppState>` gets a reference to this one
@@ -293,8 +302,15 @@ pub fn run() {
             git::git_head_text,
             search::search_content,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    // A GUI process that never got a window up has nowhere to report into, so
+    // this goes to stderr and takes the exit code with it. A panic here would
+    // print a backtrace to a console nobody is looking at.
+    if let Err(error) = launched {
+        eprintln!("helve: could not start the application: {error}");
+        std::process::exit(1);
+    }
 }
 
 /// Which apps have at least one instance in the layout, with their names.
@@ -475,11 +491,13 @@ fn seed_first_run(app: &tauri::AppHandle, shell: &ShellState) {
     shell.open_instance(
         app,
         "main",
-        "home",
-        shell_state::SurfaceKind::App,
-        "Home",
-        None,
-        None,
+        shell_state::OpenRequest {
+            app_id: "home",
+            kind: shell_state::SurfaceKind::App,
+            title: "Home",
+            pane_id: None,
+            dir: None,
+        },
     );
 
     project::retitle(app);

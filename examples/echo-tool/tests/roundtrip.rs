@@ -18,6 +18,13 @@ use std::time::Duration;
 
 const T: Duration = Duration::from_secs(5);
 
+// Clippy exempts `#[test]` functions from the §5 ban on `expect` (see
+// `clippy.toml`) but does not recognise a helper called only from one. The
+// judgement is the same: in a test a panic *is* the failure report.
+#[expect(
+    clippy::expect_used,
+    reason = "test helper; a panic is the failure report"
+)]
 fn spawn() -> ToolProcess {
     let bin = Path::new(env!("CARGO_BIN_EXE_helve-echo-tool"));
     let cwd = std::env::current_dir().expect("cwd");
