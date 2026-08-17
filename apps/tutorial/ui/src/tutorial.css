@@ -12,7 +12,21 @@
  * a measure exists to hold still.
  */
 
-.tut {
+/* `.app.tut` rather than `.tut`, and the doubled class is load-bearing.
+ *
+ * `apps/shared/app.css` sets `.app { flex-direction: column }`. Two
+ * single-class selectors tie on specificity, so whichever stylesheet comes
+ * second wins — and the two hosts disagree about which that is. `vite build`
+ * emits `<link>`s with the shared sheet first, so `.tut` would have won; the
+ * dev server injects in module-evaluation order, and `main.tsx` imports `./App`
+ * (which pulls this file in with it) *before* the shared sheet, so `column` won
+ * there. The rail drew across the top of the page under `pnpm app` and down its
+ * left side in a release build.
+ *
+ * Reordering the imports in `main.tsx` would fix this one instance, leave every
+ * other app one import-sort away from the same bug, and still depend on a
+ * build-vs-dev detail neither host promises. Winning on specificity does not. */
+.app.tut {
   flex-direction: row;
 }
 

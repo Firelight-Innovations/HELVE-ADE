@@ -23,10 +23,23 @@ Design: `docs/tutorials.md`.
 - `vite.config.ts` — the app's entry point, which cannot be inferred
 - `docs/tutorials.md` (new), `apps/README.md`
 
-**Not claimed:** anything under `src/shell/`. The app is reached through
-`helve/open` and the switcher's existing Apps menu, so no shell region had to
-change — including `titlebar/`, where Help ▸ Documentation is still inert
-because wiring it needs a callback through `WindowRoot.tsx`.
+**`src/shell/WindowRoot.tsx` — touched, and it is yours.** Tutorials had to draw
+over the cluster rather than take a pane; a page of prose in a quarter of the
+window is unreadable. That is Home's existing `soloInstanceId` mechanism, so the
+change generalises it rather than adding a second one: a `TAKEOVER_APPS` set,
+`hideHome` renamed to `hideTakeover`, and the three `appId === "home"` filters
+now calling `isTakeover`. `src-tauri/src/shell_state.rs` has the matching half —
+`dismiss_home` is `dismiss_takeover`, and it skips the eviction when the
+arriving app is itself a takeover surface, so a tutorial covers Home instead of
+throwing it away. `docs/tutorials.md` §8 is the whole account.
+
+Three of your Home comments were made stale by that and have been corrected
+rather than left: the `members` filter note, `memberCount`, and
+`paneTabsById`'s. Nothing about the band, the panel or the drag was touched.
+
+**Not claimed:** `titlebar/`, where Help ▸ Documentation is still inert —
+wiring it needs a callback threaded through `WindowRoot`, which is your file to
+sequence.
 
 ---
 

@@ -1037,7 +1037,7 @@ impl ShellState {
     /// this splitting underneath it.
     ///
     /// Unless `app_id` is `"home"` itself, this closes Home if it is holding
-    /// `target` — see `dismiss_home`. Doing that first, rather than after
+    /// `target` — see `dismiss_takeover`. Doing that first, rather than after
     /// `open_into` has run, is what makes a pane holding only Home read as
     /// empty to `open_into`'s own split decision: the surface takes the pane
     /// outright instead of gaining Home as a permanent neighbour in a sibling.
@@ -1079,7 +1079,7 @@ impl ShellState {
 
         let mut opened = None;
         self.mutate(app, |s| {
-            // Destructured so `dismiss_home` can borrow the tree and
+            // Destructured so `dismiss_takeover` can borrow the tree and
             // `instances` at once — see `apply_preset` below, which takes the
             // same split for the same reason.
             let ShellSnapshot {
@@ -1097,11 +1097,12 @@ impl ShellState {
                 .map(str::to_string)
                 .unwrap_or_else(|| cluster.tree.first_pane_id().to_string());
 
-            // Home does not get to evict itself. Every other open does: see
-            // `dismiss_home`'s doc comment for why this runs *before*
-            // `open_into` rather than after.
-            if app_id != "home" {
-                dismiss_home(&mut cluster.tree, &target, instances);
+            // A takeover surface does not get to evict another one — it covers
+            // it, and uncovering puts the one underneath back. Every other open
+            // evicts: see `dismiss_takeover`'s doc comment for why this runs
+            // *before* `open_into` rather than after.
+            if !is_takeover_app(app_id) {
+                dismiss_takeover(&mut cluster.tree, &target, instances);
             }
 
             let split = match (dir, &split_ids) {
@@ -1213,9 +1214,9 @@ impl ShellState {
             for w in windows.iter_mut() {
                 if let Some(c) = w.cluster_mut(to_cluster) {
                     // Dragging Home itself must not evict Home; every other
-                    // tab landing in its pane does — see `dismiss_home`.
-                    if !is_home(instances, instance_id) {
-                        dismiss_home(&mut c.tree, to_pane, instances);
+                    // tab landing in its pane does — see `dismiss_takeover`.
+                    if !is_takeover(instances, instance_id) {
+                        dismiss_takeover(&mut c.tree, to_pane, instances);
                     }
                     moved = c.tree.insert_tab(to_pane, instance_id, index);
                     if moved {
@@ -1547,8 +1548,8 @@ impl ShellState {
             for w in windows.iter_mut() {
                 if let Some(c) = w.cluster_mut(cluster_id) {
                     // A terminal is never Home, so this always applies — see
-                    // `dismiss_home`.
-                    dismiss_home(&mut c.tree, pane_id, instances);
+                    // `dismiss_takeover`.
+                    dismiss_takeover(&mut c.tree, pane_id, instances);
                     c.tree.open_into(pane_id, id, index, split);
                     return;
                 }
@@ -1747,21 +1748,38 @@ fn slot_of_tab(snapshot: &ShellSnapshot, id: &str) -> Option<presets::PresetSlot
     resolve_slot(&snapshot.instances, &snapshot.terminals, id)
 }
 
-// --- Home's dismissal ---------------------------------------------------------
+// --- A takeover surface's dismissal -------------------------------------------
 //
-// Home is reached by clicking the already-active cluster chip (see
-// `WindowRoot.tsx`'s `onFocusHome`) and draws no tab of its own in the
-// switcher row (see that file's `members`), on purpose: it is the screen you
-// are already on, not a fourth thing competing with Files, the viewer and a
-// terminal for a place in the row. The cost of that is that Home has no close
-// button anywhere — there is no gesture left, once something else is visible
-// in its pane, that could ever bring it back into view there. So this module
-// closes it for the user, the instant that happens, rather than leaving a
-// live instance nobody can reach and nobody asked to keep.
+// Home and Tutorials **cover** the cluster rather than taking a pane beside it
+// — `WindowRoot.tsx`'s `TAKEOVER_APPS` and `ToolWindow`'s `soloInstanceId` are
+// the drawing half of that. Neither draws a tab of its own in the switcher row
+// (see that file's `members`), on purpose: they are the screen you are already
+// on, not a fourth thing competing with Files, the viewer and a terminal for a
+// place in the row.
+//
+// The cost of that is that neither has a close button anywhere — there is no
+// gesture left, once something else is visible in its pane, that could ever
+// bring it back into view there. So this module closes it for the user, the
+// instant that happens, rather than leaving a live instance nobody can reach
+// and nobody asked to keep.
+//
+// One takeover surface arriving over another is the exception, and it is why
+// `open_instance` guards on `is_takeover_app` rather than on the id `"home"`.
+// Opening Tutorials from a card on Home must not evict the Home underneath: it
+// is covered, not replaced, and closing the tutorial has to put back the screen
+// the reader left. Evicting would strand a fresh cluster with nothing in it.
 
-/// Whether `id` names a live Home instance.
-fn is_home(instances: &[SurfaceInstance], id: &str) -> bool {
-    instances.iter().any(|i| i.id == id && i.app_id == "home")
+/// Apps that cover the cluster instead of taking a pane. Mirrors
+/// `TAKEOVER_APPS` in `src/shell/WindowRoot.tsx`; the two are a pair.
+fn is_takeover_app(app_id: &str) -> bool {
+    matches!(app_id, "home" | "tutorial")
+}
+
+/// Whether `id` names a live takeover surface.
+fn is_takeover(instances: &[SurfaceInstance], id: &str) -> bool {
+    instances
+        .iter()
+        .any(|i| i.id == id && is_takeover_app(&i.app_id))
 }
 
 /// If `pane_id` currently holds Home, close it — the tab and the instance
@@ -1776,7 +1794,7 @@ fn is_home(instances: &[SurfaceInstance], id: &str) -> bool {
 /// split?" check — the surface opened over it takes the pane outright, rather
 /// than gaining Home as a permanent neighbour in a sibling pane because Home
 /// was still there to make `pane_is_empty` say no.
-fn dismiss_home(
+fn dismiss_takeover(
     tree: &mut PaneNode,
     pane_id: &str,
     instances: &mut Vec<SurfaceInstance>,
@@ -1784,7 +1802,7 @@ fn dismiss_home(
     let home_id = tree
         .tabs_in(pane_id)?
         .iter()
-        .find(|id| is_home(instances, id.as_str()))?
+        .find(|id| is_takeover(instances, id.as_str()))?
         .clone();
     tree.remove_tab(&home_id);
     instances.retain(|i| i.id != home_id);
@@ -1793,7 +1811,7 @@ fn dismiss_home(
 
 /// Close Home in every pane it now shares with something else.
 ///
-/// `dismiss_home` above handles every arrival that lands in one named pane at
+/// `dismiss_takeover` above handles every arrival that lands in one named pane at
 /// a time, because it knows in advance which pane that is. Applying a preset
 /// does not fit that shape: `presets::plan` rebuilds the whole tree in a
 /// single step, and a preset never claims Home — see `presets::builtins`'s
@@ -1807,19 +1825,19 @@ fn dismiss_home(
 /// ended up alone is left alone too: nothing else arrived there, so nothing
 /// arrived *into Home's pane*, which is the one rule this whole mechanism
 /// exists to enforce.
-fn dismiss_crowded_home(tree: &mut PaneNode, instances: &mut Vec<SurfaceInstance>) {
+fn dismiss_crowded_takeover(tree: &mut PaneNode, instances: &mut Vec<SurfaceInstance>) {
     let leaves: Vec<String> = tree.leaf_ids().into_iter().map(str::to_string).collect();
     for pane_id in leaves {
         let crowded = tree.tabs_in(&pane_id).is_some_and(|tabs| tabs.len() > 1);
         if crowded {
-            dismiss_home(tree, &pane_id, instances);
+            dismiss_takeover(tree, &pane_id, instances);
         }
     }
 }
 
 /// Fold a preset into one cluster's tree: match existing surfaces to slots,
 /// leave every leftover exactly where `presets::plan` puts it, then apply
-/// `dismiss_crowded_home` — the one Home-dismissal case that only makes sense
+/// `dismiss_crowded_takeover` — the one Home-dismissal case that only makes sense
 /// once the whole tree has been rebuilt. Shared by `apply_preset` and
 /// `apply_preset_to_cluster`, which differ only in how they find the cluster.
 fn rearrange(
@@ -1841,7 +1859,7 @@ fn rearrange(
 
     let (tree, gaps) = presets::plan(root, &existing, ids);
     cluster.tree = tree;
-    dismiss_crowded_home(&mut cluster.tree, instances);
+    dismiss_crowded_takeover(&mut cluster.tree, instances);
     gaps
 }
 
@@ -3082,13 +3100,13 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_home_closes_it_when_it_shares_a_pane_with_something_else() {
+    fn dismiss_takeover_closes_it_when_it_shares_a_pane_with_something_else() {
         let mut tree = PaneNode::leaf("p1");
         tree.insert_tab("p1", "home-1", None);
         tree.insert_tab("p1", "files-1", None);
         let mut instances = vec![home_instance("home-1"), app_instance("files-1", "files")];
 
-        let evicted = dismiss_home(&mut tree, "p1", &mut instances);
+        let evicted = dismiss_takeover(&mut tree, "p1", &mut instances);
 
         assert_eq!(evicted.as_deref(), Some("home-1"));
         assert_eq!(tree.tabs_in("p1"), Some(&["files-1".to_string()][..]));
@@ -3098,13 +3116,49 @@ mod tests {
         );
     }
 
+    /// Tutorials covers the cluster the same way Home does, so it is dismissed
+    /// by the same arrival. Without this it would be a pane with no tab in the
+    /// switcher row and no close button — unreachable and unremovable.
     #[test]
-    fn dismiss_home_does_nothing_to_a_pane_without_home_in_it() {
+    fn dismiss_takeover_closes_a_tutorial_too() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "tutorial-1", None);
+        tree.insert_tab("p1", "files-1", None);
+        let mut instances = vec![
+            app_instance("tutorial-1", "tutorial"),
+            app_instance("files-1", "files"),
+        ];
+
+        assert_eq!(
+            dismiss_takeover(&mut tree, "p1", &mut instances).as_deref(),
+            Some("tutorial-1")
+        );
+        assert!(!instances.iter().any(|i| i.id == "tutorial-1"));
+    }
+
+    /// The rule `open_instance` guards on. A tutorial opened from a card on
+    /// Home must *cover* that Home rather than evict it — closing the tutorial
+    /// has to put the reader back on the screen they left, and on a cluster
+    /// holding nothing else an eviction would strand them on an empty pane.
+    #[test]
+    fn one_takeover_surface_does_not_evict_another() {
+        assert!(is_takeover_app("home"));
+        assert!(is_takeover_app("tutorial"));
+        assert!(!is_takeover_app("files"));
+        assert!(!is_takeover_app("viewer"));
+        assert!(
+            !is_takeover_app(crate::apps::TERMINAL_ID),
+            "a terminal takes a pane like anything else"
+        );
+    }
+
+    #[test]
+    fn dismiss_takeover_does_nothing_to_a_pane_without_home_in_it() {
         let mut tree = PaneNode::leaf("p1");
         tree.insert_tab("p1", "files-1", None);
         let mut instances = vec![app_instance("files-1", "files")];
 
-        assert_eq!(dismiss_home(&mut tree, "p1", &mut instances), None);
+        assert_eq!(dismiss_takeover(&mut tree, "p1", &mut instances), None);
         assert_eq!(tree.tabs_in("p1"), Some(&["files-1".to_string()][..]));
         assert_eq!(instances.len(), 1);
     }
@@ -3114,18 +3168,18 @@ mod tests {
     /// as empty *before* `open_into` decides, or the surface opened over Home
     /// gains a sibling pane instead of taking Home's.
     #[test]
-    fn dismiss_home_leaves_a_home_only_pane_empty_afterward() {
+    fn dismiss_takeover_leaves_a_home_only_pane_empty_afterward() {
         let mut tree = PaneNode::leaf("p1");
         tree.insert_tab("p1", "home-1", None);
         let mut instances = vec![home_instance("home-1")];
 
-        dismiss_home(&mut tree, "p1", &mut instances);
+        dismiss_takeover(&mut tree, "p1", &mut instances);
 
         assert_eq!(tree.tabs_in("p1"), Some(&[][..]));
     }
 
     #[test]
-    fn dismiss_home_leaves_the_panes_other_tabs_and_active_tab_alone() {
+    fn dismiss_takeover_leaves_the_panes_other_tabs_and_active_tab_alone() {
         let mut tree = PaneNode::leaf("p1");
         tree.insert_tab("p1", "files-1", None);
         tree.insert_tab("p1", "home-1", None);
@@ -3137,7 +3191,7 @@ mod tests {
             app_instance("viewer-1", "viewer"),
         ];
 
-        dismiss_home(&mut tree, "p1", &mut instances);
+        dismiss_takeover(&mut tree, "p1", &mut instances);
 
         let PaneNode::Leaf {
             tabs, active_tab, ..
@@ -3154,7 +3208,7 @@ mod tests {
     }
 
     #[test]
-    fn dismiss_crowded_home_evicts_home_from_whichever_pane_it_ended_up_sharing() {
+    fn dismiss_crowded_takeover_evicts_home_from_whichever_pane_it_ended_up_sharing() {
         // The shape a preset's leftover sweep produces: an unclaimed Home
         // lands in the last pane alongside whatever else is already there.
         let mut tree = PaneNode::leaf("p1");
@@ -3164,7 +3218,7 @@ mod tests {
 
         let mut instances = vec![app_instance("files-1", "files"), home_instance("home-1")];
 
-        dismiss_crowded_home(&mut tree, &mut instances);
+        dismiss_crowded_takeover(&mut tree, &mut instances);
 
         assert_eq!(
             tree.tabs_in("p1"),
@@ -3183,12 +3237,12 @@ mod tests {
     /// touched, because nothing else arrived *into that pane* for it to be
     /// dismissed on behalf of.
     #[test]
-    fn dismiss_crowded_home_leaves_home_alone_when_nothing_shares_its_pane() {
+    fn dismiss_crowded_takeover_leaves_home_alone_when_nothing_shares_its_pane() {
         let mut tree = PaneNode::leaf("p1");
         tree.insert_tab("p1", "home-1", None);
         let mut instances = vec![home_instance("home-1")];
 
-        dismiss_crowded_home(&mut tree, &mut instances);
+        dismiss_crowded_takeover(&mut tree, &mut instances);
 
         assert_eq!(tree.tabs_in("p1"), Some(&["home-1".to_string()][..]));
         assert_eq!(instances.len(), 1);
@@ -3196,7 +3250,7 @@ mod tests {
 
     /// The case only the post-apply sweep can catch: both slots a preset asks
     /// for are already open, so `plan` claims them directly and leaves zero
-    /// gaps — nothing opens afterward to run `dismiss_home`'s pre-insertion
+    /// gaps — nothing opens afterward to run `dismiss_takeover`'s pre-insertion
     /// check, so if the leftover sweep crowds Home's pane, `rearrange` itself
     /// has to be what clears it.
     #[test]
@@ -3242,7 +3296,7 @@ mod tests {
     /// apply itself, alone in the pane the leftover sweep put it in — and is
     /// only closed once something is opened *into that exact pane*, which is
     /// what filling the terminal gap does. This drives both halves in the
-    /// order production does, through the same `dismiss_home`/`open_into`
+    /// order production does, through the same `dismiss_takeover`/`open_into`
     /// pair `add_terminal_in_pane` calls, to prove the two mechanisms this
     /// module has for dismissing Home actually compose into "gone by the time
     /// a project finishes opening" rather than each looking sufficient in
@@ -3285,10 +3339,10 @@ mod tests {
         );
 
         // Filling the app gaps (Files, the viewer) lands in panes Home was
-        // never in, so they run `dismiss_home` too but it finds nothing to do.
+        // never in, so they run `dismiss_takeover` too but it finds nothing to do.
         for gap in &gaps {
             if let presets::PresetSlot::App { app_id } = &gap.slot {
-                dismiss_home(
+                dismiss_takeover(
                     &mut placement.clusters[0].tree,
                     &gap.pane_id,
                     &mut instances,
@@ -3305,13 +3359,13 @@ mod tests {
         );
 
         // The terminal gap is the pane the leftover sweep actually put Home
-        // in — `add_terminal_in_pane`'s own `dismiss_home` call, run here
+        // in — `add_terminal_in_pane`'s own `dismiss_takeover` call, run here
         // directly since spawning a real pty needs an `AppHandle`.
         let terminal_gap = gaps
             .iter()
             .find(|g| g.slot == presets::PresetSlot::Terminal)
             .expect("the preset asks for a terminal");
-        dismiss_home(
+        dismiss_takeover(
             &mut placement.clusters[0].tree,
             &terminal_gap.pane_id,
             &mut instances,

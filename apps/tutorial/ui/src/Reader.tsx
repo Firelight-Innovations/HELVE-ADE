@@ -65,7 +65,7 @@ export default function Reader({
 
               {next && (
                 <button type="button" className="tut__next" onClick={() => onOpen(next.id)}>
-                  Next: {next.title} →
+                  Next: {next.title}
                 </button>
               )}
             </div>

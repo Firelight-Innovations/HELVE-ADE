@@ -203,7 +203,55 @@ An unknown id is ignored rather than shown as an error: it can only arrive from 
 build mismatch, and dropping the reader on the index is a better answer than a
 page saying the link was wrong.
 
-## 8. What is deliberately absent
+## 8. How it is displayed: a takeover surface
+
+Tutorials **covers** the cluster rather than taking a pane beside it. Home
+already worked this way and the mechanism is shared: `TAKEOVER_APPS` in
+`src/shell/WindowRoot.tsx`, `is_takeover_app` in `src-tauri/src/shell_state.rs`,
+and `ToolWindow`'s `soloInstanceId`, which draws one instance over the pane tree
+without disturbing it.
+
+It went in because opening a tutorial into a pane put a page of prose in a
+quarter of the window beside three apps. A tutorial squeezed into a sliver is
+not a smaller version of reading; it is a different and worse thing.
+
+Three consequences, all of them shared with Home:
+
+- **No tab in the switcher bar,** and no place in a collapsed chip's count.
+- **No close button,** because there is no tab to put one on. It goes away when
+  you choose anything else — an app, a tab, a chip, another cluster. Uncovering
+  is the same act as choosing what to look at, so it is not a second gesture.
+- **The layout underneath is untouched.** Every app stays mounted at the size it
+  had, and is exactly there again when the cover comes down.
+
+### One takeover surface covers another rather than evicting it
+
+This is the one rule that is not Home's. `open_instance` dismisses whatever
+takeover surface is in the pane it is opening into — that is what stops an
+unreachable instance being left behind — but it skips that when the *arriving*
+app is itself a takeover surface.
+
+Without the exception, opening a tutorial from a card on Home would evict the
+Home underneath it. On a cluster holding nothing else that leaves an empty pane
+when the tutorial closes, so the reader who followed a card from Home cannot get
+back to Home. Covering keeps it there to return to.
+
+`one_takeover_surface_does_not_evict_another` and
+`dismiss_takeover_closes_a_tutorial_too` in `shell_state.rs` hold both halves.
+
+### Where the two differ
+
+Only in the door. Home's is the chip of the cluster you are already on, and it
+has no other; a cluster that already had a Home keeps it when uncovered, because
+that door costs nothing to take again.
+
+Tutorials keeps its place in the Apps menu, and Home's cards open it over
+`helve/open`. Being *open* is what makes it cover — there is no separate
+"wanted" flag, because nothing opens Tutorials except somebody asking to read
+it. It is therefore **closed** rather than merely uncovered: a live instance
+with no tab and no chip would be a pane nobody can reach.
+
+## 9. What is deliberately absent
 
 - **No search within the tutorials.** Ten pages with a contents rail beside them
   is not a corpus. This becomes worth building somewhere around thirty.

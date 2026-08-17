@@ -71,6 +71,19 @@ import { isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostW
 const EMPTY_TREE: PaneNode = { kind: "leaf", id: "pane-pending", tabs: [], activeTab: null };
 
 /**
+ * The apps that **cover** the cluster instead of taking a pane beside it: no
+ * tab in the switcher bar, not counted by a collapsed chip, and gone the
+ * instant you choose anything else. `docs/tutorials.md` §8 has the reasoning;
+ * `shell_state.rs`'s `is_takeover_app` is this list's other half.
+ */
+const TAKEOVER_APPS = new Set(["home", "tutorial"]);
+
+/** Whether an app id names a takeover surface. Undefined is not one. */
+function isTakeover(appId: string | undefined): boolean {
+  return appId !== undefined && TAKEOVER_APPS.has(appId);
+}
+
+/**
  * One HELVE window.
  *
  * Both the main window and every detached one mount this. They differ in
@@ -318,6 +331,14 @@ export default function WindowRoot({
     [tree, instances],
   );
 
+  // The second takeover surface — see `TAKEOVER_APPS`. Being *open* is what
+  // makes it cover, so unlike Home it needs no "wanted" flag: nothing opens
+  // Tutorials except somebody asking to read it.
+  const tutorialInstanceId = useMemo(
+    () => paneTabs(tree).find((id) => instances.get(id)?.appId === "tutorial") ?? null,
+    [tree, instances],
+  );
+
   // Asked for, and separately, showing. Opening a Home for a cluster that has
   // none is a round trip through Rust, and the flag is set before it lands.
   const [homeWanted, setHomeWanted] = useState(false);
@@ -329,6 +350,9 @@ export default function WindowRoot({
   const openedHome = useRef<string | null>(null);
 
   const showHome = useCallback(() => {
+    // A tutorial can be in front of Home. Without this it stays there, and the
+    // chip looks dead.
+    if (tutorialInstanceId !== null) void closeInstance(tutorialInstanceId);
     setHomeWanted(true);
     if (homeInstanceId !== null) return;
     void openInstance(label, "home", activePaneId ?? undefined, splitDirOnOpen(activePaneId))
@@ -337,30 +361,34 @@ export default function WindowRoot({
         setHomeWanted(false);
         console.error("helve: could not open Home:", err);
       });
-  }, [label, activePaneId, homeInstanceId]);
+  }, [label, activePaneId, homeInstanceId, tutorialInstanceId]);
 
-  // Also what every other way of choosing a surface calls — clicking a chip,
-  // opening an app, switching cluster. Uncovering is the same act as choosing
-  // something else to look at, so it is not a separate gesture to learn.
-  const hideHome = useCallback(() => {
+  // Take whichever takeover surface is up back down. Called by every other way
+  // of choosing a surface — chip, app, tab, cluster — since uncovering is the
+  // same act as choosing something else. Tutorials is *closed* where Home is
+  // merely uncovered; `docs/tutorials.md` §8 says why.
+  const hideTakeover = useCallback(() => {
     setHomeWanted(false);
     const ours = openedHome.current;
     openedHome.current = null;
-    if (ours !== null) void closeInstance(ours);
-  }, []);
+    // Guarded: the ref can outlive the instance it names.
+    if (ours !== null && instances.has(ours)) void closeInstance(ours);
+    if (tutorialInstanceId !== null) void closeInstance(tutorialInstanceId);
+  }, [instances, tutorialInstanceId]);
 
   // The surface the menus act on: the active tab of the focused pane. Not "the
   // active tab" — with several panes on screen there is no such thing, and
   // Save has to mean the editor you were typing in rather than whichever pane
   // happens to be first in the tree.
-  // Home while it covers the window, because that is the surface in front of
-  // you — a File menu acting on an app nobody can see would be wrong for as
-  // long as Home is up.
+  // Whichever takeover surface covers the window wins, because that is what is
+  // in front of you. Tutorials first: it opens *over* Home, so when both exist
+  // it is the one on screen.
   const activeInstanceId = useMemo(() => {
+    if (tutorialInstanceId !== null) return tutorialInstanceId;
     if (homeShowing) return homeInstanceId;
     const focused = paneLeaves(tree).find((l) => l.id === activePaneId);
     return focused?.activeTab ?? paneLeaves(tree)[0]?.activeTab ?? null;
-  }, [tree, activePaneId, homeShowing, homeInstanceId]);
+  }, [tree, activePaneId, homeShowing, homeInstanceId, tutorialInstanceId]);
 
   const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
 
@@ -391,12 +419,12 @@ export default function WindowRoot({
   const onOpenApp = useCallback(
     (appId: string) => {
       // Opening something is asking to look at it, so Home stops covering it.
-      hideHome();
+      hideTakeover();
       void openInstance(label, appId, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
         .then(setOpenedInstance)
         .catch((err: unknown) => console.error("helve: could not open that app:", err));
     },
-    [label, activePaneId, hideHome],
+    [label, activePaneId, hideTakeover],
   );
 
   /**
@@ -421,14 +449,14 @@ export default function WindowRoot({
    * nothing on screen to predict which you were about to get.
    */
   const onOpenTerminalHere = useCallback(() => {
-    hideHome();
+    hideTakeover();
     void terminalControl
       .createInPane(label, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
       // A session id is a tab id in a tree like any other, so the same
       // focus-follows-open path above applies to it unchanged.
       .then(setOpenedInstance)
       .catch((err: unknown) => console.error("helve: could not open a terminal here:", err));
-  }, [label, activePaneId, hideHome]);
+  }, [label, activePaneId, hideTakeover]);
 
   /**
    * The Apps menu's one click handler, for a list that is no longer all apps.
@@ -456,19 +484,22 @@ export default function WindowRoot({
   const onSelectCluster = useCallback(
     (clusterId: string) => {
       // The already-active chip does not re-select itself — nothing changes when
-      // it does. It is Home's switch instead: press it and Home covers the
+      // it does. It is the cover's switch instead: press it and Home covers the
       // window, press it again and the apps are back exactly as they were. An
       // inactive chip still only switches, and takes the cover down on its way
-      // out, since the Home it was covering belongs to the cluster you left.
+      // out, since what it was covering belongs to the cluster you left.
+      //
+      // A tutorial counts as covered too — the chip is the only way out of one
+      // in a cluster holding nothing else.
       if (clusterId === activeClusterId) {
-        if (homeShowing) hideHome();
+        if (homeShowing || tutorialInstanceId !== null) hideTakeover();
         else showHome();
         return;
       }
-      hideHome();
+      hideTakeover();
       void setActiveCluster(label, clusterId);
     },
-    [label, activeClusterId, homeShowing, showHome, hideHome],
+    [label, activeClusterId, homeShowing, tutorialInstanceId, showHome, hideTakeover],
   );
 
   const onAddCluster = useCallback(() => {
@@ -764,8 +795,8 @@ export default function WindowRoot({
   // Derived, never stored. A cluster's surfaces are its tree's tabs, and a
   // membership list kept beside them would be a second answer that could drift.
   //
-  // Home is filtered out below too now — see the `appId === "home"` skip
-  // inside `members`, and `onSelectCluster` for where it went instead.
+  // Takeover surfaces are filtered out below — see the `isTakeover` skip inside
+  // `members`, and `onSelectCluster` for where Home's door went instead.
 
   // The band's tabs, grouped so a split terminal is one entry rather than two.
   // Computed once here because several things below want the same grouping and
@@ -791,7 +822,7 @@ export default function WindowRoot({
         const instance = instances.get(id);
         // Skipped, not removed from the tree — `ToolWindow` mounts off `tree`
         // directly, so Home keeps running behind the chip that now opens it.
-        if (instance?.appId === "home") continue;
+        if (isTakeover(instance?.appId)) continue;
         list.push({
           id,
           dragId: id,
@@ -814,23 +845,21 @@ export default function WindowRoot({
   }, [tree, instances, terminalsById]);
 
   // What a collapsed chip shows instead of its contents. Counted the same way
-  // `members` is built — its tree's tabs, minus Home for the same reason
-  // `members` drops it — so the number a chip promises is still the number
-  // that appears once you click it.
+  // `members` is built — its tree's tabs, minus the takeover surfaces — so the
+  // number a chip promises is the number that appears once you click it.
   const memberCount = useCallback(
     (clusterId: string) => {
       const cluster = clusters.find((c) => c.id === clusterId);
       if (!cluster) return 0;
-      return paneTabs(cluster.tree).filter((id) => instances.get(id)?.appId !== "home").length;
+      return paneTabs(cluster.tree).filter((id) => !isTakeover(instances.get(id)?.appId)).length;
     },
     [clusters, instances],
   );
 
-  // Each pane's real tab order, Home included. `ClusterBar` measures its
-  // insertion index over what it actually renders, which used to be every tab
-  // in the pane; now that Home is hidden from that count, the index needs
-  // translating back against this before it can name a real tree position.
-  // See `translateStripIndex` and `useDrag`'s doc comment for the mechanics.
+  // Each pane's real tab order, takeover surfaces included. `ClusterBar`
+  // measures its insertion index over what it actually renders, so the index
+  // needs translating back against this before it can name a real tree
+  // position. See `translateStripIndex` and `useDrag` for the mechanics.
   const paneTabsById = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const leaf of paneLeaves(tree)) map.set(leaf.id, leaf.tabs);
@@ -841,7 +870,7 @@ export default function WindowRoot({
   const translateStripIndex = useCallback(
     (paneId: string, visibleIndex: number): number => {
       const real = paneTabsById.get(paneId) ?? [];
-      const visible = real.filter((id) => instances.get(id)?.appId !== "home");
+      const visible = real.filter((id) => !isTakeover(instances.get(id)?.appId));
       if (visibleIndex >= visible.length) return real.length;
       return real.indexOf(visible[visibleIndex]);
     },
@@ -863,7 +892,7 @@ export default function WindowRoot({
     (member: ClusterMember) => {
       // Clicking any of them is choosing what to look at, which is the other
       // way Home stops covering the window. See `showHome`.
-      hideHome();
+      hideTakeover();
       if (member.paneId !== null) {
         setActivePane(member.paneId);
         void activateInstance(member.id);
@@ -872,7 +901,7 @@ export default function WindowRoot({
       setBottomCollapsed(false);
       onSelectBandTab(member.id);
     },
-    [onSelectBandTab, hideHome],
+    [onSelectBandTab, hideTakeover],
   );
 
   /**
@@ -1382,7 +1411,7 @@ export default function WindowRoot({
               presentationOf={presentationOf}
               // Home over the top of everything, from the cluster chip. `null`
               // whenever it is not showing, which is most of the time.
-              soloInstanceId={homeShowing ? homeInstanceId : null}
+              soloInstanceId={tutorialInstanceId ?? (homeShowing ? homeInstanceId : null)}
               focusedPaneId={activePaneId}
               onFocusPane={setActivePane}
               onResize={onResizePane}
