@@ -327,11 +327,9 @@ Blunt list, because an undocumented absence reads as an oversight.
 
 - **No live push into a mounted app frame** (§7). The relay is one listener in
   `ToolWindow.tsx` and it is not written.
-- **No app frontend calls `settings/all` yet.** The host side of the door is
-  built and tested; as of this writing the tree contains no caller, so
-  `files.confirmDelete` and the whole `editor.*` group are declared and unread.
-  Those are §1 violations until their readers land, and they are named here
-  rather than quietly left for someone to discover.
+  Every `editor.*` setting is therefore read at editor *construction* — see
+  `apps/viewer/ui/src/viewer/monaco.ts` — which is why the whole group is
+  `Applies::Next`. Changing one does nothing to a tab already open.
 - **Per-machine only.** There are no per-project, per-workspace or per-cluster
   settings. A project that wants a different tab width cannot have one, and two
   clusters side by side share every value on the screen.

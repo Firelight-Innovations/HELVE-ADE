@@ -44,6 +44,10 @@ export const firstProject: Body = {
       kind: "text",
       body: "Home marks such a folder **not set up** and offers a button: **Set up as a HELVE project**. Nothing forces you to press it.",
     },
+    {
+      kind: "note",
+      body: "**New Project** does the same thing to a folder it creates for you. There is no name field anywhere — the folder's own name becomes the project's, which is why renaming a project later means renaming the manifest file rather than editing a setting.",
+    },
 
     { kind: "heading", body: "What setting it up writes" },
     {

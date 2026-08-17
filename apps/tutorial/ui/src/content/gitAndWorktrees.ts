@@ -71,13 +71,17 @@ export const gitAndWorktrees: Body = {
       rows: [
         {
           chord: "Create worktree",
-          what: "Name it, and this cluster gets its own checkout and branch. Its edits never mix with anything else open on this repository.",
+          what: "This cluster gets its own checkout and branch. Its edits never mix with anything else open on this repository.",
         },
         {
           chord: "Work in the project folder",
           what: "Decline. The cluster uses the repository as it is, on whatever branch is checked out.",
         },
       ],
+    },
+    {
+      kind: "text",
+      body: "The **Worktree name** field arrives pre-filled with a suggestion based on the project's name, already selected, so accepting is one keystroke. It has to be a usable folder name and one this repository is not already using; the dialog says which rule you broke rather than refusing on submit.",
     },
     {
       kind: "note",

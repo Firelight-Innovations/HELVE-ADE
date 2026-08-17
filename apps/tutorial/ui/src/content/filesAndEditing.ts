@@ -36,7 +36,11 @@ export const filesAndEditing: Body = {
     },
     {
       kind: "text",
-      body: "That is VS Code's rule, and it is the reason browsing a folder leaves you with one tab instead of forty. Type anything into a preview tab and it stops being one — the next click then opens a new tab beside it rather than throwing your edit away.",
+      body: "That is VS Code's rule, and it is the reason browsing a folder leaves you with one tab instead of forty. **Double-click** the row to keep the tab, or type into it — either promotes it, and the next click then opens a new tab beside it rather than throwing your work away.",
+    },
+    {
+      kind: "note",
+      body: "Middle-click a tab to close it. A file deleted from underneath an open tab keeps the tab — the buffer may be the last copy of it — and marks it **missing**.",
     },
 
     { kind: "heading", body: "Changing the shape of a project" },
@@ -66,14 +70,46 @@ export const filesAndEditing: Body = {
       body: "**Delete moves to the system trash rather than removing anything**, which is why it can be confirmed once and then trusted. Settings → **File Explorer** → **Ask before deleting** turns the confirmation off.",
     },
     {
-      kind: "soon",
+      kind: "note",
       body: "Turning that off still leaves one prompt in place: if the thing you are deleting has **unsaved** edits under it, HELVE asks anyway. The trash can give back the last *saved* version of a file — the typing you have not saved is the one thing it cannot return.",
+    },
+    {
+      kind: "text",
+      body: "If the volume has no Recycle Bin at all — some network shares and removable drives — the delete is **refused** rather than quietly becoming permanent.",
+    },
+
+    { kind: "heading", body: "Getting something back" },
+    {
+      kind: "text",
+      body: "The bin icon in the Explorer's header swaps the tree for a **Recycle Bin** view, scoped to this project: only things whose original location was under the project root, not everything Windows has.",
+    },
+    {
+      kind: "text",
+      body: "Each row names the file, the folder it came from, its size, and how long ago it went. **Restore** puts it back where it was. **Delete** purges it for good, behind a harder confirmation that says so — nothing in HELVE or Windows can recover it afterwards.",
+    },
+    {
+      kind: "note",
+      body: 'The list is a snapshot with a "Read {time}" stamp, not a live feed, and there is a refresh beside it. Something can vanish between the listing and your click; HELVE says so rather than pretending it worked.',
     },
 
     { kind: "heading", body: "Editing" },
     {
       kind: "text",
-      body: "The Viewer holds files in tabs. `Ctrl+S` saves, `Ctrl+Shift+S` saves as, `Ctrl+D` duplicates. Undo, redo, cut, copy, paste, find and replace are the editor's own and work as they do everywhere.",
+      body: "The Viewer holds files in tabs. `Ctrl+S` saves, `Ctrl+Shift+S` saves as, `Ctrl+D` duplicates into `name copy.ext` without ever overwriting. Undo, redo, cut, copy, find and replace are the editor's own and work as they do everywhere. Closing a tab with unsaved work asks **Save**, **Discard** or **Cancel**.",
+    },
+    {
+      kind: "note",
+      body: "**Paste is not in the Edit menu**, deliberately — the webview refuses the programmatic version, so an item that only sometimes worked would be worse than none. `Ctrl+V` is the browser's own and is unaffected.",
+    },
+
+    { kind: "heading", body: "When a file changes underneath you" },
+    {
+      kind: "text",
+      body: "The Viewer re-checks a file when you come back to its tab and when the window regains focus — there is no filesystem watcher. If you had not edited it, it quietly reloads. If you had, it asks: **Keep mine** or **Reload from disk**.",
+    },
+    {
+      kind: "text",
+      body: "Saving over a file that changed since you opened it is **refused** rather than done. The banner names it and offers **Reload from disk** or **Overwrite**, so clobbering somebody else's work is a thing you choose rather than a thing that happens.",
     },
     {
       kind: "text",
@@ -110,7 +146,7 @@ export const filesAndEditing: Body = {
     },
     {
       kind: "note",
-      body: "Text reads are capped, and the Viewer says so at the seam when it truncates rather than quietly showing you part of a file. The cap is Settings → **File Explorer** → **Open at most**. Truncation is only honest when you can see where it happened, which is why images and PDFs are not truncated at all — they are simply refused past a much larger limit.",
+      body: "Text reads are capped — 256 KB by default, at Settings → **File Explorer** → **Open at most**. Past it you get the first chunk and the editor turns **read-only**, saying so: saving a truncated buffer would delete everything after the seam. Images and PDFs are not truncated at all; past a much larger limit they are simply refused, because truncation is only honest when you can see where it happened.",
     },
 
     { kind: "heading", body: "Git decoration" },

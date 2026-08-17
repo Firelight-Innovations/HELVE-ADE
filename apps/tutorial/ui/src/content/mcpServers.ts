@@ -19,6 +19,14 @@ export const mcpServers: Body = {
       kind: "text",
       body: "The servers run **inside** HELVE, not inside the apps or the stack tools. That is worth knowing because it is the reason this works at all today: a tool's core is a separate process and the broker that would reach it is not written, so a server hosted in Forger's own repository would be stuck behind that. Hosted here, it is not.",
     },
+    {
+      kind: "text",
+      body: "HELVE hosts servers; it is not an agent harness and does not consume them. You bring your own — HELVE's job is to give it tools and a terminal it can reach them from.",
+    },
+    {
+      kind: "note",
+      body: "There is a rule about what ever gets a server: **if your agent can already do it, it does not get one.** No reading files, no writing them, no search, no git — every agent has those. Only things that exist *inside HELVE and nowhere else* qualify, which is why the list is short and will stay short.",
+    },
 
     { kind: "heading", body: "Turn one on" },
     {
