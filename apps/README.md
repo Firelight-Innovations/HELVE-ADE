@@ -35,6 +35,7 @@ apps/
   home/ui/              Home's frontend
   files/ui/             File Explorer's frontend
   viewer/ui/            File Viewer's frontend
+  tutorial/ui/          Tutorials' frontend
 ```
 
 Each app's Rust half lives in `src-tauri/src/apps/<id>.rs`, and
@@ -105,19 +106,23 @@ therefore only ever reach its own cluster, and can only name a **kind** of app
 rather than a particular surface — which surface answers is a fact about the
 layout that only the shell can see.
 
-## The three apps
+## The four apps
 
 **Home** (`home/state`, plus the project verbs) — where a session starts: New,
 Open and Clone on the left over a Recent list, tutorials on the right. It is the
 one app the shell opens on, which is stated in `ShellState::default` rather than
 left to whichever tab seeded first.
 
-Two things there are worth knowing. Clone is deliberately inert — cloning is a
-git operation with progress, auth and partial-checkout failure, and this repo has
-git work in flight on its own branch that the real one is built on rather than
-beside; the method exists and refuses, and the button says "soon". And the
-tutorials column is drawn but dead: the column is part of the layout, and an
-empty half-screen reads as a bug where three cards marked "soon" do not.
+Clone is deliberately inert — cloning is a git operation with progress, auth and
+partial-checkout failure, and this repo has git work in flight on its own branch
+that the real one is built on rather than beside; the method exists and refuses,
+and the button says "soon".
+
+The tutorials column used to be dead too, and is not any more. `home/tutorials`
+answers with the first few unfinished tutorials from `apps/tutorial.rs`'s
+catalog, and a card calls `helve/open` on the Tutorials app naming one. Home
+holds no list of its own, which is the point: a second copy would be a second
+place to add a tutorial.
 
 The rules about what a project *is* are not here. They live in
 `src-tauri/src/project/`, which takes paths and never opens a dialog — see the
@@ -141,3 +146,13 @@ state: every method takes its root from the `CallContext` the caller resolved,
 which is a fact about where the *frame* is placed rather than which app is in
 it. So an Explorer and a Viewer in one cluster resolve the same project, and a
 pair in the next cluster resolve theirs.
+
+**Tutorials** (`tutorial/catalog`, `tutorial/complete`, `tutorial/reset`) — short
+walkthroughs of what HELVE does today, with a tick against the ones you have
+read. `docs/tutorials.md` is how to add one.
+
+It is the only app that reads nothing on the machine: `tutorial::call` ignores
+its `CallContext`, so a Tutorials tab reads the same in a cluster with no project
+as in one with a checkout — which is the state a person reading "your first
+project" is most likely to be in. The catalog is in Rust because Home draws it
+too; the prose is in the frontend because it is a view.

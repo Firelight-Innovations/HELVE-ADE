@@ -7,6 +7,29 @@ Delete your block when the work lands.
 
 ---
 
+## Tutorials app — session `tutorials-and-documentation`
+
+Started 2026-08-17. Branch `feat/mcp-manager-and-settings`.
+Design: `docs/tutorials.md`.
+
+**Claimed:**
+
+- `apps/tutorial/**` (new)
+- `src-tauri/src/apps/tutorial.rs` (new)
+- `src-tauri/src/apps/mod.rs` — one registry row and `pub mod tutorial;`
+- `src-tauri/src/apps/home.rs` — one dispatch arm, `home/tutorials`
+- `apps/home/ui/src/App.tsx`, `apps/home/ui/src/home.css` — the tutorials
+  column, which was three inert cards and now opens the app
+- `vite.config.ts` — the app's entry point, which cannot be inferred
+- `docs/tutorials.md` (new), `apps/README.md`
+
+**Not claimed:** anything under `src/shell/`. The app is reached through
+`helve/open` and the switcher's existing Apps menu, so no shell region had to
+change — including `titlebar/`, where Help ▸ Documentation is still inert
+because wiring it needs a callback through `WindowRoot.tsx`.
+
+---
+
 ## MCP server manager + settings — session `mcp-server-settings-qol`
 
 Started 2026-08-16. Branch `feat/mcp-manager-and-settings`.

@@ -32,6 +32,7 @@
 mod files;
 mod home;
 mod trash;
+pub mod tutorial;
 
 use crate::project;
 use crate::shell_state::ShellState;
@@ -193,6 +194,17 @@ const REGISTRY: &[Registered] = &[
         // `two_apps_in_one_cluster_resolve_the_same_context` below, which is
         // there to keep that true.
         call: files::call,
+    },
+    Registered {
+        id: "tutorial",
+        name: "Tutorials",
+        description: "Learn HELVE — short walkthroughs of the window, projects and the stack.",
+        // Last, because the switcher bar reads left to right as "what this
+        // build is for" and a tutorial is about the build rather than part of
+        // the work. It is also the only app that reads nothing on the machine:
+        // `tutorial::call` never touches the project, so a Tutorials tab in a
+        // cluster with nothing open is as useful as one beside a checkout.
+        call: tutorial::call,
     },
 ];
 
