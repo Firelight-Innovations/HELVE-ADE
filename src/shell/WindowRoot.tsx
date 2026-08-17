@@ -19,7 +19,8 @@ import {
   type WindowKind,
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
-import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/TitleBar";
+import TitleBar from "./titlebar/TitleBar";
+import { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/menus";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ClusterBar from "./switcher/ClusterBar";
 import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";

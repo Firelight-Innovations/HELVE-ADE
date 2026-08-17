@@ -28,8 +28,8 @@
  *   with no editing surface behind it. Every Edit item disables.
  */
 import { useEffect, useState } from "react";
-import type { CommandHandlers } from "./TitleBar";
-import { APP_COMMAND } from "./TitleBar";
+import type { CommandHandlers } from "./menus";
+import { APP_COMMAND } from "./menus";
 
 export type EditTarget =
   { kind: "app" } | { kind: "field"; element: HTMLElement } | { kind: "none" };

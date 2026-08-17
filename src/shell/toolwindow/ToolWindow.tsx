@@ -134,6 +134,32 @@ export interface ToolWindowHandle {
   send(instanceId: string, command: string): void;
 }
 
+/**
+ * One mounted frame, as this window knows it — never as the frame asserts it.
+ *
+ * Every field is the shell's own record, resolved from `event.source` against
+ * the map that holds these. That is the security property: nothing a frame puts
+ * in a payload can change which instance it is taken to be.
+ */
+interface MountedFrame {
+  /** The *instance* id. Says where the code runs. */
+  id: string;
+  /** The *app* id. Says which code runs; `callApp` dispatches on it. */
+  appId: string;
+  isApp: boolean;
+  /**
+   * The origin to post replies at, or `null` before the frame has said hello —
+   * until then there is no origin to aim at that would not be a guess.
+   */
+  origin: string | null;
+  /**
+   * What the frame last declared it can do. Empty until it says
+   * `helve/commands`, which is the honest starting point: a frame that has never
+   * declared anything can do nothing the menu bar knows how to ask for.
+   */
+  commands: Set<string>;
+}
+
 const ToolWindow = forwardRef<
   ToolWindowHandle,
   {
@@ -229,36 +255,11 @@ const ToolWindow = forwardRef<
 ) {
   // The only trusted map from a window to a mounted surface. Each `ToolMount`
   // registers its iframe's `contentWindow` here the moment it exists; the
-  // listener below never trusts anything in a message's body for identity —
-  // a tool cannot claim to be a different tool by lying in its payload.
-  //
-  // `isApp` is carried here rather than looked up in `tools` when a message
-  // arrives, so routing is decided by the same registration that established
-  // identity. A second lookup would be a second chance to disagree.
-  //
-  // `origin` is filled in when the frame says `hello`, and is `null` until it
-  // does. A reply always has the message it is replying to on hand and can read
-  // the origin off that; an event has no such message, so the one the frame
-  // announced itself from is remembered instead. Nothing is posted to a frame
-  // still holding `null` — a frame that has not said hello has no listener yet,
-  // and there is no origin to aim at that wouldn't be a guess.
-  //
-  // `commands` is the set the frame last declared. Empty until it says
-  // `helve/commands`, which is the honest starting point: a frame that has
-  // never declared anything can do nothing the menu bar knows how to ask for.
-  //
-  // `id` is the *instance* id and `appId` the type. Both, because they answer
-  // different questions and conflating them is exactly the bug this refactor
-  // removes: a message is addressed by instance, but `callApp` and
-  // `appPainted` name an app — `apps::REGISTRY` has one entry for Files however
-  // many of them are open, and boot's roster waits on Files the app, not on
-  // each Files there happens to be.
-  const frames = useRef<
-    Map<
-      Window,
-      { id: string; appId: string; isApp: boolean; origin: string | null; commands: Set<string> }
-    >
-  >(new Map());
+  // listener below never trusts anything in a message's body for identity — a
+  // tool cannot claim to be a different tool by lying in its payload. See
+  // `MountedFrame` for what each field is and why it is carried rather than
+  // looked up: a second lookup would be a second chance to disagree.
+  const frames = useRef<Map<Window, MountedFrame>>(new Map());
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
 
   // A stable mirror of `readyIds` for `sendEventWhenReady` below, which is
@@ -549,6 +550,130 @@ const ToolWindow = forwardRef<
   }, [bridge]);
 
   useEffect(() => {
+    /**
+     * Answer a frame's `hello`, and catch it up on what it missed.
+     *
+     * The shell answers; it never announces first (docs/tool-protocol.md §3 — a
+     * message posted before the frame's listener exists is simply gone, with no
+     * replay).
+     *
+     * The reply carries the *app* id, deliberately, not the instance id. A frame
+     * needs to know what kind of thing it is; it does not need to know which of
+     * several copies it is, because nothing it can send requires saying so.
+     * Identity is resolved from `event.source` against `frames`, which is the
+     * security property, and an instance id in a payload would be one more claim
+     * to have to distrust.
+     */
+    function answerHello(source: Window, origin: string, frame: MountedFrame) {
+      const reply: ReadyMessage = {
+        helve: 1,
+        kind: "ready",
+        toolId: frame.appId,
+        protocol: 1,
+        session: { engineEndpoint: null, projectPath: null },
+      };
+      source.postMessage(reply, origin);
+      frame.origin = origin;
+
+      // Everything this frame's cluster-mates have already published, before it
+      // says anything itself. A frame that mounts late is otherwise blind to
+      // every fact that settled before it arrived — see `topics` above.
+      //
+      // Its own entries are skipped, which only matters for a frame that
+      // reloaded: it published under this instance id before, and handing its
+      // own claim back to it as news would be the shell telling an app something
+      // the app is the authority on.
+      for (const [topic, held] of topics.current) {
+        if (held.from === frame.id) continue;
+        source.postMessage(
+          {
+            helve: 1,
+            kind: "event",
+            event: `${TOPIC_EVENT_PREFIX}${topic}`,
+            payload: held,
+          } satisfies EventMessage,
+          origin,
+        );
+      }
+
+      setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
+    }
+
+    /** `helve/open`: put something on screen in a cluster-mate, and tell it. */
+    function answerOpen(
+      params: unknown,
+      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      id: ResponseMessage["id"],
+    ) {
+      const target = openRequest(params);
+      if (!target) {
+        respond({
+          id,
+          error: {
+            code: HelveErrorCode.InvalidParams,
+            message: "helve/open needs an `appId` string",
+          },
+        });
+        return;
+      }
+      void resolveOpenTarget(target.appId)
+        .then((instanceId) => {
+          // Queued if that frame has not finished its handshake, which is the
+          // common case for the branch that just opened one — see
+          // `sendEventWhenReady`.
+          sendEventWhenReady(instanceId, OPENED_EVENT, target.payload);
+          respond({ id, result: { instanceId } });
+        })
+        .catch((err: unknown) =>
+          respond({
+            id,
+            error: { code: HelveErrorCode.InternalError, message: String(err) },
+          }),
+        );
+    }
+
+    /** `helve/publish`: retain a fact for this cluster, and fan it out. */
+    function answerPublish(
+      params: unknown,
+      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      id: ResponseMessage["id"],
+      frame: MountedFrame,
+    ) {
+      const published = publishRequest(params);
+      if (!published) {
+        respond({
+          id,
+          error: {
+            code: HelveErrorCode.InvalidParams,
+            message: "helve/publish needs a `topic` string",
+          },
+        });
+        return;
+      }
+
+      const held: PublishedTopic = { value: published.value, from: frame.id };
+      topics.current.set(published.topic, held);
+      respond({ id, result: null });
+
+      // Every other frame in the cluster, publisher excluded. Excluded rather
+      // than filtered on the receiving side because a publisher hearing its own
+      // announcement back is the shape that produces loops: a subscriber that
+      // republishes anything derived from what it hears would ping-pong with
+      // itself, and no amount of care in one app prevents it from the other end.
+      for (const [win, other] of frames.current) {
+        if (other.id === frame.id || other.origin === null) continue;
+        win.postMessage(
+          {
+            helve: 1,
+            kind: "event",
+            event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
+            payload: held,
+          } satisfies EventMessage,
+          other.origin,
+        );
+      }
+    }
+
     function onMessage(event: MessageEvent) {
       // Drop anything whose source isn't one of our mounted iframes — this
       // is also how the tool id is resolved, never from `event.data`.
@@ -563,48 +688,7 @@ const ToolWindow = forwardRef<
       const origin = event.origin;
 
       if (event.data.kind === "hello") {
-        // The shell answers; it never announces first (docs/tool-protocol.md
-        // §3 — a message posted before the frame's listener exists is simply
-        // gone, with no replay).
-        // The *app* id, deliberately, not the instance id — so the protocol is
-        // unchanged and an app that reads this still learns what it needs to.
-        // A frame needs to know what kind of thing it is; it does not need to
-        // know which of several copies it is, because nothing it can send
-        // requires saying so. Identity here is resolved from `event.source`
-        // against the map above, which is the security property, and an
-        // instance id in a payload would be one more claim to have to distrust.
-        const reply: ReadyMessage = {
-          helve: 1,
-          kind: "ready",
-          toolId: frame.appId,
-          protocol: 1,
-          session: { engineEndpoint: null, projectPath: null },
-        };
-        source.postMessage(reply, origin);
-        frame.origin = origin;
-
-        // Everything this frame's cluster-mates have already published, before
-        // it says anything itself. A frame that mounts late is otherwise blind
-        // to every fact that settled before it arrived — see `topics` above.
-        //
-        // Its own entries are skipped, which only matters for a frame that
-        // reloaded: it published under this instance id before, and handing its
-        // own claim back to it as news would be the shell telling an app
-        // something the app is the authority on.
-        for (const [topic, held] of topics.current) {
-          if (held.from === frame.id) continue;
-          source.postMessage(
-            {
-              helve: 1,
-              kind: "event",
-              event: `${TOPIC_EVENT_PREFIX}${topic}`,
-              payload: held,
-            } satisfies EventMessage,
-            origin,
-          );
-        }
-
-        setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
+        answerHello(source, origin, frame);
         return;
       }
 
@@ -687,69 +771,12 @@ const ToolWindow = forwardRef<
       // ignore. Per-tool permissions are a later pass; see the `[permissions]`
       // table in `docs/tool-protocol.md` §1, reserved and unenforced today.
       if (method === "helve/open") {
-        const target = openRequest(params);
-        if (!target) {
-          respond({
-            id,
-            error: {
-              code: HelveErrorCode.InvalidParams,
-              message: "helve/open needs an `appId` string",
-            },
-          });
-          return;
-        }
-        void resolveOpenTarget(target.appId)
-          .then((instanceId) => {
-            // Queued if that frame has not finished its handshake, which is the
-            // common case for the branch that just opened one — see
-            // `sendEventWhenReady`.
-            sendEventWhenReady(instanceId, OPENED_EVENT, target.payload);
-            respond({ id, result: { instanceId } });
-          })
-          .catch((err: unknown) =>
-            respond({
-              id,
-              error: { code: HelveErrorCode.InternalError, message: String(err) },
-            }),
-          );
+        answerOpen(params, respond, id);
         return;
       }
 
       if (method === "helve/publish") {
-        const published = publishRequest(params);
-        if (!published) {
-          respond({
-            id,
-            error: {
-              code: HelveErrorCode.InvalidParams,
-              message: "helve/publish needs a `topic` string",
-            },
-          });
-          return;
-        }
-
-        const held: PublishedTopic = { value: published.value, from: frame.id };
-        topics.current.set(published.topic, held);
-        respond({ id, result: null });
-
-        // Every other frame in the cluster, publisher excluded. Excluded rather
-        // than filtered on the receiving side because a publisher hearing its
-        // own announcement back is the shape that produces loops: a subscriber
-        // that republishes anything derived from what it hears would ping-pong
-        // with itself, and no amount of care in one app prevents it from the
-        // other end.
-        for (const [win, other] of frames.current) {
-          if (other.id === frame.id || other.origin === null) continue;
-          win.postMessage(
-            {
-              helve: 1,
-              kind: "event",
-              event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
-              payload: held,
-            } satisfies EventMessage,
-            other.origin,
-          );
-        }
+        answerPublish(params, respond, id, frame);
         return;
       }
 
