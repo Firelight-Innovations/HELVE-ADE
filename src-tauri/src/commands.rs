@@ -1005,6 +1005,8 @@ pub fn set_cluster_project(
 ) {
     shell.set_cluster_project(&app, &cluster_id, path);
     project::retitle(&app);
+    // A new project needs its `.mcp.json` before an agent starts in it.
+    crate::mcp::sync_all(&app);
 }
 
 // --- layout presets ---------------------------------------------------------

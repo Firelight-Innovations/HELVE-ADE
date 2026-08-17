@@ -92,3 +92,37 @@ grep-searcher = "0.1"
 # `search::build_matcher`. Already pulled in transitively by `grep-regex`;
 # named directly here because this crate calls its `escape` function itself.
 regex-syntax = "0.8"
+
+# The Model Context Protocol, for the servers HELVE hosts for whatever coding
+# agent the user is running in a terminal. See `src/mcp/` and
+# `docs/mcp-server-manager.md`.
+#
+# `default-features = false` drops the `macros` feature deliberately. The `#[tool]`
+# proc-macro derives a schema from an argument struct, which is the right trade
+# for a server whose tools are known at compile time — ours come from a registry
+# that a settings toggle can change, so the schemas are `serde_json::Value`s we
+# build ourselves and the macro would have nothing to derive from.
+#
+# `transport-streamable-http-server` pulls in `server-side-http`, and with it
+# `tower` — so axum below is the only other thing needed to mount this, and no
+# separate tower feature has to be named here.
+rmcp = { version = "3.1", default-features = false, features = [
+    "server",
+    "transport-streamable-http-server",
+] }
+
+# The HTTP surface the MCP transport mounts on. One router, one route per
+# enabled server. Tauri exposes no HTTP server of its own, so this is a genuine
+# addition rather than something already in the tree.
+axum = "0.8"
+
+# Already in the tree under Tauri, named here because this crate spawns onto it
+# directly — `tauri::async_runtime` is this same runtime, which is why the
+# listener does not stand up a second one.
+tokio = { version = "1", features = ["net", "rt"] }
+tokio-util = "0.7"
+
+# The listener's bearer token. Loopback and an unguessable port already put this
+# out of casual reach, but a port is scannable by anything else on the machine
+# and these tools reach into the live application.
+rand = "0.9"

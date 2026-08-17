@@ -1,0 +1,447 @@
+//! Which MCP servers this build hosts, and which of them are switched on.
+//!
+//! Deliberately shaped like `apps::REGISTRY`: an id, a display name, a
+//! description, and the function that answers a call. The difference is that
+//! this one is a `Vec` built at boot rather than a `const` slice, because a
+//! server can be switched off from settings and the exposed set has to be
+//! allowed to change while a client is connected — see `notify_changed` in the
+//! parent module.
+
+use helve_rpc::{RpcError, METHOD_NOT_FOUND};
+use serde::Serialize;
+use serde_json::Value;
+use std::sync::Mutex;
+use tauri::AppHandle;
+
+/// One tool an MCP server exposes.
+///
+/// `schema` is a function rather than a pre-built `Value` because a static
+/// cannot hold one, and rather than a `&'static str` of JSON because that moves
+/// a malformed schema from a compile error to a runtime one nobody would see
+/// until a client asked for `tools/list`.
+pub struct McpTool {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub schema: fn() -> Value,
+}
+
+/// An MCP server's implementation: the function every `tools/call` lands in.
+///
+/// The same shape as `apps::Dispatch`, and it fails with the same `RpcError`,
+/// so a server that wants to hand a call through to an app's Rust half can do
+/// it without translating an error vocabulary in between.
+type Call = fn(&AppHandle, &str, Option<Value>) -> Result<Value, RpcError>;
+
+/// One server this build hosts.
+pub struct McpServer {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub tools: &'static [McpTool],
+    pub call: Call,
+}
+
+/// A registered server as the settings UI needs to see it.
+///
+/// Owned `String`s rather than the `&'static str`s above: this crosses to the
+/// frontend through `serde_json`, and a borrowed lifetime cannot.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    /// What the client connects to, relative to the listener's origin.
+    pub path: String,
+    /// The key this server occupies in a project's `.mcp.json`.
+    pub config_key: String,
+    pub tool_count: usize,
+}
+
+/// One tool as the listener needs it: owned, and free of any protocol's field
+/// names. See [`Registry::tools`] for why the shaping happens a layer up.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolDescriptor {
+    pub name: String,
+    pub description: String,
+    pub schema: Value,
+}
+
+/// The `.mcp.json` key and URL path for a server id.
+///
+/// Prefixed because that file is the user's, shared with whatever else they
+/// have configured, and an unprefixed `forger` would both read as theirs and
+/// stand a real chance of colliding with it. The prefix also keeps us clear of
+/// the names Claude Code reserves for its own built-in servers — `workspace`,
+/// `computer-use` and the rest — which are rejected at load time rather than
+/// renamed.
+pub fn config_key(id: &str) -> String {
+    format!("helve-{id}")
+}
+
+/// Where a server answers, relative to the listener's origin.
+pub fn route(id: &str) -> String {
+    format!("/mcp/{id}")
+}
+
+struct Entry {
+    server: &'static McpServer,
+    enabled: bool,
+}
+
+/// Every server this build hosts, and its on/off state.
+///
+/// The lock is a plain `std::sync::Mutex` even though the callers are async,
+/// which is only sound because **no method here returns a guard**. Every one of
+/// them copies what it needs and drops the lock before returning, so a guard can
+/// never be alive across an `.await` — the deadlock this choice would otherwise
+/// invite. Keep that property when adding a method.
+#[derive(Default)]
+pub struct Registry {
+    entries: Mutex<Vec<Entry>>,
+}
+
+impl Registry {
+    /// Put a server on the list, switched on.
+    ///
+    /// Re-registering an id replaces it rather than shadowing it. Two entries
+    /// answering to one name would leave `find` silently picking whichever came
+    /// first, and the settings UI drawing a row whose toggle changed the other
+    /// one.
+    pub fn register(&self, server: &'static McpServer) {
+        let Ok(mut entries) = self.entries.lock() else {
+            return;
+        };
+
+        let entry = Entry {
+            server,
+            enabled: true,
+        };
+
+        match entries.iter().position(|e| e.server.id == server.id) {
+            Some(at) => entries[at] = entry,
+            None => entries.push(entry),
+        }
+    }
+
+    /// Every registered server, on or off, for the settings UI.
+    pub fn list(&self) -> Vec<ServerInfo> {
+        let Ok(entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+
+        entries
+            .iter()
+            .map(|e| ServerInfo {
+                id: e.server.id.to_string(),
+                name: e.server.name.to_string(),
+                description: e.server.description.to_string(),
+                enabled: e.enabled,
+                path: route(e.server.id),
+                config_key: config_key(e.server.id),
+                tool_count: e.server.tools.len(),
+            })
+            .collect()
+    }
+
+    /// The ids a client can currently reach — what routes are mounted and what
+    /// goes into `.mcp.json`.
+    pub fn enabled_ids(&self) -> Vec<String> {
+        let Ok(entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+
+        entries
+            .iter()
+            .filter(|e| e.enabled)
+            .map(|e| e.server.id.to_string())
+            .collect()
+    }
+
+    /// Switch a server on or off. `false` if no such id is registered.
+    pub fn set_enabled(&self, id: &str, enabled: bool) -> bool {
+        let Ok(mut entries) = self.entries.lock() else {
+            return false;
+        };
+
+        match entries.iter_mut().find(|e| e.server.id == id) {
+            Some(entry) => {
+                entry.enabled = enabled;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// What one server exposes right now, for whoever is answering
+    /// `tools/list`.
+    ///
+    /// Owned and protocol-neutral on purpose. The registry knows what a tool
+    /// *is*; it does not know that MCP spells the schema field `inputSchema`,
+    /// and keeping that here would mean the wire format of a protocol had leaked
+    /// into the data structure the settings UI reads. The listener owns the
+    /// shape; this owns the content.
+    ///
+    /// A **disabled** server has no tools rather than an error. Its route is
+    /// still mounted — see the listener for why toggling does not rebuild the
+    /// router — so this is the answer a client gets while it is switched off,
+    /// and an empty list is the one a client already knows how to handle.
+    pub fn tools(&self, id: &str) -> Vec<ToolDescriptor> {
+        let Ok(entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+
+        entries
+            .iter()
+            .find(|e| e.server.id == id && e.enabled)
+            .map(|e| {
+                e.server
+                    .tools
+                    .iter()
+                    .map(|t| ToolDescriptor {
+                        name: t.name.to_string(),
+                        description: t.description.to_string(),
+                        schema: (t.schema)(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Route one `tools/call` to the server that owns it.
+    ///
+    /// The lookup copies the function pointer out and drops the lock before
+    /// calling it. A handler can take as long as it likes, and can re-enter this
+    /// registry, without holding every other request behind it.
+    pub fn call(
+        &self,
+        app: &AppHandle,
+        id: &str,
+        tool: &str,
+        params: Option<Value>,
+    ) -> Result<Value, RpcError> {
+        let resolved = {
+            let entries = self.entries.lock().map_err(|_| {
+                RpcError::new(
+                    helve_rpc::INTERNAL_ERROR,
+                    "the MCP registry lock is poisoned",
+                )
+            })?;
+
+            entries
+                .iter()
+                .find(|e| e.server.id == id && e.enabled)
+                .map(|e| (e.server.call, e.server.tools.iter().any(|t| t.name == tool)))
+        };
+
+        let Some((call, known)) = resolved else {
+            return Err(RpcError::new(
+                METHOD_NOT_FOUND,
+                format!("no MCP server with id `{id}`"),
+            ));
+        };
+
+        // Checked here rather than left to the handler so that every server
+        // answers an unknown tool the same way, and so a handler's `match` can
+        // end in an arm that is genuinely unreachable rather than in a duplicate
+        // of this message.
+        if !known {
+            return Err(RpcError::new(
+                METHOD_NOT_FOUND,
+                format!("`{id}` has no tool named `{tool}`"),
+            ));
+        }
+
+        call(app, tool, params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schema() -> Value {
+        serde_json::json!({ "type": "object", "properties": {} })
+    }
+
+    fn unreachable_call(_: &AppHandle, _: &str, _: Option<Value>) -> Result<Value, RpcError> {
+        // Reaching this would mean `call` dispatched without an `AppHandle`,
+        // which these tests cannot construct — so the tests below exercise
+        // everything up to the handler and stop there.
+        Err(RpcError::new(helve_rpc::INTERNAL_ERROR, "not called"))
+    }
+
+    static TOOLS: &[McpTool] = &[
+        McpTool {
+            name: "ping",
+            description: "Answers.",
+            schema,
+        },
+        McpTool {
+            name: "echo",
+            description: "Says it back.",
+            schema,
+        },
+    ];
+
+    static SERVER: McpServer = McpServer {
+        id: "echo",
+        name: "Echo",
+        description: "Proves the plumbing.",
+        tools: TOOLS,
+        call: unreachable_call,
+    };
+
+    static OTHER: McpServer = McpServer {
+        id: "other",
+        name: "Other",
+        description: "A second one.",
+        tools: &[],
+        call: unreachable_call,
+    };
+
+    #[test]
+    fn a_registered_server_is_listed_and_on() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+
+        let listed = registry.list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "echo");
+        assert!(listed[0].enabled);
+        assert_eq!(listed[0].tool_count, 2);
+    }
+
+    /// Two entries answering to one name would leave `find` picking whichever
+    /// came first, and a settings toggle changing the other one.
+    #[test]
+    fn registering_an_id_twice_replaces_rather_than_duplicates() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.register(&SERVER);
+
+        assert_eq!(registry.list().len(), 1);
+    }
+
+    #[test]
+    fn disabling_hides_a_server_from_the_client_but_not_from_settings() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.register(&OTHER);
+
+        assert!(registry.set_enabled("echo", false));
+
+        assert_eq!(registry.enabled_ids(), vec!["other".to_string()]);
+        assert_eq!(
+            registry.list().len(),
+            2,
+            "settings still draws a row for a server that is switched off"
+        );
+        assert!(registry.tools("echo").is_empty());
+    }
+
+    #[test]
+    fn toggling_an_unregistered_id_reports_it_rather_than_silently_passing() {
+        let registry = Registry::default();
+        assert!(!registry.set_enabled("nonesuch", false));
+    }
+
+    /// Declaration order is preserved, because it is the order a model reads
+    /// the list in and there is no reason to hand it a shuffled one.
+    #[test]
+    fn tools_are_described_in_declaration_order() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+
+        let tools = registry.tools("echo");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].name, "ping");
+        assert_eq!(tools[0].description, "Answers.");
+        assert!(tools[0].schema.is_object());
+        assert_eq!(tools[1].name, "echo");
+    }
+
+    /// A tool's schema must be a JSON *object*. MCP's `inputSchema` is a JSON
+    /// Schema, and the listener has to hand `rmcp` a map rather than a bare
+    /// value — a schema that were an array or a string would have nowhere to go.
+    #[test]
+    fn every_schema_is_an_object() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+
+        for tool in registry.tools("echo") {
+            assert!(
+                tool.schema.is_object(),
+                "schema for {:?} must be a JSON object",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn an_unregistered_server_has_no_tools() {
+        let registry = Registry::default();
+        assert!(registry.tools("nonesuch").is_empty());
+    }
+
+    /// The `.mcp.json` key is prefixed so it cannot collide with a server the
+    /// user configured, or with the names Claude Code reserves for its own.
+    #[test]
+    fn config_keys_and_routes_are_namespaced_under_helve() {
+        assert_eq!(config_key("forger"), "helve-forger");
+        assert_eq!(route("forger"), "/mcp/forger");
+
+        for reserved in ["workspace", "computer-use", "claude-in-chrome"] {
+            assert_ne!(config_key(reserved), reserved);
+        }
+    }
+
+    /// Server ids reach a URL path and a config key, so they are held to the
+    /// same rule as app ids and tool ids: `^[a-z][a-z0-9-]*$`.
+    #[test]
+    fn server_ids_are_url_safe() {
+        for server in [&SERVER, &OTHER] {
+            let mut chars = server.id.chars();
+            assert!(
+                matches!(chars.next(), Some(c) if c.is_ascii_lowercase()),
+                "server id {:?} must start with a lowercase letter",
+                server.id
+            );
+            assert!(
+                chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "server id {:?} must match ^[a-z][a-z0-9-]*$",
+                server.id
+            );
+        }
+    }
+
+    /// MCP tool names travel through a client that composes them into
+    /// `mcp__<server>__<tool>`, so anything outside this set arrives mangled.
+    #[test]
+    fn tool_names_are_safe_to_compose_into_a_client_side_name() {
+        for tool in TOOLS {
+            assert!(!tool.name.is_empty(), "a tool must be named");
+            assert!(
+                tool.name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+                "tool name {:?} must match ^[A-Za-z0-9_-]+$",
+                tool.name
+            );
+        }
+    }
+
+    /// Every tool needs a description, because the description is the entire
+    /// basis on which a model decides whether to call it.
+    #[test]
+    fn every_tool_describes_itself() {
+        for tool in TOOLS {
+            assert!(
+                !tool.description.trim().is_empty(),
+                "tool {:?} has no description",
+                tool.name
+            );
+        }
+    }
+}

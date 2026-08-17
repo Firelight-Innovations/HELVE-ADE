@@ -13,6 +13,7 @@ mod error;
 mod git;
 mod layout;
 mod manifest;
+mod mcp;
 mod presets;
 mod project;
 mod pty;
@@ -72,6 +73,16 @@ pub fn run() {
         // newer one has started and abandon itself early. See
         // `search::SearchState` for why one process-wide counter is enough.
         .manage(search::SearchState::default())
+        // Which MCP servers this build hosts for whatever agent the user is
+        // running in a terminal, and which of them are switched on. Empty until
+        // something registers into it — see `mcp`'s module doc for why an app
+        // does not host its own.
+        .manage(mcp::Registry::default())
+        // Where those servers ended up: the loopback port the listener took and
+        // the token that opens it. Empty until `mcp::start` has bound, and it
+        // stays empty on a machine that would not give us a socket — which
+        // costs the MCP feature and nothing else.
+        .manage(mcp::Endpoint::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -128,8 +139,32 @@ pub fn run() {
             // the rest of the session.
             project::restore(app.handle());
 
+            // Before anything can be on screen to ask about it. Registration is
+            // pure — it puts static descriptors on a list and touches no port —
+            // so it is safe this early, and having the list complete before the
+            // first window means the settings surface never draws an empty one
+            // it then has to correct.
+            mcp::seed(&app.state::<mcp::Registry>());
+
+            // Immediately after seeding and **before any terminal is spawned**,
+            // because a terminal inherits the port and token as environment
+            // variables at the moment it is created — one opened first would be
+            // the one shell in the session that could not reach the servers.
+            //
+            // Failure is not fatal and is already reported inside. A machine
+            // that will not hand out a loopback socket should still get an
+            // orchestrator; what it loses is agent access to HELVE's own tools.
+            mcp::start(app.handle());
+
             let handle = app.handle().clone();
             restore_session(&handle);
+
+            // After `restore_session` too, because this walks the clusters it
+            // just brought back to find which projects are open — and it is what
+            // writes the `.mcp.json` an agent reads to find HELVE's servers. A
+            // project opened later goes through `commands::set_cluster_project`,
+            // which syncs again.
+            mcp::sync_all(&handle);
 
             // After `restore_session`, because what boot waits for is whichever
             // apps that restore actually put on screen. See `boot::EXPECTED`.
@@ -211,6 +246,9 @@ pub fn run() {
             commands::list_apps,
             commands::list_openables,
             commands::app_call,
+            mcp::commands::mcp_status,
+            mcp::commands::mcp_set_server_enabled,
+            mcp::commands::mcp_sync_config,
             git::git_cluster_diff,
             git::git_cluster_stage,
             git::git_cluster_unstage,

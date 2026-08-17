@@ -36,7 +36,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// One session's output, as it arrives. Per-session rather than one global
 /// event: a window listens only for the terminals it is showing, so a busy
@@ -211,7 +211,15 @@ impl PtySessions {
                 reason: e.to_string(),
             })?;
 
-        let (name, child) = spawn_shell(&*pty.slave, id, cwd)?;
+        // How an agent in this shell finds HELVE's MCP servers. Read here, at
+        // spawn, rather than baked into a config file: the port and token are
+        // per-launch, and handing them to the process instead of writing them
+        // down is what lets the project's `.mcp.json` be committable and keeps a
+        // shell the user opened outside HELVE unable to connect. Empty if the
+        // listener never bound, which spawns an ordinary shell.
+        let mcp_env = app.state::<crate::mcp::Endpoint>().env();
+
+        let (name, child) = spawn_shell(&*pty.slave, id, cwd, &mcp_env)?;
 
         // The slave end must be dropped now that the child holds its own copy.
         // Keeping it alive here would mean the pty always has a writer open, so
@@ -326,6 +334,7 @@ fn spawn_shell(
     slave: &dyn SlavePty,
     id: &str,
     cwd: &Path,
+    extra_env: &[(String, String)],
 ) -> Result<(String, Box<dyn Child + Send + Sync>)> {
     let mut last_err = String::from("no shell candidate was tried");
 
@@ -335,6 +344,14 @@ fn spawn_shell(
         // fall back to a dumb-terminal path and render as a wall of plain text
         // — which would look like our emulator was broken.
         cmd.env("TERM", "xterm-256color");
+
+        // Applied per candidate rather than once, because `shell_candidates`
+        // builds a fresh `CommandBuilder` for each and only one of them is going
+        // to spawn. Setting it on the first would leave the shell that actually
+        // started without it on every machine where pwsh is not installed.
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
         match slave.spawn_command(cmd) {
             Ok(child) => return Ok((name, child)),
             // Not fatal on its own. The candidate list is ordered by
@@ -589,8 +606,16 @@ mod tests {
             .expect("the OS provides a pty");
 
         let cwd = std::env::temp_dir();
-        let (name, mut child) =
-            spawn_shell(&*pty.slave, "test", &cwd).expect("a usable shell exists on this machine");
+        // Spawned *with* extra environment, because that is the path the app
+        // takes — `open` always passes the MCP endpoint's variables, empty or
+        // not. A shell that spawned bare here and not in the app would leave the
+        // one difference between them untested.
+        let injected = [(
+            "HELVE_MCP_TOKEN".to_string(),
+            "test-token-not-a-real-one".to_string(),
+        )];
+        let (name, mut child) = spawn_shell(&*pty.slave, "test", &cwd, &injected)
+            .expect("a usable shell exists on this machine");
 
         // Same as the real path: the child holds its own copy of the slave end,
         // and this one has to go or the reader below never sees end-of-file.

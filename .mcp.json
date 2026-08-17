@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "helve-echo": {
+      "headers": {
+        "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
+      },
+      "type": "http",
+      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/echo"
+    }
+  }
+}
