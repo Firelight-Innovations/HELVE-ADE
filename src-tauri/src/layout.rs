@@ -153,6 +153,34 @@ impl PaneNode {
         }
     }
 
+    /// The tabs in one pane, in strip order — `None` if `pane_id` names nothing
+    /// in this tree.
+    ///
+    /// The read half of `insert_tab`/`remove_tab`: a caller that only needs to
+    /// know what a pane currently holds, to decide whether it should act,
+    /// should not need a `&mut` borrow to find out. `shell_state`'s Home
+    /// dismissal is the first such caller — it has to see a pane's tabs before
+    /// deciding whether Home is one of them and something else is too.
+    pub fn tabs_in(&self, pane_id: &str) -> Option<&[String]> {
+        match self {
+            PaneNode::Leaf { id, tabs, .. } if id == pane_id => Some(tabs),
+            PaneNode::Leaf { .. } => None,
+            PaneNode::Split { children, .. } => children.iter().find_map(|c| c.tabs_in(pane_id)),
+        }
+    }
+
+    /// Every leaf's id, in layout order. `tabs()` flattened by tab; this
+    /// flattens by pane, for a caller that has to visit each one rather than
+    /// each thing inside it.
+    pub fn leaf_ids(&self) -> Vec<&str> {
+        match self {
+            PaneNode::Leaf { id, .. } => vec![id.as_str()],
+            PaneNode::Split { children, .. } => {
+                children.iter().flat_map(PaneNode::leaf_ids).collect()
+            }
+        }
+    }
+
     /// Which pane holds `instance_id`, if any.
     ///
     /// `allow` for the same reason as `id` above: the frontend answers this
@@ -645,6 +673,35 @@ mod tests {
         assert!(
             !leaf_with("p1", &[]).holds_pane("p2"),
             "a lone leaf answers only for itself"
+        );
+    }
+
+    #[test]
+    fn tabs_in_reads_one_pane_without_a_mutable_borrow() {
+        let mut tree = leaf_with("p1", &["files-1", "home-1"]);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "term-1", false);
+
+        assert_eq!(
+            tree.tabs_in("p1"),
+            Some(&["files-1".to_string(), "home-1".to_string()][..])
+        );
+        assert_eq!(tree.tabs_in("p2"), Some(&["term-1".to_string()][..]));
+        assert_eq!(
+            tree.tabs_in("nonesuch"),
+            None,
+            "a pane not in the tree has no tabs to report"
+        );
+    }
+
+    #[test]
+    fn leaf_ids_visits_every_pane_and_no_split() {
+        let mut tree = leaf_with("p1", &["files-1"]);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "files-2", false);
+
+        assert_eq!(
+            tree.leaf_ids(),
+            vec!["p1", "p2"],
+            "in layout order, splits excluded"
         );
     }
 

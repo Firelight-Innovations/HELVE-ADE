@@ -83,9 +83,9 @@ export interface ClusterBarProps {
   clusters: Cluster[];
   activeClusterId: string | null;
   /**
-   * The open cluster's contents, in bar order: the layout's surfaces first, in
-   * layout order, then the panel's terminals. Empty for a cluster holding
-   * nothing, which is a state a new cluster starts in.
+   * The open cluster's contents, in bar order: the layout's surfaces, in layout
+   * order. Empty for a cluster holding nothing, which is a state a new cluster
+   * starts in. The band's terminals are not here — the band names its own.
    */
   members: ClusterMember[];
   /** How many tabs each cluster holds, for the collapsed chips. */

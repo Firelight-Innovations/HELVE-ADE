@@ -27,34 +27,25 @@ export interface WindowPlacement {
   label: string;
   clusters: Cluster[];
   activeClusterId: string | null;
-  /**
-   * Which terminal this window's panel is showing.
-   *
-   * The window's, not any cluster's, because the panel does not change when you
-   * switch clusters. Rust re-establishes after every mutation that this names
-   * one of this window's panel terminals and never one that has been dragged
-   * into a pane tree, so the frontend can render it without re-checking.
-   */
-  activeTerminal: string | null;
   geometry: WindowGeometry | null;
 }
 
 /**
  * Mirrors `shell_state::TerminalSession`.
  *
- * `windowLabel`, not a cluster id: the panel belongs to the window, so a
- * terminal opened in it stays there whichever cluster is on screen above it.
- * That is what makes it useful across clusters — orchestrating, or working
- * between worktrees — instead of disappearing with whichever tab was open.
+ * `clusterId`, not a window label. The terminal band is drawn inside the
+ * cluster's half of the window, so a terminal belongs to the cluster it is
+ * drawn under, spawns in that cluster's project, and closes with it. See
+ * `shell_state`'s module doc for what that replaced and what the change costs.
  *
- * It says where the terminal lives *in a panel*. A terminal dragged into a
- * cluster's pane tree is drawn there instead and the panel stops listing it;
- * this still records which window's panel it would return to.
+ * It says where the terminal lives *in a band*. A terminal dragged into a pane
+ * tree is drawn there instead and the band stops listing it; this still records
+ * which band it would return to.
  */
 export interface TerminalSessionState {
   id: string;
   title: string;
-  windowLabel: string;
+  clusterId: string;
   agentFinished: boolean;
   groupId: string | null;
 }
@@ -295,23 +286,24 @@ export function windowAtCursor(): Promise<string | null> {
 }
 
 /**
- * Drop a terminal into any HELVE window's panel, including this one.
+ * Drop a terminal into any HELVE window's terminal band, including this one.
  *
- * Named by *window*, because a window is the only thing `windowAtCursor` can
- * identify — it hit-tests screen rectangles, and a panel has none. A panel
- * belongs to a window anyway, so the label is already the destination.
+ * Still named by *window*, because a window is the only thing `windowAtCursor`
+ * can identify — it hit-tests screen rectangles, and a cluster has none. Rust
+ * resolves the label to whatever cluster that window is showing, under the same
+ * lock as the move, so this cannot act on a stale answer.
  *
- * Dropping onto the panel it is already in is not a no-op. A terminal dragged
- * out of a pane and back onto the panel takes this path, and leaving the tree is
+ * Dropping onto the band it is already in is not a no-op. A terminal dragged
+ * out of a pane and back onto the band takes this path, and leaving the tree is
  * the half of the move that matters.
  */
 export function moveTerminal(id: string, toLabel: string): Promise<void> {
   return invoke("move_terminal", { id, toLabel });
 }
 
-/** Which terminal a window's panel is showing. */
-export function setActiveTerminal(label: string, id: string | null): Promise<void> {
-  return invoke("set_active_terminal", { label, id });
+/** Which terminal a cluster's band is showing. */
+export function setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
+  return invoke("set_active_terminal", { clusterId, id });
 }
 
 /** An app naming its own tab — "Files" becoming `client.ts`. */

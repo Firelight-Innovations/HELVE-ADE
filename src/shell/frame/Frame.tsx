@@ -26,6 +26,23 @@ export const TOOLWINDOW_MIN = 240;
  * to full width. See the hysteresis note on the drag handler below. */
 export const MAXIMIZE_OVERSHOOT = 80;
 
+/** The shortest the terminal band opens to. Below this it snaps shut instead. */
+export const BOTTOM_MIN = 120;
+/** What the band opens to the first time, before anyone has dragged it. */
+export const BOTTOM_DEFAULT = 260;
+/** The tool window's floor, so the band can never swallow the panes entirely. */
+export const TOOLWINDOW_MIN_H = 120;
+/**
+ * How far *below* `BOTTOM_MIN` the pointer must travel before the band snaps
+ * shut, and the gap it must climb back over to reopen.
+ *
+ * This is the "clicks into place" of the gesture. One shared threshold would
+ * let a hand resting near the line flap the band open and shut several times in
+ * one drag; the dead zone between the two means closing it takes a deliberate
+ * shove and reopening takes a deliberate lift.
+ */
+export const BOTTOM_COLLAPSE_OVERSHOOT = 60;
+
 export default function Frame({
   kind,
   slots,
@@ -34,6 +51,10 @@ export default function Frame({
   onPanelWidthChange,
   panelMaximized,
   onPanelMaximizedChange,
+  bottomHeight = BOTTOM_DEFAULT,
+  bottomCollapsed = true,
+  onBottomHeightChange,
+  onBottomCollapsedChange,
 }: {
   kind: WindowKind;
   slots: FrameSlots;
@@ -45,6 +66,22 @@ export default function Frame({
   /** The panel has taken the whole split row and the tool window is at 0. */
   panelMaximized: boolean;
   onPanelMaximizedChange: (maximized: boolean) => void;
+  /**
+   * The terminal band's last open height, and whether it is shut.
+   *
+   * Defaulted rather than required so a caller with no `slots.bottomPanel` — a
+   * detached window — needs no opinion about a band it does not draw. A caller
+   * that *does* pass the slot owns this state, the same way it owns the panel's
+   * width: the thing being resized is the split, not the band.
+   *
+   * Shut is the default because the band holds no sessions until something asks
+   * for one, and a window that opened with an empty terminal band every launch
+   * would be spending height on nothing.
+   */
+  bottomHeight?: number;
+  bottomCollapsed?: boolean;
+  onBottomHeightChange?: (height: number) => void;
+  onBottomCollapsedChange?: (collapsed: boolean) => void;
 }) {
   // The panel's width is a motion value rather than React state on purpose.
   // Dragging has to be exactly 1:1 with the cursor, and routing every frame of
@@ -55,6 +92,14 @@ export default function Frame({
   const rowRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  // The band's height, on the same terms as the panel's width above and for the
+  // same reason: a drag has to be 1:1 with the cursor, and routing every frame
+  // through a re-render cannot promise that under load.
+  const bottom = useMotionValue(bottomCollapsed ? 0 : bottomHeight);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const bottomHandleRef = useRef<HTMLDivElement>(null);
+  const bottomDragging = useRef(false);
 
   // The handle's width is read off the element rather than repeated as a
   // second literal — `--w-resize-handle` already defines it once, in
@@ -96,6 +141,75 @@ export default function Frame({
     observer.observe(row);
     return () => observer.disconnect();
   }, [panelCollapsed, panelMaximized, width]);
+
+  // Opening and shutting the band is animated for the same reason collapsing
+  // the panel is: it is a state change rather than a gesture. Guarded against a
+  // drag in flight, or a toggle landing mid-drag would start a spring that
+  // fights the pointer.
+  useEffect(() => {
+    if (bottomDragging.current) return;
+    const controls = animate(bottom, bottomCollapsed ? 0 : bottomHeight, settle);
+    return () => controls.stop();
+  }, [bottomCollapsed, bottomHeight, bottom]);
+
+  /**
+   * Pull the band up, or shove it shut.
+   *
+   * The handle is a live grab strip whether the band is open or not — that is
+   * what makes "reach for the bottom of the window and pull" work with nothing
+   * on screen to pull. It is deliberately *not* a click target: opening this
+   * band never spawns a terminal, it only reveals whatever is already there.
+   */
+  const onBottomHandleDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const col = mainRef.current;
+      if (!col) return;
+
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Optimisation only; the window listeners below are the mechanism.
+      }
+      bottomDragging.current = true;
+
+      const colRect = col.getBoundingClientRect();
+      const colBottom = colRect.bottom;
+      const handleH = bottomHandleRef.current?.getBoundingClientRect().height ?? 6;
+      const maxNormal = colRect.height - handleH - TOOLWINDOW_MIN_H;
+
+      // Read once and mutated locally, never re-derived from raw position each
+      // frame — re-deriving is exactly what the dead zone below exists to stop.
+      let collapsed = bottomCollapsed;
+
+      const onMove = (ev: PointerEvent) => {
+        const raw = colBottom - ev.clientY;
+
+        if (raw < BOTTOM_MIN - BOTTOM_COLLAPSE_OVERSHOOT) collapsed = true;
+        else if (raw > BOTTOM_MIN) collapsed = false;
+
+        bottom.set(
+          collapsed ? 0 : Math.min(Math.max(raw, BOTTOM_MIN), Math.max(maxNormal, BOTTOM_MIN)),
+        );
+      };
+
+      const onUp = () => {
+        bottomDragging.current = false;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        onBottomCollapsedChange?.(collapsed);
+        // `bottomHeight` means "last open height" — shut, it must keep whatever
+        // it was, or the next pull would open onto zero.
+        if (!collapsed) onBottomHeightChange?.(bottom.get());
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [bottomCollapsed, onBottomHeightChange, onBottomCollapsedChange, bottom],
+  );
 
   const onHandleDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -199,8 +313,31 @@ export default function Frame({
       )}
 
       <div className="frame__split" ref={rowRef}>
-        <div className="frame__toolwindow" data-region="toolwindow">
-          {slots.toolWindow}
+        {/* The tool window and the terminal band are one column, so the band
+            stops at the secondary panel's edge instead of spanning the window.
+            See `FrameSlots.bottomPanel` for why that is the arrangement. */}
+        <div className="frame__main" ref={mainRef}>
+          <div className="frame__toolwindow" data-region="toolwindow">
+            {slots.toolWindow}
+          </div>
+
+          {slots.bottomPanel !== undefined && (
+            <>
+              <div
+                className="frame__bottomhandle"
+                data-region="bottomhandle"
+                ref={bottomHandleRef}
+                onPointerDown={onBottomHandleDown}
+                data-collapsed={bottomCollapsed || undefined}
+              >
+                <div className="frame__bottomgrip" />
+              </div>
+
+              <motion.div className="frame__bottom" data-region="bottom" style={{ height: bottom }}>
+                {slots.bottomPanel}
+              </motion.div>
+            </>
+          )}
         </div>
 
         <div

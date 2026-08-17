@@ -1,20 +1,19 @@
 /**
  * The close confirmation for a terminal tab whose session is still busy.
  *
- * Built as a modal centred over the panel with a scrim covering the panel
- * only, not an anchored popover — the tab strip scrolls now
- * (SecondaryPanel.tsx splits it into a scrolling strip plus a pinned end
- * group), so anything anchored to a tab could find its anchor scrolled out
- * from under it, or left sitting behind the pinned buttons. Centring over the
- * panel sidesteps both.
+ * Built as a modal centred over the region that raised it, with a scrim
+ * covering that region only, rather than an anchored popover. The list it is
+ * raised from scrolls — `BottomPanel`'s rail is a column of unbounded length —
+ * so anything anchored to an entry could find its anchor scrolled out from
+ * under it. Centring sidesteps that entirely.
  *
  * The dialog surface itself is not a new visual language: same background,
  * hairline border, radius and shadow as every other floating panel in the
  * shell (switcher.css's health popover, search's type filter), and the same
  * `popover` open/close as HealthPopover. Only the scrim and the centred
  * positioning are new, and both are local to this file so they can be lifted
- * into a general-purpose confirmation dialog later without SecondaryPanel
- * needing to change.
+ * into a general-purpose confirmation dialog later without the region that
+ * renders it needing to change.
  */
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";

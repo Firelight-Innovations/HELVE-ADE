@@ -1,0 +1,218 @@
+/*
+ * The terminal band under the tool window: a session rail on the left, the
+ * emulator deck filling the rest.
+ *
+ * This renders into `.frame__bottom`, which owns the band's height and its
+ * collapse — nothing here sets a height, for the same reason `panel.css` sets
+ * no width. Two owners of one dimension is how a resize drag ends up fighting
+ * a stylesheet.
+ */
+
+.bottompanel {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--bg);
+  position: relative;
+}
+
+.bottompanel[data-drop-active] {
+  box-shadow: inset 0 0 0 1px var(--accent-line-strong);
+}
+
+/* --- the session rail ------------------------------------------------------
+   A fixed width rather than a fraction: it holds one column of short titles,
+   and a rail that grew with the window would take space from output that can
+   always use more. */
+
+.bottompanel__rail {
+  flex: none;
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  position: relative;
+}
+
+.bottompanel__railhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--h-paneltabs);
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bottompanel__railtitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.bottompanel__railbtn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bottompanel__railbtn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.bottompanel__railbtn:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.bottompanel__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+/* --- one session ---------------------------------------------------------- */
+
+.bottompanel__entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  /* The offset parent for the accent rule below, which pins to the leading
+     edge of this box. */
+  position: relative;
+  /* The whole entry is a drag source; a browser text selection starting inside
+     it makes the gesture stutter. */
+  user-select: none;
+}
+
+.bottompanel__entry:hover {
+  background: var(--surface-2);
+}
+
+.bottompanel__entry--active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.bottompanel__rule {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  /* The rule sits under the pointer's path across the entry; without this it
+     would swallow clicks along the leading edge. */
+  pointer-events: none;
+}
+
+.bottompanel__entry-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How many panes a split entry holds. The rail draws one row per group, so
+   without this a split is indistinguishable from an ordinary session. */
+.bottompanel__entry-count {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--line);
+  color: var(--text-dim-2);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.bottompanel__entry-end {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.bottompanel__entry-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Swapped for the dot on hover or keyboard focus, never shown beside it — the
+   end box is a fixed 16px either way, so the label never reflows. */
+.bottompanel__entry-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bottompanel__entry:hover .bottompanel__entry-close,
+.bottompanel__entry-close:focus-visible {
+  display: flex;
+}
+
+.bottompanel__entry:hover .bottompanel__entry-dot {
+  display: none;
+}
+
+.bottompanel__entry-close:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.bottompanel__empty {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim-3);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bottompanel__empty:hover {
+  color: var(--text-dim);
+}
+
+/* --- the deck ------------------------------------------------------------- */
+
+.bottompanel__body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}

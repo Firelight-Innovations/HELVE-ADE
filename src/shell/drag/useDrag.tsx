@@ -82,8 +82,24 @@ interface Session {
  * `shell:state` here, because `WindowRoot` has already resolved which cluster
  * this window is showing and a second derivation would be a second chance to
  * disagree with it.
+ *
+ * `translateStripIndex` is the same kind of borrowed answer, for a narrower
+ * question. A `strip` target's `index` is counted over whatever `ClusterBar`
+ * actually rendered for the pane it landed in, and since Home stopped drawing
+ * a tab there (see `WindowRoot`'s `members`), that count can disagree with the
+ * tab's real position in the tree. `WindowRoot` is the one place that knows a
+ * pane's real order and which of its tabs are hidden, so it is the one place
+ * that can turn a rendered index back into a tree one; this hook only applies
+ * that answer, at the single call in `commit` that writes the index to the
+ * backend. The *live* target this hook exposes for `ClusterBar` to draw its
+ * caret from is left untranslated on purpose — the caret has to agree with the
+ * row that is on screen, not with the tree underneath it.
  */
-export function useDrag(label: string, activeClusterId: string | null) {
+export function useDrag(
+  label: string,
+  activeClusterId: string | null,
+  translateStripIndex: (paneId: string, index: number) => number,
+) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const sessionRef = useRef<Session | null>(null);
 
@@ -170,7 +186,13 @@ export function useDrag(label: string, activeClusterId: string | null) {
         const onUp = (ev: PointerEvent) => {
           const s = finish(ev);
           if (!s) return;
-          commit(s.payload, resolve(s.payload, ev.clientX, ev.clientY), label, activeClusterId);
+          commit(
+            s.payload,
+            resolve(s.payload, ev.clientX, ev.clientY),
+            label,
+            activeClusterId,
+            translateStripIndex,
+          );
         };
 
         // A cancel is *not* a release, and treating it as one was a real hazard
@@ -194,7 +216,7 @@ export function useDrag(label: string, activeClusterId: string | null) {
         window.addEventListener("pointercancel", onCancel);
       },
     }),
-    [label, activeClusterId, rawX, rawY],
+    [label, activeClusterId, translateStripIndex, rawX, rawY],
   );
 
   const overlay = useMemo(
@@ -273,6 +295,7 @@ function commit(
   target: DropTarget,
   label: string,
   activeClusterId: string | null,
+  translateStripIndex: (paneId: string, index: number) => number,
 ): void {
   if (payload.what === "cluster") return commitCluster(payload, target, label);
 
@@ -281,7 +304,16 @@ function commit(
       if (activeClusterId) {
         attempt(
           `moving ${payload.instanceId} into ${target.paneId}`,
-          moveInstance(payload.instanceId, activeClusterId, target.paneId, target.index),
+          moveInstance(
+            payload.instanceId,
+            activeClusterId,
+            target.paneId,
+            // The index the row measured, translated back to the pane's real
+            // tab order — see `useDrag`'s doc comment for why the two can
+            // differ now that Home hides from the strip without leaving the
+            // tree.
+            translateStripIndex(target.paneId, target.index),
+          ),
         );
       }
       return;

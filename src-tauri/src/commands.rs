@@ -350,15 +350,14 @@ pub fn rename_cluster(
 ///
 /// The ptys are killed here rather than left to be tidied later. `close_cluster`
 /// hands back the session ids precisely so they cannot be forgotten: a shell
-/// still running with no tab anywhere on screen is a process nobody can see,
-/// stop, or find out about. Only the ones that were *in its tree* come back —
-/// the panel's terminals are the window's and outlive every cluster in it,
-/// which is what keeps the panel usable after the last cluster goes.
+/// still running with no entry anywhere on screen is a process nobody can see,
+/// stop, or find out about. Both kinds come back now — the ones in its tree and
+/// the ones in its band — because a terminal names a cluster and this one is
+/// going away.
 ///
 /// Closing the last one leaves a window with no clusters, which is a legal
-/// state: the app area draws an empty state and the panel keeps working.
-/// `detach_cluster` below can leave a window in the same state, and no longer
-/// refuses to — see `move_cluster_pure`.
+/// state: the app area draws an empty state. `detach_cluster` below can leave a
+/// window in the same state, and no longer refuses to — see `move_cluster_pure`.
 #[tauri::command]
 pub fn close_cluster(
     app: tauri::AppHandle,
@@ -531,11 +530,19 @@ pub fn create_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<String> {
+    // The caller names its *window*, and it is right to: the band's `+` is a
+    // control in one window, and that window's frontend has no business asserting
+    // which cluster the backend thinks it is showing. The one place that question
+    // is answered is here, against the state itself.
+    let cluster_id = shell
+        .active_cluster_of(&label)
+        .ok_or(AppError::NoCluster("open a terminal in"))?;
+
     open_terminal(
         &app,
         &shell,
         &ptys,
-        &label,
+        &cluster_id,
         cols.unwrap_or(80),
         rows.unwrap_or(24),
     )
@@ -552,12 +559,12 @@ pub fn open_terminal(
     app: &tauri::AppHandle,
     shell: &ShellState,
     ptys: &PtySessions,
-    label: &str,
+    cluster_id: &str,
     cols: u16,
     rows: u16,
 ) -> Result<String> {
-    let (id, title) = spawn_terminal(app, shell, ptys, label, cols, rows)?;
-    shell.add_terminal(app, &id, &title, label);
+    let (id, title) = spawn_terminal(app, shell, ptys, cluster_id, cols, rows)?;
+    shell.add_terminal(app, &id, &title, cluster_id);
     Ok(id)
 }
 
@@ -575,30 +582,28 @@ fn spawn_terminal(
     app: &tauri::AppHandle,
     shell: &ShellState,
     ptys: &PtySessions,
-    label: &str,
+    cluster_id: &str,
     cols: u16,
     rows: u16,
 ) -> Result<(String, String)> {
-    // A terminal belongs to the window, not to whichever cluster that window
-    // happened to be showing — the panel is the window's, so a terminal opened
-    // while looking at `auth` is still there when you switch to `billing`. That
-    // is what makes it useful for work that spans clusters: a shell on one
-    // worktree while the layout in front of it is about another.
+    // A terminal belongs to the cluster whose band draws it — see `shell_state`'s
+    // module doc for why that replaced belonging to the window, and what the
+    // change costs.
     //
-    // Checked rather than assumed, because a label naming no window would put a
-    // live shell behind a tab no panel draws. It is the window that is checked
-    // even for a terminal headed into a pane: the pty's working directory and
-    // its `window_label` are both the window's, whichever half of the shell
-    // ends up drawing it.
-    if !shell.has_window(label) {
+    // Checked rather than assumed, because an id naming no cluster would put a
+    // live shell behind an entry no band draws. It is the cluster that is checked
+    // even for a terminal headed into a pane: the pty's working directory and its
+    // `cluster_id` are both the cluster's, whichever half of the shell ends up
+    // drawing it.
+    if !shell.has_cluster(cluster_id) {
         return Err(AppError::Pty {
-            id: label.to_string(),
-            reason: "no such window to open a terminal in".to_string(),
+            id: cluster_id.to_string(),
+            reason: "no such cluster to open a terminal in".to_string(),
         });
     }
 
     let (id, ordinal) = shell.claim_terminal_id();
-    let name = ptys.open(app, &id, &terminal_cwd(app, label), cols, rows)?;
+    let name = ptys.open(app, &id, &terminal_cwd(app, cluster_id), cols, rows)?;
 
     // "pwsh", then "pwsh 2", "pwsh 3" — the first of a kind goes unnumbered,
     // which is what the handoff's panel draws and what every terminal
@@ -612,27 +617,26 @@ fn spawn_terminal(
     Ok((id, title))
 }
 
-/// Open a terminal **into a pane of the active cluster**, rather than into the
-/// window's panel.
+/// Open a terminal **into a pane of the active cluster**, rather than into that
+/// cluster's band.
 ///
-/// ## There are two ways to make a terminal now, and it is not a contradiction
+/// ## There are two ways to make a terminal, and it is not a contradiction
 ///
-/// The panel's own `+` still makes a terminal in the *window's* panel, and that
-/// is still the default and still right: a panel terminal outlives every cluster
-/// switch, which is the whole reason it belongs to the window (see
-/// `shell_state`'s module doc, and `TerminalSession::window_label`). A shell
-/// watching one worktree while the layout in front of it is about another has
-/// nowhere else to live.
+/// The band's own `+` still makes a terminal in the band, and that is still the
+/// default and still right: it is the place a shell goes when it is *beside* the
+/// work rather than part of the arrangement, and it can be resized, shut, and
+/// pulled back up without disturbing a single pane.
 ///
 /// This is the other one: a terminal that is *part of an arrangement* — the
-/// right-hand pane of "Files & Terminal", or whatever someone drags there by
-/// hand. It belongs to the cluster because it is drawn inside it, and it closes
-/// with it.
+/// bottom pane of "Files & Viewer over Terminal", or wherever someone drags one
+/// by hand. It is sized by the layout and moves when the layout does.
 ///
 /// That is VS Code's terminal panel against a terminal in the editor area, and
-/// it reads as a contradiction only until you notice the two answer different
-/// questions: *what am I watching* against *what am I working in*. Both entry
-/// points had to keep working, and both do.
+/// the two answer different questions: *what am I watching* against *what am I
+/// working in*. Both entry points had to keep working, and both do. What changed
+/// is that they no longer differ in **lifetime** as well — both belong to the
+/// cluster and both close with it — so the choice is now only about where the
+/// thing is drawn, which is the choice it looked like all along.
 ///
 /// ## Why it is not a third spawn path
 ///
@@ -646,22 +650,20 @@ fn spawn_terminal(
 /// It is published in one step rather than opened-then-moved because the
 /// two-step version has a visible cost — see `ShellState::add_terminal_in_pane`,
 /// which is where that is written down.
-#[allow(clippy::too_many_arguments)]
 fn open_terminal_into_pane(
     app: &tauri::AppHandle,
     shell: &ShellState,
     ptys: &PtySessions,
-    label: &str,
     cluster_id: &str,
     pane_id: &str,
     index: Option<usize>,
     dir: Option<SplitDir>,
 ) -> Result<String> {
-    // 80×24 is the same placeholder the panel's route uses. A pty must be
-    // created with some size, and the emulator corrects it the moment it has
-    // measured the pane it landed in.
-    let (id, title) = spawn_terminal(app, shell, ptys, label, 80, 24)?;
-    shell.add_terminal_in_pane(app, &id, &title, label, cluster_id, pane_id, index, dir);
+    // 80×24 is the same placeholder the band's route uses. A pty must be created
+    // with some size, and the emulator corrects it the moment it has measured
+    // the pane it landed in.
+    let (id, title) = spawn_terminal(app, shell, ptys, cluster_id, 80, 24)?;
+    shell.add_terminal_in_pane(app, &id, &title, cluster_id, pane_id, index, dir);
     Ok(id)
 }
 
@@ -687,11 +689,11 @@ pub fn open_terminal_in_pane(
         .active_pane(&label, pane_id.as_deref())
         .ok_or(AppError::NoCluster("open a terminal in"))?;
 
-    open_terminal_into_pane(&app, &shell, &ptys, &label, &cluster_id, &pane, None, dir)
+    open_terminal_into_pane(&app, &shell, &ptys, &cluster_id, &pane, None, dir)
 }
 
-/// Where a new terminal opens: the project of whatever cluster `label`'s window
-/// is showing, or the stack root when that cluster has none.
+/// Where a new terminal opens: its cluster's project, or the stack root when
+/// that cluster has none.
 ///
 /// The project comes first because a terminal is opened to do something to the
 /// thing you are working on, and until there is a project that thing is the
@@ -700,15 +702,15 @@ pub fn open_terminal_in_pane(
 /// fallbacks only matter when there is no manifest at all, which is a broken
 /// install rather than a state worth failing a terminal over.
 ///
-/// **Resolved from the window, and only at this moment.** A terminal belongs to
-/// a window's panel rather than to any cluster (see `shell_state`'s module doc)
-/// precisely so it survives cluster switches — so its working directory is a
-/// snapshot of where the window was pointed when it opened, not a subscription.
-/// A shell that chased the active cluster would `cd` under the user's feet
-/// every time they clicked a chip, which is the opposite of what a panel
-/// terminal is for.
-fn terminal_cwd(app: &tauri::AppHandle, label: &str) -> PathBuf {
-    project::window_path(app, label)
+/// **Resolved from the cluster, and only at this moment.** It is still a
+/// snapshot rather than a subscription: a cluster can be re-pointed at another
+/// project, and a shell that followed would `cd` under the user's feet, in a
+/// session they may be halfway through a command in. What changed is which
+/// question the snapshot answers — where this cluster's work is, rather than
+/// where its window happened to be pointed — and `cluster_path` follows the
+/// worktree, so a cluster working in one starts its shells there.
+fn terminal_cwd(app: &tauri::AppHandle, cluster_id: &str) -> PathBuf {
+    project::cluster_path(app, cluster_id)
         .or_else(|| {
             manifest::locate(app)
                 .ok()
@@ -739,7 +741,7 @@ pub fn close_terminal(
 /// all — see the doc comment there.
 ///
 /// The new pty opens beside the one it is splitting from, in that session's
-/// own window, read off `ShellState` rather than taken as an argument — the
+/// own cluster, read off `ShellState` rather than taken as an argument — the
 /// caller already told the backend that once, when the session was created or
 /// last moved, and asking it to repeat itself here would just be a second place
 /// for the two to disagree.
@@ -752,16 +754,18 @@ pub fn split_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<String> {
-    let label = shell.window_of_terminal(&id).ok_or_else(|| AppError::Pty {
-        id: id.clone(),
-        reason: "no such terminal to split".to_string(),
-    })?;
+    let cluster_id = shell
+        .cluster_of_terminal(&id)
+        .ok_or_else(|| AppError::Pty {
+            id: id.clone(),
+            reason: "no such terminal to split".to_string(),
+        })?;
 
     let new_id = open_terminal(
         &app,
         &shell,
         &ptys,
-        &label,
+        &cluster_id,
         cols.unwrap_or(80),
         rows.unwrap_or(24),
     )?;
@@ -807,8 +811,14 @@ pub fn terminal_busy(ptys: State<'_, PtySessions>, id: String) -> Option<pty::Bu
     pty::busy(&ptys, &id)
 }
 
-/// Drop a terminal into another window's panel. `to_label` is the destination,
-/// which may be any HELVE window including the one it is already in.
+/// Drop a terminal into the band of whatever cluster a window is showing.
+/// `to_label` is the destination, which may be any HELVE window including the
+/// one it is already in.
+///
+/// Still named by *window*, because that is what the drag layer can find out —
+/// `window_at_cursor` hit-tests screen rectangles, and a cluster has none of its
+/// own. The window-to-cluster step is `ShellState::move_terminal`'s, under the
+/// same lock as the move; see its doc comment.
 #[tauri::command]
 pub fn move_terminal(
     app: tauri::AppHandle,
@@ -816,21 +826,18 @@ pub fn move_terminal(
     id: String,
     to_label: String,
 ) {
-    // Named by *window*, which is both what the drag layer can find out —
-    // `window_at_cursor` hit-tests screen rectangles — and what a panel now
-    // belongs to. No lookup in between: the label is the answer.
     shell.move_terminal(&app, &id, &to_label);
 }
 
-/// Which terminal a window's panel is showing.
+/// Which terminal a cluster's band is showing.
 #[tauri::command]
 pub fn set_active_terminal(
     app: tauri::AppHandle,
     shell: State<'_, ShellState>,
-    label: String,
+    cluster_id: String,
     id: Option<String>,
 ) {
-    shell.set_active_terminal(&app, &label, id);
+    shell.set_active_terminal(&app, &cluster_id, id);
 }
 
 /// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
@@ -1089,6 +1096,23 @@ pub fn apply_preset(
         .apply_preset(&app, &label, &preset.root)
         .ok_or(AppError::NoCluster("apply a preset to"))?;
 
+    fill_preset_gaps(&app, &shell, &ptys, &label, &cluster_id, gaps);
+    Ok(())
+}
+
+/// The gap-filling half of `apply_preset` above, split out so
+/// `project::open`'s automatic layout can share it rather than reimplement
+/// it — a preset applied by a click and one applied because a folder was just
+/// opened fill their gaps exactly the same way. See `apply_preset`'s own doc
+/// comment for the rest of the reasoning; it still applies unchanged.
+fn fill_preset_gaps(
+    app: &tauri::AppHandle,
+    shell: &ShellState,
+    ptys: &PtySessions,
+    label: &str,
+    cluster_id: &str,
+    gaps: Vec<presets::Gap>,
+) {
     for gap in gaps {
         match gap.slot {
             presets::PresetSlot::App { app_id } => {
@@ -1105,14 +1129,14 @@ pub fn apply_preset(
                     SurfaceKind::Tool
                 };
                 let title = apps::display_name(&app_id);
-                // **No direction, so no split.** `apply_preset` has already
-                // built the tree the preset describes and named the pane each
-                // gap belongs to; an open that split that pane would rearrange
+                // **No direction, so no split.** The apply has already built
+                // the tree the preset describes and named the pane each gap
+                // belongs to; an open that split that pane would rearrange
                 // the arrangement being restored, one surface at a time. The
                 // whole feature depends on this staying `None`.
                 let Some(instance_id) = shell.open_instance(
-                    &app,
-                    &label,
+                    app,
+                    label,
                     &app_id,
                     kind,
                     &title,
@@ -1127,7 +1151,7 @@ pub fn apply_preset(
                 // `presets::Gap::index`: the common pane costs one mutation, not
                 // two.
                 if let Some(index) = gap.index {
-                    shell.move_instance(&app, &instance_id, &cluster_id, &gap.pane_id, Some(index));
+                    shell.move_instance(app, &instance_id, cluster_id, &gap.pane_id, Some(index));
                 }
             }
             presets::PresetSlot::Terminal => {
@@ -1137,11 +1161,10 @@ pub fn apply_preset(
                 // preset slot and a menu click asking for the same thing must
                 // not be able to produce two different kinds of terminal.
                 if let Err(e) = open_terminal_into_pane(
-                    &app,
-                    &shell,
-                    &ptys,
-                    &label,
-                    &cluster_id,
+                    app,
+                    shell,
+                    ptys,
+                    cluster_id,
                     &gap.pane_id,
                     gap.index,
                     // No direction, for the reason the app branch above gives:
@@ -1153,8 +1176,28 @@ pub fn apply_preset(
             }
         }
     }
+}
 
-    Ok(())
+/// Arrange a freshly opened project onto [`presets::PROJECT_OPEN_PRESET_ID`]
+/// — see that constant's doc comment — called once, from `project::open`.
+///
+/// Every failure here gives up quietly rather than surfacing an error: the
+/// project has already opened and is on screen by the time this runs, and
+/// refusing to finish over a layout that could not be arranged would be worse
+/// than leaving it unarranged.
+pub(crate) fn apply_project_open_preset(app: &tauri::AppHandle, cluster_id: &str) {
+    let Some(preset) = presets::find(app, presets::PROJECT_OPEN_PRESET_ID) else {
+        eprintln!("helve: the built-in project-open preset is missing");
+        return;
+    };
+
+    let shell = app.state::<ShellState>();
+    let Some((label, gaps)) = shell.apply_preset_to_cluster(app, cluster_id, &preset.root) else {
+        return;
+    };
+
+    let ptys = app.state::<PtySessions>();
+    fill_preset_gaps(app, &shell, &ptys, &label, cluster_id, gaps);
 }
 
 /// Stubbed until the engine has something real to report. Kept as a command so
