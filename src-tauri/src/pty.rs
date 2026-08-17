@@ -36,7 +36,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// One session's output, as it arrives. Per-session rather than one global
 /// event: a window listens only for the terminals it is showing, so a busy
@@ -211,7 +211,21 @@ impl PtySessions {
                 reason: e.to_string(),
             })?;
 
-        let (name, child) = spawn_shell(&*pty.slave, id, cwd)?;
+        // How an agent in this shell finds HELVE's MCP servers. Read here, at
+        // spawn, rather than baked into a config file: the port and token are
+        // per-launch, and handing them to the process instead of writing them
+        // down is what lets the project's `.mcp.json` be committable and keeps a
+        // shell the user opened outside HELVE unable to connect. Empty if the
+        // listener never bound, which spawns an ordinary shell.
+        let mcp_env = app.state::<crate::mcp::Endpoint>().env();
+
+        // Read here rather than inside `spawn_shell`: this function has the
+        // `AppHandle` and `spawn_shell` deliberately does not, so it can be
+        // unit-tested without a Tauri app (see its own doc comment).
+        let preferred_shell =
+            crate::settings::text(app, crate::settings::keys::TERMINAL_DEFAULT_SHELL);
+
+        let (name, child) = spawn_shell(&*pty.slave, id, cwd, &mcp_env, &preferred_shell)?;
 
         // The slave end must be dropped now that the child holds its own copy.
         // Keeping it alive here would mean the pty always has a writer open, so
@@ -317,7 +331,17 @@ impl PtySessions {
 /// Split out of [`PtySessions::open`] so it can be tested without an
 /// `AppHandle` — spawning a shell is the one step here that talks to the
 /// operating system and can fail for reasons no amount of reading the code will
-/// reveal, so it needs to be reachable from `cargo test`.
+/// reveal, so it needs to be reachable from `cargo test`. `preferred` is
+/// `terminal.defaultShell`'s current value, read by the caller — this function
+/// takes it as a plain `&str` rather than calling `settings::text` itself, which
+/// is what keeps it testable without a Tauri app.
+///
+/// `preferred` is tried first when it names a real option (`"auto"`, or
+/// anything else this build does not recognise, tries nothing extra) and the
+/// automatic order — [`shell_candidates`] — is tried after it regardless of
+/// whether it was tried at all. That fall-through is load-bearing: a shell the
+/// machine does not have must not leave a tab with nothing behind it, and
+/// `settings::schema`'s `SHELLS` options promise exactly this degrade.
 ///
 /// Takes `&dyn SlavePty` rather than the `PtyPair` it comes from: this only
 /// needs the end the child will hold, and narrowing the parameter is what lets
@@ -326,20 +350,36 @@ fn spawn_shell(
     slave: &dyn SlavePty,
     id: &str,
     cwd: &Path,
+    extra_env: &[(String, String)],
+    preferred: &str,
 ) -> Result<(String, Box<dyn Child + Send + Sync>)> {
     let mut last_err = String::from("no shell candidate was tried");
 
-    for (name, mut cmd) in shell_candidates() {
+    let candidates = preferred_candidate(preferred)
+        .into_iter()
+        .chain(shell_candidates());
+
+    for (name, mut cmd) in candidates {
         cmd.cwd(cwd);
         // Programs decide what they may draw from `TERM`. Without it, most TUIs
         // fall back to a dumb-terminal path and render as a wall of plain text
         // — which would look like our emulator was broken.
         cmd.env("TERM", "xterm-256color");
+
+        // Applied per candidate rather than once, because each candidate here
+        // owns a fresh `CommandBuilder` and only one of them is going to spawn.
+        // Setting it on the first would leave the shell that actually started
+        // without it on every machine where the preferred or best-preference
+        // shell is not installed.
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
         match slave.spawn_command(cmd) {
             Ok(child) => return Ok((name, child)),
             // Not fatal on its own. The candidate list is ordered by
-            // preference, and "pwsh is not installed" is the ordinary case on a
-            // machine that only has the PowerShell that ships with Windows.
+            // preference, and "this shell is not installed" is the ordinary
+            // case — for the automatic order's own entries, and doubly so for
+            // whatever the user named, which this machine may never have had.
             // Only running out of candidates is an error.
             Err(e) => last_err = format!("{name}: {e}"),
         }
@@ -427,22 +467,55 @@ fn pump(
 /// ships with the OS — and everything else gets the login shell, falling back to
 /// bash.
 ///
+/// The name a tab shows: the executable's stem, without its extension or the
+/// directory it was found in. `C:\Program Files\Git\bin\bash.exe` becomes
+/// `bash`.
+fn candidate(program: &str) -> (String, CommandBuilder) {
+    let name = Path::new(program)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| program.to_string());
+    (name, CommandBuilder::new(program))
+}
+
+/// The candidate implied by `terminal.defaultShell`'s current value, or `None`
+/// for `"auto"` — which has no candidate of its own and defers entirely to
+/// [`shell_candidates`] — and for any value this build does not recognise,
+/// which is handled the same way rather than by panicking on a settings file
+/// written by a newer or older build.
+///
+/// The values matched here are exactly `settings::schema`'s `SHELLS` options;
+/// a new option added there needs an arm added here or it silently falls back
+/// to `None` and behaves like `"auto"`.
+fn preferred_candidate(preference: &str) -> Option<(String, CommandBuilder)> {
+    #[cfg(windows)]
+    let program = match preference {
+        "pwsh" => "pwsh.exe",
+        "powershell" => "powershell.exe",
+        "cmd" => "cmd.exe",
+        "bash" => "bash.exe",
+        "zsh" => "zsh.exe",
+        _ => return None,
+    };
+
+    #[cfg(not(windows))]
+    let program = match preference {
+        "pwsh" => "pwsh",
+        "powershell" => "powershell",
+        "cmd" => "cmd",
+        "bash" => "/bin/bash",
+        "zsh" => "/bin/zsh",
+        _ => return None,
+    };
+
+    Some(candidate(program))
+}
+
 /// Returned as a list and tried in order because "is this program installed"
 /// cannot be answered honestly without trying to run it: a `PATH` lookup can
 /// succeed against a stub, and a file existing says nothing about whether this
 /// user may execute it.
 fn shell_candidates() -> Vec<(String, CommandBuilder)> {
-    // The name a tab shows: the executable's stem, without its extension or the
-    // directory it was found in. `C:\Program Files\Git\bin\bash.exe` becomes
-    // `bash`.
-    fn candidate(program: &str) -> (String, CommandBuilder) {
-        let name = Path::new(program)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| program.to_string());
-        (name, CommandBuilder::new(program))
-    }
-
     if let Ok(explicit) = std::env::var("HELVE_SHELL") {
         if !explicit.trim().is_empty() {
             return vec![candidate(explicit.trim())];
@@ -589,8 +662,16 @@ mod tests {
             .expect("the OS provides a pty");
 
         let cwd = std::env::temp_dir();
-        let (name, mut child) =
-            spawn_shell(&*pty.slave, "test", &cwd).expect("a usable shell exists on this machine");
+        // Spawned *with* extra environment, because that is the path the app
+        // takes — `open` always passes the MCP endpoint's variables, empty or
+        // not. A shell that spawned bare here and not in the app would leave the
+        // one difference between them untested.
+        let injected = [(
+            "HELVE_MCP_TOKEN".to_string(),
+            "test-token-not-a-real-one".to_string(),
+        )];
+        let (name, mut child) = spawn_shell(&*pty.slave, "test", &cwd, &injected, "auto")
+            .expect("a usable shell exists on this machine");
 
         // Same as the real path: the child holds its own copy of the slave end,
         // and this one has to go or the reader below never sees end-of-file.
@@ -676,5 +757,42 @@ mod tests {
             Some("cmd"),
             "cmd is the last resort"
         );
+    }
+
+    /// `"auto"` has no candidate of its own — it defers entirely to
+    /// `shell_candidates` — and neither does a value this build does not
+    /// recognise, which is the forward/backward-compatibility case: a settings
+    /// file written by a different build must not panic this one.
+    #[test]
+    fn auto_and_an_unrecognised_preference_have_no_candidate_of_their_own() {
+        assert!(preferred_candidate("auto").is_none());
+        assert!(preferred_candidate("fish").is_none());
+    }
+
+    /// The promise `settings::schema`'s `SHELLS` options make on
+    /// `TERMINAL_DEFAULT_SHELL`: naming a shell this machine does not have must
+    /// still produce a working terminal, not a tab that dies immediately.
+    #[test]
+    fn a_preferred_shell_this_machine_lacks_still_falls_back_to_a_working_shell() {
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("the OS provides a pty");
+        let cwd = std::env::temp_dir();
+
+        // A real `SHELLS` option, and one this test's machine is not expected
+        // to have installed. Whether it happens to exist here or not, the
+        // outcome that matters is the same: `spawn_shell` returns a shell that
+        // actually started.
+        let (name, mut child) = spawn_shell(&*pty.slave, "test", &cwd, &[], "zsh")
+            .expect("a preferred shell that fails to spawn still falls through to a real one");
+        assert!(!name.is_empty());
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

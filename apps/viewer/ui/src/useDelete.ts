@@ -11,21 +11,22 @@
  *
  * - **It names the file.** "Are you sure?" on its own is a dialog people learn
  *   to dismiss without reading.
- * - **It says where the file goes**, and the wording is driven by what the
- *   backend actually reports rather than by an assumption here. `files/delete`
- *   moves things to the Recycle Bin and refuses when it cannot; if that ever
- *   changes, `Deleted.trashed` changes with it and so does this sentence.
+ * - **It says where the file goes**, from what the backend reports rather than
+ *   an assumption: `files/delete` moves to the Recycle Bin and refuses when it
+ *   cannot. If that changes, `Deleted.trashed` does, and so does this sentence.
  * - **It counts a folder's contents** before asking, because a recursive delete
  *   is an amount the user cannot see from the row they right-clicked.
  * - **It names unsaved work by file.** Deleting a file with unsaved changes
- *   discards them, and the one thing that must not happen is for that to be a
- *   surprise afterwards.
+ *   discards them, and that must never be a surprise afterwards.
  * - **Cancel is first, and `NoticeBar` focuses it.** Delete is marked
  *   destructive, drawn in `--err`, and last. Return cancels; Escape cancels.
+ * - **It can be switched off**, by `files.confirmDelete` — with one exception
+ *   that stays. Argued for at `ask` below.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Notice } from "./NoticeBar";
 import { describe, remove, treeSize, type EntryKind } from "./rpc";
+import { loadSettings } from "./settings";
 
 /** What is about to be deleted. */
 export interface DeleteTarget {
@@ -67,6 +68,25 @@ export function useDelete({
   const [inside, setInside] = useState<{ total: number; truncated: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /**
+   * `files.confirmDelete`, from the settings screen.
+   *
+   * `true` until the read lands, and `true` again if it fails. Asking is the
+   * safe answer, and a delete that skipped the question because a bridge call
+   * had not come back yet would be the one race in this file that costs the
+   * user something.
+   */
+  const [confirmDelete, setConfirmDelete] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSettings().then((settings) => {
+      if (!cancelled) setConfirmDelete(settings.toggle("files.confirmDelete", true));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Clear the bar unconditionally. Internal: the success path uses this. */
   const reset = useCallback(() => {
@@ -91,25 +111,6 @@ export function useDelete({
     reset();
   }, [busy, reset]);
 
-  const ask = useCallback((next: DeleteTarget) => {
-    setTarget(next);
-    setInside(null);
-    setBusy(false);
-    setFailure(null);
-
-    if (next.kind !== "dir") return;
-
-    // Only a folder needs a count, and the answer is allowed to arrive late.
-    // A count that fails is simply not shown: the confirmation is still
-    // correct without it, and refusing to ask because the folder could not be
-    // walked would be worse than asking with one sentence less.
-    void treeSize(next.path)
-      .then((size) => setInside({ total: size.files + size.dirs, truncated: size.truncated }))
-      .catch(() => {
-        /* No number, no sentence about a number. */
-      });
-  }, []);
-
   const confirm = useCallback(
     (next: DeleteTarget) => {
       setBusy(true);
@@ -133,6 +134,50 @@ export function useDelete({
         });
     },
     [dropUnder, onDeleted, reset],
+  );
+
+  /**
+   * Begin, and go straight to the delete when the question has been switched
+   * off — with one exception, which is not a hedge.
+   *
+   * `files.confirmDelete`'s own description argues that the confirmation is "a
+   * speed bump rather than a safety net" because `files/delete` moves things to
+   * the Recycle Bin either way. That is true of what is on disk and false of
+   * what is not: unsaved edits in an open buffer were never written, so a
+   * restore brings back the last *saved* version and the typing is gone with
+   * nothing left to undo it from. The one thing the question genuinely protects
+   * is therefore the one thing switching it off must not silently discard, so a
+   * target with unsaved work under it is still asked about.
+   *
+   * The bar does not vanish on the skipped path — `target` is set either way,
+   * so the delete draws "Deleting …" while it is in flight and still turns into
+   * a report if it fails.
+   */
+  const ask = useCallback(
+    (next: DeleteTarget) => {
+      setTarget(next);
+      setInside(null);
+      setBusy(false);
+      setFailure(null);
+
+      if (!confirmDelete && unsavedUnder(next.path).length === 0) {
+        confirm(next);
+        return;
+      }
+
+      if (next.kind !== "dir") return;
+
+      // Only a folder needs a count, and the answer is allowed to arrive late.
+      // A count that fails is simply not shown: the confirmation is still
+      // correct without it, and refusing to ask because the folder could not be
+      // walked would be worse than asking with one sentence less.
+      void treeSize(next.path)
+        .then((size) => setInside({ total: size.files + size.dirs, truncated: size.truncated }))
+        .catch(() => {
+          /* No number, no sentence about a number. */
+        });
+    },
+    [confirm, confirmDelete, unsavedUnder],
   );
 
   const notice = ((): Notice | null => {

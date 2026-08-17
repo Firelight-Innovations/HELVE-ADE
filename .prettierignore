@@ -17,6 +17,12 @@ src-tauri/gen/
 pnpm-lock.yaml
 Cargo.lock
 
+# Per-machine Claude Code state, untracked and rewritten by the tool itself
+# every time a permission is granted. Same failure mode as src-tauri/gen/
+# above: it makes `format:check` fail on a clean tree for a file nobody in the
+# repo owns or can keep formatted.
+.claude/settings.local.json
+
 # HTML is excluded, and this one is not a style preference. Whitespace between
 # inline elements is significant in HTML, so reformatting it is not the
 # guaranteed no-op it is in TypeScript or CSS. The concrete case: running

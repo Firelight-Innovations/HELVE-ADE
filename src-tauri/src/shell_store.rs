@@ -378,9 +378,9 @@ mod tests {
                     tree,
                     project: Some(r"C:\code\auth".to_string()),
                     worktree: None,
+                    active_terminal: Some("term-1".to_string()),
                 }],
                 active_cluster_id: Some("cluster-1".to_string()),
-                active_terminal: Some("term-1".to_string()),
                 geometry: Some(WindowGeometry {
                     x: 100,
                     y: 50,
@@ -405,7 +405,7 @@ mod tests {
             terminals: vec![TerminalSession {
                 id: "term-1".to_string(),
                 title: "pwsh".to_string(),
-                window_label: "main".to_string(),
+                cluster_id: "cluster-1".to_string(),
                 agent_finished: false,
                 group_id: None,
             }],
@@ -429,11 +429,11 @@ mod tests {
             2,
             "two Files, which is the whole point"
         );
-        assert_eq!(back.terminals[0].window_label, "main");
+        assert_eq!(back.terminals[0].cluster_id, "cluster-1");
         assert_eq!(
-            back.windows[0].active_terminal.as_deref(),
+            back.windows[0].clusters[0].active_terminal.as_deref(),
             Some("term-1"),
-            "which terminal the panel had open is the window's, and comes back with it"
+            "which terminal the band had open is the cluster's, and comes back with it"
         );
     }
 
@@ -456,14 +456,55 @@ mod tests {
         );
     }
 
-    /// The file already on disk: terminals carrying a `clusterId`, the panel's
-    /// selection stored on the cluster, and no window label anywhere. Both
-    /// renamed fields have to survive it, and the terminal has to land in a
-    /// window that exists — `main` — rather than in the empty label a bare
-    /// `#[serde(default)]` would have given it, which names no window at all and
-    /// would drop every restored tab out of every panel.
+    /// The file on disk right now: terminals carrying a `windowLabel`, the
+    /// panel's selection stored on the window, and no cluster id on a session
+    /// anywhere. It has to load without failing, which is all this asserts — the
+    /// terminal comes back with no cluster, and `ShellState::restore` is what
+    /// gives it one (see `adopt_orphan_terminals`). Deserialization has only the
+    /// one session in front of it and cannot answer a question about the whole
+    /// snapshot.
     #[test]
-    fn a_layout_from_before_the_panel_left_the_clusters_still_loads() {
+    fn a_layout_from_while_terminals_named_a_window_still_loads() {
+        let json = r#"{
+            "windows": [{
+                "label": "main",
+                "clusters": [{
+                    "id": "cluster-1",
+                    "name": "auth",
+                    "tree": {"kind": "leaf", "id": "pane-1", "tabs": [], "activeTab": null},
+                    "worktree": null
+                }],
+                "activeClusterId": "cluster-1",
+                "activeTerminal": "term-1",
+                "geometry": null
+            }],
+            "instances": [],
+            "terminals": [{
+                "id": "term-1",
+                "title": "pwsh",
+                "windowLabel": "main",
+                "agentFinished": false,
+                "groupId": null
+            }]
+        }"#;
+
+        let stored: Stored = serde_json::from_str(json).expect("last week's layout still reads");
+
+        assert_eq!(
+            stored.terminals[0].cluster_id, "",
+            "no cluster yet; `adopt_orphan_terminals` assigns one at restore"
+        );
+        assert_eq!(
+            stored.windows[0].clusters[0].active_terminal, None,
+            "the window's old selection is not read back; `restore` re-seats it"
+        );
+    }
+
+    /// And the older one still on some machines, from before terminals named a
+    /// window at all. Its `clusterId` is the field's name again, so it reads
+    /// straight through with nothing to migrate.
+    #[test]
+    fn a_layout_from_before_terminals_named_a_window_reads_straight_through() {
         let json = r#"{
             "windows": [{
                 "label": "main",
@@ -487,15 +528,13 @@ mod tests {
             }]
         }"#;
 
-        let stored: Stored = serde_json::from_str(json).expect("last week's layout still reads");
+        let stored: Stored = serde_json::from_str(json).expect("an older layout reads too");
 
+        assert_eq!(stored.terminals[0].cluster_id, "cluster-1");
         assert_eq!(
-            stored.terminals[0].window_label, "main",
-            "a terminal with no label goes somewhere a panel will draw it"
-        );
-        assert_eq!(
-            stored.windows[0].active_terminal, None,
-            "the cluster's old selection is not read back; `restore` re-seats it"
+            stored.windows[0].clusters[0].active_terminal.as_deref(),
+            Some("term-1"),
+            "and its band selection, which lived here then and lives here again"
         );
     }
 
@@ -514,7 +553,7 @@ mod tests {
             terminals: vec![TerminalSession {
                 id: "term-1".to_string(),
                 title: "claude".to_string(),
-                window_label: "main".to_string(),
+                cluster_id: "cluster-1".to_string(),
                 agent_finished: true,
                 group_id: None,
             }],

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { cachedStack, loadStack, type StackSnapshot } from "./bindings";
 import WindowRoot from "./shell/WindowRoot";
+import SettingsScreen from "./shell/settings/SettingsScreen";
+import { useSettings } from "./shell/settings/useSettings";
+import { useAppearance } from "./shell/settings/appearance";
+import { useSettingsSurface } from "./shell/settingsSurface";
 
 /**
  * Owns the stack snapshot and hands it to the shell.
@@ -9,6 +14,12 @@ import WindowRoot from "./shell/WindowRoot";
  * the app looks and what it shows lives under `shell/`. Keeping the fetch here
  * rather than inside the shell means the shell can be restyled or rearranged
  * without anything having to know how the snapshot is obtained.
+ *
+ * Settings is mounted here rather than in `WindowRoot` because it is the one
+ * surface that is not about a window — see `docs/settings.md` §9, which also
+ * says why the title bar and the status bar stay uncovered. The session is read
+ * once, above the window, so the appearance settings apply whether or not the
+ * screen has ever been opened.
  */
 export default function App() {
   const [snapshot, setSnapshot] = useState<StackSnapshot | null>(null);
@@ -51,12 +62,28 @@ export default function App() {
     })();
   }, [rescan]);
 
+  const settings = useSettings();
+  useAppearance(settings);
+  const settingsSurface = useSettingsSurface();
+
   return (
-    <WindowRoot
-      snapshot={snapshot}
-      error={error}
-      rescanning={busy}
-      onRescan={() => void rescan()}
-    />
+    <>
+      <WindowRoot
+        snapshot={snapshot}
+        error={error}
+        rescanning={busy}
+        onRescan={() => void rescan()}
+      />
+      {/* Mounted only while open, so a window nobody has opened settings in
+          never pays for the screen's tree — and `AnimatePresence` is what keeps
+          that true through the exit, holding the subtree for exactly as long as
+          the animation runs and then unmounting it for real. The same shape
+          `WindowRoot` uses for the search overlay. */}
+      <AnimatePresence>
+        {settingsSurface.open && (
+          <SettingsScreen session={settings} landOn={settingsSurface.section} />
+        )}
+      </AnimatePresence>
+    </>
   );
 }

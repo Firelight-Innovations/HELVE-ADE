@@ -9,11 +9,6 @@
       "count": 2
     }
   },
-  "src/shell/panel/SecondaryPanel.tsx": {
-    "no-restricted-imports": {
-      "count": 2
-    }
-  },
   "src/shell/panes/PaneTree.tsx": {
     "no-restricted-imports": {
       "count": 1

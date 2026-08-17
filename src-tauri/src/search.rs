@@ -26,6 +26,7 @@
 //! frontend never gets to name a directory for the backend to run a search in.
 
 use crate::error::{AppError, Result};
+use crate::settings::{self, keys};
 use grep_matcher::Matcher;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks, BinaryDetection, SearcherBuilder};
@@ -83,36 +84,67 @@ pub struct SearchResponse {
     pub truncated: bool,
 }
 
-/// How many matches one search collects before it stops walking.
+/// The three limits one search enforces, read from settings once per search
+/// rather than baked in as constants.
 ///
-/// A cap on *matches*, not files: a single generated file with the query on
-/// every line would otherwise produce a response of unbounded size from one
-/// hit. The number is generous enough that an ordinary "how is this function
-/// called" search never brushes it, and small enough that hitting it — some
-/// repo-wide token like a common word — returns in a search-as-you-type
-/// budget rather than after walking the whole tree.
-const MAX_MATCHES: usize = 1000;
+/// Read at the top of `search_content`'s blocking closure and threaded down
+/// by reference — never re-read mid-walk, which would let a setting changed
+/// while a search is already running produce a response that started under
+/// one budget and finished under another.
+struct Caps {
+    /// How many matches one search collects before it stops walking.
+    ///
+    /// A cap on *matches*, not files: a single generated file with the query
+    /// on every line would otherwise produce a response of unbounded size
+    /// from one hit. The default (1000, `search.maxMatches` in
+    /// `settings::schema`) is generous enough that an ordinary "how is this
+    /// function called" search never brushes it, and small enough that
+    /// hitting it — some repo-wide token like a common word — returns in a
+    /// search-as-you-type budget rather than after walking the whole tree.
+    max_matches: usize,
 
-/// Files larger than this are still checked for a *name* match but never
-/// opened for a content one.
-///
-/// A large file is disproportionately likely to be a bundle, a lockfile, or a
-/// data dump rather than something a search-as-you-type feature is aimed at,
-/// and scanning one line by line is the single most expensive thing this walk
-/// can do per file. 8 MiB comfortably covers real source files — the
-/// generated ones this excludes are exactly the ones nobody is searching by
-/// hand.
-const MAX_CONTENT_BYTES: u64 = 8 * 1024 * 1024;
+    /// How many *files* one search reports, independent of `max_matches`.
+    ///
+    /// `max_matches` alone does not bound the response: a query that matches
+    /// hundreds of file *names* but appears in no file's contents —
+    /// `"test"` across a typical repo, say — never advances the match
+    /// counter at all, so without a separate cap here the two limits would
+    /// leave that one case unbounded. The default (500, `search.maxFiles`)
+    /// still comfortably sits under `max_matches`'s default, since a single
+    /// file is expected to be a handful of matches, not hundreds.
+    max_files: usize,
 
-/// How many *files* one search reports, independent of `MAX_MATCHES`.
-///
-/// `MAX_MATCHES` alone does not bound the response: a query that matches
-/// hundreds of file *names* but appears in no file's contents — `"test"`
-/// across a typical repo, say — never advances the match counter at all, so
-/// without a separate cap here the two limits would leave that one case
-/// unbounded. `MAX_MATCHES` still comfortably outnumbers this, since a single
-/// file is expected to be a handful of matches, not hundreds.
-const MAX_HITS: usize = 500;
+    /// Files larger than this are still checked for a *name* match but never
+    /// opened for a content one.
+    ///
+    /// A large file is disproportionately likely to be a bundle, a
+    /// lockfile, or a data dump rather than something a search-as-you-type
+    /// feature is aimed at, and scanning one line by line is the single most
+    /// expensive thing this walk can do per file. The default (8 MiB,
+    /// `search.maxFileSizeMb`) comfortably covers real source files — the
+    /// generated ones this excludes are exactly the ones nobody is searching
+    /// by hand.
+    max_content_bytes: u64,
+}
+
+impl Caps {
+    fn read(app: &AppHandle) -> Self {
+        Self {
+            max_matches: settings::number(app, keys::SEARCH_MAX_MATCHES).max(1) as usize,
+            max_files: settings::number(app, keys::SEARCH_MAX_FILES).max(1) as usize,
+            max_content_bytes: mb_to_bytes(settings::number(app, keys::SEARCH_MAX_FILE_SIZE_MB)),
+        }
+    }
+}
+
+/// A setting in megabytes, as the control draws it, converted to the bytes
+/// the walk actually compares against. `.max(1)` before the multiply rather
+/// than after: a stored `0` or a negative value — neither reachable through
+/// the control, both reachable through a hand-edited settings file — must
+/// still yield a positive cap rather than one that skips every file.
+fn mb_to_bytes(mb: i64) -> u64 {
+    (mb.max(1) as u64) * 1024 * 1024
+}
 
 /// The single counter that makes an in-flight search abandon itself the
 /// moment a newer one starts.
@@ -210,8 +242,12 @@ pub async fn search_content(
 
         let matcher = build_matcher(&query, case_sensitive, whole_word, regex)?;
         let state = app.state::<SearchState>();
+        // Read once, here, rather than inside `walk`'s per-entry loop — a
+        // `settings::number` call is a mutex lock per key, and the loop below
+        // runs once per directory entry, not once per search.
+        let caps = Caps::read(&app);
 
-        Ok(walk(&root, &matcher, &state, generation))
+        Ok(walk(&root, &matcher, &state, generation, &caps))
     })
     .await
     // The worker panicked or the runtime is shutting down — `app_call`'s own
@@ -267,6 +303,7 @@ fn walk(
     matcher: &grep_regex::RegexMatcher,
     state: &State<'_, SearchState>,
     generation: u64,
+    caps: &Caps,
 ) -> SearchResponse {
     let mut hits = Vec::new();
     let mut total_matches = 0usize;
@@ -327,7 +364,7 @@ fn walk(
 
         let too_large = entry
             .metadata()
-            .map(|m| m.len() > MAX_CONTENT_BYTES)
+            .map(|m| m.len() > caps.max_content_bytes)
             .unwrap_or(false);
 
         let mut matches = Vec::new();
@@ -338,6 +375,7 @@ fn walk(
                 path,
                 &mut matches,
                 &mut total_matches,
+                caps.max_matches,
             );
             if hit_cap {
                 truncated = true;
@@ -351,7 +389,7 @@ fn walk(
             });
         }
 
-        if total_matches >= MAX_MATCHES || hits.len() >= MAX_HITS {
+        if total_matches >= caps.max_matches || hits.len() >= caps.max_files {
             truncated = true;
             break;
         }
@@ -375,6 +413,7 @@ fn search_file(
     path: &Path,
     matches: &mut Vec<SearchMatch>,
     total_matches: &mut usize,
+    max_matches: usize,
 ) -> bool {
     let mut hit_cap = false;
 
@@ -409,11 +448,11 @@ fn search_file(
                     length: utf16_len(&text[m.start()..m.end()]),
                 });
                 *total_matches += 1;
-                *total_matches < MAX_MATCHES
+                *total_matches < max_matches
             });
 
-            if find_result.is_err() || *total_matches >= MAX_MATCHES {
-                hit_cap = *total_matches >= MAX_MATCHES;
+            if find_result.is_err() || *total_matches >= max_matches {
+                hit_cap = *total_matches >= max_matches;
                 // `Ok(false)` tells the searcher to stop reading this file —
                 // there is no more budget left for it, so there is nothing to
                 // gain from reading the rest.
@@ -459,4 +498,25 @@ fn utf16_column(line: &str, byte_offset: usize) -> u32 {
 /// `utf16_column`, for the same reason.
 fn utf16_len(text: &str) -> u32 {
     text.encode_utf16().count() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mb_to_bytes_converts_megabytes_to_bytes() {
+        assert_eq!(mb_to_bytes(8), 8 * 1024 * 1024);
+        assert_eq!(mb_to_bytes(1), 1024 * 1024);
+    }
+
+    /// The clamp a hand-edited settings file can otherwise defeat: `0` and
+    /// negative values are not reachable through `Control::Number`'s own
+    /// `min`, but `mb_to_bytes` still has to make sense of whatever it is
+    /// handed.
+    #[test]
+    fn mb_to_bytes_clamps_a_non_positive_value_up_to_one_megabyte() {
+        assert_eq!(mb_to_bytes(0), 1024 * 1024);
+        assert_eq!(mb_to_bytes(-5), 1024 * 1024);
+    }
 }

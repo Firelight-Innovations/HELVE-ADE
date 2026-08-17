@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { HelveRpcError, invoke, reportPainted } from "@helve/bridge";
+import { HelveRpcError, invoke, openIn, reportPainted } from "@helve/bridge";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
 import WorktreeDialog from "./WorktreeDialog";
 import "./home.css";
@@ -85,28 +85,30 @@ const WORKTREE_TRIGGERS = new Set([
 ]);
 
 /**
- * The right-hand column, standing in for what will go there.
+ * The right-hand column's cards, as `home/tutorials` reports them.
  *
- * Drawn rather than left blank, and inert rather than hidden: the column is part
- * of the layout being built, and an empty half-screen would read as a bug in a
- * way that three cards marked "soon" does not. Nothing here navigates anywhere —
- * a card that looked live and did nothing would be worse than one that says it
- * isn't.
+ * This column used to be three hardcoded titles that navigated nowhere, marked
+ * "soon". It is live now: the list comes from the same catalog the Tutorials app
+ * draws — `src-tauri/src/apps/tutorial.rs` — so Home cannot drift out of step
+ * with what has actually been written, and a card opens the tutorial it names.
+ *
+ * The backend picks *which* three, so Home makes no decision about ordering: it
+ * hands back the first unfinished ones, which is what turns the column into a
+ * "next thing to do" rather than a table of contents that never changes.
  */
-const TUTORIALS = [
-  {
-    title: "Your first project",
-    blurb: "What a HELVE project is, what lands in .helve/, and how to open one.",
-  },
-  {
-    title: "The stack, end to end",
-    blurb: "What Engine, Forger, Journeyman and the rest of the stack are each for.",
-  },
-  {
-    title: "Working with agents",
-    blurb: "Running an agent against a project, and reading the trace it leaves.",
-  },
-];
+interface TutorialCard {
+  id: string;
+  title: string;
+  blurb: string;
+  minutes: number;
+  done: boolean;
+}
+
+interface Tutorials {
+  cards: TutorialCard[];
+  completed: number;
+  total: number;
+}
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
@@ -127,6 +129,13 @@ export default function App() {
    * already done its job of deciding whether to show this at all.
    */
   const [worktreePrompt, setWorktreePrompt] = useState<{ taken: string[] } | null>(null);
+  /**
+   * The tutorial column. `null` until it lands, and left `null` if the call
+   * fails — a Home whose tutorial list could not be read still has a Start
+   * column and a Recent list, which is the whole of what somebody came here
+   * for. The column says so rather than showing an error beside the projects.
+   */
+  const [tutorials, setTutorials] = useState<Tutorials | null>(null);
 
   /**
    * Ask whether the project that just opened wants a worktree prompt. Fired
@@ -185,6 +194,34 @@ export default function App() {
 
     return () => {
       live = false;
+    };
+  }, []);
+
+  /**
+   * Refetched on focus as well as on mount, because the tutorial the reader
+   * just finished was finished in a *different* app — this pane has no way to
+   * hear about it otherwise, and a column still offering something you have
+   * done reads as broken.
+   */
+  useEffect(() => {
+    let live = true;
+
+    const read = () => {
+      void invoke<Tutorials>("home/tutorials")
+        .then((next) => {
+          if (live) setTutorials(next);
+        })
+        .catch(() => {
+          // Silent: the Start and Recent columns are unaffected, and the
+          // tutorial column draws its own empty state.
+        });
+    };
+
+    read();
+    window.addEventListener("focus", read);
+    return () => {
+      live = false;
+      window.removeEventListener("focus", read);
     };
   }, []);
 
@@ -304,20 +341,52 @@ export default function App() {
 
           <section className="home__column">
             <h2 className="home__heading">Tutorials</h2>
-            <ul className="home__cards">
-              {TUTORIALS.map((tutorial) => (
-                <li key={tutorial.title} className="home__card" aria-disabled="true">
-                  <span className="home__card-mark">
-                    <Book size={16} />
-                  </span>
-                  <span className="home__card-text">
-                    <span className="home__card-title">{tutorial.title}</span>
-                    <span className="home__card-blurb">{tutorial.blurb}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="home__empty">Tutorials aren&apos;t written yet.</p>
+            {tutorials === null || tutorials.cards.length === 0 ? (
+              <p className="home__empty">
+                {tutorials === null ? "Reading…" : "Nothing to read here."}
+              </p>
+            ) : (
+              <>
+                <ul className="home__cards">
+                  {tutorials.cards.map((tutorial) => (
+                    <li key={tutorial.id}>
+                      <button
+                        type="button"
+                        className={`home__card${tutorial.done ? " home__card--done" : ""}`}
+                        // `openIn` rather than a link: this pane cannot address
+                        // another surface, and must not be able to. It names a
+                        // *kind* of app and the shell decides which one answers
+                        // — see `docs/tool-protocol.md` §3.
+                        onClick={() => void openIn("tutorial", { tutorialId: tutorial.id })}
+                      >
+                        <span className="home__card-mark">
+                          <Book size={16} />
+                        </span>
+                        <span className="home__card-text">
+                          <span className="home__card-title">{tutorial.title}</span>
+                          <span className="home__card-blurb">{tutorial.blurb}</span>
+                        </span>
+                        <span className="home__card-min">{tutorial.minutes}m</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {/* The only door to the rest of them. The cards above open one
+                    tutorial each and there are three of them, so without this
+                    the other seven are reachable only by opening one and using
+                    the rail inside it — and Tutorials is deliberately absent
+                    from the Apps menu and the switcher's `+`, being a surface
+                    that covers the cluster rather than taking a pane. */}
+                <button
+                  type="button"
+                  className="home__all-tutorials"
+                  onClick={() => void openIn("tutorial")}
+                >
+                  All {tutorials.total} tutorials
+                  {tutorials.completed > 0 && ` · ${tutorials.completed} read`}
+                </button>
+              </>
+            )}
           </section>
         </div>
       </div>

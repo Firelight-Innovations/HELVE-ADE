@@ -57,11 +57,73 @@
   position: relative;
 }
 
+/* The tool window stacked over the terminal band. Only this column grows.
+
+   The band stops at the secondary panel's edge rather than spanning the window,
+   which is VS Code's arrangement and the right one here for a concrete reason:
+   that panel holds the repository's history and this cluster's changes, and
+   those are things you read *while* a terminal is running. A full-width band
+   would shorten them every time it opened. */
+.frame__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .frame__toolwindow {
   flex: 1;
+  min-height: 0;
   min-width: 0;
   background: var(--bg);
   position: relative;
+  /* Load-bearing once the band can take the whole column. The surfaces inside
+     are absolutely positioned from measurements taken while this box still had
+     height, and `ToolWindow` deliberately keeps the last good geometry rather
+     than re-measuring a box of zero — so at zero height they would paint over
+     the band instead of disappearing with it. Clipping here is what makes
+     "minimized" look minimized while every app stays mounted and running. */
+  overflow: hidden;
+}
+
+/* --- the terminal band ------------------------------------------------------
+   The handle stays live and grabbable while the band is shut — that is what
+   makes reaching for the bottom of the window and pulling up work when there is
+   nothing on screen to pull. It keeps `row-resize` for the same reason. */
+
+.frame__bottomhandle {
+  flex: none;
+  height: var(--w-resize-handle);
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.frame__bottomgrip {
+  width: 24px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.frame__bottomhandle:hover .frame__bottomgrip {
+  background: var(--line-2);
+}
+
+.frame__bottom {
+  flex: none;
+  background: var(--bg);
+  display: flex;
+  min-height: 0;
+  /* The height is driven by a motion value in Frame.tsx and deliberately not
+     set here, for the reason `.frame__panel` gives about its width. */
+  overflow: hidden;
 }
 
 .frame__handle {

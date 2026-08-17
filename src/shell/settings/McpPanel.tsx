@@ -1,0 +1,160 @@
+/**
+ * The MCP servers HELVE hosts, with a switch on each.
+ *
+ * ## This is the only section with a custom panel, and it should stay that way
+ *
+ * Every other section is drawn entirely from the schema: Rust declares a key, a
+ * control and a default, and `ControlFor` draws it. That is what makes adding a
+ * setting a Rust-only edit, and it is worth more than any section's look.
+ *
+ * The server list cannot be expressed that way. It is not a key holding a value
+ * — it is a list the registry owns, each row of which has a name, a route, a
+ * config key, a tool count, and its own switch. Fitting it into the schema would
+ * mean inventing a `Control` that renders a list of things with per-row state,
+ * which no other section could use and which would put the registry's shape into
+ * a type that is supposed to be about values. So the exception is drawn here, in
+ * one file, next to the section it belongs to.
+ *
+ * The rule that follows: a second section wanting a panel is a signal the schema
+ * is missing a control, not that panels are how sections are built.
+ */
+import { useEffect, useState } from "react";
+import ToggleControl from "./controls/ToggleControl";
+import { mcpStatus, setMcpServerEnabled, type McpServerInfo, type McpStatus } from "../../bindings";
+
+export default function McpPanel() {
+  const [status, setStatus] = useState<McpStatus | null>(null);
+
+  // Fetched here rather than by `useSettings`, which is the settings *store* and
+  // holds none of this: the servers live in the MCP registry and the port
+  // belongs to a listener, so neither appears in `settings.json`. Folding them
+  // in would give every window a subscription to something only this panel
+  // reads, in the one section most windows never open.
+  useEffect(() => {
+    let live = true;
+    void refresh().then((next) => {
+      if (live && next !== null) setStatus(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const toggle = (server: McpServerInfo, next: boolean) => {
+    // Optimistic, the same shape `useSettings.set` uses and for the same reason:
+    // a switch that repaints a round trip after the click reads as a click that
+    // missed. The re-fetch below is the reconcile — Rust rewrites every open
+    // project's `.mcp.json` on the way out, and it is the authority on what the
+    // row now says, including its tool count.
+    setStatus((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            servers: current.servers.map((s) => (s.id === server.id ? { ...s, enabled: next } : s)),
+          },
+    );
+
+    void setMcpServerEnabled(server.id, next)
+      .catch((err: unknown) => console.error("helve: could not switch an MCP server:", err))
+      .then(refresh)
+      .then((fresh) => {
+        // Runs after a failure too, which is the point: the optimistic flip
+        // above is a guess, and a refused write has to be taken back off the
+        // screen rather than left sitting there looking applied.
+        if (fresh !== null) setStatus(fresh);
+      });
+  };
+
+  if (status === null) return null;
+
+  return (
+    <section className="settings-mcp" aria-label="MCP servers">
+      <Endpoint port={status.port} />
+
+      {status.servers.length === 0 ? (
+        <p className="settings-mcp__empty">
+          This build hosts no MCP servers. What one is, and the rule about what may be added, are in{" "}
+          <span className="settings-mcp__path">docs/mcp-server-manager.md</span>.
+        </p>
+      ) : (
+        status.servers.map((server) => (
+          <ServerRow key={server.id} server={server} onToggle={toggle} />
+        ))
+      )}
+    </section>
+  );
+}
+
+/**
+ * Where a client would connect, or why it could not.
+ *
+ * A null port means the listener never bound — a machine that would not hand out
+ * a loopback socket. Every switch below is still meaningful (they persist), but
+ * nothing is reachable, and drawing the ordinary "listening" line over that
+ * would send somebody looking for the fault in their agent's config.
+ */
+function Endpoint({ port }: { port: number | null }) {
+  const reachable = port !== null;
+  return (
+    <p className="settings-mcp__endpoint" data-state={reachable ? "ok" : "err"}>
+      <span className="settings-mcp__dot" />
+      {reachable ? (
+        <span>
+          Listening on <span className="settings-mcp__path">127.0.0.1:{port}</span>
+        </span>
+      ) : (
+        <span>The listener did not start — no server is reachable</span>
+      )}
+    </p>
+  );
+}
+
+/** One server: what it is, how to reach it, and whether it is on. */
+function ServerRow({
+  server,
+  onToggle,
+}: {
+  server: McpServerInfo;
+  onToggle: (server: McpServerInfo, next: boolean) => void;
+}) {
+  return (
+    <div className="settings-mcp__row">
+      <div className="settings-mcp__text">
+        <span className="settings-mcp__name">{server.name}</span>
+        <span className="settings-mcp__description">{server.description}</span>
+        {/* The config key and the route, in mono because both are things you
+            retype into somewhere else — a project's `.mcp.json` and a browser
+            respectively. The tool count rides along on the same line: it is the
+            one number that says whether switching this on is worth anything. */}
+        <span className="settings-mcp__meta">
+          {server.configKey} · {server.path} · {toolCount(server.toolCount)}
+        </span>
+      </div>
+      <ToggleControl
+        on={server.enabled}
+        label={server.name}
+        onChange={(next) => onToggle(server, next)}
+      />
+    </div>
+  );
+}
+
+function toolCount(count: number): string {
+  return count === 1 ? "1 tool" : `${count} tools`;
+}
+
+/**
+ * Read the status, or `null` if it could not be read.
+ *
+ * Swallowing rather than surfacing: the panel's own failure mode is that it
+ * keeps showing what it last knew, which is strictly better than replacing a
+ * working list with an error. The console line is there because the symptom —
+ * a switch that snaps back — is otherwise unattributable.
+ */
+function refresh(): Promise<McpStatus | null> {
+  return mcpStatus().catch((err: unknown) => {
+    console.error("helve: could not read the MCP status:", err);
+    return null;
+  });
+}

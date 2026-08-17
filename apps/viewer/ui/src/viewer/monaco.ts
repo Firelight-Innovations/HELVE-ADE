@@ -33,6 +33,7 @@
  */
 import * as monaco from "monaco-editor/editor/editor.api";
 import type { GitHunk } from "./gitHunks";
+import { loadSettings, type SettingsReader } from "../settings";
 
 /**
  * Every editor contribution Monaco ships.
@@ -436,6 +437,94 @@ export function retargetModel(model: TextModel, extension: string): void {
 }
 
 /**
+ * The `editor.*` settings group, in the vocabulary Monaco takes.
+ *
+ * A value rather than a live view. Every row in the group is declared
+ * `Applies::Next { what: "the next editor you open" }`, and the editor keeps
+ * what it was built with until it is reopened; see {@link mountEditor}.
+ */
+export interface EditorSettings {
+  fontSize: number;
+  /** What the user named, with `--mono`'s stack behind it. See {@link fontStack}. */
+  fontFamily: string;
+  tabSize: number;
+  wordWrap: "on" | "off";
+  minimap: boolean;
+  lineNumbers: "on" | "off" | "relative";
+  renderWhitespace: "none" | "boundary" | "all";
+}
+
+/** The two select settings' options, which are Monaco's own vocabulary. */
+const LINE_NUMBER_MODES = ["on", "off", "relative"] as const;
+const WHITESPACE_MODES = ["none", "boundary", "all"] as const;
+
+/** One of `options`, or `fallback` for a string that is not one of them. */
+function oneOf<T extends string>(value: string, options: readonly T[], fallback: T): T {
+  return options.find((option) => option === value) ?? fallback;
+}
+
+/**
+ * The editor settings, fetched once and shared by every editor this frame
+ * mounts.
+ *
+ * Read here rather than threaded down from `App.tsx`, because this is the only
+ * module that knows what a Monaco option is called and the alternative puts
+ * `editor.*` keys in two more files that have no other reason to know they
+ * exist. The caller awaits this and hands the result to {@link mountEditor},
+ * which stays synchronous: an editor is created inside an effect whose cleanup
+ * disposes it, and an `await` in there is a mount that can outlive its unmount.
+ */
+export function loadEditorSettings(): Promise<EditorSettings> {
+  return loadSettings().then(editorSettingsFrom);
+}
+
+/**
+ * Each key with the value this pane drew before the setting existed.
+ *
+ * `fontSize`, `wordWrap`, the font stack and the minimap had literals below and
+ * keep them. The other three were left to Monaco's own defaults and take the
+ * value the schema ships instead, so a settings read that failed still lands
+ * somewhere the settings screen would agree with — the one visible difference
+ * being `renderWhitespace`, whose Monaco default is `"selection"`, a mode the
+ * schema does not offer at all.
+ */
+function editorSettingsFrom(settings: SettingsReader): EditorSettings {
+  return {
+    fontSize: settings.number("editor.fontSize", 12),
+    fontFamily: fontStack(settings.choice("editor.fontFamily", "")),
+    tabSize: settings.number("editor.tabSize", 2),
+    wordWrap: settings.toggle("editor.wordWrap", false) ? "on" : "off",
+    minimap: settings.toggle("editor.minimap", true),
+    lineNumbers: oneOf(settings.choice("editor.lineNumbers", "on"), LINE_NUMBER_MODES, "on"),
+    renderWhitespace: oneOf(
+      settings.choice("editor.renderWhitespace", "none"),
+      WHITESPACE_MODES,
+      "none",
+    ),
+  };
+}
+
+/**
+ * The named font, with the product's own monospace stack behind it.
+ *
+ * Appended rather than substituted: a font this machine does not have has to
+ * degrade to the rest of the product's monospace rather than to whatever the
+ * webview would pick, which is the same promise the schema's description makes.
+ * The stack is read from the token rather than restated, so the editor cannot
+ * drift from the rest of the product — that is what the literal this replaces
+ * was for — and falls back to the generic family only if tokens.css somehow did
+ * not load.
+ */
+function fontStack(named: string): string {
+  const stack = readToken("--mono") || "monospace";
+  if (named === "") return stack;
+  // Quoted, so a family name with a space or a comma in it cannot break the
+  // list it is prepended to. Quotes and backslashes are dropped rather than
+  // escaped, neither being legal inside a CSS family name in the first place.
+  return `"${named.replace(/["\\]/g, "")}", ${stack}`;
+}
+
+/**
  * Mount an editor over an existing model.
  *
  * The model is passed in rather than created from `value`, which is what makes
@@ -443,18 +532,27 @@ export function retargetModel(model: TextModel, extension: string): void {
  * disposes only the model it created itself, so `dispose()` here leaves the
  * caller's model alone.
  *
+ * `settings` is read at construction and never pushed at a live editor
+ * afterwards. `editor.updateOptions()` would make *this* editor follow a change
+ * and leave every other mounted frame on what it was built with, which would
+ * turn "applies to the next editor you open" — the label the settings screen
+ * draws under every one of these rows — into a lie for whichever pane happened
+ * to be in front. There is no channel that pushes `settings:changed` into a
+ * mounted app frame yet; when there is one, this is where it lands.
+ *
  * `automaticLayout: true` matches `DiffView`'s posture: the pane's size is
  * decided by a flexbox and a draggable splitter rather than by anything that
  * could call `layout()` at the right moment. It is also what keeps the minimap
  * honest — the map's width is a function of the editor's, and a splitter drag
  * that did not re-layout would leave it drawn at the old width.
  *
- * The minimap is on, with three settings that are about *this* pane rather
- * than about minimaps:
+ * Whether the minimap is drawn at all is `editor.minimap`. The three settings
+ * beside it are not, because they are about *this* pane rather than about
+ * minimaps:
  *
  * - `renderCharacters: false`. The character-accurate map is a canvas of real
  *   glyphs at sub-pixel size; the block rendering says the same thing about
- *   shape and indentation, reads better next to a 12px editor, and is much
+ *   shape and indentation, reads better next to a small editor, and is much
  *   cheaper to repaint on every keystroke.
  * - `maxColumn: 80`. Uncapped, the map is as wide as the longest line in the
  *   file, and a minified line would eat a third of a pane that is already
@@ -472,6 +570,7 @@ export function mountEditor(
   container: HTMLElement,
   model: TextModel,
   readOnly: boolean,
+  settings: EditorSettings,
 ): CodeEditor {
   return monaco.editor.create(container, {
     model,
@@ -482,21 +581,26 @@ export function mountEditor(
     domReadOnly: readOnly,
     automaticLayout: true,
     minimap: {
-      enabled: true,
+      enabled: settings.minimap,
       renderCharacters: false,
       maxColumn: 80,
       showSlider: "mouseover",
     },
     scrollBeyondLastLine: false,
-    // Read from the token rather than restated, so the editor cannot drift
-    // from the rest of the product's monospace. Falls back to the generic
-    // family only if tokens.css somehow did not load.
-    fontFamily: readToken("--mono") || "monospace",
-    fontSize: 12,
+    fontFamily: settings.fontFamily,
+    fontSize: settings.fontSize,
+    // `detectIndentation` is left at Monaco's default `true`, which is not a
+    // contradiction: it only overrides this when the file's own indentation is
+    // spaces, and how wide a *tab* is drawn is the only thing this setting can
+    // be about.
+    tabSize: settings.tabSize,
+    lineNumbers: settings.lineNumbers,
+    renderWhitespace: settings.renderWhitespace,
     renderLineHighlight: "line",
-    // A source file's own line breaks are information; re-flowing them would
-    // misreport what the file says. Same rule as `.app__code`.
-    wordWrap: "off",
+    // A source file's own line breaks are information and re-flowing them
+    // misreports what the file says, which is why `editor.wordWrap` ships off.
+    // Same rule, and the same default, as `.app__code`.
+    wordWrap: settings.wordWrap,
   });
 }
 
@@ -543,9 +647,10 @@ export interface GitGutter {
 
 /**
  * Rows of vertical space one peek needs, in the editor's own line height
- * rather than a fixed pixel count — so it does not clip if `mountEditor` ever
- * grows a font-size option, and lines up with the surrounding text at
- * whatever size the editor is actually drawing.
+ * rather than a fixed pixel count — which is load-bearing now that `fontSize`
+ * is `editor.fontSize` rather than a literal: it lines up with the surrounding
+ * text at whatever size the editor is actually drawing, and does not clip at
+ * the top of the range.
  */
 function peekHeightPx(editor: CodeEditor, rows: number): number {
   const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);

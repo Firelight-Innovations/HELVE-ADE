@@ -87,6 +87,14 @@ const BUILTIN_PREFIX: &str = "builtin:";
 /// where the cost of a very deep tree is paid on every read and every apply.
 const MAX_DEPTH: usize = 6;
 
+/// The id of the preset `project::open` applies automatically once a project
+/// finishes opening.
+///
+/// A constant rather than a string typed again at the call site, because the
+/// two have to name exactly the same built-in and nothing else would catch it
+/// if they drifted — `presets::find` fails closed on a typo, not loudly.
+pub const PROJECT_OPEN_PRESET_ID: &str = "builtin:files-viewer-over-terminal";
+
 /// One thing that goes in a pane.
 ///
 /// Deliberately not "an app id, with `terminal` as a magic value". A terminal
@@ -154,14 +162,22 @@ pub struct LayoutPreset {
 
 /// The presets this build ships, in menu order.
 ///
-/// Three, and they are chosen to make the feature explain itself on first open
+/// The first three are chosen to make the feature explain itself on first open
 /// rather than to cover every arrangement: one row, one column, and one that
 /// puts two instances of the *same* app side by side — which is the thing about
 /// this shell that a person coming from a single-document editor does not expect
-/// to be possible, and which no amount of menu copy would tell them.
+/// to be possible, and which no amount of menu copy would tell them. The two
+/// appended after them each earn their place for a narrower reason of their
+/// own — see the comments on `explorer-and-viewer` and
+/// `files-viewer-over-terminal` below, and [`PROJECT_OPEN_PRESET_ID`] for what
+/// makes the second of those different from every other entry here.
 ///
-/// They name the two file apps and terminals, and never Home — a built-in built
-/// around Home would be a preset for the screen you are already on.
+/// They name the file apps, the viewer, and terminals, and never Home — a
+/// built-in built around Home would be a preset for the screen you are already
+/// on. That holds even for `files-viewer-over-terminal`, which `project::open`
+/// applies the moment Home hands a cluster off to a real project: it is a
+/// caller's decision about *when* to reach for this arrangement, not a reason
+/// for the arrangement itself to know Home exists.
 pub fn builtins() -> Vec<LayoutPreset> {
     vec![
         LayoutPreset {
@@ -218,6 +234,40 @@ pub fn builtins() -> Vec<LayoutPreset> {
                 // people already had does not shift under them.
                 sizes: vec![0.25, 0.75],
                 children: vec![app_pane("files"), app_pane("viewer")],
+            },
+        },
+        // The one nobody clicks, because `project::open` clicks it for them.
+        // Opening a project used to leave Home sitting in the cluster it had
+        // just handed off, with the file tree and the viewer nowhere on
+        // screen until the user went and asked the Apps menu for each of
+        // them by hand. This is that arrangement, applied the instant there
+        // is a project to arrange it around — see `PROJECT_OPEN_PRESET_ID`
+        // and `commands::apply_project_open_preset`.
+        //
+        // Also appended, and for the same reason `explorer-and-viewer` gives
+        // above: the tests index `builtins()` positionally, and putting this
+        // anywhere but last would silently re-point them at the wrong entry.
+        LayoutPreset {
+            id: PROJECT_OPEN_PRESET_ID.to_string(),
+            name: "Files & Viewer over Terminal".to_string(),
+            builtin: true,
+            root: PresetNode::Split {
+                dir: SplitDir::Column,
+                // The terminal takes the narrower share, same as
+                // `files-over-terminal`: it is what you watch while you work
+                // in the row above, not the thing the eye starts on.
+                sizes: vec![0.7, 0.3],
+                children: vec![
+                    PresetNode::Split {
+                        dir: SplitDir::Row,
+                        // `explorer-and-viewer`'s own proportions — this row
+                        // is that preset, nested, so a project opened this
+                        // way and a project arranged by hand read the same.
+                        sizes: vec![0.25, 0.75],
+                        children: vec![app_pane("files"), app_pane("viewer")],
+                    },
+                    terminal_pane(),
+                ],
             },
         },
     ]
@@ -999,15 +1049,50 @@ mod tests {
         let merged = merge(vec![user("a", "Alpha"), user("b", "Beta")]);
         let names: Vec<&str> = merged.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
-            &names[..4],
+            &names[..5],
             &[
                 "Files & Terminal",
                 "Two Files",
                 "Files over Terminal",
                 "Explorer & Viewer",
+                "Files & Viewer over Terminal",
             ]
         );
-        assert_eq!(&names[4..], &["Alpha", "Beta"]);
+        assert_eq!(&names[5..], &["Alpha", "Beta"]);
+    }
+
+    /// The shape `project::open` relies on: the file tree and the viewer on
+    /// top, a terminal beneath, and — because a `Cluster::apply_preset` caller
+    /// resolves this preset by id rather than by position — an id that matches
+    /// [`PROJECT_OPEN_PRESET_ID`] exactly.
+    #[test]
+    fn the_project_open_preset_is_files_and_viewer_over_a_terminal() {
+        let preset = builtins()
+            .into_iter()
+            .find(|p| p.id == PROJECT_OPEN_PRESET_ID)
+            .expect("it is one of the built-ins");
+
+        let PresetNode::Split {
+            dir: outer_dir,
+            children: outer_children,
+            ..
+        } = &preset.root
+        else {
+            panic!("expected the outer split, got {:?}", preset.root);
+        };
+        assert_eq!(*outer_dir, SplitDir::Column, "row on top, terminal below");
+        assert_eq!(outer_children[1], terminal_pane());
+
+        let PresetNode::Split {
+            dir: inner_dir,
+            children: inner_children,
+            ..
+        } = &outer_children[0]
+        else {
+            panic!("expected the inner split, got {:?}", outer_children[0]);
+        };
+        assert_eq!(*inner_dir, SplitDir::Row);
+        assert_eq!(inner_children, &[app_pane("files"), app_pane("viewer")]);
     }
 
     // --- applying -----------------------------------------------------------

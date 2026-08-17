@@ -84,7 +84,9 @@ export default function StatusBar({ engine, git, githubOk }: StatusBarProps) {
         >
           <Sliders size={14} knobFill="var(--surface)" />
         </button>
-        <AnimatePresence>{settingsOpen && <SettingsPopover />}</AnimatePresence>
+        <AnimatePresence>
+          {settingsOpen && <SettingsPopover onPicked={() => setSettingsOpen(false)} />}
+        </AnimatePresence>
       </div>
     </div>
   );

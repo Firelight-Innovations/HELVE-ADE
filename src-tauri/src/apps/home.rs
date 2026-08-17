@@ -55,6 +55,15 @@ pub fn call(
     match method {
         "home/state" => state(app, context),
 
+        // The tutorial column, from the same catalog the Tutorials app draws.
+        // Home asks for it rather than holding its own list, because a second
+        // copy would be a second place to add a tutorial and a first place to
+        // forget to. Separate from `home/state` on purpose: this answer changes
+        // when a tutorial is finished, and `home/state` changes when a project
+        // is opened, so folding them together would mean refetching one to
+        // learn about the other.
+        "home/tutorials" => Ok(super::tutorial::summary(app)),
+
         // The cluster is required *before* the picker goes up, not after. A
         // dialog raised for a cluster that is no longer there would take a
         // folder choice and then have nowhere to put it, which is a worse

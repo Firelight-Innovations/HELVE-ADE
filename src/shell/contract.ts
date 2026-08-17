@@ -255,12 +255,12 @@ export interface TerminalBusy {
  */
 export interface TerminalControl {
   /**
-   * A terminal in this **window's panel**. Resolves once the shell is actually
-   * running and the session has an id.
+   * A terminal in this window's **terminal band**, the band's own `+` and the
+   * default. Resolves once the shell is running and the session has an id.
    *
-   * The panel's own `+`, and the default. A panel terminal belongs to the
-   * window rather than to any cluster, so it survives every cluster switch —
-   * see `TerminalSessionState.windowLabel` for why that is the point of it.
+   * Addressed by window because that is what a control in a window can honestly
+   * name; Rust resolves it to whichever cluster that window is showing, which is
+   * the one whose band was clicked. See `TerminalSessionState.clusterId`.
    */
   create(windowLabel: string, cols: number, rows: number): Promise<string>;
   /**
@@ -272,9 +272,9 @@ export interface TerminalControl {
    * questions: `create` is *what am I watching*, and outlives the cluster;
    * this is *what am I working in*, and is part of an arrangement — the
    * right-hand pane of a "Files & Terminal" preset, or whatever someone drags
-   * there by hand. It closes with its cluster because it is drawn inside it.
+   * there by hand. It is sized by the layout and moves when the layout does.
    * Both exist in VS Code for the same reason, as the panel and an editor-area
-   * terminal.
+   * terminal. They no longer differ in lifetime: both belong to the cluster.
    *
    * There is still only one thing in the application that spawns a shell:
    * Rust opens the session the usual way and then moves its id into the tree,
@@ -845,16 +845,13 @@ export type { GitCommit, GitWorktree, WorktreeRef } from "../bindings";
  * worktree.
  *
  * A cluster is one thing being worked on. Switching cluster tabs swaps the pane
- * tree *and the project underneath it* — and only those. The panel beside it
- * does not change, because the terminals in it are the *window's*: a shell
- * watching one worktree is exactly the thing you want still in front of you
- * while you move between the clusters working on others. See
- * `TerminalSessionState.windowLabel`.
+ * tree, the project underneath it, *and* the terminals in the band below it —
+ * the whole of what is on screen for one piece of work, which is what makes a
+ * chip a place rather than a filter. See `TerminalSessionState.clusterId`.
  *
- * A terminal that has been dragged into the layout is a different matter. It is
- * a tab in `tree` like any other surface, drawn in the pane area, and the panel
- * stops listing it — membership of one excludes the other, and both are derived
- * from the tree rather than tracked.
+ * A terminal dragged into the layout is a tab in `tree` like any other surface
+ * and the band stops listing it: membership of one excludes the other, and both
+ * are derived from the tree rather than tracked.
  */
 export interface Cluster {
   id: string;
@@ -877,6 +874,10 @@ export interface Cluster {
    */
   project: string | null;
   worktree: WorktreeRef | null;
+  /** Which terminal this cluster's band shows, or `null` for an empty band.
+   *  Rust re-seats it after every mutation, so it always names one of *this*
+   *  cluster's, and never one dragged into a pane tree. */
+  activeTerminal: string | null;
 }
 
 /**
@@ -907,11 +908,11 @@ export interface ClusterMember {
   dragId: string;
   title: string;
   kind: SurfaceKind;
-  /** The pane holding it, or `null` when it lives in the terminal panel. */
+  /** The pane holding it, or `null` when it lives in the terminal band. */
   paneId: string | null;
-  /** On screen right now — its pane's active tab, or the panel's. */
+  /** On screen right now — its pane's active tab, or the band's. */
   showing: boolean;
-  /** Only ever true for a terminal. Drives the dot, exactly as in the panel. */
+  /** Only ever true for a terminal. Drives the dot, exactly as in the band. */
   agentFinished: boolean;
 }
 
@@ -989,8 +990,9 @@ export interface ClusterDrag {
  *
  * `pane` with an `edge` splits that pane on that side; `pane` with no edge
  * appends to its tab strip. `strip` is a drop between two tabs, with `index`
- * naming the insertion point. `panel` is the terminal panel — the one place a
- * terminal can go that is not the tree. `detach` is clear of every drop target,
+ * naming the insertion point. `panel` is the terminal band — the one place a
+ * terminal can go that is not the tree, still named for the panel it used to be.
+ * `detach` is clear of every drop target,
  * and releasing there makes a window.
  *
  * `none` is the pointer being somewhere this *particular* payload cannot go —
@@ -1048,6 +1050,10 @@ export interface FrameSlots {
   switcherBar?: ReactNode;
   toolWindow: ReactNode;
   secondaryPanel: ReactNode;
+  /** The terminal band, under the tool window and stopping at the secondary
+   *  panel's edge — `.frame__main` in frame.css says why it does not span the
+   *  window. Omitted, neither the band nor its handle is rendered at all. */
+  bottomPanel?: ReactNode;
   statusBar: ReactNode;
   /** Portalled above everything: drag ghost and drop outlines. */
   overlay?: ReactNode;

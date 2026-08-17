@@ -172,6 +172,54 @@ export const searchOverlayBody = {
   exit: { y: -6, transition: searchOverlayOut },
 };
 
+/* --- settings, which is a place rather than a mode ------------------------
+ *
+ * Search comes *down out from under* the bar you are typing into, because it is
+ * an extension of that field: the two are one gesture and the clip is what
+ * makes the panel look attached to the thing that spawned it.
+ *
+ * Settings is not attached to anything. It is a screen you go to and come back
+ * from, and giving it search's unroll would say it belongs to the status bar
+ * glyph that opened it, which is a button and not a source. So it arrives the
+ * way a sheet does: the window behind dims, and the screen settles forward out
+ * of it.
+ *
+ * Both halves are paint-only — `opacity` on the backdrop, `opacity` and
+ * `transform` on the surface — for the reason the search clip is: this screen
+ * contains scroll containers and a full-width form, and animating a box would
+ * make every one of them re-layout on every frame of the reveal.
+ */
+
+/** How long dismissal takes. Faster than arrival, the rule `instantOut` states. */
+const SETTINGS_OUT_MS = 90;
+
+const settingsOut: Transition = {
+  duration: SETTINGS_OUT_MS / 1000,
+  ease: [0.4, 0, 1, 1],
+};
+
+/** The window behind, dimmed. Nothing moves; only the wash arrives. */
+export const settingsBackdrop = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: settle },
+  exit: { opacity: 0, transition: settingsOut },
+};
+
+/**
+ * The screen itself.
+ *
+ * 1.5% and eight pixels, which is deliberately almost nothing. A full-screen
+ * surface that visibly flies in reads as a modal interrupting you; this one
+ * should read as having been there, one layer back, the whole time. Any more
+ * travel and the text blurs through the scale, which on a screen made of labels
+ * is the one artefact there is no excuse for.
+ */
+export const settingsScreen = {
+  initial: { opacity: 0, scale: 0.985, y: 8 },
+  animate: { opacity: 1, scale: 1, y: 0, transition: settle },
+  exit: { opacity: 0, scale: 0.99, y: 4, transition: settingsOut },
+};
+
 /** The boot spinner's arc. Linear and infinite — it reports nothing but life. */
 export const spinArc: Transition = {
   duration: 0.9,

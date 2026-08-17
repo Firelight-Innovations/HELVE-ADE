@@ -108,6 +108,14 @@ pub enum AppError {
     /// list, not an error.
     #[error("{0}")]
     Search(String),
+
+    /// A settings write the schema refused: an unknown key, a value of the
+    /// wrong type, or a choice that is not one of the options. Wrapped rather
+    /// than flattened, because unlike everything else here the message is
+    /// assembled from the descriptor and the offending value — see
+    /// `settings::SettingError`.
+    #[error("{0}")]
+    Setting(#[from] crate::settings::SettingError),
 }
 
 /// Tauri sends a command's error across the IPC boundary into JavaScript, so the

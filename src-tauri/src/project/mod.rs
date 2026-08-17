@@ -71,6 +71,7 @@
 mod marker;
 mod store;
 
+use crate::commands;
 use crate::error::{AppError, Result};
 use crate::shell_state::ShellState;
 use serde::Serialize;
@@ -248,22 +249,6 @@ pub fn cluster_root_pointer(app: &AppHandle, cluster_id: &str) -> Option<PathBuf
         .map(PathBuf::from)
 }
 
-/// The working root of whatever cluster a window is showing.
-///
-/// The window-shaped question, for the two things that are the window's
-/// rather than any cluster's: the terminal panel, and where it spawns. A
-/// terminal opened in a window starts in the root that window is looking at
-/// *at that moment* and then stays where it is — see
-/// `ShellState::active_cluster_root` for why it does not follow later
-/// cluster switches, and for the worktree-over-project precedence a plain
-/// `active_cluster_project` would have missed.
-pub fn window_path(app: &AppHandle, label: &str) -> Option<PathBuf> {
-    app.state::<ShellState>()
-        .active_cluster_root(label)
-        .map(PathBuf::from)
-        .filter(|p| p.is_dir())
-}
-
 /// Everything Home draws, from the asking cluster's point of view.
 ///
 /// `cluster_id` is `None` for a caller with no cluster to speak of — an app
@@ -310,6 +295,8 @@ pub fn snapshot(app: &AppHandle, cluster_id: Option<&str>) -> ProjectSnapshot {
 /// Recent list is touched, which stays global because it is this machine's
 /// history rather than anything about the place you are working. Opening the
 /// same project in a second cluster is one recent entry, not two.
+/// Finishes via `commands::apply_project_open_preset`, hooked here rather
+/// than at each caller since `create` and `initialize` both end by calling `open`.
 pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSnapshot> {
     if !path.is_dir() {
         return Err(AppError::NotAProject(path.display().to_string()));
@@ -352,6 +339,7 @@ pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSna
     shell.set_cluster_project(app, cluster_id, Some(path.display().to_string()));
 
     retitle(app);
+    commands::apply_project_open_preset(app, cluster_id);
 
     // The emit lives here rather than in each mutator, because `create` and
     // `initialize` both finish by calling this: one user-visible change, one
