@@ -3,18 +3,8 @@
 //! The third thing in the orchestrator to touch the disk, after
 //! [`crate::project::store`] and [`crate::shell_store`], and built to the same
 //! four rules those two share — read them for the reasoning, which is unchanged
-//! here:
-//!
-//!   * **Never fatal.** Every read degrades to [`Stored::default`], which merges
-//!     to "just the built-ins". A presets file that is missing, truncated by a
-//!     power cut, or written by a future build must not stop HELVE from
-//!     starting, and must not empty the menu it is meant to fill.
-//!   * **Atomic write.** Temp file, then rename — atomic on NTFS and POSIX
-//!     alike, so a crash mid-write leaves the previous file intact rather than
-//!     half of two.
-//!   * **Forward-compatible.** `#[serde(default)]`, unknown fields ignored.
-//!   * **Not in the repo.** The OS config directory, beside `projects.json` and
-//!     `layout.json`, never inside a project.
+//! here: never fatal, atomic write, forward-compatible, and not in the repo.
+//! Each rule is stated again on the item that keeps it.
 //!
 //! ## Why this is not in `layout.json`
 //!
@@ -26,13 +16,6 @@
 //! from. Folding them in would mean one corrupt write costing both, and would
 //! put a file rewritten hundreds of times a session in charge of something the
 //! user expects to still be there next year.
-//!
-//! ## What is not in the file
-//!
-//! The built-ins. They are compiled in ([`super::builtins`]) and merged on
-//! read, so this file holds only what the user saved. That is what makes a
-//! built-in impossible to lose: there is nothing on disk to lose it *from*, and
-//! [`super::merge`] refuses any entry claiming to be one.
 
 use super::LayoutPreset;
 use serde::{Deserialize, Serialize};
@@ -42,13 +25,26 @@ use tauri::{AppHandle, Manager};
 const FILE: &str = "presets.json";
 
 /// What is on disk: the user's own presets, and nothing else.
+///
+/// Not the built-ins. They are compiled in ([`super::builtins`]) and merged on
+/// read, so this file holds only what the user saved. That is what makes a
+/// built-in impossible to lose: there is nothing on disk to lose it *from*, and
+/// [`super::merge`] refuses any entry claiming to be one.
+///
+/// **Forward-compatible.** `#[serde(default)]`, unknown fields ignored, so a
+/// document written by a later build still reads.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Stored {
     pub presets: Vec<LayoutPreset>,
 }
 
-/// Read the store, or start empty. Never fails — see the module doc.
+/// Read the store, or start empty.
+///
+/// **Never fatal.** Every failure degrades to [`Stored::default`], which merges
+/// to "just the built-ins". A presets file that is missing, truncated by a power
+/// cut, or written by a future build must not stop HELVE from starting, and must
+/// not empty the menu it is meant to fill.
 pub fn load(app: &AppHandle) -> Stored {
     let Some(path) = file(app) else {
         return Stored::default();
@@ -77,10 +73,14 @@ pub fn load(app: &AppHandle) -> Stored {
     })
 }
 
-/// Write the store, atomically. See `project::store::save`, which this is a copy
-/// of down to the error handling — deliberately, because the failure it guards
-/// against is the same one and a second version of it that drifted would be a
-/// second way to lose a file.
+/// Write the store, **atomically**: temp file, then rename — atomic on NTFS and
+/// POSIX alike, so a crash mid-write leaves the previous file intact rather than
+/// half of two.
+///
+/// See `project::store::save`, which this is a copy of down to the error
+/// handling — deliberately, because the failure it guards against is the same
+/// one and a second version of it that drifted would be a second way to lose a
+/// file.
 pub fn save(app: &AppHandle, stored: &Stored) {
     let Some(path) = file(app) else { return };
 
@@ -111,6 +111,9 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 }
 
 /// `%APPDATA%/<identifier>/presets.json` on Windows, the equivalent elsewhere.
+///
+/// **Not in the repo.** The OS config directory, beside `projects.json` and
+/// `layout.json`, never inside a project.
 ///
 /// `None` only if the platform has no config directory at all. An `Option`
 /// rather than an `expect` for `project::store::file`'s reason: losing the saved

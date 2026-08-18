@@ -1,35 +1,26 @@
-//! Real terminals: a pseudo-terminal per session, and the seam every byte
-//! crosses.
+//! Real terminals: a pseudo-terminal per session, and the seam every byte crosses.
 //!
-//! A pseudo-terminal ("pty") is a pair of file handles that impersonate a
-//! physical terminal. We hold the *master* end; the shell we spawn is given the
-//! *slave* end and cannot tell the difference between it and a real console.
-//! That is what makes full-screen TUIs work — the program asks the terminal how
-//! big it is, whether it can move the cursor, whether it can use colour, and
-//! gets real answers instead of the "this is a pipe" answers it would get from
-//! `std::process::Command`.
+//! A pseudo-terminal ("pty") is a pair of file handles that impersonate a physical terminal. We
+//! hold the *master* end; the shell we spawn is given the *slave* end and cannot tell the
+//! difference between it and a real console. That is what makes full-screen TUIs work — the program
+//! asks the terminal how big it is, whether it can move the cursor, whether it can use colour, and
+//! gets real answers instead of the "this is a pipe" answers `std::process::Command` would give.
 //!
-//! `portable-pty` is the abstraction over the three OS mechanisms for this
-//! (ConPTY on Windows, `openpty` on macOS and Linux). We use it rather than
-//! writing that ourselves for the obvious reason, and it is the same crate
-//! WezTerm ships, so it is exercised heavily by something that is only a
-//! terminal.
+//! `portable-pty` abstracts the three OS mechanisms for this (ConPTY on Windows, `openpty` on
+//! macOS and Linux). Used rather than written ourselves for the obvious reason, and the same crate
+//! WezTerm ships — exercised heavily by something that is only a terminal.
 //!
-//! # The interception seam
-//!
-//! Everything here funnels through [`tap_output`] and [`tap_input`], and nothing
-//! else in the orchestrator may talk to a pty directly. That is the whole point
-//! of this module's shape. A coding harness — Claude Code, Codex — is a program
-//! that reads a terminal and writes a terminal, so owning both directions of its
-//! byte stream is enough to wrap it: to notice what it did, to answer a prompt
-//! on its behalf, to stop it. Those two functions are where that goes, and they
-//! return `Cow` rather than `()` so a wrapper can *rewrite* a stream and not
-//! merely watch it.
-//!
-//! Both are pass-through today. The seam exists before the feature does so the
-//! feature never has to be threaded through the transport later.
+//! **The interception seam.** Everything here funnels through [`tap_output`] and [`tap_input`], and
+//! nothing else in the orchestrator may talk to a pty directly — the whole point of this module's
+//! shape. A coding harness — Claude Code, Codex — reads a terminal and writes a terminal, so owning
+//! both directions of its byte stream is enough to wrap it: to notice what it did, to answer a
+//! prompt on its behalf, to stop it. Those two functions are where that goes; they return `Cow`
+//! rather than `()` so a wrapper can *rewrite* a stream, not merely watch it. Both are pass-through
+//! today; the seam exists before the feature does so the feature never has to be threaded through
+//! the transport later.
 
 use crate::error::{AppError, Result};
+use crate::sync::MutexExt;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize, SlavePty};
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
@@ -155,7 +146,7 @@ impl Backlog {
             }
         }
 
-        self.attached.then(|| Chunk { seq, data: text })
+        self.attached.then_some(Chunk { seq, data: text })
     }
 }
 
@@ -245,7 +236,7 @@ impl PtySessions {
         let backlog = Arc::new(Mutex::new(Backlog::default()));
         pump(app.clone(), id.to_string(), reader, Arc::clone(&backlog));
 
-        self.inner.lock().expect("pty map poisoned").insert(
+        self.inner.lock_or_panic().insert(
             id.to_string(),
             Session {
                 master: pty.master,
@@ -268,11 +259,11 @@ impl PtySessions {
         // both would put this thread and the reader thread in opposite orders
         // on two locks, which is the shape a deadlock needs.
         let backlog = {
-            let map = self.inner.lock().expect("pty map poisoned");
+            let map = self.inner.lock_or_panic();
             Arc::clone(&map.get(id)?.backlog)
         };
 
-        let mut b = backlog.lock().expect("backlog poisoned");
+        let mut b = backlog.lock_or_panic();
         b.attached = true;
         Some(Attachment {
             text: b.chunks.iter().map(|(_, t)| t.as_str()).collect(),
@@ -284,7 +275,7 @@ impl PtySessions {
     /// A keystroke, or anything else the emulator wants the shell to receive.
     pub fn write(&self, id: &str, data: &str) {
         let data = tap_input(id, data);
-        let mut map = self.inner.lock().expect("pty map poisoned");
+        let mut map = self.inner.lock_or_panic();
         if let Some(s) = map.get_mut(id) {
             // Deliberately ignored. A write failing means the shell is already
             // gone, and the read loop's end-of-file is what tells the frontend
@@ -298,7 +289,7 @@ impl PtySessions {
     /// draws to the size the pty reports, so a pty that disagrees with the
     /// emulator produces a corrupt frame rather than a scaled one.
     pub fn resize(&self, id: &str, cols: u16, rows: u16) {
-        let map = self.inner.lock().expect("pty map poisoned");
+        let map = self.inner.lock_or_panic();
         if let Some(s) = map.get(id) {
             let _ = s.master.resize(PtySize {
                 rows,
@@ -312,7 +303,7 @@ impl PtySessions {
     /// Kill the shell and forget the session. Idempotent — closing a tab whose
     /// shell already exited is not an error.
     pub fn close(&self, id: &str) {
-        let mut map = self.inner.lock().expect("pty map poisoned");
+        let mut map = self.inner.lock_or_panic();
         if let Some(mut s) = map.remove(id) {
             let _ = s.child.kill();
             let _ = s.child.wait();
@@ -321,7 +312,7 @@ impl PtySessions {
 
     /// The shell's own process id, for the busy check.
     fn pid(&self, id: &str) -> Option<u32> {
-        let mut map = self.inner.lock().expect("pty map poisoned");
+        let mut map = self.inner.lock_or_panic();
         map.get_mut(id).and_then(|s| s.child.process_id())
     }
 }
@@ -426,15 +417,13 @@ fn pump(
             let (text, rest) = match std::str::from_utf8(&pending) {
                 Ok(s) => (s.to_string(), Vec::new()),
                 Err(e) => {
-                    let good = e.valid_up_to();
-                    // Valid by construction: `valid_up_to` is the length of a
-                    // verified-valid prefix. Spelled with the checked call
-                    // anyway — an `unsafe` block would buy nothing measurable
-                    // here, since this runs once per read rather than per byte.
-                    let s = std::str::from_utf8(&pending[..good])
-                        .expect("prefix validated by valid_up_to")
-                        .to_string();
-                    (s, pending[good..].to_vec())
+                    // `valid_up_to` is the length of a verified-valid prefix, so
+                    // the lossy decode never actually substitutes anything — it
+                    // is just the infallible spelling of "decode a slice already
+                    // known to be UTF-8". An `unsafe` block would buy nothing
+                    // measurable, since this runs once per read, not per byte.
+                    let (valid, rest) = pending.split_at(e.valid_up_to());
+                    (String::from_utf8_lossy(valid).into_owned(), rest.to_vec())
                 }
             };
             pending = rest;
@@ -442,7 +431,7 @@ fn pump(
             if !text.is_empty() {
                 let out = tap_output(&id, &text).into_owned();
                 // Stored either way; emitted only once someone is listening.
-                let live = backlog.lock().expect("backlog poisoned").push(out);
+                let live = backlog.lock_or_panic().push(out);
                 if let Some(chunk) = live {
                     let _ = app.emit(&data_event(&id), chunk);
                 }
@@ -452,7 +441,7 @@ fn pump(
         // Recorded as well as emitted, for the same reason the output is: a
         // shell that fails instantly can be gone before any window exists to
         // hear about it, and a tab whose process died has to close either way.
-        backlog.lock().expect("backlog poisoned").exited = true;
+        backlog.lock_or_panic().exited = true;
         let _ = app.emit(&exit_event(&id), ());
     });
 }

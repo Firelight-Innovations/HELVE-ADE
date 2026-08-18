@@ -5,22 +5,13 @@
  * its background, and the collapse animation (src/shell/frame/Frame.tsx,
  * frame.css) — nothing here repeats those, and nothing here sets a width.
  *
- * ## What left, and why the tab row went with it
+ * ## What left
  *
  * Terminals used to share this panel. Its row listed a tab per session plus a
  * `+` to make another, with the change list as one more segment at the end, and
  * the body swapped between the two. They are in the band under the tool window
  * now (`BottomPanel`), which is where a terminal wants to be: wide, short, and
  * across the bottom of the work rather than beside it.
- *
- * The row went with them rather than staying behind, because a tab row with one
- * tab in it is a control that can only ever be in one state. What is left is one
- * view, so the panel shows it and says its name.
- *
- * This is deliberately more room than source control currently fills. The panel
- * is meant to grow other things beside it, and the shape it will need then is a
- * list of views rather than the segmented row that just left — so this stops
- * short of building a row for one view and calling it the pattern.
  */
 import { type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, GitBranch } from "../../ui/Icon";
@@ -48,8 +39,10 @@ export default function SecondaryPanel({
   return (
     <div className="panel">
       {/* A header rather than a tab row. It names what is below it and holds
-          the one control the panel still has of its own; see this file's doc
-          comment for why it is not a row of one segment. */}
+          the one control the panel still has of its own. The row went with the
+          terminals rather than staying behind, because a tab row with one tab
+          in it is a control that can only ever be in one state. What is left is
+          one view, so the panel shows it and says its name. */}
       <div className="panel__head">
         <span className="panel__headtitle">Source Control</span>
         <button
@@ -62,6 +55,11 @@ export default function SecondaryPanel({
         </button>
       </div>
 
+      {/* Deliberately more room than source control currently fills. The panel
+          is meant to grow other things beside it, and the shape it will need
+          then is a list of views rather than the segmented row that just left —
+          so this stops short of building a row for one view and calling it the
+          pattern. */}
       <div className="panel__body">{worktreeView ?? null}</div>
     </div>
   );

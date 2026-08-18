@@ -16,14 +16,8 @@ import UnavailableState from "./UnavailableState";
  * app inside it, and a Files that forgot its open file every time you
  * rearranged the layout would make the layout not worth rearranging.
  *
- * The two ids here are not interchangeable, and keeping them apart is the point:
- *
- *   * `instanceId` is identity — what a message from this frame resolves to,
- *     which tab to close, whose title changed.
- *   * `tool.id` is the app id — a *type*. It is what decides which code to load,
- *     so it is what `useToolFrontend` resolves a URL from. Two Files instances
- *     ask for the same URL and get two independent frames, which is exactly
- *     right: same code, separate state.
+ * `instanceId` and `tool.id` are not interchangeable, and keeping them apart is
+ * the point; see each one's own doc below.
  */
 export default function ToolMount({
   instanceId,
@@ -33,8 +27,18 @@ export default function ToolMount({
   registerFrame,
   unregisterFrame,
 }: {
+  /**
+   * Identity — what a message from this frame resolves to, which tab to close,
+   * whose title changed.
+   */
   instanceId: string;
-  /** How to present the app this is an instance of. `tool.id` is the app id. */
+  /**
+   * How to present the app this is an instance of. `tool.id` is the app id — a
+   * *type*, which is what decides which code to load, so it is what
+   * `useToolFrontend` resolves a URL from. Two Files instances ask for the same
+   * URL and get two independent frames, which is exactly right: same code,
+   * separate state.
+   */
   tool: ToolPresentation;
   /** This instance's own tab title, which the boot overlay names. */
   title: string;

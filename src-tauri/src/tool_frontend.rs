@@ -5,16 +5,13 @@
 //! before it can render anything: what URL goes in the `src`.
 //!
 //! There are two answers, and which one applies is not a preference:
-//!
-//!   * **In development**, the tool's own Vite server. `helve-tool.toml`
-//!     declares it as `frontend.dev-url`. Pointing at it means the tool's hot
-//!     reload works *inside the real shell*, which is the whole reason a tool
-//!     author would run the orchestrator at all.
-//!   * **In a release build**, the tool's built `frontend.dist` directory,
-//!     served over the custom `helve-tool://` scheme registered below. There is
-//!     no dev server in a shipped app, and loading a built bundle off `file://`
-//!     would put every tool on the same opaque origin — which is exactly the
-//!     thing the protocol's origin checks depend on not happening.
+//!   * **In development**, the tool's own Vite server, declared as `frontend.dev-url` in
+//!     `helve-tool.toml`. Pointing at it means the tool's hot reload works *inside the real
+//!     shell*, which is the whole reason a tool author would run the orchestrator at all.
+//!   * **In a release build**, the tool's built `frontend.dist` directory, served over the custom
+//!     `helve-tool://` scheme registered below. There is no dev server in a shipped app, and
+//!     loading a built bundle off `file://` would put every tool on the same opaque origin — the
+//!     exact thing the protocol's origin checks depend on not happening.
 //!
 //! Everything else — a checkout that isn't there, a manifest that doesn't
 //! parse — resolves to `Unavailable` with a reason. The shell renders that as a

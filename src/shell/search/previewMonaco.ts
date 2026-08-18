@@ -7,15 +7,10 @@
  * mirroring the split `apps/files/ui/src/viewer/monaco.ts` draws for the same
  * reason (see that file's header).
  *
- * Two existing integrations were mined for this one, and neither could just be
- * imported: `src/shell/diff/DiffView.tsx` is shell-side like this pane, but its
- * `editor.api`-only import means it has no tokenizer for any language, and this
- * pane's whole job is showing a file's syntax; `apps/files/ui/src/viewer/monaco.ts`
- * has the tokenizer wiring and the theme this pane wants, but it lives in
- * `apps/files/`, which `src/` may not import from (and vice versa — see
- * CLAUDE.md's app isolation rule). So this file borrows the *shape* of both —
- * DiffView's worker wiring and disposal discipline, Files' language table and
- * theme palette — and restates it, with comments marking what came from where.
+ * Two existing integrations were mined for this one and neither could simply
+ * be imported. `docs/design-notes/shell-search.md` records what came from
+ * `src/shell/diff/DiffView.tsx`, what from `apps/files/ui/src/viewer/monaco.ts`,
+ * and why. Comments below mark what came from where.
  *
  * Imported from `monaco-editor/editor/editor.api`, not `.../editor.main`, for
  * the reason DiffView's header gives: `editor.main` registers every bundled
@@ -29,22 +24,18 @@ import * as monaco from "monaco-editor/editor/editor.api";
  * `apps/files/ui/src/viewer/monaco.ts`, minus two of its entries.
  *
  * Each registers an id and a *lazy* loader, so the grammar itself is a chunk
- * fetched the first time a file of that language is previewed; listing one
- * here costs a few hundred bytes, not a grammar. This is what "real syntax
- * highlighting" (the brief) costs beyond DiffView's zero: one import line per
- * language, each resolving to its own small lazy chunk rather than one big one.
+ * fetched the first time a file of that language is previewed; listing one here
+ * costs a few hundred bytes, not a grammar. That is what "real syntax
+ * highlighting" (the brief) costs beyond DiffView's zero.
  *
  * One thing Files' list has that this one does not: `features/register.all`.
- * That barrel is what gives an *editable* buffer its find widget, context menu,
- * folding, multi-cursor and so on — Files measured its cost at nearly a third of
- * that app's editor chunk. A read-only glance pane that only scrolls and
- * highlights a match needs none of it; `revealLineInCenter` and decorations are
- * core `editor.api`, not contributions. If this pane ever grows in-place find,
- * that barrel's cost gets re-measured then, the way Files did for its own
- * feature set.
+ * That barrel gives an *editable* buffer its find widget, context menu,
+ * folding and multi-cursor — Files measured it at nearly a third of that app's
+ * editor chunk. A read-only glance pane needs none of it; `revealLineInCenter`
+ * and decorations are core `editor.api`, not contributions. If this pane ever
+ * grows in-place find, that cost gets re-measured then, the way Files did.
  *
- * TOML is not in this list because it is not one of Monaco's — see the
- * `registerToml` call below.
+ * TOML is absent because it is not one of Monaco's — see `registerToml` below.
  */
 import "monaco-editor/languages/definitions/rust/register";
 import "monaco-editor/languages/definitions/typescript/register";
@@ -60,16 +51,14 @@ import "monaco-editor/languages/definitions/xml/register";
 import "monaco-editor/languages/definitions/ini/register";
 
 /**
- * JSON, kept in even though it costs its own worker chunk.
- *
- * There is no `languages/definitions/json` — as Files' header explains, this
- * import *is* how the `json` language id comes to exist, and it brings a real
- * language service (validation, hover, folding) with it, not just a tokenizer.
- * That is more than a preview needs, but there is no lighter path to JSON
- * syntax colour in this Monaco build, and `package.json`/`tsconfig.json` are
- * common enough hits in a repo search that rendering them as flat text would
- * be a visible gap. The extra chunk is lazy — fetched only the first time a
- * `.json` file is previewed — so nothing pays for it until then.
+ * JSON, kept in even though it costs its own worker chunk. There is no
+ * `languages/definitions/json` — as Files' header explains, this import *is*
+ * how the `json` language id comes to exist, and it brings a real language
+ * service (validation, hover, folding) with it, not just a tokenizer. More than
+ * a preview needs, but there is no lighter path to JSON syntax colour in this
+ * Monaco build, and `package.json`/`tsconfig.json` are common enough hits that
+ * flat text would be a visible gap. The extra chunk is lazy — fetched only the
+ * first time a `.json` file is previewed — so nothing pays for it until then.
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
@@ -80,13 +69,11 @@ import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker
 
 /**
  * Two workers, dispatched by label — ported verbatim from Files' `monaco.ts`.
- *
- * Files' header explains why this can't be simplified to one worker: the
- * moment `MonacoEnvironment.getWorker` exists it wins unconditionally over
- * whatever a language service would otherwise supply, so a single generic
- * worker doesn't just skip JSON's features, it hangs the first request for one
- * of them. Module-scoped, like DiffView's, so it is set once when this chunk
- * first evaluates rather than once per mount.
+ * Files' header explains why this can't be simplified to one worker: the moment
+ * `MonacoEnvironment.getWorker` exists it wins unconditionally over whatever a
+ * language service would otherwise supply, so a single generic worker doesn't
+ * just skip JSON's features, it hangs the first request for one of them.
+ * Module-scoped, like DiffView's, so it is set once when this chunk evaluates.
  */
 self.MonacoEnvironment = {
   getWorker: (_workerId, label) => (label === "json" ? new JsonWorker() : new EditorWorker()),
@@ -104,18 +91,16 @@ jsonDefaults.setDiagnosticsOptions({
 });
 
 /**
- * TOML, which is the one language here that Monaco does not ship at all.
- *
- * It matters more to this pane than its file count suggests: `helve.toml` and
- * `<project>.helve` are the format behind an entire quarter of the search
- * filter — the HELVE kind in `./kinds.ts` is, today, exactly these two files —
- * so leaving them as flat grey text would have made the one file type this
- * product names after itself the one file type it could not colour.
+ * TOML, the one language here that Monaco does not ship at all. It matters more
+ * than its file count suggests: `helve.toml` and `<project>.helve` are the
+ * format behind an entire quarter of the search filter — the HELVE kind in
+ * `./kinds.ts` is, today, exactly these two files — so flat grey text would
+ * have made the one file type this product names after itself the one file type
+ * it could not colour.
  *
  * `registerToml` is idempotent by design; `@helve/monaco-languages`'s header
- * explains why that guard exists rather than being belt-and-braces. The short
- * version: `diff/DiffView.tsx` calls it too, and unlike Files' editor that one
- * shares this module's JS context.
+ * explains why that guard exists rather than being belt-and-braces:
+ * `diff/DiffView.tsx` calls it too, and shares this module's JS context.
  */
 registerToml(monaco);
 
@@ -197,7 +182,10 @@ function languageFor(extension: string): string | undefined {
  * different chunks would make whichever evaluates second win, silently, for
  * both. A distinct name sidesteps the question of evaluation order entirely
  * rather than relying on it.
- *
+ */
+export const THEME = "helve-preview-dark";
+
+/**
  * The colours themselves are the same ~45 mappings from Files' `helve-dark`,
  * copied rather than DiffView's four — DiffView only themes a diff's two
  * inserted/removed backgrounds, and this pane is a full read-only editor with
@@ -211,8 +199,6 @@ function languageFor(extension: string): string | undefined {
  * already: DiffView's header records that `Color.fromHex` silently falls back
  * to opaque red for a CSS `rgba()` string. The suffix is `round(alpha * 255)`.
  */
-export const THEME = "helve-preview-dark";
-
 monaco.editor.defineTheme(THEME, {
   base: "vs-dark",
   inherit: true,
@@ -295,13 +281,12 @@ export type PreviewEditor = monaco.editor.IStandaloneCodeEditor;
 export type PreviewDecorations = monaco.editor.IEditorDecorationsCollection;
 
 /**
- * A model for one file's text, keyed by its path.
- *
- * Ported from Files' `createModel`, including its reuse guard: Monaco refuses
- * to create a second model at a URI that already has one, which would throw
- * mid-swap if a previous model's disposal were ever missed. That can only
- * happen here if a caller skips the dispose step `PreviewPane.tsx`'s effect
- * cleanup performs, so the guard is a safety net, not the expected path.
+ * A model for one file's text, keyed by its path. Ported from Files'
+ * `createModel`, including its reuse guard: Monaco refuses to create a second
+ * model at a URI that already has one, which would throw mid-swap if a previous
+ * model's disposal were ever missed. That can only happen if a caller skips the
+ * dispose step `PreviewPane.tsx`'s effect cleanup performs, so the guard is a
+ * safety net, not the expected path.
  */
 export function createPreviewModel(text: string, path: string, extension: string): PreviewModel {
   const uri = monaco.Uri.file(path);
@@ -318,16 +303,14 @@ export function createPreviewModel(text: string, path: string, extension: string
 }
 
 /**
- * The model the editor is mounted over before any file has ever been focused,
- * and again between the moment a new focus starts loading and the moment its
- * text arrives.
+ * The model the editor is mounted over before any file has been focused, and
+ * again between a new focus starting to load and its text arriving.
  *
  * Deliberately not `createPreviewModel("", "", "")` — an empty path would give
- * every unfocused pane the same `file:///` URI, and the very first real file
+ * every unfocused pane the same `file:///` URI, and the first real file
  * previewed would collide with it under `createPreviewModel`'s reuse guard.
- * `createModel` with no URI at all makes an anonymous `inmemory://` model that
- * can never collide with a real path, which is what an empty placeholder
- * should be.
+ * `createModel` with no URI makes an anonymous `inmemory://` model that can
+ * never collide with a real path, which is what a placeholder should be.
  */
 export function createEmptyPreviewModel(): PreviewModel {
   return monaco.editor.createModel("", "plaintext");
@@ -338,16 +321,15 @@ export function createEmptyPreviewModel(): PreviewModel {
  * from a string, so the caller decides its lifetime — see `PreviewPane.tsx`'s
  * disposal-order comment for why that matters.
  *
- * `readOnly` and `domReadOnly` both `true`, always — this pane has no path that
- * ever sets either to `false`. `domReadOnly` is the one DiffView's header does
- * not need to mention (a diff editor has no caret to blink); a single-buffer
- * editor does, and without it a read-only pane still shows a blinking caret,
- * which reads as "type here" for a pane that refuses every keystroke.
+ * `readOnly` and `domReadOnly` both `true`, always — no path here ever sets
+ * either to `false`. `domReadOnly` is the one DiffView's header need not
+ * mention (a diff editor has no caret to blink); without it a read-only pane
+ * still shows a blinking caret, which reads as "type here" for a pane that
+ * refuses every keystroke.
  *
  * Minimap off, matching DiffView rather than Files: this pane sits in the
- * overlay's lower-right region, not a full-width tab, and a minimap map is a
- * distraction at that width for a reader who is here to glance at one match,
- * not to navigate the whole file.
+ * overlay's lower-right region, not a full-width tab, and a minimap is a
+ * distraction at that width for a reader glancing at one match.
  */
 export function mountPreviewEditor(container: HTMLElement, model: PreviewModel): PreviewEditor {
   return monaco.editor.create(container, {
@@ -367,14 +349,10 @@ export function mountPreviewEditor(container: HTMLElement, model: PreviewModel):
   });
 }
 
-/**
- * Scroll to and highlight one match, replacing whatever the previous
- * decoration was.
- *
- * `column` and `length` are 1-based and character-counted the way
- * `SearchMatch` documents them, which is exactly what `monaco.Range` expects
- * for a single-line range, so no translation happens here.
- */
+/** Scroll to and highlight one match, replacing whatever the previous
+ *  decoration was. `column` and `length` are 1-based and character-counted the
+ *  way `SearchMatch` documents them, which is exactly what `monaco.Range`
+ *  expects for a single-line range, so no translation happens here. */
 export function revealMatch(
   editor: PreviewEditor,
   match: { line: number; column: number; length: number },

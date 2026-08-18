@@ -12,11 +12,9 @@
  * be started or stopped, and a checkout can be built.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { toolFrontend, type ToolFrontend } from "../../bindings";
 
-/** Mirrors `tool_frontend::ToolFrontend`. */
-export type ToolFrontend =
-  { state: "mountable"; url: string } | { state: "unavailable"; reason: string };
+export type { ToolFrontend } from "../../bindings";
 
 /**
  * Resolve one tool's frontend.
@@ -32,7 +30,7 @@ export function useToolFrontend(toolId: string | null): ToolFrontend | null {
     if (!toolId) return;
 
     let live = true;
-    void invoke<ToolFrontend>("tool_frontend", { id: toolId })
+    void toolFrontend(toolId)
       .then((f) => live && setFrontend(f))
       .catch((err) => live && setFrontend({ state: "unavailable", reason: String(err) }));
 

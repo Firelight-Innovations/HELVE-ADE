@@ -18,38 +18,44 @@
  * `gitControl` took a *tool* id until that was found to fail for every project,
  * for reasons the note on `git_cluster_status` in `git.rs` tells in full.
  */
-import { invoke } from "@tauri-apps/api/core";
 import {
+  gitClusterCommit,
+  gitClusterDiff,
+  gitClusterStage,
+  gitClusterStatus,
+  gitClusterUnstage,
+  gitDivergence,
+  gitDivergenceDiff,
   gitGraph,
   gitWorktreeCreate,
   gitWorktreeReconcile,
   gitWorktreeRemove,
   gitWorktrees,
 } from "../../bindings";
-import type { GitControl, GitDiff, GitDivergence, GitStatus, WorktreeControl } from "../contract";
+import type { GitControl, WorktreeControl } from "../contract";
 
 export const gitControl: GitControl = {
   status(clusterId) {
     // Rust answers `Option<GitStatus>`, which arrives as the value or `null`.
     // No mapping needed — `null` already means "no repo here, draw the empty
     // state".
-    return invoke<GitStatus | null>("git_cluster_status", { clusterId });
+    return gitClusterStatus(clusterId);
   },
 
   diff(clusterId, path, staged) {
-    return invoke<GitDiff>("git_cluster_diff", { clusterId, path, staged });
+    return gitClusterDiff(clusterId, path, staged);
   },
 
   stage(clusterId, paths) {
-    return invoke("git_cluster_stage", { clusterId, paths });
+    return gitClusterStage(clusterId, paths);
   },
 
   unstage(clusterId, paths) {
-    return invoke("git_cluster_unstage", { clusterId, paths });
+    return gitClusterUnstage(clusterId, paths);
   },
 
   commit(clusterId, message) {
-    return invoke("git_cluster_commit", { clusterId, message });
+    return gitClusterCommit(clusterId, message);
   },
 };
 
@@ -76,14 +82,11 @@ export const worktreeControl: WorktreeControl = {
   },
 
   divergence(clusterId) {
-    // Straight `invoke` rather than a `bindings.ts` wrapper, and deliberately:
-    // `GitDivergence` holds `GitFileChange` from `contract.ts`, and `bindings`
-    // cannot import `contract` without a cycle. Same reason as `git_status`.
-    return invoke<GitDivergence | null>("git_divergence", { clusterId });
+    return gitDivergence(clusterId);
   },
 
   divergenceDiff(clusterId, path, mergeBase) {
-    return invoke<GitDiff>("git_divergence_diff", { clusterId, path, mergeBase });
+    return gitDivergenceDiff(clusterId, path, mergeBase);
   },
 
   create(clusterId, name) {

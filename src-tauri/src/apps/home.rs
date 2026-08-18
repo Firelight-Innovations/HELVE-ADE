@@ -5,36 +5,12 @@
 //! that module's `Result<ProjectSnapshot>` into the JSON-RPC shape an app's
 //! frontend receives. The rules about what a project is live there, not here.
 //!
-//! ## Every method here is scoped to the cluster that called it
-//!
-//! A project belongs to a cluster (see `crate::project`'s module doc), and Home
-//! is opened *inside* one — so picking a folder here points **this** cluster at
-//! it and touches no other. That is the whole of the per-cluster feature from
-//! the user's side: two Home surfaces in two clusters, two projects, at once.
-//!
-//! The cluster is never taken from the request body. It is [`CallContext`],
-//! resolved by the shell from the frame the message arrived on and then by Rust
-//! from the pane tree holding that instance — the same identity rule
-//! `ToolWindow` applies to everything else a frame sends. A `clusterId` in
-//! `params` would be a claim, and a Home in cluster A could make it about
-//! cluster B.
-//!
-//! `home/forget-recent` is the one exception, and only half of one: the Recent
-//! list is global, so forgetting is global too. It still reports back the
-//! calling cluster's own open project, because that is what Home redraws with.
-//!
-//! ## Where the dialogs live, and why here
-//!
-//! `crate::project` never opens a dialog. It takes paths and touches the
-//! filesystem, which makes it testable and makes "open this project" a thing the
-//! rest of the orchestrator can do without a human at the keyboard — a command
-//! line flag, a recent-projects jump list, a `.helve` file double-clicked in
-//! Explorer. Choosing a folder by pointing at it is a *user interface* act, and
-//! this module is Home's user interface half.
-//!
-//! Cancelling a picker is not an error. Every method that opens one returns the
-//! unchanged snapshot when the user backs out, because a JSON-RPC error would
-//! make the frontend draw a failure for something the user did on purpose.
+//! The dialogs live here, and `crate::project` never opens one. That module
+//! takes paths and touches the filesystem, which makes it testable and makes
+//! "open this project" a thing the rest of the orchestrator can do without a
+//! human at the keyboard — a command line flag, a recent-projects jump list, a
+//! `.helve` file double-clicked in Explorer. Choosing a folder by pointing at it
+//! is a *user interface* act, and this module is Home's user interface half.
 
 use crate::apps::CallContext;
 use crate::error::AppError;
@@ -46,6 +22,19 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+/// Every method here is scoped to the cluster that called it.
+///
+/// A project belongs to a cluster (see `crate::project`'s module doc), and Home
+/// is opened *inside* one — so picking a folder here points **this** cluster at
+/// it and touches no other. That is the whole of the per-cluster feature from
+/// the user's side: two Home surfaces in two clusters, two projects, at once.
+///
+/// The cluster is never taken from the request body. It is [`CallContext`],
+/// resolved by the shell from the frame the message arrived on and then by Rust
+/// from the pane tree holding that instance — the same identity rule
+/// `ToolWindow` applies to everything else a frame sends. A `clusterId` in
+/// `params` would be a claim, and a Home in cluster A could make it about
+/// cluster B.
 pub fn call(
     app: &AppHandle,
     context: &CallContext,
@@ -110,9 +99,11 @@ pub fn call(
             )
             .map_err(rpc)?,
         ),
-        // No `require_cluster`: forgetting is an edit to the global history and
-        // works whether or not the caller is in a cluster. The context only
-        // decides whose open project the returned snapshot reports.
+        // The one exception to the cluster scoping above, and only half of one:
+        // the Recent list is global, so forgetting is global too. No
+        // `require_cluster` — it works whether or not the caller is in a
+        // cluster, and the context only decides whose open project the returned
+        // snapshot reports, because that is what Home redraws with.
         "home/forget-recent" => shape(project::forget(
             app,
             &path_param(params.as_ref())?,
@@ -174,6 +165,10 @@ fn shape(snapshot: ProjectSnapshot) -> Result<Value, RpcError> {
 }
 
 /// Ask the OS for a folder. `None` means the user cancelled.
+///
+/// Cancelling is not an error. Every method that opens one of these returns the
+/// unchanged snapshot when the user backs out, because a JSON-RPC error would
+/// make the frontend draw a failure for something the user did on purpose.
 ///
 /// Two things here are load-bearing:
 ///

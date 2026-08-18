@@ -16,13 +16,35 @@ const JSONRPC_VERSION: &str = "2.0";
 // (never sent by a tool). Keeping these as constants rather than inlining
 // the numbers is what lets a test assert `err.code == METHOD_NOT_FOUND`
 // instead of a bare `-32601` that means nothing without the spec open.
+/// The line was not valid JSON. No id can be recovered from such a line, so
+/// there is nothing to answer -- both sides log it and keep reading.
 pub const PARSE_ERROR: i32 = -32700;
+
+/// Valid JSON, wrong shape: neither `method` nor `id`, or a response carrying
+/// both `result` and `error`, or neither.
 pub const INVALID_REQUEST: i32 = -32600;
+
+/// No handler for that `method`. A tool returns this for anything outside the
+/// method list it advertised at handshake.
 pub const METHOD_NOT_FOUND: i32 = -32601;
+
+/// The method exists, but `params` was missing or the wrong shape for it.
 pub const INVALID_PARAMS: i32 = -32602;
+
+/// The handler itself failed. The catch-all when nothing more specific fits.
 pub const INTERNAL_ERROR: i32 = -32603;
+
+/// Host-generated: the tool process died, or its stdin refused the write.
+/// Every call still pending when the pipe closes fails with this.
 pub const TOOL_EXITED: i32 = -32000;
+
+/// Host-generated: no reply before the deadline. The tool is never told it
+/// timed out and may still answer; the host drops the late response.
 pub const TIMED_OUT: i32 = -32001;
+
+/// Host-generated: the tool never completed the `helve/hello` handshake.
+/// Published so tools can recognise the code, but nothing in this crate emits
+/// it -- `ToolProcess::spawn` reports startup failures as `SpawnError`.
 pub const HANDSHAKE_FAILED: i32 = -32002;
 
 /// A JSON-RPC error object. Doubles as the `Err` variant for `Handler::call`
@@ -32,13 +54,20 @@ pub const HANDSHAKE_FAILED: i32 = -32002;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, thiserror::Error)]
 #[error("{message} (code {code})")]
 pub struct RpcError {
+    /// Usually one of the constants above, but any `i32` is legal on the wire.
+    /// Treat an unrecognised code as a generic failure rather than rejecting it.
     pub code: i32,
+    /// For humans and logs only. Never match on it; branch on `code`.
     pub message: String,
+    /// Structured detail, absent unless the failing side had some. Its shape is
+    /// defined by the method that failed, not by this crate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
 }
 
 impl RpcError {
+    /// The common case, with no `data`. Reach for `with_data` only when there
+    /// is machine-readable detail worth putting on the wire.
     pub fn new(code: i32, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -47,6 +76,8 @@ impl RpcError {
         }
     }
 
+    /// As `new`, but attaches `data`. A `Value::Null` here does not survive the
+    /// round trip -- it goes out as `"data":null` and decodes back as `None`.
     pub fn with_data(code: i32, message: impl Into<String>, data: Value) -> Self {
         Self {
             code,
@@ -62,14 +93,25 @@ impl RpcError {
 /// side that sent the request it answers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Request {
+    /// Always `"2.0"`. `Request::new` fills it in and `decode_line` sets it
+    /// rather than reading it back, so a line claiming another version decodes
+    /// without complaint.
     pub jsonrpc: String,
+    /// Unique only within one direction. Host id 3 and tool id 3 are unrelated
+    /// requests; never key a shared table on the number alone.
     pub id: u64,
+    /// `helve/*` is reserved for the protocol itself; every other namespace
+    /// belongs to the tool.
     pub method: String,
+    /// Absent for methods that take no arguments. Omitted from the wire when
+    /// `None`, and an explicit `"params":null` decodes back as `None` too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
 }
 
 impl Request {
+    /// Fills in `jsonrpc`. Allocating `id` is the caller's job: reusing one
+    /// while its reply is still outstanding will cross the two answers.
     pub fn new(id: u64, method: impl Into<String>, params: Option<Value>) -> Self {
         Self {
             jsonrpc: JSONRPC_VERSION.to_string(),
@@ -85,15 +127,24 @@ impl Request {
 /// gets collapsed into a normal `Result`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Response {
+    /// Always `"2.0"`, supplied by the constructors below.
     pub jsonrpc: String,
+    /// Echoes the id of the request being answered. A response naming an id
+    /// nobody sent is still well-formed here; noticing that is the caller's job.
     pub id: u64,
+    /// Present on success. `Some(Value::Null)` is a real result, not a missing
+    /// one -- `decode_line` goes out of its way to preserve that distinction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    /// Present on failure, and then `result` is absent. Read the pair through
+    /// `into_result` rather than matching on both fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<RpcError>,
 }
 
 impl Response {
+    /// Success. Pass `Value::Null` for a method that returns nothing; that
+    /// still decodes on the far side as a present result.
     pub fn ok(id: u64, result: Value) -> Self {
         Self {
             jsonrpc: JSONRPC_VERSION.to_string(),
@@ -103,6 +154,8 @@ impl Response {
         }
     }
 
+    /// Failure. There is deliberately no constructor that sets `result` and
+    /// `error` together, because the wire format forbids that pairing.
     pub fn err(id: u64, error: RpcError) -> Self {
         Self {
             jsonrpc: JSONRPC_VERSION.to_string(),
@@ -112,6 +165,9 @@ impl Response {
         }
     }
 
+    /// Collapse the one-of-two invariant into a plain `Result`. A hand-built
+    /// `Response` with neither field set yields `Ok(Value::Null)`; `decode_line`
+    /// rejects that shape before it can reach here.
     pub fn into_result(self) -> Result<Value, RpcError> {
         match self.error {
             Some(err) => Err(err),
@@ -124,13 +180,20 @@ impl Response {
 /// in the protocol without an `id`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Notification {
+    /// Always `"2.0"`, so a notification shares the envelope of the other two
+    /// shapes even though it is not part of a call.
     pub jsonrpc: String,
+    /// The event name. Nobody replies, so a method the receiver does not
+    /// recognise is dropped silently rather than answered with an error.
     pub method: String,
+    /// The event payload, absent when the event carries no detail of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
 }
 
 impl Notification {
+    /// Fills in `jsonrpc`. There is no id to allocate -- that absence is the
+    /// whole difference between this and `Request::new`.
     pub fn new(method: impl Into<String>, params: Option<Value>) -> Self {
         Self {
             jsonrpc: JSONRPC_VERSION.to_string(),
@@ -144,8 +207,13 @@ impl Notification {
 /// dispatches on it; see `host.rs`'s reader thread and `tool.rs`'s `serve`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
+    /// The line carried both `method` and `id`: the sender is waiting for a
+    /// `Response` under that id.
     Request(Request),
+    /// The line carried an `id` but no `method`: an answer to something this
+    /// side sent earlier.
     Response(Response),
+    /// The line carried a `method` but no `id`: nothing to reply to.
     Notification(Notification),
 }
 
@@ -195,7 +263,7 @@ where
 /// in by a buggy tool would silently match `Request` instead of getting
 /// caught. Matching on the fields directly makes the "what shape is this"
 /// decision explicit instead of an artifact of variant declaration order.
-pub fn decode_line(line: &str) -> Result<Incoming, RpcError> {
+pub(crate) fn decode_line(line: &str) -> Result<Incoming, RpcError> {
     let raw: RawMessage = serde_json::from_str(line)
         .map_err(|e| RpcError::new(PARSE_ERROR, format!("invalid JSON: {e}")))?;
 
@@ -231,7 +299,10 @@ pub fn decode_line(line: &str) -> Result<Incoming, RpcError> {
 /// buffered reply that never makes it past the process boundary looks
 /// exactly like a hung tool from the other end of the pipe, and is much
 /// harder to tell apart from an actual hang than this one extra syscall.
-pub fn write_message<T: Serialize, W: Write>(writer: &mut W, msg: &T) -> std::io::Result<()> {
+pub(crate) fn write_message<T: Serialize, W: Write>(
+    writer: &mut W,
+    msg: &T,
+) -> std::io::Result<()> {
     let json = serde_json::to_string(msg)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     writeln!(writer, "{json}")?;

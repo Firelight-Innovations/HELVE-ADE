@@ -1,29 +1,23 @@
 //! The pane tree — how surfaces are arranged inside one cluster.
 //!
-//! A cluster's layout is a tree. Interior nodes are splits, which lay their
-//! children out in a row or a column; leaves are panes, which hold an ordered
-//! list of tabs and know which one is showing. A tab is an *instance id* — the
-//! id of an app surface or of a terminal — never an app id, because the whole
-//! point of this module is that two Files can be on screen at once.
+//! A cluster's layout is a tree. Interior nodes are splits, which lay their children out in a row
+//! or a column; leaves are panes, which hold an ordered list of tabs and know which one is showing.
+//! A tab is an *instance id* — the id of an app surface or of a terminal — never an app id, because
+//! the whole point of this module is that two Files can be on screen at once.
 //!
-//! Nothing here knows about Tauri, windows, or events. That is deliberate and
-//! it is the same discipline `shell_state`'s `close_terminal_pure` and
-//! `group_with_pure` already follow: the operations that are easy to get subtly
-//! wrong — remove a tab, collapse the split it emptied, keep the size weights
-//! aligned with the children they describe — are pure functions over a plain
-//! tree, and they are tested as such. The `&AppHandle`-taking wrappers in
-//! `shell_state` do the broadcasting and none of the thinking.
+//! Nothing here knows about Tauri, windows, or events, deliberately — the same discipline
+//! `shell_state`'s `close_terminal_pure` and `group_with_pure` follow. The operations easy to get
+//! subtly wrong (remove a tab, collapse the split it emptied, keep size weights aligned with the
+//! children they describe) are pure functions over a plain tree, tested as such. The
+//! `&AppHandle`-taking wrappers in `shell_state` do the broadcasting and none of the thinking.
 //!
 //! Two invariants hold after every mutation, and `prune` is what enforces them:
-//!
-//!   * **No empty leaves, except the root.** A pane with nothing in it is not a
-//!     pane, it is a gap. The root is exempt because a cluster with everything
-//!     closed still has to be *something*.
-//!   * **No split with fewer than two children, and no split directly inside a
-//!     split of the same direction.** Two columns inside a column look exactly
-//!     like three columns on screen, so keeping the nested form would let
-//!     repeated splitting grow a tree far deeper than the layout it draws —
-//!     and every walk of it slower — for no visible difference.
+//!   * **No empty leaves, except the root.** A pane with nothing in it is not a pane, it is a gap.
+//!     The root is exempt because a cluster with everything closed still has to be *something*.
+//!   * **No split with fewer than two children, and no split directly inside a split of the same
+//!     direction.** Two columns inside a column look exactly like three columns on screen, so
+//!     keeping the nested form would let repeated splitting grow a tree far deeper than the layout
+//!     it draws — and every walk of it slower — for no visible difference.
 
 use serde::{Deserialize, Serialize};
 
@@ -250,37 +244,24 @@ impl PaneNode {
 
     /// Where a newly opened surface goes: a **pane of its own**, or a tab.
     ///
-    /// This reverses what opening used to do. Every open dropped the new surface
-    /// into the focused pane as another tab, which on screen looked like it had
-    /// *replaced* whatever was there — the one thing that pane was already
-    /// showing went behind the new one. Opening now splits, and stacking two
-    /// surfaces into one pane is something you ask for by dragging a chip into
-    /// that pane, never something an open does to you on the way past.
+    /// This reverses what opening used to do. Every open dropped the new surface into the focused
+    /// pane as another tab, which on screen looked like it had *replaced* whatever was there.
+    /// Opening now splits; stacking two surfaces into one pane is something you ask for by
+    /// dragging a chip into that pane, never something an open does on the way past.
     ///
-    /// `split` carries the direction the caller measured, plus the two ids a
-    /// split needs. **The direction has to come from the caller**, and that is
-    /// the load-bearing part of this signature. The rule is "split the focused
-    /// pane along its longer axis", so a wide pane gains a right-hand column and
-    /// a tall one gains a bottom row, which keeps repeated opening from slicing
-    /// one axis into slivers. Longer *in pixels*, though: `sizes` here are
-    /// fractions of a parent, deliberately (the window is resizable and a layout
-    /// in pixels would restore wrongly onto another monitor), so a tree of
-    /// fractions cannot say which way a pane is currently drawn. Nothing in this
-    /// module may guess at it. The frontend measures the rendered pane at the
-    /// moment of the gesture and passes the answer in; `None` means it had
-    /// nothing to measure and asks for the old tab behaviour.
+    /// `split` carries the direction the caller measured, plus the two ids a split needs. **The
+    /// direction has to come from the caller** — the rule is "split the focused pane along its
+    /// longer axis", longer *in pixels*, and a tree of fractional `sizes` cannot say which way a
+    /// pane is drawn, so nothing here may guess at it. The frontend measures the rendered pane at
+    /// the gesture and passes the answer in; `None` means it had nothing to measure and asks for
+    /// the old tab behaviour. Full argument in `docs/design-notes/backend-core.md`. `index` is only
+    /// consulted on the tab path — a split has one tab and no strip position to argue about.
     ///
     /// Two things refuse the split even when a direction was measured:
-    ///
-    ///   * **An empty pane.** The first app in a fresh cluster fills the single
-    ///     pane it was given. Splitting it would leave an empty half beside the
-    ///     app, which is a gap rather than a layout.
-    ///   * **[`MAX_AUTO_PANES`].** Past the ceiling the surface stacks into the
-    ///     focused pane, exactly as every open used to. See that constant for
-    ///     why the cap is on this path and not on the drag gesture.
-    ///
-    /// `index` is only consulted on the tab path — a split has one tab in the
-    /// new pane and no strip position to argue about.
+    ///   * **An empty pane.** The first app in a fresh cluster fills the single pane it was given;
+    ///     splitting it would leave an empty half beside the app, a gap rather than a layout.
+    ///   * **[`MAX_AUTO_PANES`].** Past the ceiling the surface stacks into the focused pane, as
+    ///     every open used to. See that constant for why the cap is here and not on the drag.
     pub fn open_into(
         &mut self,
         pane_id: &str,

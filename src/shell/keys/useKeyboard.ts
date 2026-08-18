@@ -1,34 +1,10 @@
 /**
  * The shell's global keyboard shortcuts — everything except Ctrl+K and Escape,
- * which `SearchSlot` already owns (its own `keydown` listener opens on Ctrl+K
- * and its field's `onKeyDown` closes on Escape). Binding either of those
- * here too would give the shell two handlers racing for the same key, with
- * the outcome depending on listener order — so this hook deliberately
- * leaves them alone. Confirmed by reading `src/shell/search/SearchSlot.tsx`
- * before writing anything below.
- *
- * The first three bindings come from `docs/handoffs/shell-spec.html` — the only
- * accelerators that document states anywhere (search the file for `⌘`):
- *
- *   Ctrl+1…9  "Open Forger" chip on the empty tool window → select the
- *             nth tool in this window's switcher bar.
- *   Ctrl+R    "Re-scan tools" chip, same empty state → re-scan.
- *   Ctrl+.    "cancel ⌘." under the booting-tool spinner → cancel the
- *             tool that's currently booting.
- *
- * **Everything after them is here because the menu bar displays it.** The rule
- * in `titlebar/TitleBar.tsx` is bind it or drop it — an accelerator drawn beside
- * a menu item is a promise the keystroke does that thing — so every File,
- * View and Terminal accelerator on display has a case below.
- *
- * The Edit menu's do not, and that is the same rule rather than an exception to
- * it. Ctrl+Z, Ctrl+X, Ctrl+F and the rest are already bound by the surface that
- * has focus: Monaco inside the Files iframe, the browser inside a shell
- * `<input>`. A key event inside a cross-document iframe never reaches this
- * listener, so a binding here could only ever fire when focus was *outside* the
- * editor — and where it did fire it would be a second handler racing the
- * browser's own for a key that already works. That is exactly the collision
- * this header opens by describing.
+ * which `SearchSlot` already owns (its own `keydown` listener opens on Ctrl+K and
+ * its field's `onKeyDown` closes on Escape). Binding either here too would give
+ * the shell two handlers racing for the same key, with the outcome depending on
+ * listener order — so this hook deliberately leaves them alone. Confirmed by
+ * reading `src/shell/search/SearchSlot.tsx` before writing anything below.
  *
  * Nothing here resolves *which* tool is at a given index, what "the booting
  * tool" is, or whether Save is even possible right now — that is `WindowRoot`'s
@@ -38,6 +14,15 @@
  */
 import { useEffect, useRef } from "react";
 
+/**
+ * Everything the shell can be asked for by keystroke.
+ *
+ * The first three come from `docs/handoffs/shell-spec.html` — the only
+ * accelerators that document states anywhere (search the file for `⌘`): the
+ * "Open Forger" chip on the empty tool window, the "Re-scan tools" chip in that
+ * same empty state, and "cancel ⌘." under the booting-tool spinner. Everything
+ * after them is here because the menu bar displays it.
+ */
 export interface KeyboardActions {
   /** Ctrl+1…Ctrl+9 — select the nth tool in this window's bar. */
   selectToolByIndex(index: number): void;
@@ -81,12 +66,98 @@ export interface KeyboardActions {
   splitTerminal(): void;
 }
 
+type ChordRun = (a: KeyboardActions) => () => void;
+
+/** One primary-modifier chord: what it runs plain, and what it runs with Shift. */
+interface Chord {
+  plain: ChordRun | null;
+  shift: ChordRun | null;
+}
+
+/**
+ * The accelerators, one row per `e.key.toLowerCase()`; `null` is declined on
+ * purpose.
+ *
+ * The rule in `titlebar/TitleBar.tsx` is bind it or drop it — an accelerator
+ * drawn beside a menu item is a promise the keystroke does that thing — so every
+ * File, View and Terminal accelerator on display has a row here.
+ *
+ * The Edit menu's do not, and that is the same rule rather than an exception to
+ * it. Ctrl+Z, Ctrl+X, Ctrl+F and the rest are already bound by the surface that
+ * has focus: Monaco inside the Files iframe, the browser inside a shell
+ * `<input>`. A key event inside a cross-document iframe never reaches this
+ * listener, so a binding here could only ever fire when focus was *outside* the
+ * editor — and where it did fire it would be a second handler racing the
+ * browser's own for a key that already works. That is exactly the collision the
+ * file header opens by describing.
+ */
+const CHORDS: Record<string, Chord> = {
+  // Shift+Ctrl+N is New Window, which this build cannot do — see the item's
+  // own note in `TitleBar.tsx`. Unbound rather than bound to nothing, so the
+  // browser's "new incognito window" is at least honest about being the
+  // browser's.
+  n: {
+    plain: (a) => a.newFile,
+    shift: null,
+  },
+  o: {
+    plain: (a) => a.openProject,
+    shift: null,
+  },
+  s: {
+    plain: (a) => a.save,
+    shift: (a) => a.saveAs,
+  },
+  d: {
+    plain: (a) => a.duplicate,
+    shift: null,
+  },
+  // Only with Shift. Plain Ctrl+W closes a *tab* everywhere it is bound, and
+  // this window is not one — binding it to "close the window" would be the most
+  // destructive possible reading of a very common keystroke.
+  w: {
+    plain: null,
+    shift: (a) => a.closeWindow,
+  },
+  p: {
+    plain: null,
+    shift: (a) => a.commandPalette,
+  },
+  b: {
+    plain: (a) => a.togglePanel,
+    shift: null,
+  },
+  "\\": {
+    plain: (a) => a.splitTerminal,
+    shift: null,
+  },
+  // `=`/`+` and `-`/`_` are each the same physical key on a US layout, and
+  // which half arrives depends on Shift and on the layout. Both halves mean the
+  // same zoom; nobody reaching for it is thinking about which.
+  "=": {
+    plain: (a) => a.zoomIn,
+    shift: (a) => a.zoomIn,
+  },
+  "+": {
+    plain: (a) => a.zoomIn,
+    shift: (a) => a.zoomIn,
+  },
+  "-": {
+    plain: (a) => a.zoomOut,
+    shift: (a) => a.zoomOut,
+  },
+  _: {
+    plain: (a) => a.zoomOut,
+    shift: (a) => a.zoomOut,
+  },
+};
+
 /**
  * The menu-bar accelerators, in one table. `true` when the key was ours.
  *
- * Split out of the listener because it is a lookup rather than a decision:
- * every row is "this keystroke, that action", and the listener above still owns
- * the two things that *are* decisions — whether a field has focus, and which
+ * Split out of the listener because it is a lookup rather than a decision: every
+ * row is "this keystroke, that action", and the listener below still owns the
+ * two things that *are* decisions — whether a field has focus, and which
  * bindings that suppresses.
  *
  * `preventDefault` on all of them, unconditionally, for the reason the ⌘1…9
@@ -112,42 +183,13 @@ function matched(e: KeyboardEvent, a: KeyboardActions): boolean {
 
   if (e.code === "Backquote") return fire(shift ? a.newTerminal : a.toggleTerminal);
 
-  switch (key) {
-    case "n":
-      // Shift+Ctrl+N is New Window, which this build cannot do — see the
-      // item's own note in `TitleBar.tsx`. Unbound rather than bound to
-      // nothing, so the browser's "new incognito window" is at least honest
-      // about being the browser's.
-      return shift ? false : fire(a.newFile);
-    case "o":
-      return shift ? false : fire(a.openProject);
-    case "s":
-      return fire(shift ? a.saveAs : a.save);
-    case "d":
-      return shift ? false : fire(a.duplicate);
-    case "w":
-      // Only with Shift. Plain Ctrl+W closes a *tab* everywhere it is bound,
-      // and this window is not one — binding it to "close the window" would be
-      // the most destructive possible reading of a very common keystroke.
-      return shift ? fire(a.closeWindow) : false;
-    case "p":
-      return shift ? fire(a.commandPalette) : false;
-    case "b":
-      return shift ? false : fire(a.togglePanel);
-    case "\\":
-      return shift ? false : fire(a.splitTerminal);
-    // The same physical key on a US layout, and which one arrives depends on
-    // Shift and on the layout. Both mean zoom in; nobody reaching for it is
-    // thinking about which.
-    case "=":
-    case "+":
-      return fire(a.zoomIn);
-    case "-":
-    case "_":
-      return fire(a.zoomOut);
-    default:
-      return false;
-  }
+  const row = CHORDS[key];
+  if (!row) return false;
+
+  const bound = shift ? row.shift : row.plain;
+  if (!bound) return false;
+
+  return fire(bound(a));
 }
 
 /** True for `<input>`, `<textarea>`, and anything `contenteditable`. */
@@ -228,11 +270,10 @@ export function useKeyboard(actions: KeyboardActions): void {
       }
 
       if (e.key === ".") {
-        // preventDefault: no browser binds Ctrl/Cmd+. to anything, but the
-        // shell is consuming the keystroke as a real command, so it's
-        // prevented for the same reason the other two are — consistent
-        // with "once matched, the shell owns it," not because anything
-        // else is competing for it.
+        // preventDefault: no browser binds Ctrl/Cmd+. to anything, but the shell
+        // is consuming the keystroke as a real command, so it is prevented for
+        // the same reason the other two are — "once matched, the shell owns it",
+        // not because anything else is competing for it.
         e.preventDefault();
         actionsRef.current.cancelBoot();
       }

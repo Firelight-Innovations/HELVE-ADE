@@ -3,79 +3,20 @@
  *
  * `monaco-editor` 0.56 bundles 84 basic languages and TOML is not among them
  * (checked, not assumed: `esm/vs/languages/definitions/` has `ini`, `yaml`,
- * `xml` and no `toml`). Before this existed, the Files app mapped `.toml` to the
- * `ini` grammar as an admitted stand-in, and its own comment named the
- * follow-up: "a ~30-line Monarch tokenizer registered next to this table under
- * a real `toml` id". This is that.
+ * `xml` and no `toml`). The Files app mapped `.toml` to the `ini` grammar as an
+ * admitted stand-in, and named the follow-up itself: "a ~30-line Monarch
+ * tokenizer registered next to this table under a real `toml` id". This is that.
  *
- * ## Why it was worth writing rather than aliasing again
- *
- * `.helve` is TOML. `src-tauri/src/project/marker.rs` parses a project marker
- * with `raw.parse::<toml::Table>()`, and `manifest.rs` does the same for
- * `helve.toml`. So the three files anyone working in this product opens most —
- * `<project>.helve`, `helve.toml`, `Cargo.toml` — are all one format, and all
- * three were being coloured by a grammar for a different one.
- *
- * The `ini` stand-in is not merely imprecise on them, it is wrong on their
- * actual contents:
- *
- * - Its key rule is `/(^\w+)(\s*)(\=)/`, and `\w` does not include `-`. Every
- *   kebab-case key HELVE writes — `created-with`, `created-unix-ms`,
- *   `checkout-root` — is therefore not highlighted as a key at all.
- * - Its section rule is `/^\[[^\]]*\]/`, which on `helve.toml`'s `[[tool]]`
- *   matches `[[tool]` and leaves a stray `]` behind.
- * - Its comment rule is `/^\s*[#;].*$/`, so a comment after a value on the same
- *   line is not a comment.
- * - Arrays, inline tables, multi-line strings and datetimes are all untokenized.
- *
- * Those five are the exact list the old comment admitted to, so this grammar is
- * measured against them rather than against TOML in the abstract.
- *
- * ## Why it lives in a package
- *
- * It was written for the Files app and sat in `apps/files/ui/src/viewer/toml.ts`
- * for exactly as long as there was one editor to serve. There are now three —
- * Files' viewer, the search overlay's preview pane, and the source-control diff
- * — and `src/` and `apps/files/` may not import each other (see the repository
- * CLAUDE.md), so the only ground all three can stand on is `packages/`. Moving
- * it here is what makes "TOML is highlighted in HELVE" one fact rather than
- * three copies drifting apart.
- *
- * That move is also why `index.ts` exports a `registerToml` rather than leaving
- * each editor to call the three `monaco.languages.*` setters itself. Two of the
- * three consumers are shell-side and can be live in the same JS context at once,
- * where a second registration of the same id is a real hazard — the same class
- * of collision the editors' theme names already had to be pulled apart to avoid.
- *
- * ## Token names are borrowed, not invented
- *
- * Every token this emits is one `vs-dark` already colours — `key`, `metatag`,
- * `comment`, `string`, `number`, `number.hex`, `keyword`, `delimiter` (read out
- * of `editor/standalone/common/themes.js`). That is deliberate and it is what
- * lets every HELVE theme keep `rules: []`: the theme headers forbid inventing a
- * token colour, on the grounds that the handoff palette names UI surfaces rather
- * than grammar scopes. Borrowing scopes the base theme already styles means a
- * `.helve` file is coloured by exactly the machinery that colours a `.py` or a
- * `.md`, and this file introduces no palette of its own.
- *
- * ## What it deliberately does not do
- *
- * No validation, no folding provider, no language service. A Monarch tokenizer
- * is a lexer: it says what a run of characters *looks* like, not whether the
- * document is well-formed. A `.helve` with a duplicate table is coloured
- * perfectly and is still rejected by Rust, which is the half that gets to have
- * an opinion — the same division every consumer of this package draws for every
- * other language it registers, except JSON.
+ * `docs/design-notes/monaco-languages.md` carries the long form: the five ways `ini`
+ * is concretely wrong on `.helve`, `helve.toml` and `Cargo.toml`; why the grammar moved
+ * out of `apps/files/` into `packages/`, and why `index.ts` then exports a `registerToml`
+ * rather than three loose setters; and why every token name here is borrowed, not invented.
  */
 import type * as monaco from "monaco-editor/editor/editor.api";
 
 /**
- * The language id, and the two extensions that resolve to it.
- *
- * Exported rather than spelled as a literal at each call site because three
- * editors and one caller now name it, and one of those callers (`isTomlPath`
- * below, used by the source-control panel) has to agree with the extension list
- * Monaco is given without importing Monaco to find it out.
+ * The language id. Exported rather than a literal at each call site: three editors name it,
+ * and `isTomlPath` in `./index.ts` must agree with Monaco's extension list without importing it.
  */
 export const TOML_LANGUAGE_ID = "toml";
 
@@ -83,11 +24,9 @@ export const TOML_LANGUAGE_ID = "toml";
 export const TOML_EXTENSIONS = ["toml", "helve"] as const;
 
 /**
- * Comments, brackets, and what the editor auto-closes.
- *
- * `#` only. TOML has no block comment and no `;` — that second one is an `ini`
- * habit, and inheriting it would let this grammar quietly accept a character
- * that makes the file fail to parse in Rust.
+ * Comments, brackets, and what the editor auto-closes. `#` only: TOML has no block comment
+ * and no `;` — that second one is an `ini` habit, and inheriting it would let this grammar
+ * quietly accept a character that makes the file fail to parse in Rust.
  */
 export const TOML_CONFIGURATION: monaco.languages.LanguageConfiguration = {
   comments: { lineComment: "#" },
@@ -109,6 +48,13 @@ export const TOML_CONFIGURATION: monaco.languages.LanguageConfiguration = {
   ],
 };
 
+/**
+ * The Monarch tokenizer. No validation, no folding provider, no language service: a lexer
+ * says what a run of characters *looks* like, not whether the document is well-formed. A
+ * `.helve` with a duplicate table is coloured perfectly and is still rejected by Rust, the
+ * half that gets to have an opinion. Every token name it emits is one `vs-dark` already
+ * colours, which is what lets every HELVE theme keep `rules: []` — see the design notes.
+ */
 export const TOML_LANGUAGE: monaco.languages.IMonarchLanguage = {
   defaultToken: "",
   tokenPostfix: ".toml",
@@ -125,12 +71,9 @@ export const TOML_LANGUAGE: monaco.languages.IMonarchLanguage = {
       // --- table headers ------------------------------------------------
       // `[[tool]]` before `[tool]`: they start with the same character, and the
       // shorter rule would take half of the longer one and leave a stray
-      // bracket — which is precisely the bug the `ini` stand-in has on
-      // `helve.toml`.
-      //
-      // Anchored with `^` so a header is told apart from an array *value* by
-      // where it sits rather than by what is inside it. `ini.js` and `yaml.js`
-      // both anchor this way, so the support is the grammar engine's own.
+      // bracket, precisely the bug the `ini` stand-in has on `helve.toml`.
+      // Anchored with `^`, as `ini.js` and `yaml.js` both are, so a header is told
+      // apart from an array *value* by where it sits rather than what is inside it.
       // Every capture group is spelled out because Monarch maps an array of
       // tokens onto groups one for one and requires them to cover the match.
       [/^(\s*)(\[\[)([^[\]]*)(\]\])/, ["", "metatag", "metatag", "metatag"]],
@@ -138,12 +81,10 @@ export const TOML_LANGUAGE: monaco.languages.IMonarchLanguage = {
 
       // --- keys ---------------------------------------------------------
       // Deliberately not anchored, so the keys inside an inline table
-      // (`{ a = 1, b = 2 }`) are keys too. A table header cannot be caught by
-      // this rule because it has no `=`.
-      //
-      // The character class is TOML's bare-key set, `A-Za-z0-9_-`. The `-` is
-      // the whole reason this rule is not `ini`'s: every key HELVE writes has
-      // one in it.
+      // (`{ a = 1, b = 2 }`) are keys too; a table header cannot be caught here
+      // because it has no `=`. The character class is TOML's bare-key set,
+      // `A-Za-z0-9_-`, and the `-` is the whole reason this rule is not `ini`'s:
+      // every key HELVE writes has one in it.
       [/("(?:[^"\\]|\\.)*"|'[^']*')(\s*)(=)/, ["key", "", "delimiter"]],
       [/([A-Za-z0-9_-]+(?:\s*\.\s*[A-Za-z0-9_-]+)*)(\s*)(=)/, ["key", "", "delimiter"]],
 
@@ -159,11 +100,10 @@ export const TOML_LANGUAGE: monaco.languages.IMonarchLanguage = {
 
       // --- dates and times ----------------------------------------------
       // Before the numbers, and that ordering is the entire point: `1979-05-27`
-      // begins with four digits, so a number rule reaching it first would
-      // shred a date into an integer, a minus, and two more integers.
-      //
-      // Offset date-time, local date-time, and local date, in one rule; the
-      // trailing parts are optional because TOML makes them so.
+      // begins with four digits, so a number rule reaching it first would shred
+      // a date into an integer, a minus, and two more integers. Offset
+      // date-time, local date-time and local date in one rule, trailing parts
+      // optional because TOML makes them so.
       [/\d{4}-\d{2}-\d{2}(?:[Tt ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})?)?/, "number"],
       // Local time, which has no date in front of it at all.
       [/\d{2}:\d{2}:\d{2}(?:\.\d+)?/, "number"],

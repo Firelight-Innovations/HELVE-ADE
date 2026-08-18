@@ -8,27 +8,10 @@
  * app" is one click away for everything else, and the OS reader will always be
  * better at it than a pane in a side panel.
  *
- * Two things about pdf.js that are not obvious and cost an afternoon each:
- *
- * 1. **`getDocument` takes ownership of the buffer you give it.** The
- *    `ArrayBuffer` goes into the `postMessage` transfer list to the worker, so
- *    the `Uint8Array` handed over is detached — zero-length — the moment the
- *    document starts loading. That is why the bytes are decoded inside the load
- *    effect and used exactly once. Anything that wants to keep the bytes (a
- *    retry, a cache, a second document over the same file) must pass
- *    `new Uint8Array(bytes)` and keep the original for itself; reusing the array
- *    that went in produces an "empty file" error that names nothing useful.
- *
- * 2. **The worker is wired with `?url`, not `?worker`.** `vite.config.ts` has no
- *    `worker` block, so `worker.format` is Vite's `iife` default, which is what
- *    Monaco's workers need — and a `?worker` import here would route pdf.js
- *    through that same pipeline and produce a classic script that pdf.js then
- *    loads with `{ type: "module" }`. `?url` sidesteps the pipeline entirely:
- *    the file is copied to the output as an asset, we hand pdf.js the URL, and
- *    pdf.js constructs the `Worker` itself. `new URL("pdfjs-dist/...",
- *    import.meta.url)` is the other thing that looks right and is not — a bare
- *    specifier in `new URL` is not resolved by Vite, and it ships a relative
- *    path that 404s.
+ * Two things about pdf.js are not obvious and cost an afternoon each: who owns
+ * the buffer handed to `getDocument`, and how the worker is wired. Both are
+ * written up where they bite — on `GlobalWorkerOptions.workerSrc` below, and on
+ * the `getDocument` call in the load effect.
  */
 import { useEffect, useRef, useState } from "react";
 import { GlobalWorkerOptions, RenderingCancelledException, getDocument } from "pdfjs-dist";
@@ -38,6 +21,17 @@ import { describe, readBytes, toBytes } from "../rpc";
 import type { ViewerProps } from "./registry";
 import "./media.css";
 
+/**
+ * **The worker is wired with `?url`, not `?worker`.** `vite.config.ts` has no
+ * `worker` block, so `worker.format` is Vite's `iife` default, which is what
+ * Monaco's workers need — and a `?worker` import here would route pdf.js
+ * through that same pipeline and produce a classic script that pdf.js then
+ * loads with `{ type: "module" }`. `?url` sidesteps the pipeline entirely: the
+ * file is copied to the output as an asset, we hand pdf.js the URL, and pdf.js
+ * constructs the `Worker` itself. `new URL("pdfjs-dist/...", import.meta.url)`
+ * is the other thing that looks right and is not — a bare specifier in
+ * `new URL` is not resolved by Vite, and it ships a relative path that 404s.
+ */
 GlobalWorkerOptions.workerSrc = workerSrc;
 
 /**
@@ -124,8 +118,17 @@ export default function PdfViewer({ file }: ViewerProps) {
       if (cancelled) return;
 
       try {
-        // Decoded here, one document, one buffer — see (1) in the header. The
-        // worker detaches this array; nothing else may hold a reference to it.
+        /**
+         * **`getDocument` takes ownership of the buffer you give it.** The
+         * `ArrayBuffer` goes into the `postMessage` transfer list to the worker,
+         * so the `Uint8Array` handed over is detached — zero-length — the moment
+         * the document starts loading. That is why the bytes are decoded here,
+         * one document, one buffer, used exactly once. Anything that wants to
+         * keep the bytes (a retry, a cache, a second document over the same
+         * file) must pass `new Uint8Array(bytes)` and keep the original for
+         * itself; reusing the array that went in produces an "empty file" error
+         * that names nothing useful.
+         */
         opened = await getDocument({ data: toBytes(base64) }).promise;
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));

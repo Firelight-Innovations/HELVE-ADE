@@ -5,6 +5,7 @@
 use crate::codec::{
     decode_line, write_message, Incoming, Notification, Request, RpcError, TIMED_OUT, TOOL_EXITED,
 };
+use crate::sync::MutexExt;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::BufRead;
@@ -30,16 +31,35 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// response (or, on EOF, a synthetic `TOOL_EXITED`) arrives.
 type PendingCalls = Arc<Mutex<HashMap<u64, Sender<Result<Value, RpcError>>>>>;
 
+/// Everything that can fail while getting a tool process up, plus the
+/// process-level failures `shutdown` can hit. Failures of an individual call
+/// travel as `RpcError` instead, so this never appears mid-conversation.
 #[derive(Debug, thiserror::Error)]
 pub enum SpawnError {
+    /// The OS refused to start the binary at all -- missing file, not
+    /// executable, bad `cwd`. Nothing was spawned, so there is no child to
+    /// clean up.
     #[error("failed to spawn tool binary {}: {source}", bin.display())]
     Spawn {
+        /// The path exactly as handed to `spawn`, so the message can name it
+        /// without the caller threading it back through.
         bin: PathBuf,
+        /// Kept as `#[source]` so callers can match on `io::ErrorKind` rather
+        /// than parse the rendered message.
         #[source]
         source: std::io::Error,
     },
+    /// A piped stdio handle came back `None`. `spawn` pipes all three and
+    /// takes each exactly once, so this should be unreachable; it exists so
+    /// that path is a typed error instead of an unwrap.
     #[error("child process did not provide a {stream} handle")]
-    MissingStream { stream: &'static str },
+    MissingStream {
+        /// Which handle was missing (`"stdin"`, `"stdout"`, `"stderr"`) --
+        /// the only thing separating three otherwise identical failures.
+        stream: &'static str,
+    },
+    /// I/O trouble once the process is already running. Only `shutdown`
+    /// produces it, from `try_wait` or `kill`.
     #[error("i/o error talking to tool process: {0}")]
     Io(#[source] std::io::Error),
 }
@@ -140,7 +160,7 @@ impl ToolProcess {
                 }
                 match decode_line(&line) {
                     Ok(Incoming::Response(resp)) => {
-                        let sender = reader_pending.lock().unwrap().remove(&resp.id);
+                        let sender = reader_pending.lock_or_panic().remove(&resp.id);
                         if let Some(tx) = sender {
                             let _ = tx.send(resp.into_result());
                         }
@@ -181,7 +201,7 @@ impl ToolProcess {
             // actual sends happen after the lock is released rather than
             // while a `call_timeout` on another thread might be blocked
             // trying to acquire it to remove its own entry.
-            let stranded = std::mem::take(&mut *reader_pending.lock().unwrap());
+            let stranded = std::mem::take(&mut *reader_pending.lock_or_panic());
             for (_, tx) in stranded {
                 let _ = tx.send(Err(RpcError::new(TOOL_EXITED, "tool process exited")));
             }
@@ -198,10 +218,18 @@ impl ToolProcess {
         })
     }
 
+    /// `call_timeout` under `DEFAULT_TIMEOUT`, which is what nearly every
+    /// caller wants; reach for the explicit form only when 30s is too long to
+    /// wait on this particular method.
     pub fn call(&self, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
         self.call_timeout(method, params, DEFAULT_TIMEOUT)
     }
 
+    /// Blocks the calling thread until the reader thread delivers a reply, the
+    /// tool exits (`TOOL_EXITED`), or `timeout` elapses (`TIMED_OUT`). A
+    /// timeout abandons the request rather than cancelling it, so the tool may
+    /// still be working and any late reply is dropped. Safe to call from many
+    /// threads: ids are atomic and each caller waits on its own channel.
     pub fn call_timeout(
         &self,
         method: &str,
@@ -213,15 +241,15 @@ impl ToolProcess {
         // Insert before writing: a response can only arrive after the write
         // lands on the tool's stdin and it replies, so the entry is already
         // in the map by the time that's possible.
-        self.pending.lock().unwrap().insert(id, tx);
+        self.pending.lock_or_panic().insert(id, tx);
 
         let request = Request::new(id, method, params);
         let write_result = {
-            let mut stdin = self.stdin.lock().unwrap();
+            let mut stdin = self.stdin.lock_or_panic();
             write_message(&mut *stdin, &request)
         };
         if let Err(e) = write_result {
-            self.pending.lock().unwrap().remove(&id);
+            self.pending.lock_or_panic().remove(&id);
             return Err(RpcError::new(
                 TOOL_EXITED,
                 format!("failed to write request to tool stdin: {e}"),
@@ -235,7 +263,7 @@ impl ToolProcess {
                 // point finds nothing in the map (the reader thread's "no
                 // entry" branch above) instead of the map accumulating one
                 // dead sender per timeout for the life of the process.
-                self.pending.lock().unwrap().remove(&id);
+                self.pending.lock_or_panic().remove(&id);
                 Err(RpcError::new(
                     TIMED_OUT,
                     format!("{method} timed out after {timeout:?}"),
@@ -253,7 +281,7 @@ impl ToolProcess {
     /// a time. Hold it no longer than a single `recv`: keeping it across a
     /// long wait blocks any other thread trying to drain the same tool.
     pub fn notifications(&self) -> std::sync::MutexGuard<'_, Receiver<Notification>> {
-        self.notifications.lock().unwrap()
+        self.notifications.lock_or_panic()
     }
 
     /// `helve/shutdown`, then wait, then kill. Idempotent: a second call
@@ -267,7 +295,7 @@ impl ToolProcess {
 
         let deadline = Instant::now() + SHUTDOWN_GRACE;
         loop {
-            let mut child = self.child.lock().unwrap();
+            let mut child = self.child.lock_or_panic();
             match child.try_wait().map_err(SpawnError::Io)? {
                 Some(_status) => return Ok(()),
                 None if Instant::now() >= deadline => {

@@ -9,9 +9,9 @@ import type {
   ToolPresentation,
 } from "../contract";
 import { instant, instantOut, snap } from "../motion";
-import { useDropZone } from "../drag/dropZones";
+import { useDropZone } from "../dropZones";
 import { Close, Plus, Search, WarningTriangle } from "../../ui/Icon";
-import OverlayScrollbar from "../scrollbar/OverlayScrollbar";
+import OverlayScrollbar from "../OverlayScrollbar";
 import HealthPopover, { type UnhealthyTool } from "./HealthPopover";
 import AddAppButton, { type AppsMenuHandlers } from "./AddAppButton";
 import "./switcher.css";
@@ -20,64 +20,21 @@ import "./switcher.css";
  * The one tab bar — clusters as groups, and the open cluster's contents inline.
  *
  * This is Chrome's tab-group model, and the reason to copy it is that a cluster
- * is exactly what a tab group is: a set of tabs you are keeping together for one
- * piece of work. Clicking a cluster chip expands that cluster's apps and
- * terminals to the right of it and collapses whichever was expanded before, so
- * the row only ever shows one cluster's contents at a time and the rest stay as
- * chips with a count.
+ * is exactly what a tab group is: a set of tabs kept together for one piece of
+ * work. Clicking a cluster chip expands that cluster's apps and terminals to the
+ * right of it and collapses whichever was expanded before, so the row shows one
+ * cluster's contents at a time and the rest stay as chips with a count.
  *
- * ## Why every tab is here and nowhere else
+ * Every tab is here and nowhere else: the pane strips and the panel's terminal
+ * strip are gone rather than duplicated, because a tab in two places is two
+ * things that can disagree about which one is active. A pane holding more than
+ * one surface still draws as a grouped tray, which is *not* those strips coming
+ * back — it lists nothing twice.
  *
- * Panes used to draw their own tab strips and the panel drew one for terminals,
- * which meant the same handful of surfaces were listed in up to three rows at
- * once. They are all in this row now, and those two strips are gone rather than
- * duplicated — a tab in two places is two things that can disagree about which
- * one is active, and it is twice as much bar for the same information.
- *
- * What is lost with the pane strips is being able to read a split's contents off
- * its own header, and what replaces it is `showing`: a member that is on screen
- * draws lifted. With a split, that is more than one member at once, which is
- * honest — there really is more than one surface visible.
- *
- * ## Pane groups, which are not the pane strips coming back
- *
- * A pane holding several surfaces draws as one grouped region here — a raised
- * tray with thin dividers between its members, so pane membership is something
- * you read rather than something you have to click to find out. It is worth
- * being explicit that this does **not** undo the paragraph above, because it
- * looks at a glance like it might.
- *
- * It is also the only thing in the window that says two surfaces share a pane,
- * which is why the first attempt at it being too faint to see was not a
- * cosmetic miss: with nothing marking the pane, clicking from one of its
- * members to the other reads as one app replacing another rather than as a
- * pane showing its other tab. `switcher.css` has what changed and why.
- *
- * The lesson from the pane strips was not "never show which pane a tab is in".
- * It was that the same surface must not be *listed twice*, because two listings
- * are two things that can disagree about which one is active. This is still
- * exactly one row, and every surface still appears in it exactly once; the row
- * has gained grouping that mirrors the pane tree, not a second copy of anything.
- * There is nothing here that can disagree with anything else, because there is
- * nothing else.
- *
- * A pane group must also not be mistakable for a *cluster* group, which is the
- * outer box this one nests in. Both are drawn in the same visual language on
- * purpose — a region marked by a fill spanning the tabs that belong to it — and
- * they differ in every variable of it at once: the cluster's fill is darker
- * than the bar, square, full height, banded in accent along its top, and always
- * introduced by a named chip; a pane's is lighter, rounded, inset from the bar's
- * edges, unbanded, and never named. They nest rather than overlap. See
- * `switcher.css`.
- *
- * The terminal panel keeps its `+`, its worktree toggle and its collapse
- * chevron. Those operate the *region*; they are not tabs, and none of them names
- * a session.
- *
- * ## Health
- *
- * Unchanged and deliberately not per-cluster. Whether Turner needs an update is
- * a property of the *stack* and has nothing to do with which cluster is open.
+ * `docs/design-notes/shell-chrome.md` carries the full argument for both, moved
+ * there verbatim: what the pane strips cost, what `showing` replaces them with,
+ * why a pane group had to be marked, and how it is kept from reading as a
+ * cluster group.
  */
 export interface ClusterBarProps {
   clusters: Cluster[];
@@ -127,7 +84,11 @@ export interface ClusterBarProps {
    * present and empty. See `AddAppButton.tsx`.
    */
   apps?: AppsMenuHandlers;
-  /** What the warning badge reports on. Not per-cluster; see above. */
+  /**
+   * What the warning badge reports on. Deliberately *not* per-cluster: whether
+   * Turner needs an update is a property of the stack and has nothing to do with
+   * which cluster is open.
+   */
   healthOf?: ToolPresentation[];
   onRescan: () => void;
   searchSlot?: ReactNode;
@@ -213,32 +174,30 @@ export default function ClusterBar({
   // React detaching the old ref before attaching the new — which it does, but
   // relying on it means a drag that lands nowhere the day that ordering is not
   // what someone assumed. There is nothing to move here.
-  //
-  // The rects it measures are only *one* pane's tabs. The row lists several
-  // panes at once and the terminals are not in the tree at all, so an index
-  // counted over all of them would name a position that does not exist in the
-  // pane the drop actually lands in.
-  //
-  // **Which** pane is the fix. This used to hand the registry a fixed
-  // `paneId: dropPaneId` — the focused pane — so a release anywhere over this
-  // row resolved to the focused pane whatever it was pointing at, and
-  // `commit`'s `strip` branch moved the dragged tab there. Landing on a chip
-  // belonging to another pane therefore pulled that tab out of its pane and
-  // into the focused one, replacing what the focused pane was showing. It was
-  // invisible whenever the tab was already in the focused pane, because then the
-  // move is a reorder that changes nothing, which is why it survived until
-  // opening an app started routinely producing a second pane to click across.
-  //
-  // Now the pane is read off the group under the pointer. The row groups its
-  // chips by pane and marks each group with `data-pane-group` for exactly this,
-  // so the answer is the one the eye is already being given.
   const rowRef = useRef<HTMLDivElement | null>(null);
   const rowZone = useDropZone({
     kind: "strip",
     // Measured on demand, not cached: this row scrolls, and a stale rect puts
     // the caret in the wrong gap the moment it does.
+    //
+    // The rects are only *one* pane's tabs. The row lists several panes at once
+    // and the terminals are not in the tree at all, so an index counted over all
+    // of them would name a position that does not exist in the landing pane.
+    //
+    // **Which** pane is the fix. This used to hand the registry a fixed
+    // `paneId: dropPaneId` — the focused pane — so a release anywhere over this
+    // row resolved to the focused pane whatever it pointed at, and `commit`'s
+    // `strip` branch moved the dragged tab there. Landing on a chip belonging to
+    // another pane therefore pulled that tab out of its pane and into the
+    // focused one, replacing what that pane was showing. It was invisible while
+    // the tab was already in the focused pane, because then the move is a
+    // reorder that changes nothing — which is why it survived until opening an
+    // app started routinely producing a second pane to click across.
     at: (x: number) => {
       const row = rowRef.current;
+      // The pane is now read off the group under the pointer: the row groups its
+      // chips by pane and marks each group with `data-pane-group` for exactly
+      // this, so the answer is the one the eye is already being given.
       const groups = row?.querySelectorAll<HTMLElement>("[data-pane-group]") ?? [];
       for (const group of groups) {
         const box = group.getBoundingClientRect();
@@ -623,16 +582,7 @@ export default function ClusterBar({
 /**
  * One pane's tabs, drawn as one region.
  *
- * A pane holding a single surface renders exactly as it always did — a bare tab
- * in the row, with this box adding nothing to it but a wrapper. Only a pane
- * holding *more than one* takes the grouped treatment: a raised, rounded tray
- * with thin internal dividers instead of the full-height seams the rest of the
- * row uses. That asymmetry is the point. Every pane looking like a group
- * would make the marking meaningless, since with no splits every surface is
- * alone in its pane; marking only the pane that is actually stacking something
- * means the decoration appears exactly when it has something to say.
- *
- * The wrapper is here even for a single member, though, and that is a
+ * The wrapper is here even for a single member, and that is a
  * reconciliation decision rather than a visual one. Rendering the lone member
  * bare and the grouped ones wrapped would mean the wrapper appearing around a
  * tab the moment a second one joined its pane — React reconciles children by
@@ -647,10 +597,6 @@ export default function ClusterBar({
  * common move, reordering within a pane, still slides because the tab stays in
  * the same group. Nothing about a *surface* is at risk either way; the surfaces
  * are a flat list in `ToolWindow` and this file has never held one.
- *
- * `caret` is the insertion index within *this* pane, or `null` when the drag is
- * aimed elsewhere. It is the drop target's own index unchanged, because the
- * registry measures a pane's tabs and this component draws exactly those.
  */
 function PaneGroup({
   paneId,
@@ -662,11 +608,25 @@ function PaneGroup({
 }: {
   paneId: string;
   members: ClusterMember[];
+  /**
+   * The insertion index within *this* pane, or `null` when the drag is aimed
+   * elsewhere. It is the drop target's own index unchanged, because the registry
+   * measures a pane's tabs and this component draws exactly those.
+   */
   caret: number | null;
   onSelect: (member: ClusterMember) => void;
   onClose: (member: ClusterMember) => void;
   dragHandleFor?: (member: ClusterMember) => DragHandleProps | undefined;
 }) {
+  // A pane holding a single surface renders exactly as it always did — a bare
+  // tab in the row, with the box below adding nothing to it but a wrapper. Only
+  // a pane holding *more than one* takes the grouped treatment: a raised,
+  // rounded tray with thin internal dividers instead of the full-height seams
+  // the rest of the row uses. That asymmetry is the point. Every pane looking
+  // like a group would make the marking meaningless, since with no splits every
+  // surface is alone in its pane; marking only the pane that is actually
+  // stacking something means the decoration appears exactly when it has
+  // something to say.
   const grouped = members.length > 1;
 
   return (
@@ -726,10 +686,6 @@ function PaneGroup({
  * whatever you are doing in it, which you can only judge while looking at it;
  * a modal that covered the thing being named would be the wrong order.
  *
- * `count` is what a collapsed chip shows instead of its contents — how many tabs
- * are folded up inside it. `null` on the open chip, whose contents are right
- * there to be counted by eye.
- *
  * It is also a drag source: dragged clear of the bar, the whole cluster moves to
  * another window, which is what a second monitor is for. All three gestures live
  * on the same element and do not collide — the drag layer's press threshold is
@@ -748,6 +704,11 @@ function ClusterTab({
 }: {
   cluster: Cluster;
   active: boolean;
+  /**
+   * What a collapsed chip shows instead of its contents — how many tabs are
+   * folded up inside it. `null` on the open chip, whose contents are right there
+   * to be counted by eye.
+   */
   count: number | null;
   closable: boolean;
   dragHandle?: DragHandleProps;

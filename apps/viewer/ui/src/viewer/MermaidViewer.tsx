@@ -16,13 +16,6 @@
  * What it deliberately does not do: live-reload as the source changes, pan, or
  * zoom. Watching the file is the explorer's business, and re-opening the tab is
  * the escape hatch until it exists.
- *
- * The theme is not mermaid's `dark`. Every colour below is read out of
- * `src/tokens.css` at first use, so a diagram is drawn in the same palette as
- * the app around it and no hex value is restated here. That is also why the
- * config is built lazily rather than at module scope: it needs the stylesheet
- * to have been applied, and `getComputedStyle` on `<html>` is the only honest
- * way to ask what `--surface-2` currently is.
  */
 import { useEffect, useState } from "react";
 import mermaid from "mermaid";
@@ -41,6 +34,14 @@ let renders = 0;
 
 let configured = false;
 
+/**
+ * The theme is not mermaid's `dark`. Every colour below is read out of
+ * `src/tokens.css` at first use, so a diagram is drawn in the same palette as
+ * the app around it and no hex value is restated here. That is also why the
+ * config is built lazily rather than at module scope: it needs the stylesheet
+ * to have been applied, and `getComputedStyle` on `<html>` is the only honest
+ * way to ask what `--surface-2` currently is.
+ */
 function ensureConfigured(): void {
   if (configured) return;
   configured = true;

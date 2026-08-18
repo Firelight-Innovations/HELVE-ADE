@@ -27,22 +27,6 @@ export interface TerminalDeckHandle {
  * it's what makes a hidden container measure 0×0, which is the signal
  * `XTermView`'s `ResizeObserver` relies on to skip fitting a terminal nobody
  * can see and to catch the moment it becomes visible again.
- *
- * Mounting and unmounting follows `sessions` appearing and disappearing —
- * nothing else. `activeId === ""` means the worktree tab is the active one
- * in the panel, in which case every terminal here is hidden and none of them
- * is "the" active one.
- *
- * Split panes are laid out without restructuring this DOM into a wrapper per
- * group. Every session keeps its own permanent, unmoving `.terminal__slot`
- * sibling — same as before splitting existed — and a pane that's part of the
- * *active* group only gets CSS custom properties (`--pane-index`,
- * `--pane-count`) telling it which horizontal slice to occupy; `terminal.css`
- * does the rest. Wrapping split members in a shared flex parent instead would
- * mean moving a mounted `XTermView` to a new position in the tree the moment
- * a split happens — indistinguishable, to React, from unmounting it, which
- * would lose the very scrollback and running-program state splitting is
- * supposed to preserve.
  */
 function TerminalDeck(
   {
@@ -53,9 +37,12 @@ function TerminalDeck(
     transport,
     onTitle,
   }: {
+    /** Mounting and unmounting follows these appearing and disappearing —
+     *  nothing else. */
     sessions: TerminalSession[];
     /** A tab id — a session id, or a shared group id — or "" when the
-     *  worktree tab is the active one. */
+     *  worktree tab is the active one, in which case every terminal here is
+     *  hidden and none of them is "the" active one. */
     activeId: string;
     /**
      * Which pane counts as "the" one for split/clear/kill, within the active
@@ -95,6 +82,16 @@ function TerminalDeck(
   );
   const isSplit = activeSessions.length > 1;
 
+  // Split panes are laid out without restructuring this DOM into a wrapper per
+  // group. Every session keeps its own permanent, unmoving `.terminal__slot`
+  // sibling — same as before splitting existed — and a pane that's part of the
+  // *active* group only gets CSS custom properties (`--pane-index`,
+  // `--pane-count`) telling it which horizontal slice to occupy; `terminal.css`
+  // does the rest. Wrapping split members in a shared flex parent instead would
+  // mean moving a mounted `XTermView` to a new position in the tree the moment a
+  // split happens — indistinguishable, to React, from unmounting it, which would
+  // lose the very scrollback and running-program state splitting is supposed to
+  // preserve.
   return (
     <div className="terminal__deck">
       {sessions.map((session) => {

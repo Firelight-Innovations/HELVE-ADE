@@ -10,11 +10,6 @@
  * contents are `useTree.ts`, which slice of them is in the DOM is
  * `useVirtualRows.ts`, and a row's markup is `TreeRow.tsx`.
  *
- * What it deliberately does not own: which file is open. That is `App.tsx`'s,
- * arriving as `selectedPath` and leaving as `onOpenFile`. The tree can be
- * driven from the tab strip for free as a result, and clicking a row does not
- * have to know what a tab is.
- *
  * No motion anywhere, and no framer-motion import at all — see `TreeRow.tsx`'s
  * header, and `src/shell/worktree/WorktreeView.tsx` for the rule both inherit.
  * It used to appear here for exactly one thing, the pane's own width during a
@@ -89,13 +84,96 @@ export interface ExplorerHandle {
   showTrash(): void;
 }
 
+/** What one navigation key does, given where the cursor is. */
+type NavHandler = (ctx: NavContext) => void;
+
+/**
+ * Everything a navigation key may see and everything it may do.
+ *
+ * Hoisted out of the component with the table below, because the switch this
+ * replaced paid a branch per key for a shape that is entirely regular: look up
+ * the row under the cursor, then move, open, close or activate. Nothing here
+ * reads React state directly — the component hands over the four callbacks it
+ * already built, so a handler cannot reach anything the old `case` could not.
+ */
+interface NavContext {
+  /** Where the cursor is in `lines`, or `-1` when it is nowhere. */
+  index: number;
+  /** The row at `index`: `null` off the ends, and `null` on the draft line. */
+  row: Row | null;
+  /** The flat list the indices are into — rows with the draft spliced in. */
+  lines: Line[];
+  moveTo: (index: number) => void;
+  expand: (path: string) => void;
+  collapse: (path: string) => void;
+  activate: (row: Row) => void;
+}
+
+/**
+ * The keys the tree answers for, one row each. A key that is not in here is
+ * not ours, and `onKeyDown` leaves it to the browser untouched.
+ */
+const NAV_KEYS: Record<string, NavHandler> = {
+  // From nowhere, ↓ lands on the first row: -1 + 1.
+  ArrowDown: ({ index, moveTo }) => {
+    moveTo(index + 1);
+  },
+
+  ArrowUp: ({ index, moveTo }) => {
+    if (index > 0) moveTo(index - 1);
+  },
+
+  Home: ({ moveTo }) => {
+    moveTo(0);
+  },
+
+  End: ({ lines, moveTo }) => {
+    moveTo(lines.length - 1);
+  },
+
+  // A closed directory opens; an open one descends into its first child,
+  // which is the next row by construction of the flat array. A file has
+  // nowhere to go.
+  ArrowRight: ({ index, row, moveTo, expand }) => {
+    if (!row) moveTo(0);
+    else if (row.entry.kind === "dir") {
+      if (row.expanded) moveTo(index + 1);
+      else expand(row.entry.path);
+    }
+  },
+
+  ArrowLeft: ({ row, lines, moveTo, collapse }) => {
+    if (row && row.entry.kind === "dir" && row.expanded) {
+      collapse(row.entry.path);
+    } else if (row) {
+      // Ascend. A depth-0 row's parent is the root, which has no row of
+      // its own, so this finds nothing and the cursor stays put.
+      const parent = lines.findIndex(
+        (other) => other.kind === "row" && other.row.entry.path === row.parent,
+      );
+      if (parent >= 0) moveTo(parent);
+    }
+  },
+
+  Enter: ({ row, activate }) => {
+    if (row) activate(row);
+  },
+};
+
 const Explorer = forwardRef<
   ExplorerHandle,
   {
     root: Root | null;
     /** A change means "drop the cache and re-list whatever is open". */
     reloadNonce: number;
-    /** The file showing in the viewer, which may have been opened from a tab. */
+    /**
+     * The file showing in the viewer, which may have been opened from a tab.
+     *
+     * Which file is open is deliberately not this file's to own. It is
+     * `App.tsx`'s, arriving here and leaving as `onOpenFile`. The tree can be
+     * driven from the tab strip for free as a result, and clicking a row does
+     * not have to know what a tab is.
+     */
     selectedPath: string | null;
     /**
      * The root has been listed, or has failed to be — the point at which this
@@ -476,53 +554,20 @@ const Explorer = forwardRef<
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const handler: NavHandler | undefined = NAV_KEYS[event.key];
+    // Anything else is not ours — leave the browser's default alone.
+    if (!handler) return;
     const index = cursorIndex;
-    const row = index >= 0 ? rowAt(index) : null;
-
-    switch (event.key) {
-      case "ArrowDown":
-        // From nowhere, ↓ lands on the first row: -1 + 1.
-        moveTo(index + 1);
-        break;
-      case "ArrowUp":
-        if (index > 0) moveTo(index - 1);
-        break;
-      case "Home":
-        moveTo(0);
-        break;
-      case "End":
-        moveTo(lines.length - 1);
-        break;
-      case "ArrowRight":
-        // A closed directory opens; an open one descends into its first child,
-        // which is the next row by construction of the flat array. A file has
-        // nowhere to go.
-        if (!row) moveTo(0);
-        else if (row.entry.kind === "dir") {
-          if (row.expanded) moveTo(index + 1);
-          else expand(row.entry.path);
-        }
-        break;
-      case "ArrowLeft":
-        if (row && row.entry.kind === "dir" && row.expanded) {
-          collapse(row.entry.path);
-        } else if (row) {
-          // Ascend. A depth-0 row's parent is the root, which has no row of
-          // its own, so this finds nothing and the cursor stays put.
-          const parent = lines.findIndex(
-            (other) => other.kind === "row" && other.row.entry.path === row.parent,
-          );
-          if (parent >= 0) moveTo(parent);
-        }
-        break;
-      case "Enter":
-        if (row) activate(row);
-        break;
-      default:
-        // Anything else is not ours — leave the browser's default alone.
-        return;
-    }
-    // Everything above is a key the tree handled, including the ones that
+    handler({
+      index,
+      row: index >= 0 ? rowAt(index) : null,
+      lines,
+      moveTo,
+      expand,
+      collapse,
+      activate,
+    });
+    // Every key in the table is one the tree handled, including the ones that
     // decided to do nothing. Not preventing here would let ↑/↓ scroll the
     // scrollport out from under the selection they just moved.
     event.preventDefault();
@@ -763,14 +808,6 @@ function emptyNote(
 }
 
 /**
- * Re-read the open folders.
- *
- * Tabler's outline "refresh" at 2px in a 24×24 box, per the rule in
- * `src/ui/Icon.tsx` for a glyph the handoff never drew. Authored here rather
- * than imported for the reason given on `TreeRow.tsx`'s chevron: an app does
- * not reach into `src/`.
- */
-/**
  * Toggle to the deleted list.
  *
  * Tabler's outline "trash" at 2px in a 24×24 box, authored here for the same
@@ -797,6 +834,14 @@ function Bin() {
   );
 }
 
+/**
+ * Re-read the open folders.
+ *
+ * Tabler's outline "refresh" at 2px in a 24×24 box, per the rule in
+ * `src/ui/Icon.tsx` for a glyph the handoff never drew. Authored here rather
+ * than imported for the reason given on `TreeRow.tsx`'s chevron: an app does
+ * not reach into `src/`.
+ */
 function Refresh() {
   return (
     <svg

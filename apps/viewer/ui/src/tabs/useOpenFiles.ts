@@ -4,33 +4,10 @@
  *
  * Two things live here that look like they belong elsewhere, and both are here
  * for the same reason — `ViewerProps` in `../viewer/registry.ts` is a fixed
- * four-prop contract and a viewer cannot be handed anything else.
- *
- * 1. `documents`, a module-scope store of one Monaco model per open path. It is
- *    *not* hook state: `TextViewer` has no route to a hook's closure, and the
- *    whole point of the store is that a model outlives the viewer that mounted
- *    it — which is what makes undo history, cursor and scroll survive a tab
- *    switch. One Files frame per window, so one store.
- *
- * 2. `saveDocument`, the single implementation of "write this buffer to disk".
- *    Both the viewer's registered save and the close-a-dirty-tab prompt go
- *    through it, so there is one place that knows about `baseMtime` and one
- *    place that can be wrong.
- *
- * **The Monaco import below is `import type` and must stay that way.** It is
- * erased before Rollup builds the graph, so this module — which `App.tsx`
- * imports at load — never pulls Monaco into the Files entry chunk. A plain
- * `import` here would undo the dynamic-`import()` discipline that
- * `../viewer/registry.ts` exists to protect. Nothing in this file *creates* a
- * model; it only holds and disposes ones `TextViewer` made.
- *
- * The numbers, so the warning is not just a warning: the Files entry chunk is
- * 175 kB and contains no Monaco at all (`grep -c monaco dist/assets/files-*.js`
- * returns 0). Monaco is 3.86 MB, in a chunk fetched only when a text file is
- * first opened. Dropping the word `type` from line 35 moves that 3.86 MB into
- * the 175 kB — a twenty-fold entry chunk, paid on every Files launch including
- * the ones that only ever look at a PNG. Nothing would fail; `tsc` and the
- * build would both stay green. That is exactly why it is written down here.
+ * four-prop contract and a viewer cannot be handed anything else: `documents`,
+ * the module-scope store of Monaco models, and `saveDocument`, the single
+ * implementation of "write this buffer to disk". Each is argued where it is
+ * defined, as is the `import type` the Monaco types below must keep.
  *
  * What this deliberately does not do: watch the filesystem. There is no
  * watcher, so external changes are noticed by `stat`-ing the open files on tab
@@ -41,6 +18,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Notice, NoticeAction } from "../NoticeBar";
 import type { OpenFile } from "../viewer/registry";
+// **`import type` on the next line, and it must stay that way.** It is erased
+// before Rollup builds the graph, so this module — which `App.tsx` imports at
+// load — never pulls Monaco into the Files entry chunk. A plain `import` would
+// undo the dynamic-`import()` discipline `../viewer/registry.ts` exists to
+// protect, moving 3.86 MB into a 175 kB entry chunk paid on every Files launch.
+// Nothing would fail; `tsc` and the build would both stay green, which is
+// exactly why it is written down. The measurements are in
+// `docs/design-notes/viewer-app.md`. Nothing in this file *creates* a model; it
+// only holds and disposes ones `TextViewer` made.
 import type { TextModel, EditorViewState } from "../viewer/monaco";
 import { baseName, extensionOf, stat, write } from "../rpc";
 import { publish } from "@helve/bridge";
@@ -129,6 +115,14 @@ export interface DocumentHost {
   saved(path: string, mtime: number | null): void;
 }
 
+/**
+ * One Monaco model per open path, at module scope rather than in hook state.
+ *
+ * `TextViewer` has no route to a hook's closure, and the whole point of the
+ * store is that a model outlives the viewer that mounted it — which is what
+ * makes undo history, cursor and scroll survive a tab switch. One Files frame
+ * per window, so one store.
+ */
 class DocumentStore {
   private readonly byPath = new Map<string, TabDocument>();
 
@@ -244,6 +238,10 @@ function isAtOrUnder(path: string, root: string): boolean {
 
 /**
  * Write one open buffer to disk. The only place that calls `files/write`.
+ *
+ * Both the viewer's registered save and the close-a-dirty-tab prompt go through
+ * it, so there is one place that knows about `baseMtime` and one place that can
+ * be wrong.
  *
  * Rejects on every failure, including a stale-write conflict — callers decide
  * what to draw. `TextViewer` turns a stale rejection into its own banner;
@@ -538,7 +536,15 @@ export function useOpenFiles(): OpenFiles {
     }
   }, [patch, reload]);
 
-  /** This tab is a preview *and* nothing would be lost by replacing it. */
+  /**
+   * This tab is a preview *and* nothing would be lost by replacing it.
+   *
+   * A preview that has been typed into, or whose file went away, or that is
+   * asking the user a question is promoted where it stands and the new file
+   * opens beside it. The rule this enforces is the only one that really matters
+   * here: **no buffer with unsaved work in it is ever discarded without being
+   * asked.**
+   */
   const isSpare = useCallback((tab: OpenTab) => {
     if (!tab.preview) return false;
     // Every one of these is supposed to have cleared `preview` already — see
@@ -563,26 +569,16 @@ export function useOpenFiles(): OpenFiles {
    * the gap: the viewer takes its `baseMtime` from its own read, not from here,
    * and the poll skips a tab whose mtime is still null.
    *
-   * ## Preview
-   *
    * `preview` is VS Code's single-click: the file opens in a slot that the
    * *next* single click takes over, so browsing a folder leaves one tab behind
-   * rather than forty. There is at most one such slot, because "the preview
-   * tab" is a role and not a property a second tab could also hold.
-   *
-   * A preview tab is only ever replaced when replacing it loses nothing —
-   * `isSpare` above. A preview that has been typed into, or whose file went
-   * away, or that is asking the user a question is promoted where it stands and
-   * the new file opens beside it. The rule this enforces is the only one that
-   * really matters here: **no buffer with unsaved work in it is ever discarded
-   * without being asked.**
+   * rather than forty. There is at most one such slot — "the preview tab" is a
+   * role, not a property a second tab could also hold — and it is only ever
+   * replaced when replacing it loses nothing; see `isSpare` above.
    *
    * Nothing here debounces or times anything, and the double-click case is not
-   * special-cased. The DOM fires `click` before `dblclick`, so double-clicking
-   * a file in the tree arrives as a preview open followed by this same function
-   * with `preview: false` — which promotes the tab the first click just made.
-   * That is exactly VS Code's sequence, and it falls out rather than being
-   * arranged.
+   * special-cased: the DOM fires `click` before `dblclick`, so it arrives as a
+   * preview open followed by this same function with `preview: false`, which
+   * promotes the tab the first click just made. Exactly VS Code's sequence.
    */
   const open = useCallback(
     (path: string, preview = false) => {

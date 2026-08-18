@@ -6,50 +6,9 @@
 //! name, so the second cluster you want it in is a click rather than the same
 //! four gestures.
 //!
-//! ## Why this is not a `PaneNode`
-//!
-//! The obvious implementation is "store the cluster's tree and write it back",
-//! and it is wrong in a way that is worth stating, because the two types look
-//! almost identical.
-//!
-//! [`crate::layout::PaneNode`] is made of **identities**: pane ids, split ids,
-//! and — in every leaf — *instance* ids. All three are minted per session and
-//! mean nothing outside the cluster they were minted for. A preset holding
-//! `pane-3` and `files-7` would, applied to a cluster whose panes are `pane-11`
-//! and `pane-12`, either collide with live ids or name surfaces that no longer
-//! exist; and a preset saved in one session and applied in the next would name
-//! nothing at all.
-//!
-//! So [`PresetNode`] is the same *shape* with every identity removed: a
-//! direction, the weights, and in each pane the **app ids** that belong there.
-//! `files` is a type, and a type is the only thing about a layout that outlives
-//! the session it was arranged in. Turning that back into a tree — minting the
-//! panes, filling the slots — is [`plan`]'s job, and it happens at the moment of
-//! applying, against whatever is actually open.
-//!
-//! ## What a slot may name
-//!
-//! An app in [`crate::apps::REGISTRY`], or a terminal. Not a tool: a tool's core
-//! is a child process reached over a broker that is not written, so no tool can
-//! mount in this build and the shell never offers one — a preset slot naming one
-//! could only ever produce a surface that fails to load. Slots naming an app
-//! this build does not ship are dropped when the file is read, which is also
-//! what makes a preset written by a newer build degrade rather than break.
-//!
-//! A terminal is [`PresetSlot::Terminal`] rather than an app id, because it is
-//! not one: `REGISTRY` holds `home` and `files` and nothing else, and a terminal
-//! is a [`crate::shell_state::SurfaceKind::Terminal`] session with a pty behind
-//! it. Applying a terminal slot goes through `commands::open_terminal` like
-//! every other terminal in the app — there is one path that spawns a shell, and
-//! this is not a second one.
-//!
-//! ## Built-ins
-//!
-//! [`builtins`] is compiled in and [`merge`] puts it in front of whatever is on
-//! disk. Their ids carry [`BUILTIN_PREFIX`], and any preset read from the file
-//! whose id starts with it is discarded — which is the whole of "a user cannot
-//! corrupt or delete a built-in by editing `presets.json`". There is no id a
-//! hand-written entry can take that would shadow, replace, or hide one.
+//! Why a preset is not a [`PaneNode`] is on [`PresetNode`]; what a slot may
+//! name is on [`PresetSlot`]; and how a built-in stays undeletable is on
+//! [`BUILTIN_PREFIX`].
 
 pub mod store;
 
@@ -71,6 +30,12 @@ use tauri::{AppHandle, Emitter};
 pub const PRESETS_CHANGED_EVENT: &str = "presets:changed";
 
 /// What every built-in id begins with, and what no preset read off disk may.
+///
+/// [`builtins`] is compiled in and [`merge`] puts it in front of whatever is on
+/// disk. Any preset read from the file whose id starts with this is discarded —
+/// which is the whole of "a user cannot corrupt or delete a built-in by editing
+/// `presets.json`". There is no id a hand-written entry can take that would
+/// shadow, replace, or hide one.
 ///
 /// A colon is the point: [`mint_id`] builds a user preset's id out of a slug of
 /// its name, and a slug holds only lowercase letters, digits and dashes. So a
@@ -95,25 +60,51 @@ const MAX_DEPTH: usize = 6;
 /// if they drifted — `presets::find` fails closed on a typo, not loudly.
 pub const PROJECT_OPEN_PRESET_ID: &str = "builtin:files-viewer-over-terminal";
 
-/// One thing that goes in a pane.
+/// One thing that goes in a pane: an app in [`crate::apps::REGISTRY`], or a
+/// terminal.
 ///
-/// Deliberately not "an app id, with `terminal` as a magic value". A terminal
-/// has a pty behind it and is opened through an entirely different path; a
-/// string that sometimes means "look this up in the registry" and sometimes
-/// means "spawn a shell" is the kind of union that gets forgotten at exactly one
-/// of its call sites.
+/// Not a tool. A tool's core is a child process reached over a broker that is
+/// not written, so no tool can mount in this build and the shell never offers
+/// one — a slot naming one could only ever produce a surface that fails to
+/// load. Slots naming an app this build does not ship are dropped when the file
+/// is read, which is what makes a preset written by a newer build degrade
+/// rather than break.
+///
+/// A terminal is [`PresetSlot::Terminal`], deliberately not "an app id, with
+/// `terminal` as a magic value": `REGISTRY` holds `home` and `files` and nothing
+/// else, and a terminal is a [`crate::shell_state::SurfaceKind::Terminal`]
+/// session with a pty behind it, opened through `commands::open_terminal` like
+/// every other terminal in the app — there is one path that spawns a shell, and
+/// this is not a second one. A string that sometimes means "look this up in the
+/// registry" and sometimes means "spawn a shell" is the kind of union that gets
+/// forgotten at exactly one of its call sites.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum PresetSlot {
     #[serde(rename_all = "camelCase")]
     App {
-        /// `files`. A *type*, never an instance id — see the module doc.
+        /// `files`. A *type*, never an instance id — see [`PresetNode`].
         app_id: String,
     },
     Terminal,
 }
 
 /// One node of a preset's shape. [`PaneNode`] with every identity removed.
+///
+/// Storing the cluster's tree and writing it back is the obvious
+/// implementation, and it is wrong in a way worth stating because the two types
+/// look almost identical. [`PaneNode`] is made of **identities**: pane ids,
+/// split ids, and — in every leaf — *instance* ids, minted per session and
+/// meaningless outside the cluster they came from. A preset holding `pane-3`
+/// and `files-7`, applied to a cluster whose panes are `pane-11` and `pane-12`,
+/// would either collide with live ids or name surfaces that no longer exist;
+/// one saved in one session and applied in the next would name nothing at all.
+///
+/// So this is the same *shape* without them: a direction, the weights, and in
+/// each pane the **app ids** that belong there. `files` is a type, and a type is
+/// the only thing about a layout that outlives the session it was arranged in.
+/// Turning that back into a tree — minting the panes, filling the slots — is
+/// [`plan`]'s job, at the moment of applying, against whatever is actually open.
 ///
 /// Internally tagged like `PaneNode` and for the same reason: the frontend
 /// discriminates on `kind` rather than on which keys happen to be present.
@@ -291,13 +282,11 @@ fn terminal_pane() -> PresetNode {
 
 /// The list every menu draws: the built-ins, then whatever survives of the file.
 ///
-/// Four things are dropped rather than shown, and each of them is a way a
-/// hand-edited or future-written `presets.json` could otherwise degrade the
-/// menu rather than itself:
+/// Four things are dropped rather than shown, each a way a hand-edited or
+/// future-written `presets.json` could degrade the menu rather than itself:
 ///
-///   * **An id in the built-in namespace.** This is the rule that makes a
-///     built-in undeletable and uncorruptable. There is no entry a file can
-///     hold that replaces one.
+///   * **An id in the built-in namespace.** The rule that makes a built-in
+///     undeletable and uncorruptable: no entry a file can hold replaces one.
 ///   * **A duplicate id.** Two rows answering to one name, with `find` silently
 ///     picking whichever came first.
 ///   * **A name a built-in or an earlier user preset already holds**, compared
@@ -465,25 +454,23 @@ fn mint_id(name: &str, taken: &[String]) -> String {
 impl PresetNode {
     /// A preset that can be applied without surprises, whatever the file said.
     ///
-    /// Four repairs, and every one of them exists for an input that is either a
-    /// hand-edited file or a preset written by a build that shipped something
-    /// this one does not:
+    /// Four repairs, each for an input that is either a hand-edited file or a
+    /// preset written by a build that shipped something this one does not:
     ///
-    ///   * **A slot naming an app that is not in the registry is dropped.** This
-    ///     is what makes a preset from a newer build degrade to the panes it can
-    ///     still fill rather than open a surface that cannot load. It is also
-    ///     what keeps a tool id out — see the module doc.
-    ///   * **A pane with no slots left is dropped**, since there is nothing for
-    ///     it to hold and an empty pane in an applied layout is a gap.
+    ///   * **A slot naming an app not in the registry is dropped** — a preset
+    ///     from a newer build degrades to the panes it can still fill rather
+    ///     than opening a surface that cannot load, and no tool id gets in (see
+    ///     [`PresetSlot`]).
+    ///   * **A pane with no slots left is dropped**: nothing for it to hold, and
+    ///     an empty pane in an applied layout is a gap.
     ///   * **A split with fewer than two children collapses into its only
-    ///     child**, the same invariant `layout::prune` keeps for the live tree
-    ///     and for the same reason.
+    ///     child** — the invariant, and the reasoning, of `layout::prune`.
     ///   * **Weights are aligned to the children and normalized**, through the
     ///     very function the live tree uses, so a preset cannot describe a
     ///     layout the layout engine would refuse to draw.
     ///
-    /// `depth` is the recursion guard described at [`MAX_DEPTH`]: past it a
-    /// split becomes its first child rather than being followed.
+    /// `depth` is the recursion guard at [`MAX_DEPTH`]: past it a split becomes
+    /// its first child rather than being followed.
     fn normalized(self, depth: usize) -> PresetNode {
         match self {
             PresetNode::Pane { slots } => PresetNode::Pane {
@@ -687,27 +674,22 @@ impl Ids {
 /// Work out the tree a preset produces in a cluster that already has things in
 /// it, and what is still missing.
 ///
-/// ## The rule, and it is the important part
-///
-/// **Nothing is ever closed.** A preset says where things go; it does not say
-/// what should stop existing. Silently destroying an open editor because the
-/// preset that was clicked did not happen to mention it is the worst thing this
-/// feature could do — the work is gone, the gesture that lost it was a menu
-/// click, and there is no undo anywhere in this shell. So:
+/// The important part: **nothing is ever closed.** A preset says where things
+/// go; it does not say what should stop existing. Silently destroying an open
+/// editor because the preset that was clicked did not mention it is the worst
+/// thing this feature could do — the work is gone, the gesture that lost it was
+/// a menu click, and there is no undo anywhere in this shell. So:
 ///
 ///   * A surface already in the cluster whose app matches a slot **moves into
-///     that slot**. Applying `Files | Terminal` to a cluster that already holds
-///     a Files rearranges the Files you have rather than opening a second one
-///     beside it and leaving the first somewhere else.
+///     that slot** — applying `Files | Terminal` to a cluster that already
+///     holds a Files rearranges the Files you have rather than opening a second
+///     one beside it and leaving the first somewhere else. Which surface fills
+///     which slot is `claim`'s rule.
 ///   * A slot with nothing to fill it comes back as a [`Gap`], and the caller
 ///     opens a fresh surface for it.
 ///   * **Everything else lands in the last pane**, in the order it was already
 ///     in. It is still open, it is still yours, and it is somewhere obvious
 ///     rather than somewhere clever.
-///
-/// Matching is first-unclaimed-wins in layout order, so a cluster with two Files
-/// and a preset with two Files slots fills them left to right with the two you
-/// had, rather than reusing one and opening another.
 pub fn plan(root: &PresetNode, existing: &[Existing], ids: &mut Ids) -> (PaneNode, Vec<Gap>) {
     let mut claimed = vec![false; existing.len()];
     let mut gaps = Vec::new();
@@ -801,6 +783,10 @@ fn build_tree(
 }
 
 /// The first surface in layout order that fits `slot` and has not been taken.
+///
+/// First-unclaimed-wins, so a cluster with two Files and a preset with two Files
+/// slots fills them left to right with the two you had, rather than reusing one
+/// and opening another.
 ///
 /// Equality on [`PresetSlot`] is the whole of the match, which is what makes
 /// `App { app_id: "files" }` mean "any Files" and `Terminal` mean "a terminal

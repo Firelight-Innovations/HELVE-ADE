@@ -11,29 +11,18 @@
 //!
 //! They cannot share a name — one directory cannot hold both a file called
 //! `.helve` and a folder called `.helve` — so the manifest takes the project's
-//! own name and the `helve` extension, the way `.uproject` and `.sln` do. That
-//! also means the filename says which project it is when it turns up in a search
-//! result, and it leaves room for the OS to learn `.helve` as a file type that
-//! launches this orchestrator.
-//!
-//! ## Forward compatibility
-//!
-//! [`load`] is deliberately lenient: unknown tables and unknown keys are ignored
-//! rather than rejected, and every field this build reads has a fallback. A
-//! project written by a later HELVE must still open here, degraded, rather than
-//! failing to open at all — and `format` is how this build finds out that is what
-//! happened, so it can say so instead of quietly misreading the file.
-//!
-//! The other half of that promise is not yet owed: nothing rewrites a marker
-//! today, only creates one. When something does, it must **merge into the parsed
-//! document rather than re-serialize this struct**, or the first save from an old
-//! build will silently drop every key a newer one added.
+//! own name and the [`EXTENSION`]. [`load`] holds the forward-compatibility
+//! promise: a file from a newer HELVE still opens here.
 
 use crate::error::{AppError, Result};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The extension that names a project manifest.
+/// The extension that names a project manifest — `<name>.helve`, the way
+/// `.uproject` and `.sln` do it. Naming the file after the project also means
+/// the filename says which project it is when it turns up in a search result,
+/// and it leaves room for the OS to learn `.helve` as a file type that launches
+/// this orchestrator.
 pub const EXTENSION: &str = "helve";
 
 /// The directory beside it, holding everything HELVE generates about the
@@ -94,8 +83,17 @@ pub fn find(dir: &Path) -> Option<PathBuf> {
     found
 }
 
-/// Read a manifest. Missing fields fall back rather than failing — see the
-/// module doc on why a partially-understood file still opens.
+/// Read a manifest. Deliberately lenient: unknown tables and unknown keys are
+/// ignored rather than rejected, and every field this build reads has a
+/// fallback. A project written by a later HELVE must still open here, degraded,
+/// rather than failing to open at all — and `format` is how this build finds out
+/// that is what happened, so it can say so instead of quietly misreading the
+/// file.
+///
+/// The other half of that promise is not yet owed: nothing rewrites a marker
+/// today, only creates one. When something does, it must **merge into the parsed
+/// document rather than re-serialize this struct**, or the first save from an old
+/// build will silently drop every key a newer one added.
 pub fn load(path: &Path) -> Result<Marker> {
     let raw = std::fs::read_to_string(path).map_err(|source| AppError::Io {
         path: path.display().to_string(),

@@ -1,25 +1,21 @@
 //! Source control: what `git` says about a cluster's checkout.
 //!
-//! This shells out to the system `git` binary rather than linking a library
-//! (`git2`). That is a deliberate trade: the user's credential helper, SSH
-//! agent, `.gitconfig`, hooks and aliases are all things `git` already knows
-//! about and a linked library would have to be taught. The cost is that every
+//! This shells out to the system `git` binary rather than linking a library (`git2`). A deliberate
+//! trade: the user's credential helper, SSH agent, `.gitconfig`, hooks and aliases are all things
+//! `git` already knows about and a linked library would have to be taught. The cost is that every
 //! answer arrives as text that has to be parsed.
 //!
-//! Everything here is one-shot request→reply. There is no watcher and no
-//! subscription — the panel re-asks after every mutation and when the shown
-//! cluster changes. Long-running, progress-reporting operations (push, pull,
-//! clone) would want the pty machinery instead; none of them live here.
+//! Everything here is one-shot request→reply. There is no watcher and no subscription — the panel
+//! re-asks after every mutation and when the shown cluster changes. Long-running,
+//! progress-reporting operations (push, pull, clone) would want the pty machinery instead; none of
+//! them live here.
 //!
-//! Commands take a cluster *id*, never a path. Resolving the id to a checkout
-//! happens on this side, through `project::cluster_path`, so the frontend never
-//! gets to name a directory for the backend to run `git` in.
-//!
-//! They used to take a *tool* id, resolved against the `[[tool]]` pins in
-//! `helve.toml`. That was not merely the wrong scope: `discovery.rs` filters
-//! those pins through `ENABLED_TOOLS`, which is `&[]`, so the list is empty for
-//! every project and the lookup could only ever fail. See the note on
-//! `git_cluster_status` for what that cost.
+//! Commands take a cluster *id*, never a path. Resolving the id to a checkout happens on this side,
+//! through `project::cluster_path`, so the frontend never gets to name a directory for the backend
+//! to run `git` in. They used to take a *tool* id, resolved against the `[[tool]]` pins in
+//! `helve.toml`. That was not merely the wrong scope: `discovery.rs` filters those pins through
+//! `ENABLED_TOOLS`, which is `&[]`, so the list is empty for every project and the lookup could
+//! only ever fail. See the note on `git_cluster_status` for what that cost.
 
 use crate::error::{AppError, Result};
 use crate::shell_state::WorktreeRef;
@@ -93,31 +89,24 @@ pub struct GitDiff {
     pub modified: String,
 }
 
-/// The changed-file lists, the branch, and how far it has drifted from its
-/// upstream — for whatever the cluster is working in.
+/// The changed-file lists, the branch, and how far it has drifted from its upstream — for whatever
+/// the cluster is working in.
 ///
-/// ## Why there is no tool-scoped twin of this any more
+/// There is no tool-scoped twin of this any more. A `git_status(id)` taking a *tool* id used to sit
+/// beside it, called by the source-control view and the status bar, and it could not work: it
+/// resolved through a `repo()` helper that looked its id up in `StackSnapshot.tools` — the
+/// `[[tool]]` pins from `helve.toml` — a different id space from the shell's own apps, and one
+/// `discovery.rs`'s `ENABLED_TOOLS = &[]` leaves empty for every project regardless. The lookup
+/// could only ever return `UnknownTool`. It read as a scoping subtlety and was a dead path, which
+/// is why it is gone rather than fixed: a command that has never returned a value to anyone is not
+/// a fallback worth keeping beside one that works.
 ///
-/// There used to be a `git_status(id)` beside this, taking a *tool* id, and it
-/// was what the source-control view and the status bar both called. It could
-/// not work. It resolved through a `repo()` helper that looked its id up in
-/// `StackSnapshot.tools` — the `[[tool]]` pins from `helve.toml` — which is a
-/// different id space from the shell's own apps, and which `discovery.rs`'s
-/// `ENABLED_TOOLS = &[]` leaves empty for every project regardless. So the
-/// lookup could only ever return `UnknownTool`, and every caller got an error
-/// where a change list should have been.
+/// A cluster resolves through `cluster_path`, which follows the worktree when the cluster has one
+/// and the project folder when it does not — the same precedence the terminals and the file
+/// explorer already use, so all three agree about what "here" means.
 ///
-/// It read as a scoping subtlety and was actually a dead path, which is why it
-/// is gone rather than fixed: a command that has never returned a value to
-/// anyone is not a fallback worth keeping beside one that works.
-///
-/// A cluster resolves through `cluster_path`, which follows the worktree when
-/// the cluster has one and the project folder when it does not — the same
-/// precedence the terminals and the file explorer already use, so all three
-/// agree about what "here" means.
-///
-/// `None` for a cluster with no project or one that is not a repository, which
-/// is the state the explorer draws by simply not decorating anything.
+/// `None` for a cluster with no project or one that is not a repository, which is the state the
+/// explorer draws by simply not decorating anything.
 #[tauri::command]
 pub fn git_cluster_status(app: AppHandle, cluster_id: String) -> Result<Option<GitStatus>> {
     let Some(cwd) = crate::project::cluster_path(&app, &cluster_id) else {
@@ -139,12 +128,12 @@ fn status_in(cwd: &Path) -> Result<GitStatus> {
     // A repository with no commits yet has no resolvable HEAD, and one with no
     // upstream has nothing to count against. Both are ordinary states of a
     // fresh checkout, so neither failure is allowed to sink the whole status.
-    let branch = run_git(&cwd, "rev-parse", &["rev-parse", "--abbrev-ref", "HEAD"])
+    let branch = run_git(cwd, "rev-parse", &["rev-parse", "--abbrev-ref", "HEAD"])
         .map(|out| out.trim().to_string())
         .unwrap_or_default();
 
     let (ahead, behind) = run_git(
-        &cwd,
+        cwd,
         "rev-list",
         &["rev-list", "--left-right", "--count", "HEAD...@{u}"],
     )
@@ -165,33 +154,26 @@ fn status_in(cwd: &Path) -> Result<GitStatus> {
     })
 }
 
-/// Every path git is ignoring in this checkout, repo-relative, for the file
-/// explorer to grey out the way VS Code's does.
+/// Every path git is ignoring in this checkout, repo-relative, for the file explorer to grey out
+/// the way VS Code's does.
 ///
-/// **Deliberately a second `git status` rather than a flag on the one
-/// `status_in` already runs.** `--ignored` folds these entries into the same
-/// list the changes come back in, so every caller of `GitStatus` — the source
-/// control panel, the status bar's counts — would start reporting
-/// `node_modules` as work in progress. The explorer is the only surface that
-/// wants this, so it is the only one that pays for it.
+/// **Deliberately a second `git status` rather than a flag on the one `status_in` runs.**
+/// `--ignored` folds these entries into the same list the changes come back in, so every caller of
+/// `GitStatus` — the panel, the status bar's counts — would report `node_modules` as work in
+/// progress. The explorer is the only surface that wants this, so it is the only one that pays, and
+/// it is a real cost: in this repository plain `git status` answers in 53ms and the same call with
+/// `--ignored` takes 989ms, because the ignored walk is the walk over `node_modules` and `target`
+/// everything else in git avoids. That ratio is why `files.rs` makes this its own RPC, fetched once
+/// per project rather than folded into the status refresh, which runs on every tree change.
 ///
-/// And it is a real cost: measured against this repository, plain `git status`
-/// answers in 53ms and the same call with `--ignored` takes 989ms, because the
-/// ignored walk is exactly the walk over `node_modules` and `target` that
-/// everything else in git is built to avoid. That ratio is why `files.rs`
-/// exposes this as its own RPC fetched once per project rather than folding it
-/// into the status refresh, which runs every time the tree changes.
+/// `--ignored` bare means `--ignored=traditional`, the cheap *shape* too: a directory with nothing
+/// tracked inside comes back as one entry with a trailing slash — `node_modules/` — not every file
+/// beneath it. This repo answers with 15 entries instead of tens of thousands, and the frontend
+/// greys a subtree per entry. The collapsing is tied to the untracked mode, so it is named here
+/// rather than left to `status.showUntrackedFiles`, which a user may have set to `no`.
 ///
-/// `--ignored` bare means `--ignored=traditional`, which is the cheap *shape*
-/// as well: a directory with nothing tracked inside it comes back as a single
-/// entry with a trailing slash — `node_modules/` — rather than as every file
-/// beneath it. This repository answers with 15 entries instead of tens of
-/// thousands, and the frontend greys a whole subtree from each one. That
-/// collapsing is tied to the untracked mode, so it is named here rather than
-/// left to `status.showUntrackedFiles`, which a user may have set to `no`.
-///
-/// Failure returns an empty list rather than an error. A checkout whose ignore
-/// rules cannot be read should still get its modified files decorated.
+/// Failure returns an empty list rather than an error. A checkout whose ignore rules cannot be read
+/// should still get its modified files decorated.
 pub fn ignored_roots(cwd: &Path) -> Vec<String> {
     let Ok(out) = run_git(
         cwd,
@@ -230,39 +212,26 @@ const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// checkout, and this runs on every status refresh.
 const UNTRACKED_LINE_COUNT_CAP: u64 = 5 * 1024 * 1024;
 
-/// `insertions`/`deletions` for `GitStatus` — see the doc comment on those
-/// fields for the summary; this is where the rule is actually implemented.
+/// `insertions`/`deletions` for `GitStatus` — see the doc comment on those fields for the summary;
+/// this is where the rule is actually implemented.
 ///
 /// What this counts, in full:
-///   - Every tracked file's change from `HEAD` (or, for a repository with no
-///     commits yet, the empty tree — see [`EMPTY_TREE`]) to the working tree,
-///     staged and unstaged combined. `git diff <ref> --numstat` reports that
-///     net difference regardless of how much of it is in the index, which is
-///     the right question here — "how much has this cluster changed" — and it
-///     is what keeps a file that is staged *and* further edited from being
-///     counted twice. This is the same number `git diff --stat HEAD` would
-///     report, just split into the two counts instead of one line per file.
-///   - Every untracked file already found in `unstaged` (its `kind` is
-///     `Untracked`), as a pure addition of its own line count. Untracked files
-///     are invisible to `git diff` no matter what it is diffed against, so
-///     without this the totals would silently ignore new files — for an
-///     ordinary feature branch, most of the change.
+///   - Every tracked file's change from `HEAD` (or the empty tree, for a repository with no commits
+///     yet — see [`EMPTY_TREE`]) to the working tree, staged and unstaged combined. `git diff <ref>
+///     --numstat` reports that net difference regardless of how much of it is in the index, which
+///     is the right question here — "how much has this cluster changed" — and is what keeps a file
+///     that is staged *and* further edited from being counted twice. The same number `git diff
+///     --stat HEAD` would report, split into the two counts instead of one line per file.
+///   - Every untracked file in `unstaged` (`kind` is `Untracked`), as a pure addition of its own
+///     line count. Untracked files are invisible to `git diff` whatever it is diffed against, so
+///     without this the totals would ignore new files — on a feature branch, most of the change.
 ///
-/// What this deliberately leaves out, rather than silently reporting as zero:
-///   - Line counts for binary files. `--numstat` marks one with a bare `-` in
-///     place of a number; `parse_numstat_line` turns that into `None`, and
-///     this treats a `None` count as "nothing to add", not "zero lines
-///     changed" — the file itself is still in `staged`/`unstaged`, so it is
-///     not lost from "files touched", it just cannot contribute a line count
-///     that does not exist.
-///   - Untracked files over [`UNTRACKED_LINE_COUNT_CAP`] — read attempted, not
-///     made; same "file counted, line total not" treatment as a binary file.
-///   - Anything `.gitignore` excludes, the same as every other view in this
-///     module.
+/// Left out rather than silently reported as zero: line counts for binary files (see
+/// [`parse_numstat_line`]), untracked files over [`UNTRACKED_LINE_COUNT_CAP`], and anything
+/// `.gitignore` excludes. Each is still in `staged`/`unstaged`, so only its line total is missing.
 ///
-/// Best-effort like the `ahead`/`behind` lookup just above it in `status_in`:
-/// a `git diff` that fails for any reason leaves both counts at `0` rather
-/// than sinking the whole status.
+/// Best-effort like the `ahead`/`behind` lookup just above it in `status_in`: a `git diff` that
+/// fails for any reason leaves both counts at `0` rather than sinking the whole status.
 fn line_change_counts(cwd: &Path, unstaged: &[GitFileChange]) -> (u32, u32) {
     let has_head = run_git(cwd, "rev-parse", &["rev-parse", "--verify", "-q", "HEAD"]).is_ok();
     let base = if has_head { "HEAD" } else { EMPTY_TREE };
@@ -294,11 +263,12 @@ fn line_change_counts(cwd: &Path, unstaged: &[GitFileChange]) -> (u32, u32) {
 /// all (the format has no other kind of line, but a future git printing one
 /// this has never seen should not panic).
 ///
-/// Each count is itself `None` for a binary file, which `--numstat` marks with
-/// a bare `-` in place of a number rather than omitting the line. The path is
-/// not extracted — nothing here displays file names, only totals — which is
-/// also what keeps this ignorant of the `old => new` shape `--find-renames`
-/// prints in the third column.
+/// Each count is itself `None` for a binary file, which `--numstat` marks with a bare `-` in place
+/// of a number rather than omitting the line. `line_change_counts` treats that `None` as "nothing
+/// to add", not "zero lines changed" — the file is still in `staged`/`unstaged`, it just cannot
+/// contribute a line count that does not exist. The path is not extracted — nothing here displays
+/// file names, only totals — which is also what keeps this ignorant of the `old => new` shape
+/// `--find-renames` prints in the third column.
 fn parse_numstat_line(line: &str) -> Option<(Option<u32>, Option<u32>)> {
     let mut fields = line.splitn(3, '\t');
     let added = fields.next()?;
@@ -686,29 +656,23 @@ pub fn main_repo_root(path: &Path) -> Option<PathBuf> {
 
 // --- worktrees, per cluster ---------------------------------------------------
 //
-// The commands above take a tool id, because source control follows whichever
-// tool's checkout is on screen. These take a *cluster* id instead, and the
-// difference is the whole point of the feature: a cluster is one thing being
-// worked on, and giving it a checkout of its own is what lets two of them hold
-// two branches of one repository open at once without either one's edits
-// appearing in the other's file tree.
-//
-// The frontend still never names a directory — a cluster id resolves to a
+// The commands above take a tool id, because source control follows whichever tool's checkout is
+// on screen. These take a *cluster* id instead, and the difference is the whole point of the
+// feature: a cluster is one thing being worked on, and giving it a checkout of its own is what lets
+// two of them hold two branches of one repository open at once without either one's edits appearing
+// in the other's file tree. The frontend still never names a directory — a cluster id resolves to a
 // project here, exactly as a tool id resolves to a checkout above.
 
 /// Where a project's worktrees live: `<project>/../.worktrees/<project-name>/`.
 ///
-/// Beside the project rather than inside it, and that placement is load-bearing
-/// rather than tidiness. A worktree is a complete second copy of the codebase,
-/// so one nested inside the project would sit in the tree that every file
-/// walker descends — the Files app, the search index, and Vite's watcher would
-/// each find one more copy of `src/` for every cluster. Outside, nothing has to
-/// be taught to ignore it, and the parent repository never reports it as
-/// untracked content either.
+/// Beside the project rather than inside it, and that placement is load-bearing rather than
+/// tidiness. A worktree is a complete second copy of the codebase, so one nested inside the project
+/// would sit in the tree that every file walker descends — the Files app, the search index, and
+/// Vite's watcher would each find one more copy of `src/` for every cluster. Outside, nothing has
+/// to be taught to ignore it, and the parent repository never reports it as untracked content.
 ///
-/// Namespaced by the project's folder name so that two projects sharing a
-/// parent directory — which is the normal shape of a `code/` folder — do not
-/// pool their worktrees into one namespace where the names could collide.
+/// Namespaced by the project's folder name so that two projects sharing a parent directory — the
+/// normal shape of a `code/` folder — do not pool their worktrees where the names could collide.
 fn worktree_home(project: &Path) -> Result<PathBuf> {
     let parent = project.parent().ok_or_else(|| AppError::Git {
         op: "worktree add".to_string(),

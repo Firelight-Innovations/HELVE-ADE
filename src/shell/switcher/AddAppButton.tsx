@@ -1,47 +1,37 @@
 /**
  * "Open an app here" — the Apps menu, in the row where the apps actually are.
  *
- * The menu bar already answers "open another app", and it is three regions and
- * a click away from the tabs it adds to. This puts the same question at the end
- * of the open cluster's own tabs, where the answer lands.
+ * The menu bar already answers "open another app", three regions and a click
+ * away from the tabs it adds to. This puts the same question at the end of the
+ * open cluster's own tabs, where the answer lands.
  *
- * ## It is the same menu, not a second one
+ * It is the same menu, not a second one. The items come from `appsMenu()` in
+ * `src/shell/appsMenu.ts` — the single definition the menu bar's Apps menu is
+ * built from — rendered by `MenuItemList`, the component both surfaces use.
+ * Nothing about the list is restated here: an app added to the registry appears
+ * in both places or neither, which is the only way two surfaces showing "every
+ * app" can be kept honest — there is nothing to keep in sync.
  *
- * The items come from `appsMenu()` in `titlebar/TitleBar.tsx` — the single
- * definition the menu bar's Apps menu is also built from — and are rendered by
- * `MenuItemList`, the same component both menu surfaces use. Nothing about the
- * list is restated here. An app added to the registry appears in both places or
- * neither, which is the only way two surfaces showing "every app" can be kept
- * honest: there is nothing to keep in sync.
- *
- * Both imports cross out of this region, which the contract otherwise forbids.
- * That is the point of the exercise rather than a lapse — the instruction was to
- * reuse the existing menu, and a copy of it that happened to live on the correct
- * side of a module boundary would be the exact drift the boundary is meant to
- * prevent.
- *
- * ## Why the surface is portalled
- *
- * `.switcher__tabs` is `overflow-x: auto; overflow-y: hidden` — it is the row's
- * horizontal scroll container. A menu positioned inside it would be clipped to
- * the 34px bar and never seen. `position: fixed` does not save it either: framer
- * puts a `transform` on `.switcher__group` and `.switcher__members` whenever the
- * row is animating, and a transformed ancestor becomes the containing block for
- * fixed descendants, so the menu would slip back inside the clip mid-animation.
- * So it is a portal into `document.body` at coordinates measured off the button.
- *
- * The container is `document.body` always, never a moving element — the
- * remount-on-container-change hazard `ToolWindow` and `PaneTree` document does
- * not arise, and there is no iframe here to reload if it did.
+ * Both live directly under `src/shell/` rather than inside `titlebar/`, so this
+ * can import them without crossing a region boundary (STANDARDS.md §1.2). They
+ * were moved there when the second surface appeared: a definition two regions
+ * draw is not either region's to own.
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { popover } from "../motion";
-import MenuItemList, { inMenuSurface } from "../titlebar/MenuItemList";
-import { appsMenu, type AppsMenuHandlers } from "../titlebar/TitleBar";
+import MenuItemList, { inMenuSurface } from "../MenuItemList";
+import { appsMenu, type AppsMenuHandlers } from "../appsMenu";
 import { Plus } from "../../ui/Icon";
 import "./addapp.css";
+
+/**
+ * Re-exported so `ClusterBar` can type the prop it forwards from one import.
+ * The tab row has no business knowing where the menu is defined; this component
+ * is the only thing in the region that does, and it hands the shape on.
+ */
+export type { AppsMenuHandlers };
 
 /**
  * The menu's narrowest width, in one place because two things need it: the
@@ -52,13 +42,6 @@ import "./addapp.css";
  * 200px is `.menubar__dropdown`'s `min-width`, reused rather than picked: this
  * is the same list of rows, in the same typeface, at the same padding.
  */
-/**
- * Re-exported so `ClusterBar` can type the prop it forwards from one import.
- * The tab row has no business knowing the title bar exists; this component is
- * the only thing in the region that does, and it hands the shape on.
- */
-export type { AppsMenuHandlers };
-
 const MENU_MIN_WIDTH = 200;
 
 /** Keeps the surface off both window edges when the button is near one. */
@@ -180,6 +163,19 @@ export default function AddAppButton({ apps }: { apps: AppsMenuHandlers }) {
       </button>
 
       {createPortal(
+        // Why this is portalled: `.switcher__tabs` is `overflow-x: auto;
+        // overflow-y: hidden` — it is the row's horizontal scroll container. A
+        // menu positioned inside it would be clipped to the 34px bar and never
+        // seen. `position: fixed` does not save it either: framer puts a
+        // `transform` on `.switcher__group` and `.switcher__members` whenever the
+        // row is animating, and a transformed ancestor becomes the containing
+        // block for fixed descendants, so the menu would slip back inside the
+        // clip mid-animation. So it is a portal into `document.body` at
+        // coordinates measured off the button.
+        //
+        // The container is `document.body` always, never a moving element — the
+        // remount-on-container-change hazard `ToolWindow` and `PaneTree` document
+        // does not arise, and there is no iframe here to reload if it did.
         <AnimatePresence>
           {open && at && (
             <motion.div

@@ -10,6 +10,9 @@ use std::io::{self, BufRead};
 /// returns) so every tool doesn't have to reimplement that; `helve/hello`
 /// and every tool-defined method still reach `call` here.
 pub trait Handler {
+    /// Called one request at a time from the `serve` loop, so `&mut self` state
+    /// needs no lock of its own. An unrecognised method is an `RpcError`, not a
+    /// panic: the error becomes the reply and the loop keeps serving.
     fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, RpcError>;
 }
 

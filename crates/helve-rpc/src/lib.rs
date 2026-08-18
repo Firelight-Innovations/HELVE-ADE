@@ -17,6 +17,7 @@
 
 mod codec;
 mod host;
+mod sync;
 mod tool;
 
 pub use codec::{

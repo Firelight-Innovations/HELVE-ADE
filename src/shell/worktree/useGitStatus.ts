@@ -12,14 +12,6 @@
  * There is no watcher behind `GitControl`, so nothing here can push. `refresh`
  * is what the panel calls after every mutation, and a change of `clusterId` is
  * the only other thing that re-asks.
- *
- * Keyed on the **cluster**, not on the focused app. It was the latter until the
- * status bar and the source-control view were found to be showing nothing at
- * all: `activeAppId` is `null` for any focused terminal, and even a non-null
- * app id resolved through a tool list that is empty for every project (see the
- * scope note in `SourceControlView.tsx`). A cluster is also the honest subject
- * — "which branch am I on" is a property of what you are working on, not of
- * which pane happens to have focus.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { GitControl, GitStatus } from "../contract";
@@ -34,6 +26,15 @@ export interface GitStatusHandle {
   refresh: () => void;
 }
 
+/**
+ * Keyed on the **cluster**, not on the focused app. It was the latter until the
+ * status bar and the source-control view were found to be showing nothing at
+ * all: `activeAppId` is `null` for any focused terminal, and even a non-null
+ * app id resolved through a tool list that is empty for every project (see the
+ * scope note in `SourceControlView.tsx`). A cluster is also the honest subject
+ * — "which branch am I on" is a property of what you are working on, not of
+ * which pane happens to have focus.
+ */
 export function useGitStatus(control: GitControl, clusterId: string | null): GitStatusHandle {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [error, setError] = useState<string | null>(null);

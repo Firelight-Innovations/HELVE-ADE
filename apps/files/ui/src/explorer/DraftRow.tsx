@@ -12,15 +12,6 @@
  * it is naming something that already had one. The row *replaces* the entry's
  * own row for the duration rather than joining the list beside it — the entry
  * is not gaining a sibling, it is being re-labelled where it stands.
- *
- * How the question behaves — Enter, Escape, click-away, the empty answer, the
- * unchanged answer, what happens after a failure — is `../useInlineName`, which
- * the tab strip's rename shares. This file owns only what the question *looks*
- * like inside a tree.
- *
- * The icon updates as you type, from the same resolver the real rows use. It is
- * free, and it is the earliest possible confirmation that `.ts` was understood
- * as TypeScript rather than as part of the name.
  */
 import type { DraftKind } from "../ContextMenu";
 import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
@@ -62,6 +53,10 @@ export default function DraftRow({
   onCommit: (name: string) => void;
   onCancel: () => void;
 }) {
+  // How the question behaves — Enter, Escape, click-away, the empty answer, the
+  // unchanged answer, what happens after a failure — is `../useInlineName`,
+  // which the tab strip's rename shares. This file owns only what the question
+  // *looks* like inside a tree.
   const field = useInlineName({ initial: initialName, mode, busy, onCommit, onCancel });
   const prompt = promptFor(mode, kind);
 
@@ -77,6 +72,9 @@ export default function DraftRow({
           yet and a new file never will be. Same placeholder `TreeRow` uses. */}
       <span className="explorer__chevron explorer__chevron--none" aria-hidden="true" />
 
+      {/* The icon updates as you type, from the same resolver the real rows
+          use. It is free, and it is the earliest possible confirmation that
+          `.ts` was understood as TypeScript rather than as part of the name. */}
       <img
         className="explorer__icon"
         src={kind === "dir" ? folderIconUrl(field.value, false) : fileIconUrl(field.value)}

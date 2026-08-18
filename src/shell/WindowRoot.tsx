@@ -19,10 +19,15 @@ import {
   type WindowKind,
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
-import TitleBar, { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/TitleBar";
+import TitleBar from "./titlebar/TitleBar";
+import { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/menus";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
 import ClusterBar from "./switcher/ClusterBar";
 import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
+// The two the tool window draws through a render prop rather than importing;
+// see its `renderPanes`/`renderTerminal` props for why.
+import PaneTree from "./panes/PaneTree";
+import XTermView from "./terminal/XTermView";
 import { splitDirOnOpen } from "./panes/splitOnOpen";
 import SecondaryPanel from "./panel/SecondaryPanel";
 import BottomPanel from "./panel/BottomPanel";
@@ -33,7 +38,7 @@ import { useSearchSession } from "./search/useSearchSession";
 import { useSearchBarHold } from "./search/useSearchBarHold";
 import { openHitInFiles } from "./search/openHit";
 import { useDrag } from "./drag/useDrag";
-import { useDropZone } from "./drag/dropZones";
+import { useDropZone } from "./dropZones";
 import { useKeyboard } from "./keys/useKeyboard";
 import WorktreePanel from "./worktree/WorktreePanel";
 import { useGitStatus } from "./worktree/useGitStatus";
@@ -251,18 +256,18 @@ export default function WindowRoot({
   // `instances` because a session has a pty behind it and an ordinary surface
   // does not; that distinction is about ownership, not about how a tab is drawn,
   // so it is flattened away here where the drawing happens.
-  //
-  // `appId` is `"terminal"` — a type name like `files` or `home`, and kept out of
-  // the real app registry on purpose even though the Apps menu now offers one.
-  // `apps::openables` is what puts it in that menu, and it is a *second* list
-  // beside the registry precisely so this id never resolves to a frontend: the
-  // terminal branch of `ToolWindow` never asks for a presentation, `useApps`
-  // does not contain it, and the two places that resolve an app id from the
-  // focused surface guard on `kind` first. Rust holds the same line — `is_app`
-  // answers false for it, and `open_instance` refuses it by name.
   const instances = useMemo(() => {
     const map = new Map((shell?.instances ?? []).map((i) => [i.id, i]));
     for (const t of shell?.terminals ?? []) {
+      // `appId` is `"terminal"` — a type name like `files` or `home`, and kept
+      // out of the real app registry on purpose even though the Apps menu now
+      // offers one. `apps::openables` is what puts it in that menu, and it is a
+      // *second* list beside the registry precisely so this id never resolves to
+      // a frontend: the terminal branch of `ToolWindow` never asks for a
+      // presentation, `useApps` does not contain it, and the two places that
+      // resolve an app id from the focused surface guard on `kind` first. Rust
+      // holds the same line — `is_app` answers false for it, and `open_instance`
+      // refuses it by name.
       map.set(t.id, { id: t.id, appId: "terminal", kind: "terminal", title: t.title });
     }
     return map;
@@ -392,29 +397,25 @@ export default function WindowRoot({
 
   const activeInstance = activeInstanceId ? instances.get(activeInstanceId) : undefined;
 
-  // Selecting and closing a tab live further down, with the terminals — the one
-  // bar lists surfaces and terminals together, so the handlers it is given have
-  // to be able to act on either, and the terminal half needs state declared
-  // below this point. See `onSelectMember`.
+  // Selecting and closing a tab live further down, with the terminals: one bar
+  // lists both, and the terminal half needs state declared below this point.
+  // See `onSelectMember`.
 
   /**
    * The Apps menu, and the switcher's `+`.
    *
-   * The new surface gets a **pane of its own**, splitting the focused pane
-   * along its longer axis. It used to land in the focused pane as another tab,
-   * which on screen looked like it had replaced whatever was already there —
-   * the surface you were looking at went behind the one you just opened, with
-   * nothing about the click to say it would. Stacking two surfaces in one pane
-   * is still very much a thing you can do; it is now something you *ask* for, by
-   * dragging a chip into that pane, rather than the only thing opening does.
+   * The new surface gets a **pane of its own**, splitting the focused pane along
+   * its longer axis. It used to land in the focused pane as another tab, which on
+   * screen looked like it had replaced what was already there — the surface you
+   * were looking at went behind the one you just opened, with nothing about the
+   * click to say it would. Stacking two surfaces in one pane is still a thing you
+   * can do; it is now something you *ask* for, by dragging a chip into that pane.
    *
    * The axis is measured here rather than decided in Rust, and
-   * `panes/splitOnOpen.ts` is where that argument is written down: the tree
-   * stores fractions of a parent, on purpose, so it cannot know which way a pane
-   * is currently drawn. What stops repeated opening from producing slivers, and
-   * what happens once there are four panes, both live in
-   * `PaneNode::open_into` — the rules are one set, in one place, whichever door
-   * an open comes through.
+   * `panes/splitOnOpen.ts` writes that argument down: the tree stores fractions
+   * of a parent, on purpose, so it cannot know which way a pane is drawn. What
+   * stops repeated opening producing slivers, and what happens once there are
+   * four panes, live in `PaneNode::open_into` — one set of rules, one place.
    */
   const onOpenApp = useCallback(
     (appId: string) => {
@@ -430,23 +431,21 @@ export default function WindowRoot({
   /**
    * A terminal in a **pane of this cluster**, from the Apps menu or the `+`.
    *
-   * Not the same action as the panel's own `+` a few hundred lines down, and
-   * both are meant to exist. That one makes a terminal in the *window's* panel,
-   * which outlives every cluster switch and is what you want for a shell
-   * watching one worktree while the layout in front of it is about another. This
-   * one makes a terminal that is part of an arrangement — the right-hand pane of
-   * a preset, or wherever you drag it — and closes with the cluster drawing it.
-   * VS Code has both for the same reason; `TerminalControl.createInPane` says
-   * more.
+   * Not the same action as the panel's own `+` a few hundred lines down, and both
+   * are meant to exist. That one makes a terminal in the *window's* panel, which
+   * outlives every cluster switch and is what you want for a shell watching one
+   * worktree while the layout in front of it is about another. This one makes a
+   * terminal that is part of an arrangement — the right-hand pane of a preset, or
+   * wherever you drag it — and closes with the cluster drawing it. VS Code has
+   * both for the same reason; `TerminalControl.createInPane` says more.
    *
    * It cannot go through `openInstance`: an instance is an app or a tool with a
    * frontend to mount, and a terminal is a pty. Rust refuses that call by name
    * rather than letting it mint a surface pointing at nothing.
    *
    * It splits the focused pane exactly as `onOpenApp` does, and passes the same
-   * measured axis. Terminal sits in the Apps menu among the apps, so a row that
-   * split and a row that stacked would be two behaviours in one list with
-   * nothing on screen to predict which you were about to get.
+   * measured axis — Terminal sits in the Apps menu among the apps, so a row that
+   * split and a row that stacked would be two behaviours in one list.
    */
   const onOpenTerminalHere = useCallback(() => {
     hideTakeover();
@@ -680,21 +679,18 @@ export default function WindowRoot({
   // reads as a flicker. Choosing the neighbour here means the switch happens on
   // the same frame as the click, and the broadcast then agrees with it.
   //
-  // Splitting means a tab can lose a pane without losing the tab, so this
-  // isn't just "closed the active tab, move on" any more:
-  //   - the tab survives with 2+ panes left: its group id is unaffected,
-  //     `panelTabId`'s own re-derivation above keeps pointing at it, nothing
-  //     to predict here.
-  //   - the tab survives with exactly 1 pane left: `close_terminal_pure` on
-  //     the Rust side ungroups a lone survivor (a group of one is not a
-  //     group), so the tab's id moves from the shared group id to that
-  //     session's own id. Predicted here for the same reason the neighbour
-  //     jump always was — so the switch lands on the same frame as the
-  //     click rather than a tick after `shell:state` catches up.
+  // Splitting means a tab can lose a pane without losing the tab, so this isn't
+  // just "closed the active tab, move on" any more:
+  //   - the tab survives with 2+ panes left: its group id is unaffected and
+  //     `panelTabId`'s own re-derivation above keeps pointing at it.
+  //   - the tab survives with exactly 1 pane left: `close_terminal_pure` on the
+  //     Rust side ungroups a lone survivor (a group of one is not a group), so
+  //     the tab's id moves from the shared group id to that session's own id.
+  //     Predicted here for the same reason the neighbour jump always was.
   //   - the tab itself is gone (its last/only pane closed): jump to the
-  //     neighbouring *tab*, walking distinct tab ids rather than raw
-  //     session ids, since a split's second pane is not "the tab" a
-  //     neighbour search should land on.
+  //     neighbouring *tab*, walking distinct tab ids rather than raw session
+  //     ids, since a split's second pane is not "the tab" a neighbour search
+  //     should land on.
   const onCloseTab = useCallback(
     (id: string) => {
       const closed = sessions.find((s) => s.id === id);
@@ -781,10 +777,9 @@ export default function WindowRoot({
 
   // --- the cluster bar ------------------------------------------------------
   //
-  // Every tab *in the open cluster*, flattened into the row that draws them.
-  // The per-pane strips that used to share this job are gone; see `ClusterBar`'s
-  // doc comment for why listing the same surface in several rows was worse than
-  // listing it in one.
+  // Every tab *in the open cluster*, flattened into the row that draws them. The
+  // per-pane strips that used to share this job are gone; see `ClusterBar`'s doc
+  // comment for why listing the same surface in several rows was worse.
   //
   // The band's terminals are not in this list, and that is the change. A
   // cluster's members are its tree's tabs — a band terminal is not one, so no
@@ -792,11 +787,10 @@ export default function WindowRoot({
   // names its own contents; see `BottomPanel`. A terminal *dragged into* a tree
   // is still here, because by then it is a tree tab like any other.
   //
-  // Derived, never stored. A cluster's surfaces are its tree's tabs, and a
-  // membership list kept beside them would be a second answer that could drift.
-  //
-  // Takeover surfaces are filtered out below — see the `isTakeover` skip inside
-  // `members`, and `onSelectCluster` for where Home's door went instead.
+  // Derived, never stored: a membership list kept beside the tree would be a
+  // second answer that could drift. Takeover surfaces are filtered out below —
+  // see the `isTakeover` skip inside `members`, and `onSelectCluster` for where
+  // Home's door went instead.
 
   // The band's tabs, grouped so a split terminal is one entry rather than two.
   // Computed once here because several things below want the same grouping and
@@ -1417,6 +1411,17 @@ export default function WindowRoot({
               onResize={onResizePane}
               dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
+              // The two regions the tool window draws but may not import. It
+              // computes every argument; this is only the wiring, and it lives
+              // here because `WindowRoot` is not a region and may see both.
+              renderPanes={(paneProps) => <PaneTree {...paneProps} />}
+              renderTerminal={(instanceId) => (
+                <XTermView
+                  id={instanceId}
+                  transport={terminalTransport}
+                  onTitle={(title) => terminalControl.setTitle(instanceId, title)}
+                />
+              )}
             />
           ),
           // Source control, and only that. The terminals that used to share

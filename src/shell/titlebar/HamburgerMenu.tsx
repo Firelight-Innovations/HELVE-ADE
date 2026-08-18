@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Menu } from "../contract";
 import { popover } from "../motion";
-import MenuItemList, { inMenuSurface } from "./MenuItemList";
+import MenuItemList, { inMenuSurface } from "../MenuItemList";
 import Hamburger from "./icons/Hamburger";
 
 export default function HamburgerMenu({ menus }: { menus: Menu[] }) {

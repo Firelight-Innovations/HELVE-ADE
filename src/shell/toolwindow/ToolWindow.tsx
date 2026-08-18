@@ -8,20 +8,25 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { listen } from "@tauri-apps/api/event";
-import type { DropTarget, PaneNode, SurfaceInstance, ToolPresentation } from "../contract";
+import type {
+  DropTarget,
+  PaneNode,
+  PaneTreeProps,
+  SurfaceInstance,
+  ToolPresentation,
+} from "../contract";
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
-import PaneTree from "../panes/PaneTree";
-import XTermView from "../terminal/XTermView";
 import { activateInstance, openInstance, setInstanceTitle } from "../state/shellState";
-import { terminalControl, terminalTransport } from "../state/terminals";
-// The wire types come from the bridge package's source by relative path rather
-// than from `@helve/bridge` itself. The root package does depend on that
-// package now — the first-party apps under `apps/` import it, and they are
-// built by this same Vite config — but the shell must not import its *client*,
-// which is the tool half of transport B and reaches for `window.parent` at
-// module load. Types and the error-code table have no such side effect.
+// The wire types come from `@helve/bridge`'s `protocol`/`errors` subpaths
+// rather than its root entry. The root package does depend on `@helve/bridge`
+// now — the first-party apps under `apps/` import it, and they are built by
+// this same Vite config — but the shell must not import the client that entry
+// builds, which is the tool half of transport B and reaches for
+// `window.parent` at module load. The two subpaths below are side-effect-free
+// — a handful of types, two constants, and an error-code table — so they carry
+// none of that risk.
 import type {
   CommandMessage,
   EventMessage,
@@ -30,92 +35,45 @@ import type {
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
-} from "../../../packages/bridge/src/protocol";
-// Values, not just types, from the same module — the reserved event names both
-// sides of the sideways channel have to agree on. Safe for the same reason the
-// types above are: `protocol.ts` is two constants and a handful of type guards
-// with no module-level side effect, where `client.ts` reaches for
-// `window.parent` at load.
-import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "../../../packages/bridge/src/protocol";
-import { HelveErrorCode } from "../../../packages/bridge/src/errors";
-import { appPainted } from "../../bindings";
+} from "@helve/bridge/protocol";
+import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve/bridge/protocol";
+import { HelveErrorCode } from "@helve/bridge/errors";
+import { appPainted, onProjectChanged } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
 import { windowLabel } from "../state/shellState";
 import ToolMount from "./ToolMount";
 import EmptyState from "./EmptyState";
 import NoClustersState from "./NoClustersState";
-import { registerToolWindow, unregisterToolWindow } from "./toolWindowRegistry";
+import { registerToolWindow, unregisterToolWindow } from "../toolWindowRegistry";
 import "./toolwindow.css";
 
 /**
- * The tool window — the container every docked tool mounts into, plus its
- * boot and empty states.
+ * The tool window — the container every docked tool mounts into, plus its boot
+ * and empty states.
  *
  * Owns the shell half of transport B (docs/tool-protocol.md §3): every tool
- * iframe's `hello` lands here, and this is the only place that answers
- * `ready`. Centralising the listener (rather than one per `ToolMount`) is
- * what makes the security property possible — there is exactly one place
- * that resolves a tool id from `event.source`, and exactly one map of
- * trusted sources to check it against.
+ * iframe's `hello` lands here, and this is the only place that answers `ready`.
+ * Centralising the listener (rather than one per `ToolMount`) is what makes the
+ * security property possible — there is exactly one place that resolves a tool
+ * id from `event.source`, and exactly one map of trusted sources to check it
+ * against.
  *
- * It is also where a frame's `request` messages are routed, and the two kinds
- * of surface part company at exactly that point. A first-party app's call goes
- * to `app_call`, which answers in the orchestrator's own process. A tool's
- * would have to reach its core over the broker, which is not built — so a tool
- * gets an error naming that, rather than the silence that used to be here.
- * Silence is the worse answer: the bridge times a pending call out after thirty
- * seconds, so a tool asking a question this build cannot answer would hang for
- * half a minute before finding out.
- *
- * The one other message the shell answers itself is `helve/painted`, which is a
- * frame reporting that it has drawn its first meaningful content. That is not
- * an app's question to answer — the frame is claiming something about itself,
- * and only the shell can say *which* frame is claiming it — and what waits on
- * the answer is the splash window, which stays up until every app has reported.
- *
- * Traffic runs the other way too, and there are now two kinds of it. A Tauri
- * event the backend broadcasts is forwarded into app frames as a transport-B
- * `event` message. And a **menu command** — the title bar's File/Edit/View
- * items — is posted to the *active* frame alone as a transport-B `command`
- * message, through the handle below. Those two are the only ways anything
- * reaches a frame unprompted; every other message here answers one the frame
- * sent first.
- *
- * A command never travels through Rust. Both ends are already in this browser,
- * and a round trip through the backend would buy nothing but a chance for the
- * two to disagree about which frame is active.
- *
- * ## Frames talking to each other
- *
- * The fourth direction, and the newest: `helve/open` and `helve/publish` let
- * one frame reach another *sideways*, through this component, without either
- * of them learning the other exists. File Explorer sends `helve/open` naming
- * the app kind `viewer`; the shell finds or opens one in that cluster and
- * delivers the payload as an `OPENED_EVENT`. File Viewer publishes which file
- * it is showing; the shell retains that and relays it to its cluster-mates,
- * replaying it to any frame that mounts later.
- *
- * The shell routes both without understanding either. An `appId` is matched
- * against the layout and a `topic` is a `Map` key — no payload is inspected, no
- * intent is enumerated, and adding a fifth thing two apps want to say to each
- * other is not an edit to this file. That is the same discipline `helve/
- * commands` is built on, and it is what keeps the shell from accumulating a
- * table of every app's vocabulary.
- *
- * These also never travel through Rust, for the reason a command does not: both
- * frames are in this browser, and the layout that decides *which* frame is a
- * fact this component already holds.
- *
- * The shell does not know what any command *means*, and must not: it holds a
- * set of strings per frame, sends one when a menu item is chosen, and greys out
- * everything the active frame has not declared. `helve/commands` is how a frame
- * declares — which is what keeps a list of one app's capabilities out of the
- * shell, so the next app to arrive does not break the menu.
+ * Four directions of traffic, each argued where it is handled: a frame's
+ * `request` messages and the `helve/*` methods the shell answers itself, in
+ * `onMessage`; a Tauri broadcast relayed inward, at the `project:changed`
+ * effect; a menu command posted outward, at `ToolWindowHandle.send`; and the
+ * sideways channel — `helve/open` and `helve/publish` — at `answerOpen` and
+ * `answerPublish`. Only the Tauri broadcast travels through Rust; for the rest
+ * both ends are already in this browser, and a round trip would buy nothing but
+ * a chance for the two to disagree about which frame is which.
  */
 export interface ToolWindowHandle {
   /**
-   * Post a menu command to the frame showing `instanceId`.
+   * Post a menu command — a title bar File/Edit/View item — to the frame showing
+   * `instanceId`, as a transport-B `command` message. That and the Tauri event
+   * relayed inward below are the only ways anything reaches a frame unprompted;
+   * every other message here answers one the frame sent first.
    *
    * An *instance* id, not an app id, and that is the whole point of this
    * refactor arriving here. The old version scanned for the first frame whose
@@ -132,6 +90,32 @@ export interface ToolWindowHandle {
    * do.
    */
   send(instanceId: string, command: string): void;
+}
+
+/**
+ * One mounted frame, as this window knows it — never as the frame asserts it.
+ *
+ * Every field is the shell's own record, resolved from `event.source` against
+ * the map that holds these. That is the security property: nothing a frame puts
+ * in a payload can change which instance it is taken to be.
+ */
+interface MountedFrame {
+  /** The *instance* id. Says where the code runs. */
+  id: string;
+  /** The *app* id. Says which code runs; `callApp` dispatches on it. */
+  appId: string;
+  isApp: boolean;
+  /**
+   * The origin to post replies at, or `null` before the frame has said hello —
+   * until then there is no origin to aim at that would not be a guess.
+   */
+  origin: string | null;
+  /**
+   * What the frame last declared it can do. Empty until it says
+   * `helve/commands`, which is the honest starting point: a frame that has never
+   * declared anything can do nothing the menu bar knows how to ask for.
+   */
+  commands: Set<string>;
 }
 
 const ToolWindow = forwardRef<
@@ -190,6 +174,24 @@ const ToolWindow = forwardRef<
      * with a dirty editor can Save and one without cannot.
      */
     onCommandsChange?: (instanceId: string, commands: readonly string[]) => void;
+    /**
+     * Draw the pane layout this window measured.
+     *
+     * A render prop rather than an import, because `panes` is another region and
+     * §1.2 lets this one import nothing but `contract.ts`. Everything it takes is
+     * computed here — `PaneTreeProps` is in the contract for exactly this reason
+     * — and `WindowRoot`, which is not a region, supplies the component.
+     */
+    renderPanes: (props: PaneTreeProps) => ReactNode;
+    /**
+     * Draw the terminal emulator bound to `instanceId`'s pty.
+     *
+     * A render prop for the same reason as `renderPanes`, and it also takes the
+     * transport with it: a terminal is bytes on a wire and this window has no
+     * business holding either end. The element still sits in the same place in
+     * the tree, so nothing about it remounts.
+     */
+    renderTerminal: (instanceId: string) => ReactNode;
   }
 >(function ToolWindow(
   {
@@ -204,41 +206,18 @@ const ToolWindow = forwardRef<
     onResize,
     dropTarget,
     onCommandsChange,
+    renderPanes,
+    renderTerminal,
   },
   ref,
 ) {
   // The only trusted map from a window to a mounted surface. Each `ToolMount`
   // registers its iframe's `contentWindow` here the moment it exists; the
-  // listener below never trusts anything in a message's body for identity —
-  // a tool cannot claim to be a different tool by lying in its payload.
-  //
-  // `isApp` is carried here rather than looked up in `tools` when a message
-  // arrives, so routing is decided by the same registration that established
-  // identity. A second lookup would be a second chance to disagree.
-  //
-  // `origin` is filled in when the frame says `hello`, and is `null` until it
-  // does. A reply always has the message it is replying to on hand and can read
-  // the origin off that; an event has no such message, so the one the frame
-  // announced itself from is remembered instead. Nothing is posted to a frame
-  // still holding `null` — a frame that has not said hello has no listener yet,
-  // and there is no origin to aim at that wouldn't be a guess.
-  //
-  // `commands` is the set the frame last declared. Empty until it says
-  // `helve/commands`, which is the honest starting point: a frame that has
-  // never declared anything can do nothing the menu bar knows how to ask for.
-  //
-  // `id` is the *instance* id and `appId` the type. Both, because they answer
-  // different questions and conflating them is exactly the bug this refactor
-  // removes: a message is addressed by instance, but `callApp` and
-  // `appPainted` name an app — `apps::REGISTRY` has one entry for Files however
-  // many of them are open, and boot's roster waits on Files the app, not on
-  // each Files there happens to be.
-  const frames = useRef<
-    Map<
-      Window,
-      { id: string; appId: string; isApp: boolean; origin: string | null; commands: Set<string> }
-    >
-  >(new Map());
+  // listener below never trusts anything in a message's body for identity — a
+  // tool cannot claim to be a different tool by lying in its payload. See
+  // `MountedFrame` for what each field is and why it is carried rather than
+  // looked up: a second lookup would be a second chance to disagree.
+  const frames = useRef<Map<Window, MountedFrame>>(new Map());
   const [readyIds, setReadyIds] = useState<Set<string>>(() => new Set());
 
   // A stable mirror of `readyIds` for `sendEventWhenReady` below, which is
@@ -529,6 +508,151 @@ const ToolWindow = forwardRef<
   }, [bridge]);
 
   useEffect(() => {
+    /**
+     * Answer a frame's `hello`, and catch it up on what it missed.
+     *
+     * The shell answers; it never announces first (docs/tool-protocol.md §3 — a
+     * message posted before the frame's listener exists is simply gone, with no
+     * replay).
+     *
+     * The reply carries the *app* id, deliberately, not the instance id. A frame
+     * needs to know what kind of thing it is; it does not need to know which of
+     * several copies it is, because nothing it can send requires saying so.
+     * Identity is resolved from `event.source` against `frames`, which is the
+     * security property, and an instance id in a payload would be one more claim
+     * to have to distrust.
+     */
+    function answerHello(source: Window, origin: string, frame: MountedFrame) {
+      const reply: ReadyMessage = {
+        helve: 1,
+        kind: "ready",
+        toolId: frame.appId,
+        protocol: 1,
+        session: { engineEndpoint: null, projectPath: null },
+      };
+      source.postMessage(reply, origin);
+      frame.origin = origin;
+
+      // Everything this frame's cluster-mates have already published, before it
+      // says anything itself. A frame that mounts late is otherwise blind to
+      // every fact that settled before it arrived — see `topics` above.
+      //
+      // Its own entries are skipped, which only matters for a frame that
+      // reloaded: it published under this instance id before, and handing its
+      // own claim back to it as news would be the shell telling an app something
+      // the app is the authority on.
+      for (const [topic, held] of topics.current) {
+        if (held.from === frame.id) continue;
+        source.postMessage(
+          {
+            helve: 1,
+            kind: "event",
+            event: `${TOPIC_EVENT_PREFIX}${topic}`,
+            payload: held,
+          } satisfies EventMessage,
+          origin,
+        );
+      }
+
+      setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
+    }
+
+    /**
+     * `helve/open`: put something on screen in a cluster-mate, and tell it.
+     *
+     * Half of the sideways channel — one frame reaching another through this
+     * component, without either of them learning the other exists. File Explorer
+     * sends `helve/open` naming the app kind `viewer`; the shell finds or opens
+     * one in that cluster and delivers the payload as an `OPENED_EVENT`.
+     *
+     * Routed without being understood: an `appId` is matched against the layout,
+     * no payload is inspected and no intent is enumerated, so adding a fifth
+     * thing two apps want to say to each other is not an edit to this file. That
+     * is the same discipline `helve/commands` is built on, and what keeps the
+     * shell from accumulating a table of every app's vocabulary.
+     */
+    function answerOpen(
+      params: unknown,
+      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      id: ResponseMessage["id"],
+    ) {
+      const target = openRequest(params);
+      if (!target) {
+        respond({
+          id,
+          error: {
+            code: HelveErrorCode.InvalidParams,
+            message: "helve/open needs an `appId` string",
+          },
+        });
+        return;
+      }
+      void resolveOpenTarget(target.appId)
+        .then((instanceId) => {
+          // Queued if that frame has not finished its handshake, which is the
+          // common case for the branch that just opened one — see
+          // `sendEventWhenReady`.
+          sendEventWhenReady(instanceId, OPENED_EVENT, target.payload);
+          respond({ id, result: { instanceId } });
+        })
+        .catch((err: unknown) =>
+          respond({
+            id,
+            error: { code: HelveErrorCode.InternalError, message: String(err) },
+          }),
+        );
+    }
+
+    /**
+     * `helve/publish`: retain a fact for this cluster, and fan it out.
+     *
+     * The other half of the sideways channel. File Viewer publishes which file
+     * it is showing; the shell retains that and relays it to its cluster-mates,
+     * replaying it to any frame that mounts later. A `topic` is a `Map` key and
+     * nothing more — routed without being understood, exactly as `answerOpen`
+     * above is.
+     */
+    function answerPublish(
+      params: unknown,
+      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      id: ResponseMessage["id"],
+      frame: MountedFrame,
+    ) {
+      const published = publishRequest(params);
+      if (!published) {
+        respond({
+          id,
+          error: {
+            code: HelveErrorCode.InvalidParams,
+            message: "helve/publish needs a `topic` string",
+          },
+        });
+        return;
+      }
+
+      const held: PublishedTopic = { value: published.value, from: frame.id };
+      topics.current.set(published.topic, held);
+      respond({ id, result: null });
+
+      // Every other frame in the cluster, publisher excluded. Excluded rather
+      // than filtered on the receiving side because a publisher hearing its own
+      // announcement back is the shape that produces loops: a subscriber that
+      // republishes anything derived from what it hears would ping-pong with
+      // itself, and no amount of care in one app prevents it from the other end.
+      for (const [win, other] of frames.current) {
+        if (other.id === frame.id || other.origin === null) continue;
+        win.postMessage(
+          {
+            helve: 1,
+            kind: "event",
+            event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
+            payload: held,
+          } satisfies EventMessage,
+          other.origin,
+        );
+      }
+    }
+
     function onMessage(event: MessageEvent) {
       // Drop anything whose source isn't one of our mounted iframes — this
       // is also how the tool id is resolved, never from `event.data`.
@@ -543,48 +667,7 @@ const ToolWindow = forwardRef<
       const origin = event.origin;
 
       if (event.data.kind === "hello") {
-        // The shell answers; it never announces first (docs/tool-protocol.md
-        // §3 — a message posted before the frame's listener exists is simply
-        // gone, with no replay).
-        // The *app* id, deliberately, not the instance id — so the protocol is
-        // unchanged and an app that reads this still learns what it needs to.
-        // A frame needs to know what kind of thing it is; it does not need to
-        // know which of several copies it is, because nothing it can send
-        // requires saying so. Identity here is resolved from `event.source`
-        // against the map above, which is the security property, and an
-        // instance id in a payload would be one more claim to have to distrust.
-        const reply: ReadyMessage = {
-          helve: 1,
-          kind: "ready",
-          toolId: frame.appId,
-          protocol: 1,
-          session: { engineEndpoint: null, projectPath: null },
-        };
-        source.postMessage(reply, origin);
-        frame.origin = origin;
-
-        // Everything this frame's cluster-mates have already published, before
-        // it says anything itself. A frame that mounts late is otherwise blind
-        // to every fact that settled before it arrived — see `topics` above.
-        //
-        // Its own entries are skipped, which only matters for a frame that
-        // reloaded: it published under this instance id before, and handing its
-        // own claim back to it as news would be the shell telling an app
-        // something the app is the authority on.
-        for (const [topic, held] of topics.current) {
-          if (held.from === frame.id) continue;
-          source.postMessage(
-            {
-              helve: 1,
-              kind: "event",
-              event: `${TOPIC_EVENT_PREFIX}${topic}`,
-              payload: held,
-            } satisfies EventMessage,
-            origin,
-          );
-        }
-
-        setReadyIds((prev) => (prev.has(frame.id) ? prev : new Set(prev).add(frame.id)));
+        answerHello(source, origin, frame);
         return;
       }
 
@@ -597,7 +680,9 @@ const ToolWindow = forwardRef<
 
       // `helve/*` belongs to the host, exactly as `hello` above does — this one
       // is a frame saying it has drawn its first meaningful content, and it is
-      // answered here rather than forwarded on to an app's Rust half.
+      // answered here rather than forwarded on to an app's Rust half. Not an
+      // app's question to answer: the frame is claiming something about itself,
+      // and only the shell can say *which* frame is claiming it.
       //
       // What the report is *for* is the splash window: boot holds it open until
       // every first-party app has said this, so that the window it hands off to
@@ -637,6 +722,12 @@ const ToolWindow = forwardRef<
       // half's — the menu being greyed out is a fact about this window's title
       // bar, and the backend has no part in it.
       //
+      // The shell does not know what any command *means*, and must not: it holds
+      // a set of strings per frame, sends one when a menu item is chosen, and
+      // greys out everything the active frame has not declared. That is what
+      // keeps a list of one app's capabilities out of the shell, so the next app
+      // to arrive does not break the menu.
+      //
       // A tool may declare too. Its *requests* cannot be served (the broker is
       // not built), but a declaration asks nothing of a core: it is the frame
       // making a claim about itself, exactly as `helve/painted` is, so it is
@@ -667,72 +758,22 @@ const ToolWindow = forwardRef<
       // ignore. Per-tool permissions are a later pass; see the `[permissions]`
       // table in `docs/tool-protocol.md` §1, reserved and unenforced today.
       if (method === "helve/open") {
-        const target = openRequest(params);
-        if (!target) {
-          respond({
-            id,
-            error: {
-              code: HelveErrorCode.InvalidParams,
-              message: "helve/open needs an `appId` string",
-            },
-          });
-          return;
-        }
-        void resolveOpenTarget(target.appId)
-          .then((instanceId) => {
-            // Queued if that frame has not finished its handshake, which is the
-            // common case for the branch that just opened one — see
-            // `sendEventWhenReady`.
-            sendEventWhenReady(instanceId, OPENED_EVENT, target.payload);
-            respond({ id, result: { instanceId } });
-          })
-          .catch((err: unknown) =>
-            respond({
-              id,
-              error: { code: HelveErrorCode.InternalError, message: String(err) },
-            }),
-          );
+        answerOpen(params, respond, id);
         return;
       }
 
       if (method === "helve/publish") {
-        const published = publishRequest(params);
-        if (!published) {
-          respond({
-            id,
-            error: {
-              code: HelveErrorCode.InvalidParams,
-              message: "helve/publish needs a `topic` string",
-            },
-          });
-          return;
-        }
-
-        const held: PublishedTopic = { value: published.value, from: frame.id };
-        topics.current.set(published.topic, held);
-        respond({ id, result: null });
-
-        // Every other frame in the cluster, publisher excluded. Excluded rather
-        // than filtered on the receiving side because a publisher hearing its
-        // own announcement back is the shape that produces loops: a subscriber
-        // that republishes anything derived from what it hears would ping-pong
-        // with itself, and no amount of care in one app prevents it from the
-        // other end.
-        for (const [win, other] of frames.current) {
-          if (other.id === frame.id || other.origin === null) continue;
-          win.postMessage(
-            {
-              helve: 1,
-              kind: "event",
-              event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
-              payload: held,
-            } satisfies EventMessage,
-            other.origin,
-          );
-        }
+        answerPublish(params, respond, id, frame);
         return;
       }
 
+      // Where the two kinds of surface part company. A first-party app's call
+      // goes to `app_call` below, which answers in the orchestrator's own
+      // process. A tool's would have to reach its core over the broker, which is
+      // not built — so a tool gets an error naming that, rather than the silence
+      // that used to be here. Silence is the worse answer: the bridge times a
+      // pending call out after thirty seconds, so a tool asking a question this
+      // build cannot answer would hang for half a minute before finding out.
       if (!frame.isApp) {
         respond({
           id,
@@ -791,9 +832,9 @@ const ToolWindow = forwardRef<
   const showing = useRef(clusterId);
   showing.current = clusterId;
 
-  // The third direction: Rust -> shell -> app frame. `project:changed` is the
-  // first thing to travel it, and everything below is deliberately generic
-  // about the payload — the shell relays, it does not interpret.
+  // The third direction: Rust -> shell -> app frame, as a transport-B `event`
+  // message. `project:changed` is the first to travel it; everything below is
+  // generic about the payload — the shell relays, it does not interpret.
   //
   // Apps only. A tool frame is a separate repository's code whose core this
   // build cannot reach at all (see the `isApp` branch above, which answers its
@@ -811,21 +852,21 @@ const ToolWindow = forwardRef<
   // for the active cluster's tree only, so every frame in `frames` is in that
   // cluster by construction.
   useEffect(() => {
-    // `listen` is async and an effect's cleanup must be returned synchronously,
-    // so the subscription is set up in the background and `live` covers the gap
-    // — an unmount before Tauri registers the listener must still end up with
-    // nothing listening.
+    // `onProjectChanged` is async and an effect's cleanup must be returned
+    // synchronously, so the subscription is set up in the background and
+    // `live` covers the gap — an unmount before Tauri registers the listener
+    // must still end up with nothing listening.
     let live = true;
     let unlisten: (() => void) | undefined;
 
     void (async () => {
-      const stop = await listen<unknown>("project:changed", (e) => {
+      const stop = await onProjectChanged((payload) => {
         if (!live) return;
         // A change in a cluster this window is not showing has no frame here to
         // act on it, and telling one anyway would be telling it about somebody
         // else's project. A payload with no cluster on it is dropped for the
         // same reason: the event's whole contract is that it names one.
-        if (changedCluster(e.payload) !== showing.current) return;
+        if (changedCluster(payload) !== showing.current) return;
         for (const [win, frame] of frames.current) {
           if (!frame.isApp || frame.origin === null) continue;
           win.postMessage(
@@ -833,7 +874,7 @@ const ToolWindow = forwardRef<
               helve: 1,
               kind: "event",
               event: "project:changed",
-              payload: e.payload,
+              payload,
             } satisfies EventMessage,
             frame.origin,
           );
@@ -860,8 +901,7 @@ const ToolWindow = forwardRef<
   const activeKey = [...activeByPane].map(([pane, tab]) => `${pane}:${tab ?? ""}`).join("|");
 
   /**
-   * The surface each pane was showing until a moment ago, kept drawn over the
-   * one that replaced it.
+   * The surface each pane was showing a moment ago, kept over its replacement.
    *
    * This is the white flash on a tab switch. Hiding a surface with
    * `visibility: hidden` is what keeps its iframe mounted, and that part is not
@@ -873,26 +913,12 @@ const ToolWindow = forwardRef<
    * compositor has nothing to draw but the document's bare canvas — which, in
    * an iframe, is white unless the document says otherwise.
    *
-   * Two fixes, and both are here because they cover different halves of it.
-   * The canvas is no longer white (`apps/shared/app.css`, and the `<style>` in
-   * each app's `index.html` for the window before that sheet has loaded), so
-   * the worst case is now the shell's own colour rather than a white slab.
-   * And the outgoing surface stays on screen over the incoming one until the
-   * incoming one has had time to draw, so in the ordinary case there is nothing
-   * to see at all.
-   *
-   * "Time to draw" is counted in animation frames, not milliseconds — two of
-   * them, which is what it takes for a change committed now to have been
-   * rastered — and only the fade that follows is a duration, taken from
-   * `instantOut`. `helve/painted` would be the exact signal to wait on instead,
-   * and it is not usable here: `reportPainted` in `packages/bridge/src/index.ts`
-   * latches on first call, so a frontend sends it once in its life. It answers
-   * "has this app booted", which is what the splash window needs, and not "has
-   * this frame drawn since you unhid it".
-   *
-   * Nothing here changes what is mounted. An outgoing surface is the same
-   * element it always was, still holding the same iframe; the only thing that
-   * moves is when it stops being visible.
+   * Two fixes, covering different halves of it. The canvas is no longer white
+   * (`apps/shared/app.css`, and the `<style>` in each app's `index.html` for the
+   * window before that sheet has loaded), so the worst case is the shell's own
+   * colour rather than a white slab. And the outgoing surface stays on screen
+   * over the incoming one until that one has had time to draw, so in the
+   * ordinary case there is nothing to see at all.
    */
   const [outgoing, setOutgoing] = useState<{ ids: ReadonlySet<string>; fading: boolean }>(() => ({
     ids: new Set<string>(),
@@ -949,6 +975,19 @@ const ToolWindow = forwardRef<
   // Running it. Two animation frames at full opacity — enough for the surface
   // underneath to have been rastered — then the fade, then hidden again.
   //
+  // "Time to draw" is counted in animation frames, not milliseconds: two of them
+  // is what it takes for a change committed now to have been rastered. Only the
+  // fade that follows is a duration, taken from `instantOut`. `helve/painted`
+  // would be the exact signal to wait on instead, and it is not usable here —
+  // `reportPainted` in `packages/bridge/src/index.ts` latches on first call, so
+  // a frontend sends it once in its life. It answers "has this app booted",
+  // which is what the splash window needs, and not "has this frame drawn since
+  // you unhid it".
+  //
+  // Nothing here changes what is mounted. An outgoing surface is the same
+  // element it always was, still holding the same iframe; the only thing that
+  // moves is when it stops being visible.
+  //
   // Keyed on the set itself rather than on the switch that produced it, so this
   // holds no state of its own and re-running it is free.
   useEffect(() => {
@@ -1002,14 +1041,14 @@ const ToolWindow = forwardRef<
           `display`, so every pane keeps its box and the measuring above keeps
           answering — the geometry is still correct the instant it is uncovered. */}
       <div className="toolwindow__layout" data-hidden={soloInstanceId !== null || undefined}>
-        <PaneTree
-          tree={tree}
-          focusedPaneId={focusedPaneId}
-          onFocusPane={onFocusPane}
-          onResize={onResize}
-          onHostChange={onHostChange}
-          dropTarget={dropTarget}
-        />
+        {renderPanes({
+          tree,
+          focusedPaneId,
+          onFocusPane,
+          onResize,
+          onHostChange,
+          dropTarget,
+        })}
       </div>
 
       {/* Every surface in the cluster, always mounted, positioned over the pane
@@ -1093,13 +1132,7 @@ const ToolWindow = forwardRef<
             }
           >
             {isTerminal ? (
-              <div className="toolwindow__slot">
-                <XTermView
-                  id={instanceId}
-                  transport={terminalTransport}
-                  onTitle={(title) => terminalControl.setTitle(instanceId, title)}
-                />
-              </div>
+              <div className="toolwindow__slot">{renderTerminal(instanceId)}</div>
             ) : (
               presentation && (
                 <ToolMount

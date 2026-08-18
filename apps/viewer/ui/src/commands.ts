@@ -4,34 +4,18 @@
  * The shell's menu bar cannot reach into this app — File Viewer runs in an
  * iframe and the shell must not import its hooks or poke its DOM. So a menu
  * item is a *message*: the shell posts a transport-B `command` to the active
- * frame, and this module is what this frame does about it.
- * `docs/tool-protocol.md` §3 has the wire shape; `@helve/bridge`'s `onCommand`
- * is the receiving end.
+ * frame and this module answers it. `docs/tool-protocol.md` §3 has the wire
+ * shape; `@helve/bridge`'s `onCommand` is the receiving end.
  *
  * There is a second copy of this file in `apps/files/ui/src/`, answering the
  * commands that act on the tree. Neither knows about the other: each declares
  * what it can do, the shell aims a command at whichever surface is active, and
- * the menu is the union of what the active frame offered. That is why the split
- * needed no change in the title bar at all.
+ * the menu is the union of what the active frame offered — which is why the
+ * split needed no change in the title bar at all.
  *
- * ## Declaring is half the feature, and the more important half
- *
- * A menu that offers Save when nothing is dirty is a menu that lies. The shell
- * cannot know when that is, and must not learn — a shell holding a list of
- * Files' capabilities is a shell the next app breaks. So the direction is
- * reversed: this app says what it can do *right now* through `declareCommands`,
- * and the shell greys out everything else. `useMenuCommands` re-declares
- * whenever any of that changes, and the bridge drops a declaration identical to
- * the last one so the common re-render costs nothing.
- *
- * ## Why the ids are spelled out here rather than imported
- *
- * They also exist in `src/shell/titlebar/TitleBar.tsx` as `APP_COMMAND`. This
- * is the same restatement `rpc.ts`'s header argues for and for the same reason:
- * an app's only coupling to its host is `@helve/bridge` and the shape of what
- * crosses it, and the day this becomes a tool repository of its own, nothing in
- * `apps/viewer/` may be reaching into `src/`. Two copies of a ten-line table is
- * the price of that boundary being real.
+ * Two arguments live in `docs/design-notes/viewer-app.md`: why declaring is the
+ * more important half of the feature, and why the ids below are spelled out
+ * rather than imported from the shell.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { declareCommands, onCommand } from "@helve/bridge";
@@ -44,12 +28,10 @@ import { describe, duplicate, saveAs } from "./rpc";
  * Every command this app answers. Mirrors `APP_COMMAND` in the shell.
  *
  * **`file/new-file` and `file/trash` are not here**, and their absence is the
- * split showing through rather than an omission. Both act on the *tree* — where
+ * split showing through rather than an omission: both act on the *tree* — where
  * a new file lands, which folder's deleted entries to show — and the tree is
- * the File Explorer's, in a different frame. The shell posts a command to
- * whichever surface is active and greys out everything that surface has not
- * declared, so the two apps end up offering exactly what each can do, with no
- * coordination between them and no list of either in the title bar.
+ * the File Explorer's, in a different frame. Each app declares what it can do
+ * and the shell greys out the rest, with no list of either in the title bar.
  */
 export const COMMAND = {
   save: "file/save",
@@ -65,19 +47,16 @@ export const COMMAND = {
 } as const;
 
 /**
- * `edit/paste` is deliberately absent.
+ * `edit/paste` is deliberately absent. The shell disables Paste outright and
+ * says why in `src/shell/titlebar/useEditTarget.ts`: `execCommand("paste")` is
+ * refused by every Chromium engine, and `navigator.clipboard.readText()` is
+ * gated on a permission whose behaviour in a Tauri WebView2 window this work
+ * could not establish without running the app. Ctrl+V is unaffected — that is
+ * the browser's own paste, and it never comes through here.
  *
- * The shell disables Paste outright and says why in
- * `src/shell/titlebar/useEditTarget.ts`; the short version is that
- * `document.execCommand("paste")` is refused by every Chromium engine and
- * `navigator.clipboard.readText()` is gated on a permission whose behaviour in
- * a Tauri WebView2 window this work could not establish without running the
- * app. Ctrl+V is unaffected — that is the browser's own paste, and it never
- * comes through here.
- *
- * Clipboard *write* is a different question and is not blocked: Cut and Copy
- * below go through `navigator.clipboard.writeText`, which this app already
- * relies on for the context menu's "Copy path".
+ * Clipboard *write* is not blocked: Cut and Copy below go through
+ * `navigator.clipboard.writeText`, which this app already relies on for the
+ * context menu's "Copy path".
  */
 export const PASTE_IS_NOT_DECLARED = true;
 
@@ -86,14 +65,13 @@ export interface MenuCommandDeps {
   /** Put the delete confirmation up. The same one the tab strip raises. */
   askDelete: (target: DeleteTarget) => void;
   /**
-   * A file appeared on disk under a new name — Save As, or Duplicate.
-   *
-   * Reported as a rename because that is the shape the Explorer can act on: it
-   * has no way to learn about a file this app created, and a tree that did not
-   * re-list would simply not show it. `from` and `to` are the same path when
-   * there is no original to move — a duplicate leaves the source where it is —
-   * which the Explorer reads as "re-read the tree" and every Viewer's `rename`
-   * treats as a no-op, since `retarget` returns early when the two match.
+   * A file appeared on disk under a new name — Save As, or Duplicate. Reported
+   * as a rename because that is the shape the Explorer can act on: it has no way
+   * to learn about a file this app created, and a tree that did not re-list
+   * would simply not show it. `from` and `to` are the same path when there is no
+   * original to move — a duplicate leaves the source where it is — which the
+   * Explorer reads as "re-read the tree" and every Viewer's `rename` treats as a
+   * no-op, since `retarget` returns early when the two match.
    */
   onTreeChanged: (from: string, to: string) => void;
   /** Report a failure where the user will see it. */
@@ -101,10 +79,9 @@ export interface MenuCommandDeps {
 }
 
 /**
- * Answer the shell's menu, and keep it honest about what is possible.
- *
- * Returns nothing: everything it does is either a side effect on the app's own
- * state or a declaration going out over the bridge.
+ * Answer the shell's menu, and keep it honest about what is possible. Returns
+ * nothing: everything it does is a side effect on the app's own state or a
+ * declaration going out over the bridge.
  */
 export function useMenuCommands({
   files,
@@ -119,12 +96,12 @@ export function useMenuCommands({
 
   const active = files.tabs.find((tab) => tab.path === files.activePath) ?? null;
   /**
-   * Whether the active tab is dirty, asked of the buffer rather than of the
-   * `dirty` Set — the same reason `close` does: the render mirror lags a
-   * keystroke by a commit, and a Save that greyed itself out a beat after the
-   * last character was typed would be wrong at exactly the moment it matters.
-   * Both are consulted, because a viewer that reports dirty without a Monaco
-   * document behind it (there is none today) would otherwise be missed.
+   * Whether the active tab is dirty, asked of the buffer rather than the `dirty`
+   * Set — the reason `close` does: the render mirror lags a keystroke by a
+   * commit, and a Save greyed out a beat after the last character was typed
+   * would be wrong at exactly the moment it matters. Both are consulted, so a
+   * viewer reporting dirty without a Monaco document (there is none today) is
+   * not missed.
    */
   const dirty = active !== null && (documents.isDirty(active.path) || files.dirty.has(active.path));
 
@@ -145,10 +122,9 @@ export function useMenuCommands({
           if (!active) return;
           const doc = documents.get(active.path);
           if (!doc) return;
-          // The buffer, not the file. Save As on a file with unsaved changes
-          // should write what is on screen — writing the disk copy instead
-          // would be a Save As that silently discarded the edit it was called
-          // to preserve.
+          // The buffer, not the file: Save As on a file with unsaved changes
+          // should write what is on screen, not a disk copy that silently
+          // discards the edit it was called to preserve.
           void saveAs(active.name, doc.model.getValue())
             .then((result) => {
               // Cancelled. Not a failure, and nothing to report.
@@ -177,11 +153,10 @@ export function useMenuCommands({
         }
 
         case COMMAND.delete:
-          // Through `useDelete`, which is the *only* way anything in this app
-          // deletes. A menu-bar Delete that called `files/delete` itself would
-          // skip the confirmation that names the file, counts a folder's
-          // contents and warns about unsaved work — arriving by a different
-          // route is not a reason to lose it.
+          // Through `useDelete`, the *only* way anything in this app deletes. A
+          // menu-bar Delete that called `files/delete` itself would skip the
+          // confirmation that names the file, counts a folder's contents and
+          // warns about unsaved work; a different route is no reason to lose it.
           if (active && !active.missing) {
             askDelete({ path: active.path, name: active.name, kind: "file" });
           }
@@ -195,11 +170,10 @@ export function useMenuCommands({
   );
 
   // `run` changes identity on every render — `files` is a fresh object each
-  // time, and it is one of the dependencies. Subscribing to it directly would
-  // tear the listener down and re-add it after every render, with a window in
-  // between where a command would land on nothing. A ref keeps the listener
-  // installed once and still current, the same shape `src/shell/keys/
-  // useKeyboard.ts` uses and for the same reason.
+  // time and is one of its dependencies. Subscribing directly would tear the
+  // listener down and re-add it after every render, with a window in between
+  // where a command would land on nothing. A ref keeps it installed once and
+  // still current, the shape `src/shell/keys/useKeyboard.ts` uses.
   const latest = useRef(run);
   latest.current = run;
   useEffect(() => onCommand((command) => latest.current(command)), []);
@@ -214,23 +188,18 @@ export function useMenuCommands({
     if (editor) {
       // Undo, Redo, Cut and Copy are declared for as long as an editor is
       // mounted, rather than tracked against the undo stack and the selection.
-      //
-      // That is a deliberate trade and not an oversight. Both of those change
-      // on every keystroke and every cursor move, so tracking them means a
-      // `helve/commands` message per keystroke — a real cost, paid constantly,
-      // for a grey pixel. And what an undeclared item buys is not there:
-      // Monaco's undo with an empty stack does nothing, which is exactly what a
-      // disabled item does, and its copy with no selection copies the current
-      // line, which is a real action rather than a no-op.
+      // A deliberate trade: both change on every keystroke and cursor move, so
+      // tracking them means a `helve/commands` message per keystroke for a grey
+      // pixel — and what an undeclared item buys is not there. Monaco's undo
+      // with an empty stack does nothing, exactly what a disabled item does, and
+      // its copy with no selection copies the current line, a real action.
       //
       // Save is tracked, because that one is not a no-op-when-unavailable: a
-      // Save offered on a clean file is a claim that there is something to
-      // write.
+      // Save offered on a clean file claims there is something to write.
       available.push(COMMAND.undo, COMMAND.redo, COMMAND.copy, COMMAND.find);
 
       // A truncated file opens read-only — see `TextViewer`. Cut and Replace
-      // change the text, so they go with the ability to change it; Copy and
-      // Find do not.
+      // change the text, so they go with the ability to; Copy and Find do not.
       if (!editor.getOption(EDITOR_OPTION_READ_ONLY)) {
         available.push(COMMAND.cut, COMMAND.replace);
       }
@@ -245,15 +214,13 @@ export function useMenuCommands({
  *
  * `editor.getOption` takes an `EditorOption` enum member, and importing that
  * enum would mean a static `import` of `monaco-editor` from a module `App.tsx`
- * loads — the one thing `viewer/monaco.ts`'s header forbids, because it would
- * move 3.86 MB into the Files entry chunk.
- *
- * So the value is written down instead. It is stable within a Monaco version
- * (the enum is generated in alphabetical order and pinned in `package.json`),
- * and the failure mode if it ever moves is the mildest one available: Cut and
- * Replace would be offered on a read-only pane, where Monaco itself refuses
- * them. `getOption` on an out-of-range id returns `undefined`, which is falsy,
- * so a shifted enum cannot make an editable pane read-only.
+ * loads — the one thing `viewer/monaco.ts`'s header forbids, because it moves
+ * 3.86 MB into the Files entry chunk. So the value is written down. It is
+ * stable within a Monaco version (the enum is generated alphabetically and
+ * pinned in `package.json`), and if it ever moves the failure is the mildest
+ * available: Cut and Replace offered on a read-only pane, where Monaco refuses
+ * them anyway. `getOption` on an out-of-range id returns `undefined`, so a
+ * shifted enum cannot make an editable pane read-only.
  */
 const EDITOR_OPTION_READ_ONLY = 96;
 
@@ -269,21 +236,12 @@ const EDITOR_OPTION_READ_ONLY = 96;
  * operations rather than registered editor actions, and `getAction("undo")`
  * finds nothing.
  *
- * ## Cut and Copy use the async clipboard, not `execCommand`
- *
- * Monaco's own `editor.action.clipboardCopyAction` is a wrapper around
- * `document.execCommand("copy")`, which browsers only honour during a
- * transient user activation. This command arrives by `postMessage` from another
- * document, which is not one — so the built-in actions would resolve and do
- * nothing, silently.
- *
- * `navigator.clipboard.writeText` has no such requirement for a focused
- * document, and this app already depends on it for the context menu's "Copy
- * path". Cut is that plus an edit that removes the text, pushed through
- * `executeEdits` so it lands on the undo stack as one reversible step.
- *
- * With no selection, both act on the whole current line — VS Code's behaviour,
- * and the reason these two are worth offering without tracking the selection.
+ * Cut and Copy go through `navigator.clipboard` rather than Monaco's own
+ * actions, which wrap `document.execCommand` and would silently do nothing for
+ * a command that arrives by `postMessage`. With no selection both act on the
+ * whole current line — VS Code's behaviour, and the reason these two are worth
+ * offering without tracking the selection. The full argument is in
+ * `docs/design-notes/viewer-app.md`.
  */
 function runEditorCommand(command: string, onError: (message: string) => void): void {
   const editor = activeEditor();
@@ -339,8 +297,8 @@ function runEditorCommand(command: string, onError: (message: string) => void): 
     }
     default:
       // A command the shell sent that this app never declared. Dropped rather
-      // than guessed at — the shell only sends what was declared, so reaching
-      // here means the two disagreed, and acting on it is the worse answer.
+      // than guessed at: the shell only sends what was declared, so reaching
+      // here means the two disagreed and acting on it is the worse answer.
       return;
   }
 }

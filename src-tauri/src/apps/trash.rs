@@ -6,26 +6,10 @@
 //! purgeable, by a person through the Files app and by an agent through the same
 //! three methods.
 //!
-//! # The scoping rule, which is the whole design
-//!
-//! `trash::os_limited::list()` returns **the entire system Recycle Bin**. Every
-//! file the user has deleted anywhere on this machine, from any application,
-//! going back as far as Windows has kept it. Holiday photos, tax returns, a
-//! half-finished CV.
-//!
-//! Handing that to a project tool would be wrong twice over. It would show a
-//! game developer their unrelated personal files inside their game editor, and
-//! it would let an *agent* — which is the point of the RPC surface — restore or
-//! permanently destroy arbitrary items anywhere on the disk. Neither is reach a
-//! project tool has any business having.
-//!
-//! So every method here filters to items whose original location was inside the
-//! current project root, and **the filter is applied before the lookup rather
-//! than after it**. `restore` and `purge` do not take an item and check it; they
-//! search the *already scoped* list for the id they were given. An id belonging
-//! to something outside the project is simply not found. That ordering is what
-//! makes the scoping a boundary rather than a suggestion — there is no code path
-//! here that holds a `TrashItem` from outside the project.
+//! The scoping rule is the whole design: every method here filters to items
+//! whose original location was inside the current project root, and the filter
+//! is applied before the lookup rather than after it. `platform::scoped` and
+//! `platform::find` carry the account of why, each beside the half it enforces.
 //!
 //! This is a real boundary in a way the note at the top of `files.rs` explains
 //! its own path checks are not. That module argues, correctly, that a path check
@@ -33,14 +17,6 @@
 //! it. This one is different: it is not defending the filesystem from the user,
 //! it is keeping a tool's blast radius inside the project it was pointed at,
 //! which is a scope decision rather than a security theatre one.
-//!
-//! # Platform
-//!
-//! `trash::os_limited` exists on Windows and on Freedesktop-compliant Unix, and
-//! **not on macOS** — the crate cfg-gates the whole module, because macOS offers
-//! no API to enumerate or restore from its Trash. HELVE runs on Windows, so this
-//! is not a live gap, but the code is gated to match rather than failing to
-//! compile there.
 
 use crate::apps::CallContext;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
@@ -107,6 +83,13 @@ fn is_inside(path: &Path, root: &Path) -> bool {
     path.strip_prefix(root).is_ok()
 }
 
+/// The three entry points, on a platform whose trash can be enumerated.
+///
+/// `trash::os_limited` is on Windows and on Freedesktop-compliant Unix, and
+/// **not on macOS** — the crate cfg-gates the whole module, because macOS offers
+/// no API to enumerate or restore from its Trash. HELVE runs on Windows, so this
+/// is not a live gap, but the code is gated to match rather than failing to
+/// compile there.
 #[cfg(any(
     target_os = "windows",
     all(
@@ -124,7 +107,18 @@ mod platform {
     ///
     /// The one function that reads the system bin. Everything else in this
     /// module goes through it, which is what guarantees no code path here ever
-    /// holds an item from outside the project — see the module header.
+    /// holds a `TrashItem` from outside the project.
+    ///
+    /// `os_limited::list()` returns **the entire system Recycle Bin**. Every
+    /// file the user has deleted anywhere on this machine, from any application,
+    /// going back as far as Windows has kept it. Holiday photos, tax returns, a
+    /// half-finished CV.
+    ///
+    /// Handing that to a project tool would be wrong twice over. It would show a
+    /// game developer their unrelated personal files inside their game editor,
+    /// and it would let an *agent* — which is the point of the RPC surface —
+    /// restore or permanently destroy arbitrary items anywhere on the disk.
+    /// Neither is reach a project tool has any business having.
     pub fn scoped(root: &Path) -> Result<Vec<trash::TrashItem>, RpcError> {
         let all = os_limited::list().map_err(|e| {
             RpcError::new(
@@ -141,6 +135,12 @@ mod platform {
 
     /// One scoped item by id, or a refusal that does not distinguish "outside
     /// the project" from "not there".
+    ///
+    /// **The filter is applied before the lookup rather than after it.**
+    /// `restore` and `purge` do not take an item and check it; they search the
+    /// *already scoped* list — this function — for the id they were given. An id
+    /// belonging to something outside the project is simply not found, which is
+    /// what makes the scoping a boundary rather than a suggestion.
     ///
     /// That conflation is deliberate. Saying "that item exists but is out of
     /// scope" would confirm the existence of a file outside the project to a
@@ -301,7 +301,7 @@ mod platform {
 fn list(app: &AppHandle, context: &CallContext) -> Result<Value, RpcError> {
     let root = scope_root(app, context)?;
     let mut items = platform::scoped(&root)?;
-    items.sort_by(|a, b| b.time_deleted.cmp(&a.time_deleted));
+    items.sort_by_key(|item| std::cmp::Reverse(item.time_deleted));
 
     Ok(json!({
         "root": root.display().to_string(),

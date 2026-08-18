@@ -3,25 +3,11 @@
  *
  * Almost every decision here is `useOpenFiles`'s — which tabs exist, which is
  * active, which are dirty, what a close does about unsaved work. What this file
- * owns is the visual language, and that language is not its own invention: the
- * shell already draws tabs in `src/shell/switcher/ToolSwitcherBar.tsx`, and a
- * second tab look inside the same window would read as a second product. Active
- * tab is `--bg` against the strip's `--surface`, with a 2px `--accent` rule
- * along its top edge, exactly as `.switcher__tab--active` and `.switcher__rule`
- * do it.
- *
- * It does hold two pieces of state of its own, and both are strictly about this
- * strip rather than about the files: **which chip was right-clicked**, and
- * **which chip is being renamed in place**. Neither means anything to anyone
- * else — a menu is open until it is dismissed, and a half-typed name belongs to
- * the field it is being typed into. Everything a rename *changes* still goes
- * out through `onRenamed` to the tab model, which is the only thing allowed to
- * move a buffer.
- *
- * The rename field is `useInlineName`, the same hook the tree's create/rename
- * row uses, so Enter, Escape, click-away, the empty answer and the unchanged
- * answer all behave identically in both places. Only the markup differs, and it
- * has to: a tree row and a tab chip are not the same shape.
+ * owns is the visual language, and that is not its own invention: the shell
+ * already draws tabs in `src/shell/switcher/ToolSwitcherBar.tsx`, and a second
+ * tab look inside the same window would read as a second product. Active tab is
+ * `--bg` against the strip's `--surface`, with a 2px `--accent` rule along its
+ * top edge, exactly as `.switcher__tab--active` and `.switcher__rule` do it.
  *
  * No framer-motion. The shell's rule slides between tool tabs because those
  * tabs are the top-level navigation of the whole window; a file tab strip is a
@@ -72,6 +58,14 @@ export default function TabStrip({
   onDelete,
 }: TabStripProps) {
   const stripRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * The two pieces of state this strip holds of its own: **which chip was
+   * right-clicked**, and below it **which chip is being renamed in place**.
+   * Neither means anything to anyone else — a menu is open until it is
+   * dismissed, and a half-typed name belongs to the field it is being typed
+   * into. Everything a rename *changes* still goes out through `onRenamed` to
+   * the tab model, which is the only thing allowed to move a buffer.
+   */
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   /** The tab being renamed in place, by path. At most one. */
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -330,9 +324,10 @@ function Tab({
  *
  * The field replaces the label in the chip it belongs to, for the same reason
  * the tree's version replaces the row: the answer belongs where the question
- * was asked. Its behaviour is `useInlineName` — the tree's, exactly — so there
- * is one description of what Enter and Escape and clicking away mean, and this
- * is only its second rendering.
+ * was asked. Its behaviour is `useInlineName` — the tree's, exactly — so Enter,
+ * Escape, click-away, the empty answer and the unchanged answer all behave
+ * identically in both places, described once. Only the markup differs, and it
+ * has to: a tree row and a tab chip are not the same shape.
  */
 function TabRenameField({
   initial,

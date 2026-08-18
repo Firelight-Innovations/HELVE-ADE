@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Menu } from "../contract";
 import { popover } from "../motion";
-import MenuItemList, { inMenuSurface } from "./MenuItemList";
+import MenuItemList, { inMenuSurface } from "../MenuItemList";
 
 export default function MenuBar({ menus }: { menus: Menu[] }) {
   const [openLabel, setOpenLabel] = useState<string | null>(null);

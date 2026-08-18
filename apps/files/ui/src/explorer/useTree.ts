@@ -3,21 +3,16 @@
  * falls out of the two.
  *
  * Everything the explorer draws comes out of `rows` — one array, one entry per
- * visible line, already in order. That is not just convenient for the
- * windowing in `useVirtualRows.ts`; it is what makes keyboard navigation
- * arithmetic instead of a recursive walk, and what lets "the row after this
- * one" mean the same thing to the ↓ key and to the scrollbar.
+ * visible line, already in order. That is what makes the windowing in
+ * `useVirtualRows.ts` work, keyboard navigation arithmetic rather than a
+ * recursive walk, and "the row after this one" the same row to the ↓ key and to
+ * the scrollbar.
  *
  * What it deliberately does not do:
  *
  * - **Sort.** `files/list` already returns directories first, then
- *   case-insensitively by name. A second ordering here could only manage to be
- *   wrong in a different way than the backend, and the two would diverge the
- *   first time either changed.
- * - **Walk the filesystem.** A directory is listed once, when it is first
- *   opened. Nothing pre-fetches, nothing recurses on the backend's behalf, and
- *   nothing watches for changes — a reload is `reloadNonce` changing, and that
- *   is the whole of the story.
+ *   case-insensitively by name. A second ordering here could only be wrong in a
+ *   different way, and the two would diverge the first time either changed.
  * - **Search.** The filter narrows what is already loaded. Reaching an
  *   unexpanded folder means a recursive `files/search`, which is a different
  *   call this app does not yet have.
@@ -89,6 +84,12 @@ export function useTree(root: Root | null, reloadNonce: number, filter: string):
    *  cannot reach into the live set — see the captured `queue` below. */
   const inFlight = useRef(new Set<string>());
 
+  /**
+   * Walk nothing: a directory is listed once, when it is first opened. Nothing
+   * pre-fetches, nothing recurses on the backend's behalf, and nothing watches
+   * for changes — a reload is `reloadNonce` changing, and that is the whole of
+   * the story.
+   */
   const load = useCallback((path: string) => {
     const queue = inFlight.current;
     if (queue.has(path)) return;
@@ -178,21 +179,10 @@ export function useTree(root: Root | null, reloadNonce: number, filter: string):
 /**
  * The expanded tree, depth-first, as one array.
  *
- * ## What the filter does
- *
  * With no `needle` this is the obvious walk: emit a row, and if it is an open
- * directory, emit its children after it.
- *
- * With one, two rules apply and they point in opposite directions:
- *
- * - **Upward.** A directory survives if any loaded descendant matches, so a hit
- *   six levels down still has a path leading to it. That is why the parent's
- *   row is *reserved* before its children are walked and dropped afterwards if
- *   nothing came back — the parent's fate is decided by its subtree.
- * - **Downward.** A directory that matches on its own name shows its whole
- *   loaded subtree (`covered`). Without this, filtering on a folder's name
- *   would show that folder and then nothing inside it when you opened it,
- *   which reads as an empty directory rather than as a filter.
+ * directory, emit its children after it. With one, two rules apply and they
+ * point in opposite directions — they are written on `self` and on the
+ * reservation inside `walk`, where each is carried out.
  *
  * While filtering, recursion follows the *cache* rather than the open set: a
  * folder that was expanded, then collapsed, still has its children loaded, and
@@ -223,10 +213,18 @@ function flatten(
 
     let emitted = false;
     for (const entry of entries) {
+      // Downward: a directory that matches on its own name shows its whole
+      // loaded subtree, which is what `covered` carries in. Without it,
+      // filtering on a folder's name would show that folder and then nothing
+      // inside it when you opened it — an empty directory rather than a filter.
       const isDir = entry.kind === "dir";
       const self = covered || !needle || entry.name.toLowerCase().includes(needle);
       const open = isDir && (needle ? children.has(entry.path) : expanded.has(entry.path));
 
+      // Upward: a directory survives if any loaded descendant matches, so a hit
+      // six levels down still has a path leading to it. That is why the row is
+      // *reserved* before its children are walked and dropped afterwards if
+      // nothing came back — the parent's fate is decided by its subtree.
       const mark = rows.length;
       rows.push(PLACEHOLDER); // Reserve this row's slot; its children go after it.
       const kids = open ? walk(entry.path, depth + 1, self) : false;

@@ -2,25 +2,8 @@
  * The tree's git decoration: what changed, reshaped for `TreeRow` and for the
  * directories that hold a change without showing it.
  *
- * `GitChangeKind`, `GIT_KIND_TOKEN` and `GIT_KIND_LETTER` restate
- * `src/shell/contract.ts`'s source-control panel exactly rather than
- * importing it — see `rpc.ts`'s header for why an app under `apps/` never
- * reaches into `src/`. If the values below drift from that file, that file is
- * the one to trust; this is a copy, not a second decision.
- *
- * ## What "like VS Code" turned out to mean
- *
- * Four rules, and `decorate` below is all four in one place:
- *
- * 1. A file git named gets its name tinted and a letter at the row's end.
- * 2. A directory with a change *below* it gets the tint and no letter. The
- *    letter is a statement about the row it sits on, and a folder has not
- *    itself been modified because something inside it was.
- * 3. Everything inside an untracked directory is untracked too — git collapses
- *    such a directory into one entry, but VS Code marks every file you find
- *    when you open it, so the collapsed entry is expanded here by prefix.
- * 4. An ignored path is greyed and says nothing else. It has no status to
- *    report: git is not tracking it.
+ * What "like VS Code" turned out to mean is four rules, and `decorate` below is
+ * all four of them in one place.
  *
  * One rule that reads as missing and is not: a deleted file is not struck
  * through, because it has no row. This tree is listed from disk, and a file
@@ -33,6 +16,13 @@ import { useEffect, useMemo, useState } from "react";
 import { baseName } from "../rpc";
 import { asSavedPath, FILE_SAVED, isAtOrUnder } from "../topics";
 
+/**
+ * This, `GIT_KIND_TOKEN` and `GIT_KIND_LETTER` restate `src/shell/contract.ts`'s
+ * source-control panel exactly rather than importing it — see `rpc.ts`'s header
+ * for why an app under `apps/` never reaches into `src/`. If the values here
+ * drift from that file, that file is the one to trust; this is a copy, not a
+ * second decision.
+ */
 export type GitChangeKind =
   "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
 
@@ -131,8 +121,18 @@ export interface RowDecoration {
 const PLAIN: RowDecoration = { ignored: false };
 
 /**
- * How one row draws, given the whole decoration. See this file's header for
- * the four rules; the order below is the precedence between them.
+ * How one row draws, given the whole decoration. The four rules, in the order
+ * below, which is also the precedence between them:
+ *
+ * 1. A file git named gets its name tinted and a letter at the row's end.
+ * 2. A directory with a change *below* it gets the tint and no letter. The
+ *    letter is a statement about the row it sits on, and a folder has not
+ *    itself been modified because something inside it was.
+ * 3. Everything inside an untracked directory is untracked too — git collapses
+ *    such a directory into one entry, but VS Code marks every file you find
+ *    when you open it, so the collapsed entry is expanded here by prefix.
+ * 4. An ignored path is greyed and says nothing else. It has no status to
+ *    report: git is not tracking it.
  */
 export function decorate(git: GitDecoration | null, path: string, isDir: boolean): RowDecoration {
   if (!git) return PLAIN;
@@ -164,15 +164,13 @@ export function decorate(git: GitDecoration | null, path: string, isDir: boolean
  * Refetches on mount and whenever `reloadNonce` changes — the same signal
  * `useTree` re-lists on, from the same refresh button, the same in-app create
  * and delete, and the same "the project changed underneath us" cases — and on
- * the three signals in the effect below, which are the times a status goes
- * stale without the tree changing at all. There is no push from the backend:
- * like every other read in this app, this is asked again rather than
- * subscribed to.
+ * the three signals in the effect below, the times a status goes stale without
+ * the tree changing at all. There is no push from the backend: like every other
+ * read in this app, this is asked again rather than subscribed to.
  *
  * The ignore list is fetched on its own schedule — once per project — because
  * it costs around twenty times what a status does and answers a question that
- * only changes when a `.gitignore` does. `git::ignored_roots` has the
- * measurement.
+ * only a `.gitignore` change affects. `git::ignored_roots` has the measurement.
  *
  * Resolves to `null` for "no project" or "not a repository" (what the RPC
  * itself returns) and also for a call that failed outright — both mean the
@@ -187,12 +185,8 @@ export function useGitStatus(rootPath: string | null, reloadNonce: number): GitD
 
   /**
    * The other three reasons a status goes stale, none of which touches the
-   * tree and so none of which bumps `reloadNonce`.
-   *
-   * A **save** is the common one: the file the user just edited is exactly the
-   * row that should turn yellow, and nothing about the tree's shape changed,
-   * so the Viewer says so directly rather than the Explorer re-listing folders
-   * to find out.
+   * tree and so none of which bumps `reloadNonce`. The commonest, a **save**,
+   * is written on the subscription below.
    *
    * **Focus** and **visibility** cover everything that happened outside this
    * app entirely — a commit made in the shell's source control panel, a branch
@@ -216,6 +210,10 @@ export function useGitStatus(rootPath: string | null, reloadNonce: number): GitD
       if (document.visibilityState === "visible") refresh();
     };
 
+    // A save is the common reason a status goes stale: the file the user just
+    // edited is exactly the row that should turn yellow, and nothing about the
+    // tree's shape changed, so the Viewer says so directly rather than the
+    // Explorer re-listing folders to find out.
     const stop = subscribe(FILE_SAVED, (value) => {
       refresh();
       // The one save that can change what is *greyed*. Everything else leaves

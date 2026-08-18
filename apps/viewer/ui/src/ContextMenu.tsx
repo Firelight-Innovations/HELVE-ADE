@@ -8,51 +8,15 @@
  * the tab strip is built on the tree. It is not. Both are regions of this app,
  * and this is the app's menu.
  *
- * ## What it offers
+ * What it offers: create a file, create a folder, rename, **delete**, copy the
+ * path, copy it relative to the project, reveal in the OS file manager, open
+ * with the default app. Which of those appear is argued on `MenuTarget`'s
+ * fields; where it is drawn and how it dismisses, on the two effects.
  *
- * Create a file, create a folder, rename, **delete**, copy the path, copy it
- * relative to the project, reveal in the OS file manager, open with the default
- * app.
- *
- * ## Why Delete is here now, when this file used to argue it should not be
- *
- * The original note said that half of {rename, delete, new} is worse than none,
- * because a menu with Delete in it teaches people the menu is where you manage
- * files — and then set the bar Delete had to clear: it "needs a confirmation and
- * an undo story before it is worth having".
- *
- * Both of those now exist, which is what changed rather than anyone's taste.
- * The confirmation is `useDelete` + `NoticeBar`: it names the file, counts a
- * folder's contents before asking, names any unsaved work that would be lost,
- * puts Cancel first and focuses it, and answers Escape. The undo story is the
- * **Recycle Bin** — `files/delete` goes through the `trash` crate and refuses
- * rather than falling back to a permanent unlink, so a delete taken through this
- * menu is recoverable by the OS.
- *
- * So the objection was met on its own terms. What is still absent is any
- * *unconfirmed* destructive action: nothing in this menu destroys anything on a
- * single click, and that is the line, rather than the length of the list.
- *
- * ## Which items appear
- *
- * `target.path` null — the blank space below the tree — leaves only the two
- * creates, aimed at the project root. There is nothing else to point at, and
- * the project root is not this app's to rename or delete.
- *
- * `target.name` null leaves out **both** Rename and Delete. The tab strip sets
- * it that way for a tab whose file has gone from disk: each of those two needs
- * something on disk to act on, so they appear and disappear together.
- *
- * Positioning is `position: fixed` at the pointer, clamped inside the viewport
- * before the first paint. It dismisses on Escape, on a pointer down anywhere
- * outside it, and on scroll — a menu anchored to a viewport point is wrong the
- * moment the row it belongs to moves, and the honest response is to close
- * rather than to chase.
- *
- * The menu itself takes focus on open, so the arrow keys stop driving whatever
- * is behind it; the opener hands focus back when it closes. Not the first item,
- * because which item *is* first depends on the target — see the note on the
- * container's `tabIndex` below.
+ * Delete was argued against in this file for a long time; the bar it had to
+ * clear and what cleared it are in `docs/design-notes/viewer-app.md`. Still
+ * absent is any *unconfirmed* destructive action: nothing here destroys
+ * anything on a single click, and that is the line, not the length of the list.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { describe, openExternal, reveal, type EntryKind } from "./rpc";
@@ -63,7 +27,13 @@ import "./contextMenu.css";
 export type DraftKind = "file" | "dir";
 
 export interface MenuTarget {
-  /** The row or tab that was right-clicked, or `null` for blank space. */
+  /**
+   * The row or tab that was right-clicked, or `null` for blank space.
+   *
+   * `null` — the blank space below the tree — leaves only the two creates,
+   * aimed at the project root. There is nothing else to point at, and the
+   * project root is not this app's to rename or delete.
+   */
   path: string | null;
   /**
    * Where a "New …" from this menu creates: a directory row itself, the folder
@@ -131,7 +101,8 @@ export default function ContextMenu({
   const [failed, setFailed] = useState<string | null>(null);
 
   /**
-   * Clamp once the menu has a measured size.
+   * `position: fixed` at the pointer, clamped inside the viewport once the menu
+   * has a measured size.
    *
    * A layout effect, so the corrected position is in place before the browser
    * paints and the menu never appears at the wrong spot for a frame. It cannot
@@ -149,12 +120,18 @@ export default function ContextMenu({
     });
 
     // Focused here rather than with `autoFocus`, which React only reliably
-    // honours on form controls — this is a `div`. `preventScroll` because the
-    // menu is `position: fixed` at the pointer and has nothing to scroll into
-    // view; without it the tree behind can jump.
+    // honours on form controls — this is a `div`. The opener hands focus back
+    // when the menu closes. `preventScroll` because the menu is fixed at the
+    // pointer and has nothing to scroll into view; without it the tree behind
+    // can jump.
     menu.focus({ preventScroll: true });
   }, [target]);
 
+  /**
+   * Dismiss on Escape, on a pointer down anywhere outside it, and on scroll — a
+   * menu anchored to a viewport point is wrong the moment the row it belongs to
+   * moves, and the honest response is to close rather than to chase.
+   */
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();

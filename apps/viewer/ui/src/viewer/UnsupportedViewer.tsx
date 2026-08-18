@@ -6,14 +6,6 @@
  * up. `pick` never selects it; the text viewer matches everything above it in
  * the registry.
  *
- * **This is not an error page.** Nothing went wrong and the user did nothing
- * wrong: they opened a `.zip`, and a file explorer that cannot preview a `.zip`
- * is a file explorer, not a broken one. So it states the fact in one line and
- * then spends its space on the two things that actually help — showing the file
- * in the OS file manager, and handing it to whatever the OS opens it with. No
- * red, no icon of a sad document, no "unsupported format" in a box with a
- * border.
- *
  * What it deliberately does not do: offer a hex dump, or a "force open as text"
  * button. The first is a different app. The second is `reopenWith("text")` and
  * would loop straight back here, because getting here means the read already
@@ -34,6 +26,15 @@ export default function UnsupportedViewer({ file }: ViewerProps) {
     call(file.path).catch((err: unknown) => setError(describe(method, err)));
   };
 
+  /**
+   * **This is not an error page.** Nothing went wrong and the user did nothing
+   * wrong: they opened a `.zip`, and a file explorer that cannot preview a `.zip`
+   * is a file explorer, not a broken one. So it states the fact in one line and
+   * then spends its space on the two things that actually help — showing the file
+   * in the OS file manager, and handing it to whatever the OS opens it with. No
+   * red, no icon of a sad document, no "unsupported format" in a box with a
+   * border.
+   */
   return (
     <div className="unsupported">
       <div className="unsupported__body">

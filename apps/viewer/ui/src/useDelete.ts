@@ -7,21 +7,9 @@
  * a way the user can act on. That sequence is here once. `NoticeBar` is the
  * only thing either caller has to render.
  *
- * ## What the confirmation is careful about
- *
- * - **It names the file.** "Are you sure?" on its own is a dialog people learn
- *   to dismiss without reading.
- * - **It says where the file goes**, from what the backend reports rather than
- *   an assumption: `files/delete` moves to the Recycle Bin and refuses when it
- *   cannot. If that changes, `Deleted.trashed` does, and so does this sentence.
- * - **It counts a folder's contents** before asking, because a recursive delete
- *   is an amount the user cannot see from the row they right-clicked.
- * - **It names unsaved work by file.** Deleting a file with unsaved changes
- *   discards them, and that must never be a surprise afterwards.
- * - **Cancel is first, and `NoticeBar` focuses it.** Delete is marked
- *   destructive, drawn in `--err`, and last. Return cancels; Escape cancels.
- * - **It can be switched off**, by `files.confirmDelete` — with one exception
- *   that stays. Argued for at `ask` below.
+ * What the confirmation is careful to say is argued on `confirmation` below.
+ * That it can be switched off by `files.confirmDelete`, and the one exception
+ * that stays whatever that setting says, is argued on `ask`.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Notice } from "./NoticeBar";
@@ -197,6 +185,8 @@ export function useDelete({
     return {
       tone: "warn",
       message: confirmation(target, inside, unsavedUnder(target.path), busy),
+      // Cancel is first, and `NoticeBar` focuses it. Delete is marked
+      // destructive, drawn in `--err`, and last. Return cancels; Escape cancels.
       actions: [
         { label: "Cancel", run: cancel },
         {
@@ -219,6 +209,16 @@ export function useDelete({
  * Assembled from what is actually known rather than from a template with holes
  * — a folder whose count has not arrived says "everything inside it", which is
  * true, instead of "0 items", which is not.
+ *
+ * - **It names the file.** "Are you sure?" on its own is a dialog people learn
+ *   to dismiss without reading.
+ * - **It says where the file goes**, from what the backend reports rather than
+ *   an assumption: `files/delete` moves to the Recycle Bin and refuses when it
+ *   cannot. If that changes, `Deleted.trashed` does, and so does this sentence.
+ * - **It counts a folder's contents** before asking, because a recursive delete
+ *   is an amount the user cannot see from the row they right-clicked.
+ * - **It names unsaved work by file.** Deleting a file with unsaved changes
+ *   discards them, and that must never be a surprise afterwards.
  */
 function confirmation(
   target: DeleteTarget,

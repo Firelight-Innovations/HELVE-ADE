@@ -1,72 +1,42 @@
 /**
- * Where hits come from.
- *
- * This used to be a placeholder — see the git history of this file for what
- * it looked like before the real search landed. That version walked a
- * cluster's directory over the Files app's own `files/list`, breadth-first,
- * matching only file *names*: enough to make the overlay real (rows to draw,
- * a locator tree to reveal, files for the preview to open) without yet
- * answering whether search matches file names, file contents, or both.
- *
- * It matches both now. `search_content` (`src-tauri/src/search.rs`) is a real
- * `ignore`/`grep-searcher` walk — the same crates ripgrep is built from — that
- * opens every text file under a cluster's directory and reports every line a
- * query matches, with a line, a column, and a length. This module is the thin
- * frontend shell around that one Rust command: it resolves flags to sane
- * defaults, filters the response by kind (a purely client-side notion — see
- * `./kinds.ts` — that Rust knows nothing about), and turns an abort into the
- * same rejection the old walk produced so `useSearchSession.ts`'s existing
- * abort handling needs no changes.
+ * Where hits come from. `search_content` (`src-tauri/src/search.rs`) is a real
+ * `ignore`/`grep-searcher` walk — the crates ripgrep is built from — opening
+ * every text file under a cluster's directory and reporting every line a query
+ * matches, with a line, a column and a length. This module is the thin frontend
+ * around it: it resolves flags to defaults, filters by kind (a client-side
+ * notion — see `./kinds.ts` — that Rust knows nothing about), and turns an abort
+ * into a rejection `useSearchSession.ts`'s existing `.catch()` already expects.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { searchContent } from "../../bindings";
 import { kindOf } from "./kinds";
-import type { SearchHit, SearchKind, SearchMatch } from "./types";
+import type { SearchHit, SearchKind } from "./types";
 
 export interface SearchRequest {
-  /**
-   * Absolute directory being searched — kept for source compatibility with
-   * the caller and because other parts of the overlay (the locator tree)
-   * still need a root to display paths relative to. Unused for resolving
-   * *where* to search: that is now `clusterId`'s job, resolved on the Rust
-   * side the same way every other cluster-scoped command resolves one (see
-   * `search.rs`'s module doc). The frontend cannot hand the backend a
-   * directory to run in even if it wanted to — `cluster_path` is not
-   * exposed to it.
-   */
+  /** Absolute directory being searched — kept because the locator tree still
+   *  needs a root to display paths relative to. Unused for resolving *where*
+   *  to search: that is `clusterId`'s job, resolved on the Rust side. See
+   *  `docs/design-notes/shell-search.md`. */
   root: string;
   /** Which cluster is asking. `null` means there is no cluster to search — see
    *  below — the same state a window with nothing open is in. */
   clusterId: string | null;
-  /**
-   * The search *term*, with every filter token already stripped out — the
-   * `needle` of a `ParsedQuery`, not the raw field text. Sending the raw text
-   * would have Rust searching file contents for the literal characters
-   * `*.md`, which is exactly what the query grammar exists to prevent.
-   */
+  /** The search *term*, with every filter token already stripped out — the
+   *  `needle` of a `ParsedQuery`, not the raw field text. Sending the raw text
+   *  would have Rust searching file contents for the literal characters `*.md`,
+   *  which is exactly what the query grammar exists to prevent. */
   query: string;
   kinds: SearchKind[];
-  /**
-   * The query's path-shaped filters, precompiled by `compilePathFilter`.
-   *
-   * Applied here rather than in Rust because the grammar is a frontend
-   * concept: `search_content` takes a needle and a cluster, and knows nothing
-   * about globs, `path:` scopes or `ext:` filters. Omitted means no path
-   * restriction, which is what an unfiltered query parses to.
-   *
-   * The cost of filtering after the walk rather than during it is that the
-   * backend's own caps (`MAX_HITS`, `MAX_MATCHES`) are counted *before* this
-   * runs — a query with a narrow glob over a large repository can come back
-   * truncated with few surviving rows. Pushing the globs into Rust is the fix
-   * when that becomes real; it is not real yet, and doing it now would mean a
-   * second glob implementation to keep in step with `query.ts`.
-   */
+  /** The query's path-shaped filters, precompiled by `compilePathFilter`.
+   *  Applied here rather than in Rust: the grammar is a frontend concept and
+   *  `search_content` knows nothing about globs, `path:` or `ext:` filters.
+   *  Omitted means no restriction. Filtering after the walk means the backend's
+   *  own caps (`MAX_HITS`, `MAX_MATCHES`) are counted first, so a narrow glob
+   *  over a large repository can come back truncated with few surviving rows. */
   accept?: (path: string) => boolean;
-  /**
-   * How `query` should be read. All three default to the plain
-   * substring-anywhere-case-insensitive search the old placeholder
-   * approximated, since nothing upstream sets them yet — `./query.ts` is
-   * where a real query language will eventually turn into these.
-   */
+  /** How `query` should be read. All three default to the plain
+   *  substring-anywhere-case-insensitive search the old placeholder
+   *  approximated, since nothing upstream sets them yet — `./query.ts` is where
+   *  a real query language will eventually turn into these. */
   caseSensitive?: boolean;
   wholeWord?: boolean;
   regex?: boolean;
@@ -74,37 +44,11 @@ export interface SearchRequest {
   signal: AbortSignal;
 }
 
-/** Mirrors `search::SearchResponse` in `search.rs`. */
-interface SearchResponse {
-  hits: SearchFileHit[];
-  /**
-   * True when the backend's own caps (total matches, total files — see
-   * `search.rs`'s `MAX_MATCHES`/`MAX_HITS`) cut the walk short, or a newer
-   * search superseded this one before it finished. Not surfaced to the UI
-   * today — there is nowhere in the results region to say "and more" yet —
-   * but read here rather than dropped, so that wiring one in later is a
-   * one-line change in the caller rather than a second trip through this
-   * file's shape.
-   */
-  truncated: boolean;
-}
-
-/** Mirrors `search::SearchFileHit`. */
-interface SearchFileHit {
-  path: string;
-  matches: SearchMatch[];
-}
-
-/**
- * Run a search.
- *
- * Resolves with whatever the backend found — possibly capped, see
- * `SearchResponse.truncated` above. Rejects only on abort, matching what the
- * placeholder walk did and what `useSearchSession.ts`'s `.catch()` already
- * expects: an abort is not treated as an unexpected failure, and a slow
- * search's `.then()` is guarded against overwriting a newer one's results
- * regardless of which promise settles first.
- */
+/** Run a search. Resolves with whatever the backend found — possibly capped,
+ *  see `SearchResponse.truncated`. Rejects only on abort, which
+ *  `useSearchSession.ts`'s `.catch()` already expects rather than treating as
+ *  an unexpected failure; a slow search's `.then()` is guarded against
+ *  overwriting a newer one's results whichever promise settles first. */
 export async function runSearch(request: SearchRequest): Promise<SearchHit[]> {
   const { clusterId, query, kinds, accept, signal } = request;
   const caseSensitive = request.caseSensitive ?? false;
@@ -115,29 +59,19 @@ export async function runSearch(request: SearchRequest): Promise<SearchHit[]> {
   if (signal.aborted) throw abortError();
 
   // No cluster, nothing to search — the same empty answer `search_content`
-  // itself gives a cluster with no project. Handled here rather than sent to
-  // Rust so a caller with nothing open never pays for an `invoke` round trip
-  // whose answer is always going to be empty.
+  // itself gives a cluster with no project. Handled here so a caller with
+  // nothing open never pays for an `invoke` round trip whose answer is empty.
   if (clusterId === null) return [];
 
   const wanted = new Set(kinds);
 
-  // `search_content` is a single request/response call, not a stream — there
-  // is no partial progress to cancel *into*, only a result to still be
-  // waiting for. Racing the invoke against the abort signal is what makes
-  // `runSearch` reject the moment the caller aborts rather than whenever the
-  // walk happens to finish; the walk itself keeps running after that (Rust
-  // has no way to preempt a thread mid-scan from here), but it notices on its
-  // own that a newer search has started — see `SearchState` in `search.rs` —
-  // and stops early rather than spending the blocking thread pool on a result
-  // this promise has already stopped listening for.
-  const call = invoke<SearchResponse>("search_content", {
-    clusterId,
-    query,
-    caseSensitive,
-    wholeWord,
-    regex,
-  });
+  // `search_content` is a single request/response call, not a stream — there is
+  // no partial progress to cancel *into*. Racing the invoke against the abort
+  // signal is what makes `runSearch` reject the moment the caller aborts rather
+  // than whenever the walk finishes; the walk keeps running (Rust cannot
+  // preempt a thread mid-scan from here) but notices a newer search on its own
+  // — see `SearchState` in `search.rs` — and stops early.
+  const call = searchContent(clusterId, query, caseSensitive, wholeWord, regex);
 
   const response = await Promise.race([call, rejectOnAbort(signal)]);
 
@@ -154,10 +88,10 @@ export async function runSearch(request: SearchRequest): Promise<SearchHit[]> {
   return hits;
 }
 
-/** The basename of an absolute path, forward- or back-slashed alike — the
- *  path arrives however `Path::display` renders it on this platform (see
- *  `SearchFileHit.path`'s doc in `search.rs`), which is backslashed on
- *  Windows and not necessarily what a browser `URL`/`Intl` API expects. */
+/** The basename of an absolute path, forward- or back-slashed alike — the path
+ *  arrives however `Path::display` renders it on this platform (see
+ *  `SearchFileHit.path`'s doc in `search.rs`), which is backslashed on Windows
+ *  and not necessarily what a browser `URL`/`Intl` API expects. */
 function basename(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   return normalized.slice(normalized.lastIndexOf("/") + 1);

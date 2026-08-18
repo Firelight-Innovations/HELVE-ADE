@@ -6,21 +6,6 @@
  * always match. Nothing else in the app knows this list exists: the explorer
  * opens a path, `Viewer.tsx` asks here what to mount, and that is the whole
  * coupling.
- *
- * **`load` must stay a dynamic `import()`.** It is not a style choice. `apps/`
- * is not a pnpm workspace member, so Monaco, pdf.js and mermaid all sit in the
- * repository root's dependencies with nothing scoping them to this app — the
- * only thing keeping them out of the Files entry chunk, and out of the shell's,
- * is that the sole path to each is behind one of these thunks. A static
- * `import` at the top of this file would put all three in every bundle that
- * touches the explorer.
- *
- * What this deliberately does not do: pick a viewer from the file's *contents*.
- * Rust never sniffs a MIME type and neither does this. Extension and filename
- * are the whole input, with one exception the type system cannot express — the
- * text viewer is the fallback because "is this UTF-8" is not knowable from a
- * name, so it tries the read and hands off to `unsupported` when the backend
- * says no. See `isNotText` in `../rpc`.
  */
 import type { ComponentType } from "react";
 import type { Stat } from "../rpc";
@@ -75,7 +60,26 @@ export interface ViewerDescriptor {
   label: string;
   /** Whether this viewer can produce unsaved edits. Drives the close prompt. */
   editable: boolean;
+  /**
+   * Whether this viewer claims the file.
+   *
+   * What this deliberately does not do: pick a viewer from the file's
+   * *contents*. Rust never sniffs a MIME type and neither does this. Extension
+   * and filename are the whole input, with one exception the type system cannot
+   * express — the text viewer is the fallback because "is this UTF-8" is not
+   * knowable from a name, so it tries the read and hands off to `unsupported`
+   * when the backend says no. See `isNotText` in `../rpc`.
+   */
   match(file: OpenFile): boolean;
+  /**
+   * **`load` must stay a dynamic `import()`.** It is not a style choice. `apps/`
+   * is not a pnpm workspace member, so Monaco, pdf.js and mermaid all sit in the
+   * repository root's dependencies with nothing scoping them to this app — the
+   * only thing keeping them out of the Files entry chunk, and out of the shell's,
+   * is that the sole path to each is behind one of these thunks. A static
+   * `import` at the top of this file would put all three in every bundle that
+   * touches the explorer.
+   */
   load(): Promise<{ default: ComponentType<ViewerProps> }>;
 }
 

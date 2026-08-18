@@ -2,28 +2,21 @@
  * The drag layer.
  *
  * One gesture, one payload, and every drop target registered rather than
- * guessed. A tab — an app surface or a terminal, they no longer differ — can be
- * dropped into a tab strip, onto a pane's edge to split it there, into the
- * terminal panel, or clear of everything to become its own window.
+ * guessed. A tab — app surface or terminal, they no longer differ — drops into
+ * a tab strip, onto a pane's edge to split it there, into the terminal panel,
+ * or clear of everything to become its own window. A cluster chip drags through
+ * the same handle and the same threshold but lands only in the last of those:
+ * into the window it was released over, or one of its own. See `commitCluster`.
  *
- * A cluster chip drags too, through the same handle and the same threshold, and
- * lands in only one of those places: clear of everything, which either moves it
- * into the window it was released over or gives it one of its own. See
- * `commitCluster`.
- *
- * This hook owns the whole gesture: press-and-hold, movement threshold, and
- * `pointermove`/`pointerup`/`pointercancel` tracked on `window` the same way
- * `Frame.tsx`'s resize handle does. It hands back a small, stable surface that
- * `WindowRoot` wires into the panes and the panel: one handle factory, one
- * `overlay` node for `FrameSlots.overlay`, and the live drop target so a pane
- * can draw its own indicator.
+ * The whole gesture lives here — press-and-hold, movement threshold, and
+ * `pointermove`/`pointerup`/`pointercancel` on `window`, as `Frame.tsx` does.
  *
  * What it no longer does is read other regions' markup. The old version found
- * its targets with `document.querySelector('[data-region="panel"]')` and worked
- * out a reorder index from `bar.querySelectorAll(".switcher__tab")` — a query
- * into another region's CSS class names. That could not survive an arbitrary
- * number of panes and strips appearing and disappearing as the user splits
- * things, so targets now register themselves; see `dropZones.tsx`.
+ * its targets with `document.querySelector('[data-region="panel"]')` and a
+ * reorder index from `bar.querySelectorAll(".switcher__tab")` — a query into
+ * another region's class names, which could not survive an arbitrary number of
+ * panes and strips appearing and disappearing as the user splits things, so
+ * targets now register themselves; see `src/shell/dropZones.ts`.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
@@ -40,7 +33,7 @@ import {
 } from "../state/shellState";
 import DragGhost from "./DragGhost";
 import { DetachOutline } from "./DropTargets";
-import { hitTest } from "./dropZones";
+import { hitTest } from "../dropZones";
 import "./drag.css";
 
 /**
@@ -232,6 +225,9 @@ export function useDrag(
     [drag, ghostX, ghostY],
   );
 
+  // The small, stable surface this hook hands back: one handle factory, one
+  // `overlay` node for `FrameSlots.overlay`, and the live drop target.
+  // `WindowRoot` wires all three into the panes and the panel.
   return {
     tabHandle,
     overlay,
@@ -383,20 +379,7 @@ function commit(
  * for a gesture the user cannot have intended.
  *
  * So `detach` is the one that acts, and unlike a tab's `detach` it uses the
- * answer it is given:
- *
- * - **Over another HELVE window** — the cluster moves into it. This is built
- *   here where the same drop for a single tab was deliberately not, and the
- *   difference is real rather than an inconsistency somebody forgot to fix. A
- *   tab needs a *pane* to land in, and `window_at_cursor` returns a label —
- *   it hit-tests window rectangles and cannot say where inside one the cursor
- *   was, so a pane would have to be guessed. A cluster is appended to that
- *   window's cluster list; the label is the whole of the address. The same
- *   reasoning is written at `commands::detach_cluster`, on the other side.
- * - **Over this window, or over nothing** — a window of its own. Releasing over
- *   the window it came from is not treated as "put it back where it was": the
- *   whole row is a drop zone, so a release that reaches `detach` at all is one
- *   that missed the bar on purpose.
+ * answer it is given — see the two branches at the `attempt` below.
  */
 function commitCluster(payload: ClusterDrag, target: DropTarget, label: string): void {
   if (target.kind !== "detach") {
@@ -412,6 +395,19 @@ function commitCluster(payload: ClusterDrag, target: DropTarget, label: string):
     return;
   }
 
+  // **Over another HELVE window** — the cluster moves into it. This is built
+  // here where the same drop for a single tab was deliberately not, and the
+  // difference is real rather than an inconsistency somebody forgot to fix. A
+  // tab needs a *pane* to land in, and `window_at_cursor` returns a label — it
+  // hit-tests window rectangles and cannot say where inside one the cursor was,
+  // so a pane would have to be guessed. A cluster is appended to that window's
+  // cluster list; the label is the whole of the address. The same reasoning is
+  // written at `commands::detach_cluster`, on the other side.
+  //
+  // **Over this window, or over nothing** — a window of its own. Releasing over
+  // the window it came from is not treated as "put it back where it was": the
+  // whole row is a drop zone, so a release that reaches `detach` at all is one
+  // that missed the bar on purpose.
   attempt(
     `dropping ${payload.clusterId} out of ${label}`,
     windowAtCursor().then((over) =>

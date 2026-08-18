@@ -10,49 +10,23 @@ import "./searchOverlay.css";
 /**
  * The search overlay: everything below the search field, while search is open.
  *
- * ## Why an overlay rather than a pane
+ * Search is not a place in the layout, it is a mode the window is in. A pane
+ * would compete with the tool window for room, be draggable and splittable,
+ * and stay open behind other work — all wrong for something you enter, use,
+ * and leave in a few seconds. Covering the split row leaves the layout
+ * underneath untouched and still there when the overlay closes, and no drag
+ * or resize code has to learn about it.
  *
- * Search is not a place in the layout, it is a mode the window is in. Giving
- * it a pane would mean it competes with the tool window for room, can be
- * dragged, split, and left open behind other work — all of which are wrong for
- * something you enter, use, and leave in a few seconds. Covering the split row
- * instead means the layout underneath is untouched and still there when the
- * overlay closes, and no drag or resize code has to learn about it.
- *
- * It covers the split row specifically, not the whole window: the field itself
- * lives up in the switcher bar and has to stay visible and focused — you are
- * typing into it — and the status bar keeps reporting while search is open,
- * which is the behaviour every other transient surface in this shell has.
- *
- * ## The three regions
- *
- * Results across the top, then a lower half split into the locator tree and
- * the preview. The split is horizontal rather than the results sitting beside
- * them because a result row is wide and short — a path plus a name — while
- * both lower panes want height.
- *
- * The lower half answers two different questions about the same hovered row,
- * which is why it is two panes and not one. The locator says *where* the file
- * is, which is what tells two identically-named files apart. The preview says
- * *what is in it*, which is what confirms it is the one you meant. Neither
- * alone is enough to pick between `src/index.ts` and `dist/index.ts`.
- *
- * ## Hover, not click
- *
- * Both lower panes follow the focused row, and focus follows the pointer.
- * Nothing below the results is interactive: the locator cannot be expanded and
- * the preview cannot be edited. That is the whole design — you move down the
- * list and the two panes narrate what you are passing over, with no state to
- * manage and nothing to undo.
+ * It covers the split row and not the whole window because the field lives up
+ * in the switcher bar and has to stay visible and focused — you are typing
+ * into it — and the status bar keeps reporting while search is open, which is
+ * what every other transient surface in this shell does.
  */
 
-/**
- * Monaco is heavy enough that it must not sit in the startup bundle, and the
- * overlay itself is not — so the lazy boundary goes here, around the preview
- * alone, rather than around the overlay. Opening search draws instantly and
- * the editor arrives a moment later, which is the right trade when the field
- * is empty on open and there is nothing to preview yet anyway.
- */
+/** Monaco is heavy enough that it must not sit in the startup bundle, and the
+ *  overlay itself is not — so the lazy boundary goes here, around the preview
+ *  alone. Opening search draws instantly and the editor arrives a moment later:
+ *  the right trade when the field is empty on open and nothing to preview. */
 const PreviewPane = lazy(() => import("./PreviewPane"));
 
 export interface SearchOverlayProps {
@@ -109,6 +83,17 @@ export default function SearchOverlay({ session, root, clusterId, onOpen }: Sear
           />
         </div>
 
+        {/* Results across the top, then a lower half split into the locator
+            tree and the preview. The split is horizontal rather than the
+            results sitting beside them because a result row is wide and short
+            — a path plus a name — while both lower panes want height.
+
+            The lower half answers two different questions about the same
+            hovered row, which is why it is two panes and not one. The locator
+            says *where* the file is, which is what tells two identically-named
+            files apart. The preview says *what is in it*, which confirms it is
+            the one you meant. Neither alone is enough to pick between
+            `src/index.ts` and `dist/index.ts`. */}
         <div className="search-overlay__lower">
           <div className="search-overlay__locator">
             <LocatorTree root={root} clusterId={clusterId} focus={focus} />
@@ -129,6 +114,15 @@ export default function SearchOverlay({ session, root, clusterId, onOpen }: Sear
   );
 }
 
+/**
+ * The results list, and the only interactive region the overlay has.
+ *
+ * Focus follows the pointer, and both lower panes follow the focused row.
+ * Nothing below the results is interactive: the locator cannot be expanded and
+ * the preview cannot be edited. That is the whole design — you move down the
+ * list and the two panes narrate what you are passing over, with no state to
+ * manage and nothing to undo.
+ */
 function ResultsRegion({
   rows,
   searching,
