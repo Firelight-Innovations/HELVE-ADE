@@ -18,10 +18,16 @@ export const filesAndEditing: Body = {
     },
     {
       kind: "note",
-      body: 'They share one Rust half. There is one filesystem, and a second copy of "read this file" would be a second chance for the two to disagree about the guard that keeps two writers from clobbering each other.',
+      body: 'They share one Rust half: one filesystem, one reader. A second copy of "read this file" would be a second chance for the two to disagree about the guard that keeps two writers from clobbering each other.',
     },
 
     { kind: "heading", body: "Browsing" },
+    {
+      kind: "mock",
+      view: "explorer-tree",
+      caption:
+        "`main.rs` shown **modified**, `icon.png` shown **added** — the tree's git colouring, no setup needed.",
+    },
     {
       kind: "step",
       body: "Open a **File Explorer** from the `+` in the switcher bar. It roots itself at the cluster's project.",
@@ -36,7 +42,13 @@ export const filesAndEditing: Body = {
     },
     {
       kind: "text",
-      body: "That is VS Code's rule, and it is the reason browsing a folder leaves you with one tab instead of forty. **Double-click** the row to keep the tab, or type into it — either promotes it, and the next click then opens a new tab beside it rather than throwing your work away.",
+      body: "That is VS Code's rule — the reason browsing a folder leaves you with one tab instead of forty. **Double-click** the row to keep the tab, or type into it. Either promotes it, and the next click then opens a new tab beside it rather than throwing your work away.",
+    },
+    {
+      kind: "mock",
+      view: "viewer-tabs",
+      caption:
+        "Three tabs open, `main.rs` selected. A promoted preview tab joins this strip the same way — one entry, not a growing pile.",
     },
     {
       kind: "note",
@@ -81,7 +93,7 @@ export const filesAndEditing: Body = {
     { kind: "heading", body: "Getting something back" },
     {
       kind: "text",
-      body: "The bin icon in the Explorer's header swaps the tree for a **Recycle Bin** view, scoped to this project: only things whose original location was under the project root, not everything Windows has.",
+      body: "The bin icon in the Explorer's header swaps the tree for a **Recycle Bin** view, scoped to this project. It lists only things whose original location was under the project root, not everything Windows has.",
     },
     {
       kind: "text",
@@ -89,7 +101,7 @@ export const filesAndEditing: Body = {
     },
     {
       kind: "note",
-      body: 'The list is a snapshot with a "Read {time}" stamp, not a live feed, and there is a refresh beside it. Something can vanish between the listing and your click; HELVE says so rather than pretending it worked.',
+      body: 'The list is a snapshot with a "Read {time}" stamp, not a live feed — a refresh sits beside it. Something can vanish between the listing and your click; HELVE says so rather than pretending it worked.',
     },
 
     { kind: "heading", body: "Editing" },
@@ -105,7 +117,7 @@ export const filesAndEditing: Body = {
     { kind: "heading", body: "When a file changes underneath you" },
     {
       kind: "text",
-      body: "The Viewer re-checks a file when you come back to its tab and when the window regains focus — there is no filesystem watcher. If you had not edited it, it quietly reloads. If you had, it asks: **Keep mine** or **Reload from disk**.",
+      body: "The Viewer re-checks a file when you come back to its tab and when the window regains focus — it has no filesystem watcher. If you had not edited it, it quietly reloads. If you had, it asks: **Keep mine** or **Reload from disk**.",
     },
     {
       kind: "text",
@@ -120,6 +132,15 @@ export const filesAndEditing: Body = {
     {
       kind: "text",
       body: "The Viewer picks how to draw a file from its extension:",
+    },
+    {
+      kind: "flow",
+      steps: [
+        "Open a file",
+        "extension checked against the list",
+        "matched — image, SVG, PDF, or Mermaid",
+        "not matched — tried as text, falling back to **Unsupported** if not UTF-8",
+      ],
     },
     {
       kind: "keys",

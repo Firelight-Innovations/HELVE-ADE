@@ -4,17 +4,25 @@ import type { Body } from "./blocks";
  * What the seven repositories are for.
  *
  * The one tutorial with almost nothing to click. It is here because every other
- * page says "the stack" as though the reader already knows, and because the
- * status bar reports six tools that are not installed — which reads as breakage
- * until you know none of them are meant to be there yet.
+ * page says "the stack" as though the reader already knows, and because a fresh
+ * machine raises a warning badge over tools that are not installed — which
+ * reads as breakage until you know none of them are meant to be there yet.
  */
 export const theStack: Body = {
   takeaway:
-    "You can read the stack list in the status bar and tell a missing tool from a broken one.",
+    "You can find the stack's health in the switcher bar and tell a missing tool from a broken one.",
   blocks: [
     {
       kind: "text",
-      body: "HELVE is not one program. It is a **stack** of seven repositories, and the thing you are reading this in — the orchestrator — is the one that ties them together at runtime. It holds none of their code.",
+      body: "HELVE is not one program: a **stack** of seven repositories. The orchestrator — the thing you are reading this in — is the one that ties them together at runtime, and it holds none of their code.",
+    },
+    {
+      kind: "text",
+      body: "Their health is reported in the **switcher bar**, behind a warning triangle carrying a count. Clicking it lists the tools that are not well — and only those. A tool that is where it should be says nothing at all.",
+    },
+    {
+      kind: "note",
+      body: "So a stack with nothing wrong raises no badge. An empty result here is the healthy answer, not a screen that failed to load.",
     },
     {
       kind: "text",
@@ -24,13 +32,13 @@ export const theStack: Body = {
     { kind: "heading", body: "The one that ships" },
     {
       kind: "text",
-      body: "**Engine** is the runtime core — lighting, audio playback, spatial audio built in. It is the only piece that ends up inside a finished game, and the only one with no frontend: it is a runtime the other tools talk to, not a window you open.",
+      body: "**Engine** is the runtime core — lighting, audio playback, spatial audio built in. Only it ships inside a finished game, and only it has no frontend: a runtime the other tools talk to, not a window you open.",
     },
 
     { kind: "heading", body: "The six that don't" },
     {
       kind: "text",
-      body: "Everything else is authoring-time only. None of it is shipped with a game.",
+      body: "Everything else is authoring-time only. None of it ships with a game.",
     },
     {
       kind: "keys",
@@ -51,22 +59,40 @@ export const theStack: Body = {
       body: "That table is a list of names, not of keys — it borrows the layout because two columns is what a glossary wants.",
     },
 
-    { kind: "heading", body: "Why the status bar says things are missing" },
+    { kind: "heading", body: "Why the badge says things are missing" },
     {
-      kind: "text",
-      body: "On launch the orchestrator reads `helve.toml`, looks for each component's checkout beside its own, and reports one of four states per tool: the version if it matches the pin, `≠` if the checkout is there but reports something else, `unversioned` if there is nothing to read a version from, and `not cloned` if nothing is at the expected path.",
+      kind: "flow",
+      steps: [
+        "Reads `helve.toml`",
+        "looks for each tool's checkout",
+        "resolves one of four states",
+      ],
     },
     {
       kind: "text",
-      body: "On a fresh machine every one of them says **not cloned**, and that is the correct answer rather than a fault. The orchestrator is usable on its own — Home, the File Explorer, the File Viewer, terminals and search are all in the binary and need no checkout at all.",
+      body: "Discovery resolves each checkout to one of four states, and the interface never shows the raw word for any of them. A checkout that matches the pin says nothing — that is the silent, healthy case. One that disagrees shows **needs update**. One with no version marker to read shows **not tracked**. One with nothing at the checkout path shows **not installed**.",
+    },
+    {
+      kind: "mock",
+      view: "stack-list",
+      caption:
+        "All three unwell states at once, with the count the badge carries. A healthy tool has no row here at all, and the Engine never gets one — it is a runtime, not one of the six.",
+    },
+    {
+      kind: "text",
+      body: "**Missing** and **broken** read differently once you know the words. `not installed` means nothing is at the checkout path; `needs update` means the checkout disagrees with the pin. `not tracked` means it is there, but carries no version to check at all.",
+    },
+    {
+      kind: "text",
+      body: "On a fresh machine the badge shows all six at **not installed**, and that is the correct answer rather than a fault. The orchestrator is usable on its own — Home, the File Explorer, the File Viewer, terminals and search are all in the binary and need no checkout at all.",
     },
     {
       kind: "soon",
-      body: "None of the six is docked in the switcher yet. A tool's core is a child process, and the broker that would reach it is not written — so a tool tab today could only open on a screen explaining why it is empty. They arrive when the broker does.",
+      body: "None of the six is docked in the switcher yet. A tool's core is a child process, and the broker that would reach it is not written. So a tool tab today could only open on a screen explaining why it is empty. They arrive when the broker does.",
     },
     {
       kind: "text",
-      body: "`checkout-root` in `helve.toml` says where they are looked for, and defaults to `..` — every Helve repository sitting as a sibling of the orchestrator's own folder. Cloning one there is all it takes for the status bar to start reporting it.",
+      body: "`checkout-root` in `helve.toml` says where they are looked for, and defaults to `..` — every Helve repository sitting as a sibling of the orchestrator's own folder. Cloning the pinned version there is what clears a tool from the badge; cloning the wrong one only changes which word it shows.",
     },
 
     { kind: "heading", body: "Apps and tools are different things" },
@@ -76,11 +102,11 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "A **tool** is code the orchestrator finds: its own repository, its own release cadence, its frontend served from its own checkout and its core running as a separate process. It can be missing, unbuilt, or the wrong version — which is the whole reason the status bar has states.",
+      body: "A **tool** is code the orchestrator finds: its own repository, its own release cadence, its frontend served from its own checkout and its core running as a separate process. It can be missing, unbuilt, or the wrong version — which is the whole reason a tool has states at all.",
     },
     {
       kind: "text",
-      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer and this Tutorials pane are apps: they are compiled into the binary, so there is no version to disagree with and no way for one to be missing. That is why none of them appears in the stack list.",
+      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer and this Tutorials pane are apps: they are compiled into the binary. That leaves no version to disagree with and no way for one to be missing — which is why none of them can ever raise the badge.",
     },
   ],
 };

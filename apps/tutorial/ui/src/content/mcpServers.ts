@@ -17,15 +17,19 @@ export const mcpServers: Body = {
     },
     {
       kind: "text",
-      body: "The servers run **inside** HELVE, not inside the apps or the stack tools. That is worth knowing because it is the reason this works at all today: a tool's core is a separate process and the broker that would reach it is not written, so a server hosted in Forger's own repository would be stuck behind that. Hosted here, it is not.",
+      body: "The servers run **inside** HELVE, not inside the apps or the stack tools. That matters: it explains why this works at all today. A tool's core is a separate process. The broker that would reach it has not been written, so a server hosted in Forger's own repository would be stuck behind that gap. Hosted here, it isn't.",
     },
     {
       kind: "text",
-      body: "HELVE hosts servers; it is not an agent harness and does not consume them. You bring your own — HELVE's job is to give it tools and a terminal it can reach them from.",
+      body: "HELVE hosts servers rather than acting as an agent harness that consumes them. You bring your own — HELVE's job is to give it tools and a terminal it can reach them from.",
     },
     {
       kind: "note",
-      body: "There is a rule about what ever gets a server: **if your agent can already do it, it does not get one.** No reading files, no writing them, no search, no git — every agent has those. Only things that exist *inside HELVE and nowhere else* qualify, which is why the list is short and will stay short.",
+      body: "One rule decides what gets a server: **if your agent can already do it, it does not get one**. No reading files, no writing them, no search, no git — every agent has those already. Only things that exist *inside HELVE and nowhere else* qualify, which is why the list is short and will stay short.",
+    },
+    {
+      kind: "flow",
+      steps: ["Turn on a server", "Lands in `.mcp.json`", "Connect an agent from a terminal"],
     },
 
     { kind: "heading", body: "Turn one on" },
@@ -43,13 +47,18 @@ export const mcpServers: Body = {
     },
     {
       kind: "soon",
-      body: "There is one server today: **Echo**, with a `ping` and an `echo` tool. It exists to prove the transport end to end. Forger's is the first real one and is not written yet — so what you are turning on right now is a working pipe with a toy on the end of it.",
+      body: "One server exists today: **Echo**, with a `ping` and an `echo` tool. It exists to prove the transport end to end. Forger's is the first real one, and it is not written yet. What you are turning on right now is a working pipe with a toy on the end of it.",
     },
 
     { kind: "heading", body: "What lands in your project" },
     {
+      kind: "mock",
+      view: "mcp-toggle",
+      caption: "Turning Echo on writes `helve-echo` into the project's `.mcp.json`.",
+    },
+    {
       kind: "text",
-      body: "A `.mcp.json` at the project root, holding one entry per enabled server. HELVE **merges** rather than overwrites — if the project already has servers of its own, they are left exactly as they were, and only the `helve-` prefixed keys are HELVE's to write or remove.",
+      body: "A `.mcp.json` at the project root, holding one entry per enabled server. HELVE **merges** rather than overwrites. If the project already has servers of its own, they are left exactly as they were — only the `helve-` prefixed keys are HELVE's to write or remove.",
     },
     {
       kind: "code",
@@ -65,7 +74,7 @@ export const mcpServers: Body = {
     },
     {
       kind: "text",
-      body: "Note what is **not** in there: no port number and no token. Both are environment variables, which buys three things — the file is safe to commit, the token can rotate on every launch without rewriting anything on disk, and the entry is identical for everybody on the project.",
+      body: "Note what is **not** in there: no port number and no token. Both are environment variables, and that buys three things. The file is safe to commit, the token can rotate on every launch without rewriting anything on disk, and the entry is the same for everybody on the project.",
     },
 
     { kind: "heading", body: "The part that catches people" },
@@ -99,11 +108,11 @@ export const mcpServers: Body = {
     { kind: "heading", body: "Security, in one paragraph" },
     {
       kind: "text",
-      body: "The listener binds to `127.0.0.1` and never to `0.0.0.0`. It is a local channel that happens to speak HTTP, and putting it on a routable interface would put every registered tool on the network. Every request carries a bearer token minted for this launch.",
+      body: "The listener binds to `127.0.0.1` and never to `0.0.0.0` — a local channel that happens to speak HTTP. Putting it on a routable interface would put every registered tool on the network. Every request carries a bearer token minted for this launch.",
     },
     {
       kind: "soon",
-      body: "Three pieces are designed but not built: the status bar indicator that would tell you a server is connected, off, or waiting on your approval; the opt-in that pre-approves HELVE's own servers for a project; and the notification that tells a connected client the server list changed. Until the first of those lands, a server waiting on approval and a server that is off look the same from HELVE's side.",
+      body: "Three pieces are designed but not built. The status bar indicator would tell you a server is connected, off, or waiting on your approval. The opt-in would pre-approve HELVE's own servers for a project. The notification would tell a connected client that the server list changed. Until the first of those lands, a server waiting on approval and a server that is off look the same from HELVE's side.",
     },
   ],
 };
