@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "purpose": "Positional heuristic table approximating part-of-speech without a tagger (D1 rules out a dependency).",
+  "heuristics": [
+    {
+      "rule": "preceded_by",
+      "tokens": [
+        "the",
+        "a",
+        "an",
+        "this",
+        "each"
+      ],
+      "pos": "noun",
+      "confidence": "high"
+    },
+    {
+      "rule": "preceded_by_possessive_or_adjective_followed_by_verb",
+      "pos": "noun",
+      "confidence": "medium"
+    },
+    {
+      "rule": "sentence_initial_in_procedure_profile",
+      "pos": "verb_imperative",
+      "confidence": "high",
+      "note": "C3: the 'procedure' profile row is dropped per spec defect resolution; six profiles only."
+    },
+    {
+      "rule": "preceded_by",
+      "tokens": [
+        "to"
+      ],
+      "pos": "verb_infinitive",
+      "confidence": "high"
+    },
+    {
+      "rule": "preceded_by",
+      "tokens": [
+        "shall",
+        "must",
+        "will"
+      ],
+      "pos": "verb",
+      "confidence": "high"
+    },
+    {
+      "rule": "followed_by_noun_no_determiner",
+      "pos": "adjective",
+      "confidence": "medium"
+    },
+    {
+      "rule": "no_match",
+      "pos": "unknown",
+      "confidence": null,
+      "severity_cap": "review"
+    }
+  ]
+}

@@ -13,6 +13,14 @@ packages/file-icons/src/manifest.generated.ts
 # them makes `format:check` fail on a clean tree the moment anyone builds.
 src-tauri/gen/
 
+# Vendored from the Veistra doc-control project, which owns them: the prose
+# linter's config and its 66 wordlists, one of which is 88 KB of substitution
+# data. Reformatting a copy is how a copy stops being diffable against the
+# thing it was copied from, and the next re-sync becomes a merge instead of an
+# overwrite. tools/*.py is outside Prettier's languages anyway.
+tools/lint_config.json
+tools/lint_data/
+
 # Lockfiles are owned by their package managers.
 pnpm-lock.yaml
 Cargo.lock

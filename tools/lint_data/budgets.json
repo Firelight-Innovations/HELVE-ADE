@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "csv_field_budgets": [
+    {
+      "target": "truths.csv:statement",
+      "words": 15,
+      "tier": "error"
+    },
+    {
+      "target": "decisions-*.csv:decision",
+      "words": 25,
+      "tier": "error"
+    },
+    {
+      "target": "decisions-*.csv:rationale",
+      "words": 25,
+      "tier": "error"
+    },
+    {
+      "target": "decisions-*.csv:scope",
+      "words": 10,
+      "tier": "error"
+    },
+    {
+      "target": "timeline.csv:event",
+      "words": 15,
+      "tier": "error"
+    },
+    {
+      "target": "timeline.csv:note",
+      "words": 20,
+      "tier": "error"
+    },
+    {
+      "target": "terminology.csv:definition",
+      "words": 20,
+      "tier": "error"
+    }
+  ],
+  "sentence_budgets": [
+    {
+      "profile": "core",
+      "words": 20,
+      "tier": "error"
+    },
+    {
+      "profile": "spec",
+      "words": 25,
+      "tier": "error"
+    },
+    {
+      "profile": "design",
+      "words": 25,
+      "tier": "error"
+    },
+    {
+      "profile": "prose",
+      "words": 30,
+      "tier": "warning"
+    },
+    {
+      "profile": "vision",
+      "words": 30,
+      "tier": "warning"
+    }
+  ],
+  "paragraph_budget": {
+    "sentences": 6,
+    "tier": "warning",
+    "applies_to": "all profiles"
+  },
+  "whole_file_budgets": [
+    {
+      "target": "core/00-READ-FIRST.md",
+      "words": 600,
+      "tier": "error"
+    },
+    {
+      "target": "core/writing-standard.md",
+      "words": 1200,
+      "tier": "error"
+    }
+  ],
+  "truths_csv_row_budget": {
+    "rows": 40,
+    "tier": "warning",
+    "note": "escalates in weekly audit"
+  }
+}

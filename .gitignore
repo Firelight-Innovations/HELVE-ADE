@@ -21,6 +21,12 @@ pnpm-debug.log*
 # (src-tauri/ still has its own .gitignore for the schemas Tauri generates.)
 /target/
 
+# Python bytecode
+# `tools/` is the prose linter, which is stdlib Python and runs from source.
+# CPython writes these beside it on every run.
+__pycache__/
+*.pyc
+
 # Generated file icons
 # Built from the `material-icon-theme` dependency by
 # `scripts/generate-file-icons.mjs`. Checking in 1115 SVGs and a 400 KB lookup

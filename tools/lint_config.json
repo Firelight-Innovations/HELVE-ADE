@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "core": {"path_globs": ["core/*.md"], "tests": ["T1", "T2", "T3", "T4", "T5", "T6", "S7", "structural"], "ari_target": 9},
+    "csv": {"path_globs": ["*.csv"], "tests": ["budgets", "csv_integrity", "T1", "T3", "T6"], "ari_target": null},
+    "spec": {"path_globs": ["docs/spec/**"], "tests": ["T1", "T2", "T3", "T4", "T5", "T6", "S7", "structural", "ears"], "ari_target": 12},
+    "design": {"path_globs": ["docs/design/**"], "tests": ["T1", "T2", "T3", "T4", "T5", "T6", "S7", "structural", "ears_review"], "ari_target": 12},
+    "vision": {"path_globs": ["docs/vision/**"], "tests": ["T1", "T6"], "ari_target": null},
+    "prose": {"path_globs": ["**/*.md"], "tests": ["T1", "T2", "T3", "T4", "T5", "T6", "S7", "structural"], "ari_target": null,
+      "note": "Fallback profile: T1/T3/T6 at error, everything else demoted to review (spec §7.4)."}
+  },
+  "profile_order": ["core", "csv", "spec", "design", "vision", "prose"],
+  "profile_override_comment": "<!-- lint-profile: NAME -->",
+
+  "never_lint": [
+    "handoff/", "tools/lint_data/", "tools/tests/corpus_dirty/", ".git/",
+    ".pi/", ".claude/", "docs/audits/", "docs/handoffs/"
+  ],
+
+  "severity_defaults": {
+    "T1": "error", "T2": "warning", "T3": "error", "T4": "warning", "T5": "error", "T6": "error",
+    "universal_quantifiers": "review", "directives": "review", "negation": "review",
+    "generic_ly_adverb": "review", "comparative_superlative": "warning", "passive_voice": "warning",
+    "indefinite_article": "review", "bare_number": "warning", "abbreviation": "warning",
+    "tbd": "error", "undefined_term": "error", "deprecated_term": "error",
+    "punctuation_density": "warning", "and_or": "error", "oblique_slash": "error",
+    "combinator_second_spec_only": "error", "ears_spec": "error", "ears_design": "review",
+    "zero_shall_spec_only": "review", "must_keyword": "error", "csv_integrity": "error",
+    "budget": "error", "truths_row_count": "warning"
+  },
+
+  "severity_overrides": [
+    {"rule": "single_modal_verb", "profile": "spec", "tier": "error", "source": "O1"},
+    {"rule": "single_modal_verb", "profile": "*", "tier": "warning", "source": "O1", "note": "warning in every profile except spec"},
+    {"rule": "optionality_phrase", "profile": "*", "tier": "error", "source": "O1", "note": "multiword phrases always block"},
+    {"rule": "hedge_word", "profile": ["core", "csv", "spec", "design", "prose"], "tier": "error", "source": "O1"},
+    {"rule": "hedge_word", "profile": ["vision"], "tier": "review", "source": "spec §8.3"},
+    {"rule": "open_ended_clause", "profile": ["vision"], "tier": "review", "source": "K2 (vision is the one exemption)"},
+    {"rule": "open_ended_clause", "profile": "*", "tier": "error", "source": "K2"},
+    {"rule": "must_keyword", "profile": ["spec", "core"], "tier": "error", "source": "O3 / DEC-TEC-TOOL-003"},
+    {"rule": "must_keyword", "profile": "*", "tier": "warning", "source": "O3"},
+    {"rule": "T2", "profile": "design", "tier": "warning", "source": "spec §7.4 (explicit, not a change from default)"},
+    {"rule": "ears", "profile": "spec", "tier": "error", "source": "O2"},
+    {"rule": "ears", "profile": "design", "tier": "review", "source": "O2"},
+    {"rule": "bare_number", "profile": "spec", "tier": "error", "source": "spec §8.7"},
+    {"rule": "combinator_second", "profile": "spec", "tier": "error", "source": "spec §8.5"},
+    {"rule": "zero_shall_not_a_requirement", "profile": "spec", "tier": "review", "source": "G1"},
+    {"rule": "generic_ly_adverb", "profile": "*", "tier": "review", "source": "C1", "note": "not yet implemented as a distinct check -- only the enumerated 334-word list runs, under T6"},
+    {"rule": "universal_quantifier", "profile": "*", "tier": "review", "source": "C2"},
+    {"rule": "directive", "profile": "*", "tier": "review", "source": "C2"}
+  ],
+
+  "universal_quantifiers": ["all", "every", "none", "never", "always"],
+  "nasa_arm_directives": ["note", "consider", "make sure"],
+
+  "t4_pronouns": [
+    "it", "its", "they", "them", "their", "this", "these", "that", "those", "which", "who",
+    "whose", "someone", "something", "anyone", "anything", "previous", "next", "following",
+    "last", "former", "latter", "above", "below", "aforementioned", "said"
+  ],
+  "t4_comparative_irregulars": ["better", "worse", "best", "worst", "faster", "slower", "higher", "lower", "greater", "fewer", "larger", "smaller"],
+  "t4_comparative_min_stem_length": 4,
+  "t4_comparative_exclusions": ["test", "request", "forest", "interest", "other than", "rather than"],
+
+  "t5_combinators": ["and", "or", "then", "unless", "but", "as well as", "but also", "however", "whether", "meanwhile", "whereas", "on the other hand", "otherwise"],
+  "t5_punctuation_density_max": 3,
+  "t5_punctuation_chars": [",", ";", ":"],
+  "t5_oblique_slash_exceptions_regex": "\\d+\\s*/\\s*\\w+|\\b\\d+/\\d+\\b",
+
+  "s7_units": ["ms", "s", "sec", "min", "hr", "hrs", "fps", "hz", "khz", "mhz", "ghz", "mb", "gb", "kb", "tb", "px", "%", "m", "km", "cm", "mm", "kg", "g", "n", "w", "v", "a", "db"],
+  "s7_tbd_pattern": "\\btbd\\b",
+
+  "budgets_file": "tools/lint_data/budgets.json",
+  "thresholds": {
+    "smell_density_max": 0.30,
+    "passive_ratio_max": 0.20,
+    "paragraph_sentences_max": 6
+  },
+
+  "abbreviation_allowlist": ["STE", "CSV", "ID", "URL", "JSON", "CLI", "ARI", "EARS", "POS", "AI", "IDs", "API"],
+
+  "rule_id_taxonomy": {
+    "format": "VEI-<test>-<CATEGORY>-<seq4>",
+    "categories": {
+      "T1": ["SUB"],
+      "T2": ["VAG"],
+      "T3": ["ESC", "OPEN", "MOD", "SUP", "HDG"],
+      "T4": ["PRO", "COMP"],
+      "T5": ["NOSHAL", "MULTI", "PUNC", "COMB", "ANDOR", "SLASH", "EARS"],
+      "T6": ["FILL", "WEASEL", "CORP", "AI", "NOM", "ARTIFACT"],
+      "structural": ["S7-BARENUM", "S7-ARTICLE", "S7-PASSIVE", "S7-TBD", "S7-ABBR", "S7-TERM", "S7-MUST"],
+      "csv": ["CSV"],
+      "budgets": ["BUD"]
+    },
+    "note": "T1/T2/T3(HDG)/T6 rule IDs are pre-assigned in tools/lint_data/*.json at build time. T4/T5/structural/csv/budget rule IDs are fixed and assigned in ste_lint.py (small, closed enumerations, not bulk word lists)."
+  }
+}
