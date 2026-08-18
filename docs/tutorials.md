@@ -64,6 +64,8 @@ tutorial is an array of them plus a one-sentence `takeaway`.
 | `soon` | An aside tagged **Not yet** | Something HELVE does not do |
 | `code` | A monospace block | A command, or a file's contents |
 | `keys` | A two-column table | Chords, or any short glossary |
+| `mock` | A static picture of HELVE's UI, with an optional caption | Showing a part of the interface instead of describing it |
+| `flow` | Steps in a row, joined by `→` | A short path, where numbering would overstate the ceremony |
 
 Steps are numbered by position at render time, not by hand, so inserting one in
 the middle does not mean renumbering the rest.
@@ -95,6 +97,34 @@ Every use of it names what is missing rather than promising when it arrives. A
 tutorial that says "coming in the next release" is a tutorial that has to be
 edited on a schedule; one that says "this is not built" only has to be edited
 when it is.
+
+### `mock` draws from one set of primitives, and nothing else
+
+A tutorial that tells you to click **Open Project** is easier to follow if you
+have also *seen* where that button is. `mock` is for exactly that: a small,
+static, deliberately inert picture of a piece of HELVE's UI — a bar, a panel,
+a tree — sitting inline in the prose the way a screenshot would, without being
+one.
+
+Not a screenshot, on purpose. A captured pixel grid goes stale the moment the
+interface it was taken from changes, silently, with nothing to fail — the
+tutorial would keep shipping a picture of a HELVE that no longer exists. A
+mock is source: `apps/tutorial/ui/src/mocks/chrome.tsx` declares a small set
+of primitives — a window frame, a band, a labelled arrow, a chip, a tab, a
+tree row — built only from `src/tokens.css`'s own colours, and every one of
+the sixteen mocks in `mocks/registry.ts` composes those and nothing else. A
+mock cannot invent a colour the product does not have, because there is
+nowhere in the file to put one.
+
+That constraint is the whole reason sixteen mockups, drawn over several
+sessions, still read as one product instead of sixteen guesses at it. `view`
+takes a `MockName` — a string-literal union — rather than a bare string, so a
+typo'd name fails at the tutorial that made it rather than rendering a blank
+figure nobody notices until a reader reports it.
+
+Every mock is inert: no button, no click handler, nothing a keyboard can land
+on. A tutorial's prose is what tells you to click something; a mock only
+shows you where.
 
 ## 4. Adding a tutorial
 

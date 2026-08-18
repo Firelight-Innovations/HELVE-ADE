@@ -8,6 +8,7 @@
  */
 import type { Block } from "./content/blocks";
 import Inline, { Keys } from "./Inline";
+import { MOCKS } from "./mocks/registry";
 
 export default function Blocks({ blocks }: { blocks: Block[] }) {
   let step = 0;
@@ -89,6 +90,38 @@ export default function Blocks({ blocks }: { blocks: Block[] }) {
                   ))}
                 </tbody>
               </table>
+            );
+
+          case "mock": {
+            const Mock = MOCKS[block.view];
+            return (
+              <figure key={index} className="tut__mock">
+                <Mock />
+                {block.caption && (
+                  <figcaption className="tut__mock-caption-block">
+                    <Inline>{block.caption}</Inline>
+                  </figcaption>
+                )}
+              </figure>
+            );
+          }
+
+          case "flow":
+            return (
+              <div key={index} className="tut__flow">
+                {block.steps.map((flowStep, i) => (
+                  <span className="tut__flow-step-wrap" key={i}>
+                    {i > 0 && (
+                      <span className="tut__flow-arrow" aria-hidden="true">
+                        →
+                      </span>
+                    )}
+                    <span className="tut__flow-step">
+                      <Inline>{flowStep}</Inline>
+                    </span>
+                  </span>
+                ))}
+              </div>
             );
         }
       })}
