@@ -33,7 +33,7 @@ export const search: Body = {
     { kind: "heading", body: "What it actually searches" },
     {
       kind: "text",
-      body: "File **contents**, across the whole of the cluster's project — a real walk over every text file under it, reporting every line a query matches with its line, column and length. It respects your ignore files the way `ripgrep` does, because it is built from the same crates.",
+      body: "File **contents**, across the whole of the cluster's project. It walks every text file under it, reporting each match's line, column and length. It respects your ignore files the way `ripgrep` does — search is built on the same crates.",
     },
     {
       kind: "text",
@@ -42,16 +42,18 @@ export const search: Body = {
 
     { kind: "heading", body: "The three regions" },
     {
-      kind: "text",
-      body: "Results run across the top. The lower half is split in two, and both halves follow whichever row your pointer is over.",
+      kind: "mock",
+      view: "search-overlay",
+      caption:
+        "Results run across the top; the locator and preview below follow whichever row the pointer is over.",
     },
     {
       kind: "text",
-      body: "The **locator** on the left says *where* the file is, which is what tells two identically-named files apart. The **preview** on the right says *what is in it*, which is what confirms it is the one you meant. Neither alone is enough to choose between `src/index.ts` and `dist/index.ts`.",
+      body: "The **locator** on the left says *where* the file is, telling two identically-named files apart. The **preview** on the right says *what is in it*, confirming you have the right one. Neither alone chooses between `src/index.ts` and `dist/index.ts`.",
     },
     {
       kind: "note",
-      body: "Nothing below the results is interactive. The locator cannot be expanded and the preview cannot be edited — they narrate what you are passing over, so there is no second thing to manage while you are scanning.",
+      body: "Nothing below the results is interactive. The locator cannot be expanded, and the preview cannot be edited — both only narrate what you are passing over, with nothing else to manage while you scan.",
     },
 
     { kind: "heading", body: "Opening a hit" },
@@ -64,6 +66,10 @@ export const search: Body = {
     {
       kind: "text",
       body: "This is the part worth learning. One field takes both the term and the filters, so you never move your hands to a second box.",
+    },
+    {
+      kind: "flow",
+      steps: ["Type a query", "Results appear", "Narrow, in the same field", "Open a hit"],
     },
     {
       kind: "keys",
@@ -82,7 +88,15 @@ export const search: Body = {
     },
     {
       kind: "note",
-      body: "The filter buttons above the results write into the same string you are typing. There is one query, in one place, whether you clicked it or typed it — which is why a click can never disagree with the field.",
+      body: "The filter buttons above the results write into the same string you are typing. One query lives in one place, whether you clicked it or typed it — which is why a click can never disagree with the field.",
+    },
+    {
+      kind: "flow",
+      steps: [
+        "Click a filter button",
+        "Writes into the query string",
+        "Same as typing it yourself",
+      ],
     },
 
     { kind: "heading", body: "The caps, and why they exist" },
@@ -92,7 +106,7 @@ export const search: Body = {
     },
     {
       kind: "soon",
-      body: "There is no replace-across-files, and no search history. The field starts empty every time.",
+      body: "Replace-across-files does not exist, and neither does search history. The field starts empty every time.",
     },
   ],
 };

@@ -27,6 +27,11 @@ export const gitAndWorktrees: Body = {
       body: "Two groups: **Staged Changes** and **Changes**. Click a file's control to stage or unstage it; click the file itself to see its diff in the panel. A clean checkout says **No changes**.",
     },
     {
+      kind: "mock",
+      view: "source-control",
+      caption: "M modified, A added, D deleted — the letter beside each file names its kind.",
+    },
+    {
       kind: "step",
       body: "Stage what you want in the commit.",
     },
@@ -85,15 +90,21 @@ export const gitAndWorktrees: Body = {
     },
     {
       kind: "note",
-      body: "Decline when you are the only thing working on the repository — which is most of the time. Accept when you want a second cluster on a second branch at the same time, which is the case worktrees exist for and the case where sharing one checkout goes wrong.",
+      body: "Decline when you are the only thing working on the repository — which is most of the time. Accept when you want a second cluster on a second branch at the same time. That is the case worktrees exist for, and the case where sharing one checkout goes wrong.",
+    },
+    {
+      kind: "mock",
+      view: "worktree-list",
+      caption:
+        "Anvil and Anvil (review): one project, two clusters, two branches — only one of them needed the worktree.",
     },
     {
       kind: "text",
-      body: "The offer only appears when the project is a repository **and** the cluster has no worktree yet. It is a follow-up to a successful open, never a step the open is waiting on — the project is already open behind it, and pressing `Escape` leaves it that way.",
+      body: "The offer only appears when the project is a repository **and** the cluster has no worktree yet. It shows up after a successful open, not as a step the open is waiting on — the project is already open behind it, and pressing `Escape` leaves it that way.",
     },
     {
       kind: "text",
-      body: "A cluster on a worktree resolves everything against that checkout: its File Explorer roots there, its terminals open there, its search walks it, and its change list reports it.",
+      body: "A cluster on a worktree resolves everything against that checkout: its File Explorer roots there, its terminals open there, and its search walks it. Its change list changes too: instead of staged and unstaged files, it shows everything the worktree has changed since it forked. Committed and uncommitted work appear together, with no commit box.",
     },
 
     { kind: "heading", body: "History" },

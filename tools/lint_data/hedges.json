@@ -1,0 +1,821 @@
+{
+  "schema_version": 1,
+  "test": "T3",
+  "name": "Optional",
+  "default_tier": "error",
+  "escape_clauses": [
+    {
+      "id": "VEI-T3-ESC-0001",
+      "pattern": "as applicable"
+    },
+    {
+      "id": "VEI-T3-ESC-0002",
+      "pattern": "as appropriate"
+    },
+    {
+      "id": "VEI-T3-ESC-0003",
+      "pattern": "as far as possible"
+    },
+    {
+      "id": "VEI-T3-ESC-0004",
+      "pattern": "as little as possible"
+    },
+    {
+      "id": "VEI-T3-ESC-0005",
+      "pattern": "as much as possible"
+    },
+    {
+      "id": "VEI-T3-ESC-0006",
+      "pattern": "as required"
+    },
+    {
+      "id": "VEI-T3-ESC-0007",
+      "pattern": "at the discretion of"
+    },
+    {
+      "id": "VEI-T3-ESC-0008",
+      "pattern": "if it should prove necessary"
+    },
+    {
+      "id": "VEI-T3-ESC-0009",
+      "pattern": "if necessary"
+    },
+    {
+      "id": "VEI-T3-ESC-0010",
+      "pattern": "if practicable"
+    },
+    {
+      "id": "VEI-T3-ESC-0011",
+      "pattern": "so far as possible"
+    },
+    {
+      "id": "VEI-T3-ESC-0012",
+      "pattern": "subject to"
+    },
+    {
+      "id": "VEI-T3-ESC-0013",
+      "pattern": "to the extent necessary"
+    },
+    {
+      "id": "VEI-T3-ESC-0014",
+      "pattern": "to the extent practical"
+    },
+    {
+      "id": "VEI-T3-ESC-0015",
+      "pattern": "where feasible"
+    },
+    {
+      "id": "VEI-T3-ESC-0016",
+      "pattern": "where possible"
+    },
+    {
+      "id": "VEI-T3-ESC-0017",
+      "pattern": "wherever possible"
+    }
+  ],
+  "open_ended_clauses": [
+    {
+      "id": "VEI-T3-OPEN-0001",
+      "pattern": "among others"
+    },
+    {
+      "id": "VEI-T3-OPEN-0002",
+      "pattern": "and others"
+    },
+    {
+      "id": "VEI-T3-OPEN-0003",
+      "pattern": "and so on"
+    },
+    {
+      "id": "VEI-T3-OPEN-0004",
+      "pattern": "e.g."
+    },
+    {
+      "id": "VEI-T3-OPEN-0005",
+      "pattern": "etc."
+    },
+    {
+      "id": "VEI-T3-OPEN-0006",
+      "pattern": "i.e."
+    },
+    {
+      "id": "VEI-T3-OPEN-0007",
+      "pattern": "including but not limited to"
+    },
+    {
+      "id": "VEI-T3-OPEN-0008",
+      "pattern": "the like"
+    }
+  ],
+  "optionality": [
+    {
+      "id": "VEI-T3-MOD-0001",
+      "pattern": "as desired",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0002",
+      "pattern": "can",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0003",
+      "pattern": "could",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0004",
+      "pattern": "eventually",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0005",
+      "pattern": "if appropriate",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0006",
+      "pattern": "if needed",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0007",
+      "pattern": "if possible",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0008",
+      "pattern": "if practical",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0009",
+      "pattern": "if required",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0010",
+      "pattern": "in case",
+      "kind": "phrase"
+    },
+    {
+      "id": "VEI-T3-MOD-0011",
+      "pattern": "may",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0012",
+      "pattern": "might",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0013",
+      "pattern": "optionally",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0014",
+      "pattern": "possibly",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0015",
+      "pattern": "preferably",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0016",
+      "pattern": "probably",
+      "kind": "single_modal"
+    },
+    {
+      "id": "VEI-T3-MOD-0017",
+      "pattern": "usually",
+      "kind": "single_modal"
+    }
+  ],
+  "superfluous_infinitives": [
+    {
+      "id": "VEI-T3-SUP-0001",
+      "pattern": "be able to"
+    },
+    {
+      "id": "VEI-T3-SUP-0002",
+      "pattern": "be capable of"
+    },
+    {
+      "id": "VEI-T3-SUP-0003",
+      "pattern": "to allow"
+    },
+    {
+      "id": "VEI-T3-SUP-0004",
+      "pattern": "to be able to"
+    },
+    {
+      "id": "VEI-T3-SUP-0005",
+      "pattern": "to be capable of"
+    },
+    {
+      "id": "VEI-T3-SUP-0006",
+      "pattern": "to be designed to"
+    },
+    {
+      "id": "VEI-T3-SUP-0007",
+      "pattern": "to enable"
+    }
+  ],
+  "hedge_words": [
+    {
+      "id": "VEI-T3-HDG-0001",
+      "pattern": ",\n  "
+    },
+    {
+      "id": "VEI-T3-HDG-0002",
+      "pattern": ",\n  \"if i"
+    },
+    {
+      "id": "VEI-T3-HDG-0003",
+      "pattern": "a bit"
+    },
+    {
+      "id": "VEI-T3-HDG-0004",
+      "pattern": "about"
+    },
+    {
+      "id": "VEI-T3-HDG-0005",
+      "pattern": "actually"
+    },
+    {
+      "id": "VEI-T3-HDG-0006",
+      "pattern": "allege"
+    },
+    {
+      "id": "VEI-T3-HDG-0007",
+      "pattern": "alleged"
+    },
+    {
+      "id": "VEI-T3-HDG-0008",
+      "pattern": "almost"
+    },
+    {
+      "id": "VEI-T3-HDG-0009",
+      "pattern": "almost never"
+    },
+    {
+      "id": "VEI-T3-HDG-0010",
+      "pattern": "always"
+    },
+    {
+      "id": "VEI-T3-HDG-0011",
+      "pattern": "and all that"
+    },
+    {
+      "id": "VEI-T3-HDG-0012",
+      "pattern": "and so forth"
+    },
+    {
+      "id": "VEI-T3-HDG-0013",
+      "pattern": "apparent"
+    },
+    {
+      "id": "VEI-T3-HDG-0014",
+      "pattern": "apparently"
+    },
+    {
+      "id": "VEI-T3-HDG-0015",
+      "pattern": "appear"
+    },
+    {
+      "id": "VEI-T3-HDG-0016",
+      "pattern": "appear to be"
+    },
+    {
+      "id": "VEI-T3-HDG-0017",
+      "pattern": "appeared"
+    },
+    {
+      "id": "VEI-T3-HDG-0018",
+      "pattern": "appears"
+    },
+    {
+      "id": "VEI-T3-HDG-0019",
+      "pattern": "approximately"
+    },
+    {
+      "id": "VEI-T3-HDG-0020",
+      "pattern": "around"
+    },
+    {
+      "id": "VEI-T3-HDG-0021",
+      "pattern": "assume"
+    },
+    {
+      "id": "VEI-T3-HDG-0022",
+      "pattern": "assumed"
+    },
+    {
+      "id": "VEI-T3-HDG-0023",
+      "pattern": "assumes"
+    },
+    {
+      "id": "VEI-T3-HDG-0024",
+      "pattern": "assumption"
+    },
+    {
+      "id": "VEI-T3-HDG-0025",
+      "pattern": "at least"
+    },
+    {
+      "id": "VEI-T3-HDG-0026",
+      "pattern": "basically"
+    },
+    {
+      "id": "VEI-T3-HDG-0027",
+      "pattern": "be sure"
+    },
+    {
+      "id": "VEI-T3-HDG-0028",
+      "pattern": "believe"
+    },
+    {
+      "id": "VEI-T3-HDG-0029",
+      "pattern": "believed"
+    },
+    {
+      "id": "VEI-T3-HDG-0030",
+      "pattern": "believes"
+    },
+    {
+      "id": "VEI-T3-HDG-0031",
+      "pattern": "bunch"
+    },
+    {
+      "id": "VEI-T3-HDG-0032",
+      "pattern": "can"
+    },
+    {
+      "id": "VEI-T3-HDG-0033",
+      "pattern": "certain"
+    },
+    {
+      "id": "VEI-T3-HDG-0034",
+      "pattern": "certainly"
+    },
+    {
+      "id": "VEI-T3-HDG-0035",
+      "pattern": "clear"
+    },
+    {
+      "id": "VEI-T3-HDG-0036",
+      "pattern": "clearly"
+    },
+    {
+      "id": "VEI-T3-HDG-0037",
+      "pattern": "conceivably"
+    },
+    {
+      "id": "VEI-T3-HDG-0038",
+      "pattern": "consider"
+    },
+    {
+      "id": "VEI-T3-HDG-0039",
+      "pattern": "considered"
+    },
+    {
+      "id": "VEI-T3-HDG-0040",
+      "pattern": "considers"
+    },
+    {
+      "id": "VEI-T3-HDG-0041",
+      "pattern": "consistent with"
+    },
+    {
+      "id": "VEI-T3-HDG-0042",
+      "pattern": "could"
+    },
+    {
+      "id": "VEI-T3-HDG-0043",
+      "pattern": "couple"
+    },
+    {
+      "id": "VEI-T3-HDG-0044",
+      "pattern": "definite"
+    },
+    {
+      "id": "VEI-T3-HDG-0045",
+      "pattern": "definitely"
+    },
+    {
+      "id": "VEI-T3-HDG-0046",
+      "pattern": "diagnostic"
+    },
+    {
+      "id": "VEI-T3-HDG-0047",
+      "pattern": "improbable"
+    },
+    {
+      "id": "VEI-T3-HDG-0048",
+      "pattern": "in general"
+    },
+    {
+      "id": "VEI-T3-HDG-0049",
+      "pattern": "in my mind"
+    },
+    {
+      "id": "VEI-T3-HDG-0050",
+      "pattern": "in my opinion"
+    },
+    {
+      "id": "VEI-T3-HDG-0051",
+      "pattern": "in my understanding"
+    },
+    {
+      "id": "VEI-T3-HDG-0052",
+      "pattern": "in my view"
+    },
+    {
+      "id": "VEI-T3-HDG-0053",
+      "pattern": "inconclusive"
+    },
+    {
+      "id": "VEI-T3-HDG-0054",
+      "pattern": "indicate"
+    },
+    {
+      "id": "VEI-T3-HDG-0055",
+      "pattern": "kind of"
+    },
+    {
+      "id": "VEI-T3-HDG-0056",
+      "pattern": "largely"
+    },
+    {
+      "id": "VEI-T3-HDG-0057",
+      "pattern": "like"
+    },
+    {
+      "id": "VEI-T3-HDG-0058",
+      "pattern": "likely"
+    },
+    {
+      "id": "VEI-T3-HDG-0059",
+      "pattern": "little"
+    },
+    {
+      "id": "VEI-T3-HDG-0060",
+      "pattern": "look like"
+    },
+    {
+      "id": "VEI-T3-HDG-0061",
+      "pattern": "looks like"
+    },
+    {
+      "id": "VEI-T3-HDG-0062",
+      "pattern": "mainly"
+    },
+    {
+      "id": "VEI-T3-HDG-0063",
+      "pattern": "many"
+    },
+    {
+      "id": "VEI-T3-HDG-0064",
+      "pattern": "may"
+    },
+    {
+      "id": "VEI-T3-HDG-0065",
+      "pattern": "maybe"
+    },
+    {
+      "id": "VEI-T3-HDG-0066",
+      "pattern": "might"
+    },
+    {
+      "id": "VEI-T3-HDG-0067",
+      "pattern": "more or less"
+    },
+    {
+      "id": "VEI-T3-HDG-0068",
+      "pattern": "most"
+    },
+    {
+      "id": "VEI-T3-HDG-0069",
+      "pattern": "mostly"
+    },
+    {
+      "id": "VEI-T3-HDG-0070",
+      "pattern": "much"
+    },
+    {
+      "id": "VEI-T3-HDG-0071",
+      "pattern": "must"
+    },
+    {
+      "id": "VEI-T3-HDG-0072",
+      "pattern": "my impression"
+    },
+    {
+      "id": "VEI-T3-HDG-0073",
+      "pattern": "my thinking is"
+    },
+    {
+      "id": "VEI-T3-HDG-0074",
+      "pattern": "my understanding is"
+    },
+    {
+      "id": "VEI-T3-HDG-0075",
+      "pattern": "necessarily"
+    },
+    {
+      "id": "VEI-T3-HDG-0076",
+      "pattern": "occasionally"
+    },
+    {
+      "id": "VEI-T3-HDG-0077",
+      "pattern": "often"
+    },
+    {
+      "id": "VEI-T3-HDG-0078",
+      "pattern": "overall"
+    },
+    {
+      "id": "VEI-T3-HDG-0079",
+      "pattern": "partially"
+    },
+    {
+      "id": "VEI-T3-HDG-0080",
+      "pattern": "perhaps"
+    },
+    {
+      "id": "VEI-T3-HDG-0081",
+      "pattern": "possibility"
+    },
+    {
+      "id": "VEI-T3-HDG-0082",
+      "pattern": "possible"
+    },
+    {
+      "id": "VEI-T3-HDG-0083",
+      "pattern": "possibly"
+    },
+    {
+      "id": "VEI-T3-HDG-0084",
+      "pattern": "practically"
+    },
+    {
+      "id": "VEI-T3-HDG-0085",
+      "pattern": "presumable"
+    },
+    {
+      "id": "VEI-T3-HDG-0086",
+      "pattern": "presumably"
+    },
+    {
+      "id": "VEI-T3-HDG-0087",
+      "pattern": "pretty"
+    },
+    {
+      "id": "VEI-T3-HDG-0088",
+      "pattern": "probability"
+    },
+    {
+      "id": "VEI-T3-HDG-0089",
+      "pattern": "probable"
+    },
+    {
+      "id": "VEI-T3-HDG-0090",
+      "pattern": "probably"
+    },
+    {
+      "id": "VEI-T3-HDG-0091",
+      "pattern": "quite"
+    },
+    {
+      "id": "VEI-T3-HDG-0092",
+      "pattern": "quite clearly"
+    },
+    {
+      "id": "VEI-T3-HDG-0093",
+      "pattern": "rare"
+    },
+    {
+      "id": "VEI-T3-HDG-0094",
+      "pattern": "rarely"
+    },
+    {
+      "id": "VEI-T3-HDG-0095",
+      "pattern": "rather"
+    },
+    {
+      "id": "VEI-T3-HDG-0096",
+      "pattern": "read"
+    },
+    {
+      "id": "VEI-T3-HDG-0097",
+      "pattern": "really"
+    },
+    {
+      "id": "VEI-T3-HDG-0098",
+      "pattern": "roughly"
+    },
+    {
+      "id": "VEI-T3-HDG-0099",
+      "pattern": "say"
+    },
+    {
+      "id": "VEI-T3-HDG-0100",
+      "pattern": "says"
+    },
+    {
+      "id": "VEI-T3-HDG-0101",
+      "pattern": "seem"
+    },
+    {
+      "id": "VEI-T3-HDG-0102",
+      "pattern": "seemed"
+    },
+    {
+      "id": "VEI-T3-HDG-0103",
+      "pattern": "seems"
+    },
+    {
+      "id": "VEI-T3-HDG-0104",
+      "pattern": "seldom"
+    },
+    {
+      "id": "VEI-T3-HDG-0105",
+      "pattern": "several"
+    },
+    {
+      "id": "VEI-T3-HDG-0106",
+      "pattern": "should"
+    },
+    {
+      "id": "VEI-T3-HDG-0107",
+      "pattern": "so far"
+    },
+    {
+      "id": "VEI-T3-HDG-0108",
+      "pattern": "some"
+    },
+    {
+      "id": "VEI-T3-HDG-0109",
+      "pattern": "somebody"
+    },
+    {
+      "id": "VEI-T3-HDG-0110",
+      "pattern": "somehow"
+    },
+    {
+      "id": "VEI-T3-HDG-0111",
+      "pattern": "someone"
+    },
+    {
+      "id": "VEI-T3-HDG-0112",
+      "pattern": "something"
+    },
+    {
+      "id": "VEI-T3-HDG-0113",
+      "pattern": "something or other"
+    },
+    {
+      "id": "VEI-T3-HDG-0114",
+      "pattern": "sometimes"
+    },
+    {
+      "id": "VEI-T3-HDG-0115",
+      "pattern": "somewhat"
+    },
+    {
+      "id": "VEI-T3-HDG-0116",
+      "pattern": "somewhere"
+    },
+    {
+      "id": "VEI-T3-HDG-0117",
+      "pattern": "sort of"
+    },
+    {
+      "id": "VEI-T3-HDG-0118",
+      "pattern": "speculate"
+    },
+    {
+      "id": "VEI-T3-HDG-0119",
+      "pattern": "speculated"
+    },
+    {
+      "id": "VEI-T3-HDG-0120",
+      "pattern": "speculates"
+    },
+    {
+      "id": "VEI-T3-HDG-0121",
+      "pattern": "suggest"
+    },
+    {
+      "id": "VEI-T3-HDG-0122",
+      "pattern": "suggested"
+    },
+    {
+      "id": "VEI-T3-HDG-0123",
+      "pattern": "suggestive"
+    },
+    {
+      "id": "VEI-T3-HDG-0124",
+      "pattern": "suggests"
+    },
+    {
+      "id": "VEI-T3-HDG-0125",
+      "pattern": "suppose"
+    },
+    {
+      "id": "VEI-T3-HDG-0126",
+      "pattern": "supposed"
+    },
+    {
+      "id": "VEI-T3-HDG-0127",
+      "pattern": "supposedly"
+    },
+    {
+      "id": "VEI-T3-HDG-0128",
+      "pattern": "supposes"
+    },
+    {
+      "id": "VEI-T3-HDG-0129",
+      "pattern": "surely"
+    },
+    {
+      "id": "VEI-T3-HDG-0130",
+      "pattern": "t know\",\n  "
+    },
+    {
+      "id": "VEI-T3-HDG-0131",
+      "pattern": "tend"
+    },
+    {
+      "id": "VEI-T3-HDG-0132",
+      "pattern": "their impression"
+    },
+    {
+      "id": "VEI-T3-HDG-0133",
+      "pattern": "think"
+    },
+    {
+      "id": "VEI-T3-HDG-0134",
+      "pattern": "thinks"
+    },
+    {
+      "id": "VEI-T3-HDG-0135",
+      "pattern": "thought"
+    },
+    {
+      "id": "VEI-T3-HDG-0136",
+      "pattern": "understand"
+    },
+    {
+      "id": "VEI-T3-HDG-0137",
+      "pattern": "understands"
+    },
+    {
+      "id": "VEI-T3-HDG-0138",
+      "pattern": "understood"
+    },
+    {
+      "id": "VEI-T3-HDG-0139",
+      "pattern": "unlikely"
+    },
+    {
+      "id": "VEI-T3-HDG-0140",
+      "pattern": "unsure"
+    },
+    {
+      "id": "VEI-T3-HDG-0141",
+      "pattern": "usually"
+    },
+    {
+      "id": "VEI-T3-HDG-0142",
+      "pattern": "virtually"
+    },
+    {
+      "id": "VEI-T3-HDG-0143",
+      "pattern": "will"
+    },
+    {
+      "id": "VEI-T3-HDG-0144",
+      "pattern": "would"
+    }
+  ],
+  "ambiguous_hedge_verbs_need_context": [
+    "read",
+    "appear",
+    "seem"
+  ],
+  "notes": {
+    "severity": "Escape/open-ended phrases, optionality phrases, and superfluous infinitives block in every profile (O1). Single modal verbs (kind=single_modal in 'optionality') are error in spec, warning elsewhere (O1). Hedge words are error wherever T3 runs: core, csv, spec, design, prose (O1). e.g./i.e./etc. are error in every profile except vision (K2).",
+    "ambiguous_hedge_verbs": "See AMBIGUOUS_HEDGE_VERBS_NEED_CONTEXT: require a collocate (e.g. 'as', 'to be') before flagging, or these over-trigger on ordinary imperative/copular use."
+  },
+  "counts": {
+    "hedge_words": 144,
+    "escape_clauses": 17,
+    "open_ended_clauses": 8,
+    "optionality": 17,
+    "superfluous_infinitives": 7
+  }
+}

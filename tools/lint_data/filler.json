@@ -1,0 +1,1723 @@
+{
+  "schema_version": 1,
+  "test": "T6",
+  "name": "Zero-information",
+  "default_tier": "error",
+  "fillers_and_intensifiers": [
+    {
+      "id": "VEI-T6-FILL-0001",
+      "pattern": "abnormally"
+    },
+    {
+      "id": "VEI-T6-FILL-0002",
+      "pattern": "absentmindedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0003",
+      "pattern": "absolutely"
+    },
+    {
+      "id": "VEI-T6-FILL-0004",
+      "pattern": "accidentally"
+    },
+    {
+      "id": "VEI-T6-FILL-0006",
+      "pattern": "actual"
+    },
+    {
+      "id": "VEI-T6-FILL-0007",
+      "pattern": "actually"
+    },
+    {
+      "id": "VEI-T6-FILL-0008",
+      "pattern": "adventurously"
+    },
+    {
+      "id": "VEI-T6-FILL-0009",
+      "pattern": "amazing"
+    },
+    {
+      "id": "VEI-T6-FILL-0010",
+      "pattern": "anxiously"
+    },
+    {
+      "id": "VEI-T6-FILL-0011",
+      "pattern": "anyway"
+    },
+    {
+      "id": "VEI-T6-FILL-0012",
+      "pattern": "apparently"
+    },
+    {
+      "id": "VEI-T6-FILL-0013",
+      "pattern": "approximately"
+    },
+    {
+      "id": "VEI-T6-FILL-0014",
+      "pattern": "arguably"
+    },
+    {
+      "id": "VEI-T6-FILL-0015",
+      "pattern": "arrogantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0016",
+      "pattern": "awkwardly"
+    },
+    {
+      "id": "VEI-T6-FILL-0017",
+      "pattern": "badly"
+    },
+    {
+      "id": "VEI-T6-FILL-0018",
+      "pattern": "bashfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0019",
+      "pattern": "basically"
+    },
+    {
+      "id": "VEI-T6-FILL-0020",
+      "pattern": "beautifully"
+    },
+    {
+      "id": "VEI-T6-FILL-0021",
+      "pattern": "begin"
+    },
+    {
+      "id": "VEI-T6-FILL-0023",
+      "pattern": "bitterly"
+    },
+    {
+      "id": "VEI-T6-FILL-0024",
+      "pattern": "bleakly"
+    },
+    {
+      "id": "VEI-T6-FILL-0025",
+      "pattern": "blindly"
+    },
+    {
+      "id": "VEI-T6-FILL-0026",
+      "pattern": "blissfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0027",
+      "pattern": "boastfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0028",
+      "pattern": "boldly"
+    },
+    {
+      "id": "VEI-T6-FILL-0030",
+      "pattern": "bravely"
+    },
+    {
+      "id": "VEI-T6-FILL-0031",
+      "pattern": "briefly"
+    },
+    {
+      "id": "VEI-T6-FILL-0032",
+      "pattern": "brightly"
+    },
+    {
+      "id": "VEI-T6-FILL-0033",
+      "pattern": "briskly"
+    },
+    {
+      "id": "VEI-T6-FILL-0034",
+      "pattern": "broadly"
+    },
+    {
+      "id": "VEI-T6-FILL-0036",
+      "pattern": "busily"
+    },
+    {
+      "id": "VEI-T6-FILL-0037",
+      "pattern": "calmly"
+    },
+    {
+      "id": "VEI-T6-FILL-0038",
+      "pattern": "carefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0039",
+      "pattern": "carelessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0040",
+      "pattern": "cautiously"
+    },
+    {
+      "id": "VEI-T6-FILL-0041",
+      "pattern": "certainly"
+    },
+    {
+      "id": "VEI-T6-FILL-0042",
+      "pattern": "cheerfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0043",
+      "pattern": "clearly"
+    },
+    {
+      "id": "VEI-T6-FILL-0044",
+      "pattern": "cleverly"
+    },
+    {
+      "id": "VEI-T6-FILL-0045",
+      "pattern": "closely"
+    },
+    {
+      "id": "VEI-T6-FILL-0046",
+      "pattern": "coaxingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0047",
+      "pattern": "colorfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0048",
+      "pattern": "completely"
+    },
+    {
+      "id": "VEI-T6-FILL-0050",
+      "pattern": "continually"
+    },
+    {
+      "id": "VEI-T6-FILL-0051",
+      "pattern": "coolly"
+    },
+    {
+      "id": "VEI-T6-FILL-0053",
+      "pattern": "courageously"
+    },
+    {
+      "id": "VEI-T6-FILL-0054",
+      "pattern": "crossly"
+    },
+    {
+      "id": "VEI-T6-FILL-0056",
+      "pattern": "cruelly"
+    },
+    {
+      "id": "VEI-T6-FILL-0057",
+      "pattern": "curiously"
+    },
+    {
+      "id": "VEI-T6-FILL-0058",
+      "pattern": "daintily"
+    },
+    {
+      "id": "VEI-T6-FILL-0059",
+      "pattern": "dearly"
+    },
+    {
+      "id": "VEI-T6-FILL-0060",
+      "pattern": "deceivingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0061",
+      "pattern": "deeply"
+    },
+    {
+      "id": "VEI-T6-FILL-0062",
+      "pattern": "defiantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0063",
+      "pattern": "definitely"
+    },
+    {
+      "id": "VEI-T6-FILL-0064",
+      "pattern": "deliberately"
+    },
+    {
+      "id": "VEI-T6-FILL-0065",
+      "pattern": "delightfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0068",
+      "pattern": "diligently"
+    },
+    {
+      "id": "VEI-T6-FILL-0069",
+      "pattern": "dimly"
+    },
+    {
+      "id": "VEI-T6-FILL-0070",
+      "pattern": "doubtfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0071",
+      "pattern": "dreamily"
+    },
+    {
+      "id": "VEI-T6-FILL-0072",
+      "pattern": "easily"
+    },
+    {
+      "id": "VEI-T6-FILL-0073",
+      "pattern": "effectively"
+    },
+    {
+      "id": "VEI-T6-FILL-0074",
+      "pattern": "elegantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0077",
+      "pattern": "energetically"
+    },
+    {
+      "id": "VEI-T6-FILL-0078",
+      "pattern": "enormously"
+    },
+    {
+      "id": "VEI-T6-FILL-0079",
+      "pattern": "enthusiastically"
+    },
+    {
+      "id": "VEI-T6-FILL-0080",
+      "pattern": "entirely"
+    },
+    {
+      "id": "VEI-T6-FILL-0081",
+      "pattern": "especially"
+    },
+    {
+      "id": "VEI-T6-FILL-0082",
+      "pattern": "essentially"
+    },
+    {
+      "id": "VEI-T6-FILL-0083",
+      "pattern": "exactly"
+    },
+    {
+      "id": "VEI-T6-FILL-0084",
+      "pattern": "excitedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0085",
+      "pattern": "extremely"
+    },
+    {
+      "id": "VEI-T6-FILL-0086",
+      "pattern": "fairly"
+    },
+    {
+      "id": "VEI-T6-FILL-0087",
+      "pattern": "faithfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0088",
+      "pattern": "famously"
+    },
+    {
+      "id": "VEI-T6-FILL-0089",
+      "pattern": "ferociously"
+    },
+    {
+      "id": "VEI-T6-FILL-0090",
+      "pattern": "fervently"
+    },
+    {
+      "id": "VEI-T6-FILL-0091",
+      "pattern": "fiercely"
+    },
+    {
+      "id": "VEI-T6-FILL-0092",
+      "pattern": "fondly"
+    },
+    {
+      "id": "VEI-T6-FILL-0093",
+      "pattern": "foolishly"
+    },
+    {
+      "id": "VEI-T6-FILL-0094",
+      "pattern": "fortunately"
+    },
+    {
+      "id": "VEI-T6-FILL-0096",
+      "pattern": "frankly"
+    },
+    {
+      "id": "VEI-T6-FILL-0097",
+      "pattern": "frantically"
+    },
+    {
+      "id": "VEI-T6-FILL-0098",
+      "pattern": "freely"
+    },
+    {
+      "id": "VEI-T6-FILL-0099",
+      "pattern": "frenetically"
+    },
+    {
+      "id": "VEI-T6-FILL-0100",
+      "pattern": "frequently"
+    },
+    {
+      "id": "VEI-T6-FILL-0101",
+      "pattern": "frightfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0102",
+      "pattern": "fully"
+    },
+    {
+      "id": "VEI-T6-FILL-0103",
+      "pattern": "furiously"
+    },
+    {
+      "id": "VEI-T6-FILL-0104",
+      "pattern": "generally"
+    },
+    {
+      "id": "VEI-T6-FILL-0105",
+      "pattern": "generously"
+    },
+    {
+      "id": "VEI-T6-FILL-0106",
+      "pattern": "gently"
+    },
+    {
+      "id": "VEI-T6-FILL-0107",
+      "pattern": "gladly"
+    },
+    {
+      "id": "VEI-T6-FILL-0108",
+      "pattern": "gleefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0109",
+      "pattern": "gracefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0111",
+      "pattern": "gratefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0112",
+      "pattern": "greatly"
+    },
+    {
+      "id": "VEI-T6-FILL-0113",
+      "pattern": "greedily"
+    },
+    {
+      "id": "VEI-T6-FILL-0114",
+      "pattern": "happily"
+    },
+    {
+      "id": "VEI-T6-FILL-0115",
+      "pattern": "hardly"
+    },
+    {
+      "id": "VEI-T6-FILL-0117",
+      "pattern": "hastily"
+    },
+    {
+      "id": "VEI-T6-FILL-0118",
+      "pattern": "healthily"
+    },
+    {
+      "id": "VEI-T6-FILL-0119",
+      "pattern": "heavily"
+    },
+    {
+      "id": "VEI-T6-FILL-0120",
+      "pattern": "helplessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0121",
+      "pattern": "highly"
+    },
+    {
+      "id": "VEI-T6-FILL-0123",
+      "pattern": "honestly"
+    },
+    {
+      "id": "VEI-T6-FILL-0124",
+      "pattern": "hopefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0125",
+      "pattern": "hopelessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0126",
+      "pattern": "hungrily"
+    },
+    {
+      "id": "VEI-T6-FILL-0128",
+      "pattern": "innocently"
+    },
+    {
+      "id": "VEI-T6-FILL-0129",
+      "pattern": "inquisitively"
+    },
+    {
+      "id": "VEI-T6-FILL-0130",
+      "pattern": "intensely"
+    },
+    {
+      "id": "VEI-T6-FILL-0131",
+      "pattern": "intently"
+    },
+    {
+      "id": "VEI-T6-FILL-0132",
+      "pattern": "interestingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0133",
+      "pattern": "inwardly"
+    },
+    {
+      "id": "VEI-T6-FILL-0134",
+      "pattern": "irritably"
+    },
+    {
+      "id": "VEI-T6-FILL-0135",
+      "pattern": "jaggedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0136",
+      "pattern": "jealously"
+    },
+    {
+      "id": "VEI-T6-FILL-0137",
+      "pattern": "jovially"
+    },
+    {
+      "id": "VEI-T6-FILL-0138",
+      "pattern": "joyfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0139",
+      "pattern": "joyously"
+    },
+    {
+      "id": "VEI-T6-FILL-0140",
+      "pattern": "jubilantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0141",
+      "pattern": "judgmentally"
+    },
+    {
+      "id": "VEI-T6-FILL-0142",
+      "pattern": "just"
+    },
+    {
+      "id": "VEI-T6-FILL-0143",
+      "pattern": "justly"
+    },
+    {
+      "id": "VEI-T6-FILL-0144",
+      "pattern": "keenly"
+    },
+    {
+      "id": "VEI-T6-FILL-0145",
+      "pattern": "kiddingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0146",
+      "pattern": "kindheartedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0147",
+      "pattern": "knavishly"
+    },
+    {
+      "id": "VEI-T6-FILL-0148",
+      "pattern": "knowingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0149",
+      "pattern": "knowledgeably"
+    },
+    {
+      "id": "VEI-T6-FILL-0151",
+      "pattern": "largely"
+    },
+    {
+      "id": "VEI-T6-FILL-0152",
+      "pattern": "lazily"
+    },
+    {
+      "id": "VEI-T6-FILL-0154",
+      "pattern": "lightly"
+    },
+    {
+      "id": "VEI-T6-FILL-0155",
+      "pattern": "like"
+    },
+    {
+      "id": "VEI-T6-FILL-0156",
+      "pattern": "limply"
+    },
+    {
+      "id": "VEI-T6-FILL-0157",
+      "pattern": "literally"
+    },
+    {
+      "id": "VEI-T6-FILL-0158",
+      "pattern": "lively"
+    },
+    {
+      "id": "VEI-T6-FILL-0159",
+      "pattern": "loftily"
+    },
+    {
+      "id": "VEI-T6-FILL-0160",
+      "pattern": "longingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0161",
+      "pattern": "loosely"
+    },
+    {
+      "id": "VEI-T6-FILL-0162",
+      "pattern": "loudly"
+    },
+    {
+      "id": "VEI-T6-FILL-0163",
+      "pattern": "lovingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0164",
+      "pattern": "loyally"
+    },
+    {
+      "id": "VEI-T6-FILL-0165",
+      "pattern": "madly"
+    },
+    {
+      "id": "VEI-T6-FILL-0166",
+      "pattern": "majestically"
+    },
+    {
+      "id": "VEI-T6-FILL-0167",
+      "pattern": "maybe"
+    },
+    {
+      "id": "VEI-T6-FILL-0168",
+      "pattern": "meaningfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0169",
+      "pattern": "mechanically"
+    },
+    {
+      "id": "VEI-T6-FILL-0170",
+      "pattern": "merrily"
+    },
+    {
+      "id": "VEI-T6-FILL-0172",
+      "pattern": "might"
+    },
+    {
+      "id": "VEI-T6-FILL-0173",
+      "pattern": "miserably"
+    },
+    {
+      "id": "VEI-T6-FILL-0174",
+      "pattern": "mockingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0175",
+      "pattern": "mortally"
+    },
+    {
+      "id": "VEI-T6-FILL-0176",
+      "pattern": "most"
+    },
+    {
+      "id": "VEI-T6-FILL-0177",
+      "pattern": "mostly"
+    },
+    {
+      "id": "VEI-T6-FILL-0178",
+      "pattern": "much"
+    },
+    {
+      "id": "VEI-T6-FILL-0180",
+      "pattern": "mysteriously"
+    },
+    {
+      "id": "VEI-T6-FILL-0181",
+      "pattern": "naturally"
+    },
+    {
+      "id": "VEI-T6-FILL-0183",
+      "pattern": "nearly"
+    },
+    {
+      "id": "VEI-T6-FILL-0184",
+      "pattern": "neatly"
+    },
+    {
+      "id": "VEI-T6-FILL-0185",
+      "pattern": "necessarily"
+    },
+    {
+      "id": "VEI-T6-FILL-0186",
+      "pattern": "nervously"
+    },
+    {
+      "id": "VEI-T6-FILL-0187",
+      "pattern": "nicely"
+    },
+    {
+      "id": "VEI-T6-FILL-0188",
+      "pattern": "noisily"
+    },
+    {
+      "id": "VEI-T6-FILL-0190",
+      "pattern": "obediently"
+    },
+    {
+      "id": "VEI-T6-FILL-0191",
+      "pattern": "obnoxiously"
+    },
+    {
+      "id": "VEI-T6-FILL-0192",
+      "pattern": "obviously"
+    },
+    {
+      "id": "VEI-T6-FILL-0193",
+      "pattern": "oddly"
+    },
+    {
+      "id": "VEI-T6-FILL-0194",
+      "pattern": "offensively"
+    },
+    {
+      "id": "VEI-T6-FILL-0195",
+      "pattern": "ok"
+    },
+    {
+      "id": "VEI-T6-FILL-0196",
+      "pattern": "okay"
+    },
+    {
+      "id": "VEI-T6-FILL-0197",
+      "pattern": "optimistically"
+    },
+    {
+      "id": "VEI-T6-FILL-0198",
+      "pattern": "overconfidently"
+    },
+    {
+      "id": "VEI-T6-FILL-0199",
+      "pattern": "painfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0201",
+      "pattern": "partially"
+    },
+    {
+      "id": "VEI-T6-FILL-0202",
+      "pattern": "particularly"
+    },
+    {
+      "id": "VEI-T6-FILL-0203",
+      "pattern": "patiently"
+    },
+    {
+      "id": "VEI-T6-FILL-0204",
+      "pattern": "perfectly"
+    },
+    {
+      "id": "VEI-T6-FILL-0205",
+      "pattern": "perhaps"
+    },
+    {
+      "id": "VEI-T6-FILL-0206",
+      "pattern": "playfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0208",
+      "pattern": "politely"
+    },
+    {
+      "id": "VEI-T6-FILL-0209",
+      "pattern": "poorly"
+    },
+    {
+      "id": "VEI-T6-FILL-0210",
+      "pattern": "positively"
+    },
+    {
+      "id": "VEI-T6-FILL-0211",
+      "pattern": "possibly"
+    },
+    {
+      "id": "VEI-T6-FILL-0212",
+      "pattern": "potentially"
+    },
+    {
+      "id": "VEI-T6-FILL-0213",
+      "pattern": "powerfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0214",
+      "pattern": "practically"
+    },
+    {
+      "id": "VEI-T6-FILL-0215",
+      "pattern": "precisely"
+    },
+    {
+      "id": "VEI-T6-FILL-0216",
+      "pattern": "primarily"
+    },
+    {
+      "id": "VEI-T6-FILL-0218",
+      "pattern": "probably"
+    },
+    {
+      "id": "VEI-T6-FILL-0219",
+      "pattern": "promptly"
+    },
+    {
+      "id": "VEI-T6-FILL-0220",
+      "pattern": "properly"
+    },
+    {
+      "id": "VEI-T6-FILL-0221",
+      "pattern": "punctually"
+    },
+    {
+      "id": "VEI-T6-FILL-0222",
+      "pattern": "quaintly"
+    },
+    {
+      "id": "VEI-T6-FILL-0223",
+      "pattern": "queasily"
+    },
+    {
+      "id": "VEI-T6-FILL-0224",
+      "pattern": "queerly"
+    },
+    {
+      "id": "VEI-T6-FILL-0225",
+      "pattern": "questionably"
+    },
+    {
+      "id": "VEI-T6-FILL-0226",
+      "pattern": "quickly"
+    },
+    {
+      "id": "VEI-T6-FILL-0227",
+      "pattern": "quietly"
+    },
+    {
+      "id": "VEI-T6-FILL-0228",
+      "pattern": "quirkily"
+    },
+    {
+      "id": "VEI-T6-FILL-0229",
+      "pattern": "quite"
+    },
+    {
+      "id": "VEI-T6-FILL-0230",
+      "pattern": "quizzically"
+    },
+    {
+      "id": "VEI-T6-FILL-0231",
+      "pattern": "randomly"
+    },
+    {
+      "id": "VEI-T6-FILL-0232",
+      "pattern": "rapidly"
+    },
+    {
+      "id": "VEI-T6-FILL-0233",
+      "pattern": "rarely"
+    },
+    {
+      "id": "VEI-T6-FILL-0234",
+      "pattern": "rather"
+    },
+    {
+      "id": "VEI-T6-FILL-0235",
+      "pattern": "readily"
+    },
+    {
+      "id": "VEI-T6-FILL-0236",
+      "pattern": "real"
+    },
+    {
+      "id": "VEI-T6-FILL-0237",
+      "pattern": "really"
+    },
+    {
+      "id": "VEI-T6-FILL-0239",
+      "pattern": "reassuringly"
+    },
+    {
+      "id": "VEI-T6-FILL-0240",
+      "pattern": "recklessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0241",
+      "pattern": "regularly"
+    },
+    {
+      "id": "VEI-T6-FILL-0242",
+      "pattern": "relatively"
+    },
+    {
+      "id": "VEI-T6-FILL-0243",
+      "pattern": "reluctantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0244",
+      "pattern": "repeatedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0245",
+      "pattern": "reproachfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0246",
+      "pattern": "restfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0247",
+      "pattern": "right"
+    },
+    {
+      "id": "VEI-T6-FILL-0248",
+      "pattern": "righteously"
+    },
+    {
+      "id": "VEI-T6-FILL-0249",
+      "pattern": "rightfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0250",
+      "pattern": "rigidly"
+    },
+    {
+      "id": "VEI-T6-FILL-0252",
+      "pattern": "roughly"
+    },
+    {
+      "id": "VEI-T6-FILL-0253",
+      "pattern": "rudely"
+    },
+    {
+      "id": "VEI-T6-FILL-0254",
+      "pattern": "safely"
+    },
+    {
+      "id": "VEI-T6-FILL-0256",
+      "pattern": "scarcely"
+    },
+    {
+      "id": "VEI-T6-FILL-0257",
+      "pattern": "scarily"
+    },
+    {
+      "id": "VEI-T6-FILL-0259",
+      "pattern": "searchingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0260",
+      "pattern": "sedately"
+    },
+    {
+      "id": "VEI-T6-FILL-0261",
+      "pattern": "seemingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0262",
+      "pattern": "selfishly"
+    },
+    {
+      "id": "VEI-T6-FILL-0263",
+      "pattern": "separately"
+    },
+    {
+      "id": "VEI-T6-FILL-0264",
+      "pattern": "seriously"
+    },
+    {
+      "id": "VEI-T6-FILL-0265",
+      "pattern": "shakily"
+    },
+    {
+      "id": "VEI-T6-FILL-0266",
+      "pattern": "sharply"
+    },
+    {
+      "id": "VEI-T6-FILL-0267",
+      "pattern": "sheepishly"
+    },
+    {
+      "id": "VEI-T6-FILL-0268",
+      "pattern": "shrilly"
+    },
+    {
+      "id": "VEI-T6-FILL-0269",
+      "pattern": "shyly"
+    },
+    {
+      "id": "VEI-T6-FILL-0270",
+      "pattern": "significantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0271",
+      "pattern": "silently"
+    },
+    {
+      "id": "VEI-T6-FILL-0272",
+      "pattern": "simply"
+    },
+    {
+      "id": "VEI-T6-FILL-0273",
+      "pattern": "sleepily"
+    },
+    {
+      "id": "VEI-T6-FILL-0274",
+      "pattern": "slightly"
+    },
+    {
+      "id": "VEI-T6-FILL-0275",
+      "pattern": "slowly"
+    },
+    {
+      "id": "VEI-T6-FILL-0276",
+      "pattern": "smoothly"
+    },
+    {
+      "id": "VEI-T6-FILL-0277",
+      "pattern": "so"
+    },
+    {
+      "id": "VEI-T6-FILL-0278",
+      "pattern": "softly"
+    },
+    {
+      "id": "VEI-T6-FILL-0279",
+      "pattern": "solemnly"
+    },
+    {
+      "id": "VEI-T6-FILL-0280",
+      "pattern": "solidly"
+    },
+    {
+      "id": "VEI-T6-FILL-0281",
+      "pattern": "somewhat"
+    },
+    {
+      "id": "VEI-T6-FILL-0282",
+      "pattern": "specifically"
+    },
+    {
+      "id": "VEI-T6-FILL-0283",
+      "pattern": "speedily"
+    },
+    {
+      "id": "VEI-T6-FILL-0284",
+      "pattern": "start"
+    },
+    {
+      "id": "VEI-T6-FILL-0286",
+      "pattern": "stealthily"
+    },
+    {
+      "id": "VEI-T6-FILL-0287",
+      "pattern": "sternly"
+    },
+    {
+      "id": "VEI-T6-FILL-0288",
+      "pattern": "strictly"
+    },
+    {
+      "id": "VEI-T6-FILL-0289",
+      "pattern": "strongly"
+    },
+    {
+      "id": "VEI-T6-FILL-0290",
+      "pattern": "stuff"
+    },
+    {
+      "id": "VEI-T6-FILL-0291",
+      "pattern": "substantially"
+    },
+    {
+      "id": "VEI-T6-FILL-0292",
+      "pattern": "suddenly"
+    },
+    {
+      "id": "VEI-T6-FILL-0293",
+      "pattern": "supposedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0294",
+      "pattern": "surely"
+    },
+    {
+      "id": "VEI-T6-FILL-0295",
+      "pattern": "surprisingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0296",
+      "pattern": "suspiciously"
+    },
+    {
+      "id": "VEI-T6-FILL-0297",
+      "pattern": "sweetly"
+    },
+    {
+      "id": "VEI-T6-FILL-0298",
+      "pattern": "swiftly"
+    },
+    {
+      "id": "VEI-T6-FILL-0299",
+      "pattern": "sympathetically"
+    },
+    {
+      "id": "VEI-T6-FILL-0302",
+      "pattern": "tenderly"
+    },
+    {
+      "id": "VEI-T6-FILL-0303",
+      "pattern": "tensely"
+    },
+    {
+      "id": "VEI-T6-FILL-0304",
+      "pattern": "terribly"
+    },
+    {
+      "id": "VEI-T6-FILL-0306",
+      "pattern": "thankfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0307",
+      "pattern": "things"
+    },
+    {
+      "id": "VEI-T6-FILL-0308",
+      "pattern": "thoroughly"
+    },
+    {
+      "id": "VEI-T6-FILL-0309",
+      "pattern": "thoughtfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0310",
+      "pattern": "tightly"
+    },
+    {
+      "id": "VEI-T6-FILL-0311",
+      "pattern": "too"
+    },
+    {
+      "id": "VEI-T6-FILL-0312",
+      "pattern": "totally"
+    },
+    {
+      "id": "VEI-T6-FILL-0313",
+      "pattern": "tremendously"
+    },
+    {
+      "id": "VEI-T6-FILL-0314",
+      "pattern": "triumphantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0315",
+      "pattern": "truly"
+    },
+    {
+      "id": "VEI-T6-FILL-0316",
+      "pattern": "truthfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0317",
+      "pattern": "try"
+    },
+    {
+      "id": "VEI-T6-FILL-0318",
+      "pattern": "typically"
+    },
+    {
+      "id": "VEI-T6-FILL-0320",
+      "pattern": "ultimately"
+    },
+    {
+      "id": "VEI-T6-FILL-0321",
+      "pattern": "unabashedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0322",
+      "pattern": "unaccountably"
+    },
+    {
+      "id": "VEI-T6-FILL-0323",
+      "pattern": "unbearably"
+    },
+    {
+      "id": "VEI-T6-FILL-0326",
+      "pattern": "unethically"
+    },
+    {
+      "id": "VEI-T6-FILL-0327",
+      "pattern": "unexpectedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0328",
+      "pattern": "unfortunately"
+    },
+    {
+      "id": "VEI-T6-FILL-0329",
+      "pattern": "unimpressively"
+    },
+    {
+      "id": "VEI-T6-FILL-0331",
+      "pattern": "unnaturally"
+    },
+    {
+      "id": "VEI-T6-FILL-0332",
+      "pattern": "unnecessarily"
+    },
+    {
+      "id": "VEI-T6-FILL-0334",
+      "pattern": "urgently"
+    },
+    {
+      "id": "VEI-T6-FILL-0335",
+      "pattern": "usefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0336",
+      "pattern": "uselessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0337",
+      "pattern": "usually"
+    },
+    {
+      "id": "VEI-T6-FILL-0338",
+      "pattern": "utterly"
+    },
+    {
+      "id": "VEI-T6-FILL-0339",
+      "pattern": "vacantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0340",
+      "pattern": "vaguely"
+    },
+    {
+      "id": "VEI-T6-FILL-0341",
+      "pattern": "vainly"
+    },
+    {
+      "id": "VEI-T6-FILL-0342",
+      "pattern": "valiantly"
+    },
+    {
+      "id": "VEI-T6-FILL-0343",
+      "pattern": "vastly"
+    },
+    {
+      "id": "VEI-T6-FILL-0344",
+      "pattern": "verbally"
+    },
+    {
+      "id": "VEI-T6-FILL-0346",
+      "pattern": "very"
+    },
+    {
+      "id": "VEI-T6-FILL-0347",
+      "pattern": "viciously"
+    },
+    {
+      "id": "VEI-T6-FILL-0348",
+      "pattern": "victoriously"
+    },
+    {
+      "id": "VEI-T6-FILL-0349",
+      "pattern": "violently"
+    },
+    {
+      "id": "VEI-T6-FILL-0350",
+      "pattern": "virtually"
+    },
+    {
+      "id": "VEI-T6-FILL-0352",
+      "pattern": "vivaciously"
+    },
+    {
+      "id": "VEI-T6-FILL-0353",
+      "pattern": "voluntarily"
+    },
+    {
+      "id": "VEI-T6-FILL-0354",
+      "pattern": "warmly"
+    },
+    {
+      "id": "VEI-T6-FILL-0355",
+      "pattern": "weakly"
+    },
+    {
+      "id": "VEI-T6-FILL-0356",
+      "pattern": "wearily"
+    },
+    {
+      "id": "VEI-T6-FILL-0357",
+      "pattern": "well"
+    },
+    {
+      "id": "VEI-T6-FILL-0358",
+      "pattern": "wetly"
+    },
+    {
+      "id": "VEI-T6-FILL-0359",
+      "pattern": "whatever"
+    },
+    {
+      "id": "VEI-T6-FILL-0360",
+      "pattern": "whenever"
+    },
+    {
+      "id": "VEI-T6-FILL-0361",
+      "pattern": "wherever"
+    },
+    {
+      "id": "VEI-T6-FILL-0362",
+      "pattern": "whoever"
+    },
+    {
+      "id": "VEI-T6-FILL-0363",
+      "pattern": "wholly"
+    },
+    {
+      "id": "VEI-T6-FILL-0364",
+      "pattern": "widely"
+    },
+    {
+      "id": "VEI-T6-FILL-0365",
+      "pattern": "wildly"
+    },
+    {
+      "id": "VEI-T6-FILL-0366",
+      "pattern": "willfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0367",
+      "pattern": "wisely"
+    },
+    {
+      "id": "VEI-T6-FILL-0368",
+      "pattern": "woefully"
+    },
+    {
+      "id": "VEI-T6-FILL-0369",
+      "pattern": "wonderfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0370",
+      "pattern": "worriedly"
+    },
+    {
+      "id": "VEI-T6-FILL-0371",
+      "pattern": "yawningly"
+    },
+    {
+      "id": "VEI-T6-FILL-0372",
+      "pattern": "yearningly"
+    },
+    {
+      "id": "VEI-T6-FILL-0373",
+      "pattern": "yieldingly"
+    },
+    {
+      "id": "VEI-T6-FILL-0374",
+      "pattern": "youthfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0375",
+      "pattern": "zealously"
+    },
+    {
+      "id": "VEI-T6-FILL-0376",
+      "pattern": "zestfully"
+    },
+    {
+      "id": "VEI-T6-FILL-0377",
+      "pattern": "zestily"
+    }
+  ],
+  "overused_vocabulary": [
+    {
+      "id": "VEI-T6-FILL-0005",
+      "pattern": "actionable"
+    },
+    {
+      "id": "VEI-T6-FILL-0022",
+      "pattern": "best-in-class"
+    },
+    {
+      "id": "VEI-T6-FILL-0029",
+      "pattern": "bolster"
+    },
+    {
+      "id": "VEI-T6-FILL-0035",
+      "pattern": "burgeoning"
+    },
+    {
+      "id": "VEI-T6-FILL-0049",
+      "pattern": "comprehensive"
+    },
+    {
+      "id": "VEI-T6-FILL-0052",
+      "pattern": "cornerstone"
+    },
+    {
+      "id": "VEI-T6-FILL-0055",
+      "pattern": "crucial"
+    },
+    {
+      "id": "VEI-T6-FILL-0066",
+      "pattern": "delve"
+    },
+    {
+      "id": "VEI-T6-FILL-0067",
+      "pattern": "democratize"
+    },
+    {
+      "id": "VEI-T6-FILL-0075",
+      "pattern": "elevate"
+    },
+    {
+      "id": "VEI-T6-FILL-0076",
+      "pattern": "empower"
+    },
+    {
+      "id": "VEI-T6-FILL-0095",
+      "pattern": "foster"
+    },
+    {
+      "id": "VEI-T6-FILL-0110",
+      "pattern": "granular"
+    },
+    {
+      "id": "VEI-T6-FILL-0116",
+      "pattern": "harness"
+    },
+    {
+      "id": "VEI-T6-FILL-0122",
+      "pattern": "holistic"
+    },
+    {
+      "id": "VEI-T6-FILL-0127",
+      "pattern": "impactful"
+    },
+    {
+      "id": "VEI-T6-FILL-0150",
+      "pattern": "landscape"
+    },
+    {
+      "id": "VEI-T6-FILL-0153",
+      "pattern": "leverage"
+    },
+    {
+      "id": "VEI-T6-FILL-0171",
+      "pattern": "meticulous"
+    },
+    {
+      "id": "VEI-T6-FILL-0179",
+      "pattern": "myriad"
+    },
+    {
+      "id": "VEI-T6-FILL-0182",
+      "pattern": "navigate"
+    },
+    {
+      "id": "VEI-T6-FILL-0189",
+      "pattern": "nuanced"
+    },
+    {
+      "id": "VEI-T6-FILL-0200",
+      "pattern": "paradigm"
+    },
+    {
+      "id": "VEI-T6-FILL-0207",
+      "pattern": "plethora"
+    },
+    {
+      "id": "VEI-T6-FILL-0217",
+      "pattern": "proactive"
+    },
+    {
+      "id": "VEI-T6-FILL-0238",
+      "pattern": "realm"
+    },
+    {
+      "id": "VEI-T6-FILL-0251",
+      "pattern": "robust"
+    },
+    {
+      "id": "VEI-T6-FILL-0255",
+      "pattern": "scalable"
+    },
+    {
+      "id": "VEI-T6-FILL-0258",
+      "pattern": "seamlessly"
+    },
+    {
+      "id": "VEI-T6-FILL-0285",
+      "pattern": "state-of-the-art"
+    },
+    {
+      "id": "VEI-T6-FILL-0300",
+      "pattern": "synergy"
+    },
+    {
+      "id": "VEI-T6-FILL-0301",
+      "pattern": "tapestry"
+    },
+    {
+      "id": "VEI-T6-FILL-0305",
+      "pattern": "testament"
+    },
+    {
+      "id": "VEI-T6-FILL-0319",
+      "pattern": "ubiquitous"
+    },
+    {
+      "id": "VEI-T6-FILL-0324",
+      "pattern": "underpins"
+    },
+    {
+      "id": "VEI-T6-FILL-0325",
+      "pattern": "underscore"
+    },
+    {
+      "id": "VEI-T6-FILL-0330",
+      "pattern": "unleash"
+    },
+    {
+      "id": "VEI-T6-FILL-0333",
+      "pattern": "unprecedented"
+    },
+    {
+      "id": "VEI-T6-FILL-0345",
+      "pattern": "versatile"
+    },
+    {
+      "id": "VEI-T6-FILL-0351",
+      "pattern": "vital"
+    }
+  ],
+  "weasel_words": [
+    {
+      "id": "VEI-T6-WEASEL-0001",
+      "pattern": "clearly"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0002",
+      "pattern": "completely"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0003",
+      "pattern": "extremely"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0004",
+      "pattern": "fairly"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0005",
+      "pattern": "largely"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0006",
+      "pattern": "like"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0007",
+      "pattern": "many"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0008",
+      "pattern": "might"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0009",
+      "pattern": "most"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0010",
+      "pattern": "mostly"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0011",
+      "pattern": "probably"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0012",
+      "pattern": "quite"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0013",
+      "pattern": "rather"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0014",
+      "pattern": "really"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0015",
+      "pattern": "relatively"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0016",
+      "pattern": "several"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0017",
+      "pattern": "significantly"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0018",
+      "pattern": "very"
+    },
+    {
+      "id": "VEI-T6-WEASEL-0019",
+      "pattern": "virtually"
+    }
+  ],
+  "corporate_speak": [
+    {
+      "id": "VEI-T6-CORP-0001",
+      "pattern": "all hands on deck"
+    },
+    {
+      "id": "VEI-T6-CORP-0002",
+      "pattern": "apples to apples"
+    },
+    {
+      "id": "VEI-T6-CORP-0003",
+      "pattern": "at the end of the day"
+    },
+    {
+      "id": "VEI-T6-CORP-0004",
+      "pattern": "back to the drawing board"
+    },
+    {
+      "id": "VEI-T6-CORP-0005",
+      "pattern": "bang for your buck"
+    },
+    {
+      "id": "VEI-T6-CORP-0006",
+      "pattern": "circle back"
+    },
+    {
+      "id": "VEI-T6-CORP-0007",
+      "pattern": "drill-down"
+    },
+    {
+      "id": "VEI-T6-CORP-0008",
+      "pattern": "elephant in the room"
+    },
+    {
+      "id": "VEI-T6-CORP-0009",
+      "pattern": "get the ball rolling"
+    },
+    {
+      "id": "VEI-T6-CORP-0010",
+      "pattern": "hit the ground running"
+    },
+    {
+      "id": "VEI-T6-CORP-0011",
+      "pattern": "i don't have the bandwidth"
+    },
+    {
+      "id": "VEI-T6-CORP-0012",
+      "pattern": "it's on my radar"
+    },
+    {
+      "id": "VEI-T6-CORP-0013",
+      "pattern": "let's touch base"
+    },
+    {
+      "id": "VEI-T6-CORP-0014",
+      "pattern": "low-hanging fruit"
+    },
+    {
+      "id": "VEI-T6-CORP-0015",
+      "pattern": "move the goal post"
+    },
+    {
+      "id": "VEI-T6-CORP-0016",
+      "pattern": "no brainer"
+    },
+    {
+      "id": "VEI-T6-CORP-0017",
+      "pattern": "on my plate"
+    },
+    {
+      "id": "VEI-T6-CORP-0018",
+      "pattern": "par for the course"
+    },
+    {
+      "id": "VEI-T6-CORP-0019",
+      "pattern": "ping me"
+    },
+    {
+      "id": "VEI-T6-CORP-0020",
+      "pattern": "synergy"
+    },
+    {
+      "id": "VEI-T6-CORP-0021",
+      "pattern": "take this offline"
+    },
+    {
+      "id": "VEI-T6-CORP-0022",
+      "pattern": "think outside the box"
+    },
+    {
+      "id": "VEI-T6-CORP-0023",
+      "pattern": "thrown under the bus"
+    },
+    {
+      "id": "VEI-T6-CORP-0024",
+      "pattern": "win-win"
+    }
+  ],
+  "nominalization": {
+    "id": "VEI-T6-NOM-0001",
+    "weak_verbs": [
+      "make",
+      "perform",
+      "conduct",
+      "provide",
+      "carry out",
+      "undertake",
+      "do",
+      "give"
+    ],
+    "noun_suffixes": [
+      "tion",
+      "ment",
+      "ance",
+      "ence",
+      "ing"
+    ]
+  },
+  "generic_ly_adverb_detection": "review",
+  "notes": {
+    "weasel_cross_check": "MERGED.weasel_and_hedge (280) used only as a cross-check; 1 punctuation-only junk keys skipped. The authoritative weasel list is the 19 words above (§8.6)."
+  },
+  "counts": {
+    "fillers_and_intensifiers": 337,
+    "weasel_words": 19,
+    "overused_vocabulary": 40
+  }
+}

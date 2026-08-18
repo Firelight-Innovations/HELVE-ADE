@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "test": "T6",
+  "name": "Zero-information (AI tells)",
+  "default_tier": "error",
+  "phrases": [
+    {
+      "id": "VEI-T6-AI-0001",
+      "pattern": "at the end of the day",
+      "kind": "conclusion_marker"
+    },
+    {
+      "id": "VEI-T6-AI-0002",
+      "pattern": "in conclusion",
+      "kind": "conclusion_marker"
+    },
+    {
+      "id": "VEI-T6-AI-0003",
+      "pattern": "in summary",
+      "kind": "conclusion_marker"
+    },
+    {
+      "id": "VEI-T6-AI-0004",
+      "pattern": "it is important to note that",
+      "kind": "hedging_opener"
+    },
+    {
+      "id": "VEI-T6-AI-0005",
+      "pattern": "it should be mentioned that",
+      "kind": "hedging_opener"
+    },
+    {
+      "id": "VEI-T6-AI-0006",
+      "pattern": "it's not about {x}, it's about {y}",
+      "kind": "contrastive_formula"
+    },
+    {
+      "id": "VEI-T6-AI-0007",
+      "pattern": "it's worth noting that",
+      "kind": "hedging_opener"
+    },
+    {
+      "id": "VEI-T6-AI-0008",
+      "pattern": "keep in mind that",
+      "kind": "hedging_opener"
+    },
+    {
+      "id": "VEI-T6-AI-0009",
+      "pattern": "not just {x}, it's {y}",
+      "kind": "contrastive_formula"
+    },
+    {
+      "id": "VEI-T6-AI-0010",
+      "pattern": "not merely",
+      "kind": "contrastive_formula"
+    },
+    {
+      "id": "VEI-T6-AI-0011",
+      "pattern": "overall",
+      "kind": "conclusion_marker"
+    }
+  ],
+  "hedging_opener_action": "delete_phrase_keep_sentence",
+  "conclusion_marker_condition": "documents under 1000 words",
+  "machine_artifacts": {
+    "rules": [
+      {
+        "id": "VEI-T6-ARTIFACT-0001",
+        "pattern": ":contentReference\\[oaicite:\\d+\\]\\{index=\\d+\\}"
+      },
+      {
+        "id": "VEI-T6-ARTIFACT-0002",
+        "pattern": "oai_citation:\\d+"
+      },
+      {
+        "id": "VEI-T6-ARTIFACT-0003",
+        "pattern": "sandbox:/mnt/data/"
+      }
+    ],
+    "confidence": "high",
+    "is_regex": true
+  }
+}

@@ -7,7 +7,7 @@ import type { Body } from "./blocks";
  */
 export const terminals: Body = {
   takeaway:
-    "You can open a terminal that starts in the right folder, split it, and know why it is not the same as a shell you opened yourself.",
+    "You can open a terminal that starts in the right folder, split it, and know why it differs from a shell you opened yourself.",
   blocks: [
     {
       kind: "text",
@@ -31,22 +31,51 @@ export const terminals: Body = {
       chord: "Ctrl+\\",
     },
     {
+      kind: "mock",
+      view: "terminal-band",
+      caption: "The rail of sessions on the left; a split pair folds into one entry with a count.",
+    },
+    {
       kind: "text",
-      body: "The **Terminal** menu holds the same three, plus **Kill Terminal** and **Clear**. All five are greyed out when there is no terminal to act on.",
+      body: "The **Terminal** menu holds the same three, plus **Kill Terminal** and **Clear**. All five grey out with no terminal to act on.",
     },
     {
       kind: "note",
-      body: "**Clear** calls the emulator's own clear rather than writing `cls` or `clear` into the shell. That is the only honest version: a full-screen program reads its own terminal state from the emulator, so a command typed into the stream would either do nothing to it or get typed into whatever prompt it is showing.",
+      body: "**Clear** calls the emulator's own clear rather than writing `cls` or `clear` into the shell. That is the only honest version: a full-screen program reads its own terminal state from the emulator. A command typed into the stream would either do nothing to it, or get typed into whatever prompt is showing.",
     },
 
     { kind: "heading", body: "It starts where your project is" },
     {
       kind: "text",
-      body: "A new terminal opens in the folder the **cluster** has open, not in whatever directory HELVE was launched from. Two clusters with two projects give you two terminals in two different folders.",
+      body: "A new terminal opens in the folder the **cluster** has open, not in whatever directory HELVE was launched from.",
+    },
+    {
+      kind: "flow",
+      steps: [
+        "A project is open",
+        "the cluster owns the band",
+        "a new terminal inherits its folder",
+      ],
     },
     {
       kind: "text",
-      body: "The band belongs to the cluster for the same reason. Switching clusters swaps which terminals you see, along with the panes above them — so terminals do not pile up from work you are no longer looking at.",
+      body: "Two clusters with two projects give you two terminals in two different folders.",
+    },
+    {
+      kind: "text",
+      body: "The band belongs to the cluster for the same reason:",
+    },
+    {
+      kind: "flow",
+      steps: [
+        "Switch clusters",
+        "the band swaps to that cluster's terminals",
+        "the panes above it swap too",
+      ],
+    },
+    {
+      kind: "text",
+      body: "Terminals do not pile up from work you are no longer looking at.",
     },
 
     { kind: "heading", body: "A terminal in a pane" },
@@ -72,7 +101,7 @@ export const terminals: Body = {
     },
     {
       kind: "text",
-      body: "A shell you opened yourself, outside HELVE, inherits none of that. It is a perfectly good shell; it simply cannot reach back into the running application, which is the correct answer rather than a limitation.",
+      body: "A shell you opened yourself, outside HELVE, inherits none of that. That shell works fine; it simply cannot reach back into the running application — the correct answer, rather than a limitation.",
     },
     {
       kind: "note",

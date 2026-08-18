@@ -25,7 +25,15 @@ export const settings: Body = {
     { kind: "heading", body: "When a change takes effect" },
     {
       kind: "text",
-      body: "This is the part worth reading. Under each control is a line saying when it applies, and it is not decoration — most of these are read at the moment something is **created**, not watched for the lifetime of what is already open.",
+      body: "This is the part worth reading. Under each control is a line saying when it applies — not decoration, but a fact worth trusting. Most of these are read at the moment something is **created**, not watched for the lifetime of what is already open.",
+    },
+    {
+      kind: "flow",
+      steps: [
+        "Change a control",
+        "written to `settings.json`",
+        "takes effect — now, or the next time something reads it",
+      ],
     },
     {
       kind: "keys",
@@ -40,13 +48,18 @@ export const settings: Body = {
     },
     {
       kind: "note",
-      body: "So changing **Font size** under Editor does nothing to a file you already have open. Open another file and it is there. That is why the line says so under the control rather than leaving you to conclude the setting is broken.",
+      body: "So changing **Font size** under Editor does nothing to a file you already have open. Open another file and the new size shows. That is why the line says so under the control rather than leaving you to conclude the setting is broken.",
     },
 
     { kind: "heading", body: "What is in there today" },
     {
+      kind: "mock",
+      view: "settings-screen",
+      caption: "The sections rail, and the **MCP servers** section it opens to.",
+    },
+    {
       kind: "text",
-      body: "Six sections. Five are the shell's own; the sixth is declared by the File Explorer, which is the interesting one — an app can add a settings section of its own, and it appears here with no change to the settings screen at all.",
+      body: "Six sections. Five are the shell's own; the sixth is declared by the File Explorer, which is the interesting one. An app can add a settings section of its own, and it appears here with no change to the settings screen at all.",
     },
     {
       kind: "keys",
@@ -81,18 +94,26 @@ export const settings: Body = {
       body: "A setting you have moved off its default carries a dot, and each section has a reset that puts only that section back. Everything else is left alone.",
     },
     {
+      kind: "flow",
+      steps: [
+        "Move a setting off its default",
+        "a dot marks it",
+        "that section's **Reset** clears only the dot",
+      ],
+    },
+    {
       kind: "text",
-      body: "That is not cosmetic. Only the settings you actually changed are written to disk — a `settings.json` on a machine nobody has touched this screen on does not exist. Which means a later version of HELVE can improve a default and have the new one reach everybody who never disagreed with the old one, and leave your choices where you put them.",
+      body: "That is not cosmetic. Only the settings you changed are written to disk — a `settings.json` on a machine nobody has touched this screen on does not exist. Which means a later version of HELVE can improve a default and have the new one reach everybody who never disagreed with the old one. Your choices stay where you put them.",
     },
 
     { kind: "heading", body: "Where it lives" },
     {
       kind: "text",
-      body: "`settings.json`, in the OS config directory, beside the file that remembers your recent projects. It is per-machine and deliberately outside any checkout — one contributor's font size arriving in everybody else's editor is exactly what a settings file committed into a repository does.",
+      body: "`settings.json`, in the OS config directory, beside the file that remembers your recent projects. Per-machine, and deliberately outside any checkout — one contributor's font size arriving in everybody else's editor is exactly what a settings file committed into a repository does.",
     },
     {
       kind: "soon",
-      body: "There is no keyboard-shortcut editor, no import or export, and no way to sync settings between machines. The chords in these tutorials are fixed for now.",
+      body: "No keyboard-shortcut editor, no import or export, and no way to sync settings between machines. The chords in these tutorials are fixed.",
     },
   ],
 };

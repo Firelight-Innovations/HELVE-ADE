@@ -1,0 +1,4251 @@
+{
+  "schema_version": 1,
+  "test": "T1",
+  "name": "Replaceable",
+  "default_tier": "error",
+  "rules": [
+    {
+      "pattern": "absent",
+      "suggestion": "none",
+      "alts": [
+        "none",
+        "not here"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0001"
+    },
+    {
+      "pattern": "abundance",
+      "suggestion": "plenty",
+      "alts": [
+        "plenty"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0002"
+    },
+    {
+      "pattern": "accentuate",
+      "suggestion": "stress",
+      "alts": [
+        "stress"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0003"
+    },
+    {
+      "pattern": "accompany",
+      "suggestion": "go with",
+      "alts": [
+        "go with"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0004"
+    },
+    {
+      "pattern": "accomplish",
+      "suggestion": "carry out",
+      "alts": [
+        "carry out",
+        "do"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0005"
+    },
+    {
+      "pattern": "accorded",
+      "suggestion": "given",
+      "alts": [
+        "given"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0006"
+    },
+    {
+      "pattern": "accordingly",
+      "suggestion": "so",
+      "alts": [
+        "so"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0007"
+    },
+    {
+      "pattern": "accrue",
+      "suggestion": "add",
+      "alts": [
+        "add"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0008"
+    },
+    {
+      "pattern": "accurate",
+      "suggestion": "right",
+      "alts": [
+        "right",
+        "exact"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0009"
+    },
+    {
+      "pattern": "acquiesce",
+      "suggestion": "agree",
+      "alts": [
+        "agree"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0010"
+    },
+    {
+      "pattern": "acquire",
+      "suggestion": "get",
+      "alts": [
+        "get",
+        "buy"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0011"
+    },
+    {
+      "pattern": "addressees",
+      "suggestion": "you",
+      "alts": [
+        "you"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0012"
+    },
+    {
+      "pattern": "adjacent to",
+      "suggestion": "next to",
+      "alts": [
+        "next to"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0013"
+    },
+    {
+      "pattern": "adjustment",
+      "suggestion": "change",
+      "alts": [
+        "change"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0014"
+    },
+    {
+      "pattern": "admissible",
+      "suggestion": "allowed",
+      "alts": [
+        "allowed"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0015"
+    },
+    {
+      "pattern": "advantageous",
+      "suggestion": "helpful",
+      "alts": [
+        "helpful"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0016"
+    },
+    {
+      "pattern": "advise",
+      "suggestion": "tell",
+      "alts": [
+        "tell"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0017"
+    },
+    {
+      "pattern": "aggregate",
+      "suggestion": "total",
+      "alts": [
+        "total"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0018"
+    },
+    {
+      "pattern": "aircraft",
+      "suggestion": "plane",
+      "alts": [
+        "plane"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0019"
+    },
+    {
+      "pattern": "alleviate",
+      "suggestion": "ease",
+      "alts": [
+        "ease"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0020"
+    },
+    {
+      "pattern": "allocate",
+      "suggestion": "assign",
+      "alts": [
+        "assign",
+        "divide"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0021"
+    },
+    {
+      "pattern": "alternatively",
+      "suggestion": "or",
+      "alts": [
+        "or"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0022"
+    },
+    {
+      "pattern": "alternatives",
+      "suggestion": "choices",
+      "alts": [
+        "choices",
+        "options"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0023"
+    },
+    {
+      "pattern": "ameliorate",
+      "suggestion": "improve",
+      "alts": [
+        "improve"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0024"
+    },
+    {
+      "pattern": "amend",
+      "suggestion": "change",
+      "alts": [
+        "change"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0025"
+    },
+    {
+      "pattern": "anticipate",
+      "suggestion": "expect",
+      "alts": [
+        "expect"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0026"
+    },
+    {
+      "pattern": "apparent",
+      "suggestion": "clear",
+      "alts": [
+        "clear",
+        "plain"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0027"
+    },
+    {
+      "pattern": "ascertain",
+      "suggestion": "discover",
+      "alts": [
+        "discover",
+        "find out"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0028"
+    },
+    {
+      "pattern": "assistance",
+      "suggestion": "help",
+      "alts": [
+        "help"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0029"
+    },
+    {
+      "pattern": "attain",
+      "suggestion": "meet",
+      "alts": [
+        "meet"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0030"
+    },
+    {
+      "pattern": "attempt",
+      "suggestion": "try",
+      "alts": [
+        "try"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0031"
+    },
+    {
+      "pattern": "authorize",
+      "suggestion": "allow",
+      "alts": [
+        "allow"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0032"
+    },
+    {
+      "pattern": "belated",
+      "suggestion": "late",
+      "alts": [
+        "late"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0033"
+    },
+    {
+      "pattern": "bestow",
+      "suggestion": "give",
+      "alts": [
+        "give"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0034"
+    },
+    {
+      "pattern": "cease",
+      "suggestion": "stop",
+      "alts": [
+        "stop",
+        "end"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0035"
+    },
+    {
+      "pattern": "collaborate",
+      "suggestion": "work together",
+      "alts": [
+        "work together"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0036"
+    },
+    {
+      "pattern": "commence",
+      "suggestion": "begin",
+      "alts": [
+        "begin"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0037"
+    },
+    {
+      "pattern": "compensate",
+      "suggestion": "pay",
+      "alts": [
+        "pay"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0038"
+    },
+    {
+      "pattern": "comprise",
+      "suggestion": "form",
+      "alts": [
+        "form",
+        "include"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0039"
+    },
+    {
+      "pattern": "concerning",
+      "suggestion": "about",
+      "alts": [
+        "about"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0040"
+    },
+    {
+      "pattern": "confer",
+      "suggestion": "give",
+      "alts": [
+        "give",
+        "award"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0041"
+    },
+    {
+      "pattern": "consequently",
+      "suggestion": "so",
+      "alts": [
+        "so"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0042"
+    },
+    {
+      "pattern": "consolidate",
+      "suggestion": "merge",
+      "alts": [
+        "merge"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0043"
+    },
+    {
+      "pattern": "constitutes",
+      "suggestion": "forms",
+      "alts": [
+        "forms"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0044"
+    },
+    {
+      "pattern": "contains",
+      "suggestion": "has",
+      "alts": [
+        "has"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0045"
+    },
+    {
+      "pattern": "convene",
+      "suggestion": "meet",
+      "alts": [
+        "meet"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0046"
+    },
+    {
+      "pattern": "demonstrate",
+      "suggestion": "show",
+      "alts": [
+        "show",
+        "prove"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0047"
+    },
+    {
+      "pattern": "depart",
+      "suggestion": "leave",
+      "alts": [
+        "leave"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0048"
+    },
+    {
+      "pattern": "designate",
+      "suggestion": "choose",
+      "alts": [
+        "choose"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0049"
+    },
+    {
+      "pattern": "desire",
+      "suggestion": "want",
+      "alts": [
+        "want",
+        "wish"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0050"
+    },
+    {
+      "pattern": "determine",
+      "suggestion": "decide",
+      "alts": [
+        "decide",
+        "find"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0051"
+    },
+    {
+      "pattern": "detrimental",
+      "suggestion": "bad",
+      "alts": [
+        "bad",
+        "harmful"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0052"
+    },
+    {
+      "pattern": "disclose",
+      "suggestion": "share",
+      "alts": [
+        "share",
+        "tell"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0053"
+    },
+    {
+      "pattern": "discontinue",
+      "suggestion": "stop",
+      "alts": [
+        "stop"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0054"
+    },
+    {
+      "pattern": "disseminate",
+      "suggestion": "send",
+      "alts": [
+        "send",
+        "give"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0055"
+    },
+    {
+      "pattern": "eliminate",
+      "suggestion": "end",
+      "alts": [
+        "end"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0056"
+    },
+    {
+      "pattern": "elucidate",
+      "suggestion": "explain",
+      "alts": [
+        "explain"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0057"
+    },
+    {
+      "pattern": "employ",
+      "suggestion": "use",
+      "alts": [
+        "use"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0058"
+    },
+    {
+      "pattern": "enclosed",
+      "suggestion": "inside",
+      "alts": [
+        "inside",
+        "included"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0059"
+    },
+    {
+      "pattern": "encounter",
+      "suggestion": "meet",
+      "alts": [
+        "meet"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0060"
+    },
+    {
+      "pattern": "endeavor",
+      "suggestion": "try",
+      "alts": [
+        "try"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0061"
+    },
+    {
+      "pattern": "enumerate",
+      "suggestion": "count",
+      "alts": [
+        "count"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0062"
+    },
+    {
+      "pattern": "equitable",
+      "suggestion": "fair",
+      "alts": [
+        "fair"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0063"
+    },
+    {
+      "pattern": "equivalent",
+      "suggestion": "equal",
+      "alts": [
+        "equal"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0064"
+    },
+    {
+      "pattern": "exclusively",
+      "suggestion": "only",
+      "alts": [
+        "only"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0065"
+    },
+    {
+      "pattern": "expedite",
+      "suggestion": "hurry",
+      "alts": [
+        "hurry"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0066"
+    },
+    {
+      "pattern": "facilitate",
+      "suggestion": "ease",
+      "alts": [
+        "ease"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0067"
+    },
+    {
+      "pattern": "females",
+      "suggestion": "women",
+      "alts": [
+        "women"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0068"
+    },
+    {
+      "pattern": "finalize",
+      "suggestion": "complete",
+      "alts": [
+        "complete",
+        "finish"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0069"
+    },
+    {
+      "pattern": "frequently",
+      "suggestion": "often",
+      "alts": [
+        "often"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0070"
+    },
+    {
+      "pattern": "identical",
+      "suggestion": "same",
+      "alts": [
+        "same"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0071"
+    },
+    {
+      "pattern": "incorrect",
+      "suggestion": "wrong",
+      "alts": [
+        "wrong"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0072"
+    },
+    {
+      "pattern": "indication",
+      "suggestion": "sign",
+      "alts": [
+        "sign"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0073"
+    },
+    {
+      "pattern": "initiate",
+      "suggestion": "start",
+      "alts": [
+        "start",
+        "begin"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0074"
+    },
+    {
+      "pattern": "itemized",
+      "suggestion": "listed",
+      "alts": [
+        "listed"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0075"
+    },
+    {
+      "pattern": "jeopardize",
+      "suggestion": "risk",
+      "alts": [
+        "risk"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0076"
+    },
+    {
+      "pattern": "liaise",
+      "suggestion": "work with",
+      "alts": [
+        "work with",
+        "partner with"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0077"
+    },
+    {
+      "pattern": "maintain",
+      "suggestion": "keep",
+      "alts": [
+        "keep",
+        "support"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0078"
+    },
+    {
+      "pattern": "methodology",
+      "suggestion": "method",
+      "alts": [
+        "method"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0079"
+    },
+    {
+      "pattern": "modify",
+      "suggestion": "change",
+      "alts": [
+        "change"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0080"
+    },
+    {
+      "pattern": "multiple",
+      "suggestion": "many",
+      "alts": [
+        "many"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0081"
+    },
+    {
+      "pattern": "necessitate",
+      "suggestion": "cause",
+      "alts": [
+        "cause"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0082"
+    },
+    {
+      "pattern": "notify",
+      "suggestion": "tell",
+      "alts": [
+        "tell"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0083"
+    },
+    {
+      "pattern": "numerous",
+      "suggestion": "many",
+      "alts": [
+        "many"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0084"
+    },
+    {
+      "pattern": "obligate",
+      "suggestion": "bind",
+      "alts": [
+        "bind",
+        "compel"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0085"
+    },
+    {
+      "pattern": "optimum",
+      "suggestion": "best",
+      "alts": [
+        "best",
+        "most"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0086"
+    },
+    {
+      "pattern": "permit",
+      "suggestion": "let",
+      "alts": [
+        "let"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0087"
+    },
+    {
+      "pattern": "portion",
+      "suggestion": "part",
+      "alts": [
+        "part"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0088"
+    },
+    {
+      "pattern": "possess",
+      "suggestion": "own",
+      "alts": [
+        "own"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0089"
+    },
+    {
+      "pattern": "previous",
+      "suggestion": "earlier",
+      "alts": [
+        "earlier"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0090"
+    },
+    {
+      "pattern": "previously",
+      "suggestion": "before",
+      "alts": [
+        "before"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0091"
+    },
+    {
+      "pattern": "prioritize",
+      "suggestion": "rank",
+      "alts": [
+        "rank"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0092"
+    },
+    {
+      "pattern": "procure",
+      "suggestion": "buy",
+      "alts": [
+        "buy"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0093"
+    },
+    {
+      "pattern": "provide",
+      "suggestion": "give",
+      "alts": [
+        "give",
+        "offer"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0094"
+    },
+    {
+      "pattern": "purchase",
+      "suggestion": "buy",
+      "alts": [
+        "buy"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0095"
+    },
+    {
+      "pattern": "relocate",
+      "suggestion": "move",
+      "alts": [
+        "move"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0096"
+    },
+    {
+      "pattern": "solicit",
+      "suggestion": "request",
+      "alts": [
+        "request"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0097"
+    },
+    {
+      "pattern": "state-of-the-art",
+      "suggestion": "latest",
+      "alts": [
+        "latest"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0098"
+    },
+    {
+      "pattern": "subsequent",
+      "suggestion": "later",
+      "alts": [
+        "later",
+        "next"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0099"
+    },
+    {
+      "pattern": "substantial",
+      "suggestion": "large",
+      "alts": [
+        "large"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0100"
+    },
+    {
+      "pattern": "sufficient",
+      "suggestion": "enough",
+      "alts": [
+        "enough"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0101"
+    },
+    {
+      "pattern": "transmit",
+      "suggestion": "send",
+      "alts": [
+        "send"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0102"
+    },
+    {
+      "pattern": "utilization",
+      "suggestion": "use",
+      "alts": [
+        "use"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0103"
+    },
+    {
+      "pattern": "utilize",
+      "suggestion": "use",
+      "alts": [
+        "use"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0104"
+    },
+    {
+      "pattern": "utilizing",
+      "suggestion": "using",
+      "alts": [
+        "using"
+      ],
+      "source": "vale_redhat.simple_words",
+      "id": "VEI-T1-SUB-0105"
+    },
+    {
+      "pattern": "adversely impact",
+      "suggestion": "hurt",
+      "alts": [
+        "hurt"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0106"
+    },
+    {
+      "pattern": "along the lines of",
+      "suggestion": "as in | like",
+      "alts": [
+        "as in | like",
+        "similar to"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0107"
+    },
+    {
+      "pattern": "as a means of",
+      "suggestion": "to",
+      "alts": [
+        "to"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0108"
+    },
+    {
+      "pattern": "as of yet",
+      "suggestion": "yet",
+      "alts": [
+        "yet"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0109"
+    },
+    {
+      "pattern": "at the present time",
+      "suggestion": "at present",
+      "alts": [
+        "at present",
+        "now"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0110"
+    },
+    {
+      "pattern": "because of the fact that",
+      "suggestion": "because",
+      "alts": [
+        "because"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0111"
+    },
+    {
+      "pattern": "close proximity",
+      "suggestion": "near",
+      "alts": [
+        "near",
+        "close"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0112"
+    },
+    {
+      "pattern": "due to the fact that",
+      "suggestion": "because | due to | since",
+      "alts": [
+        "because | due to | since",
+        "because"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0113"
+    },
+    {
+      "pattern": "each and every",
+      "suggestion": "each",
+      "alts": [
+        "each",
+        "every"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0114"
+    },
+    {
+      "pattern": "honest truth",
+      "suggestion": "truth",
+      "alts": [
+        "truth"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0115"
+    },
+    {
+      "pattern": "in a timely manner",
+      "suggestion": "on time | promptly",
+      "alts": [
+        "on time | promptly",
+        "timely"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0116"
+    },
+    {
+      "pattern": "in addition",
+      "suggestion": "also | besides | too",
+      "alts": [
+        "also | besides | too",
+        "also"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0117"
+    },
+    {
+      "pattern": "in an effort to",
+      "suggestion": "to",
+      "alts": [
+        "to"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0118"
+    },
+    {
+      "pattern": "in between",
+      "suggestion": "between",
+      "alts": [
+        "between"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0119"
+    },
+    {
+      "pattern": "in lieu of",
+      "suggestion": "instead",
+      "alts": [
+        "instead",
+        "instead of"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0120"
+    },
+    {
+      "pattern": "in many cases",
+      "suggestion": "often",
+      "alts": [
+        "often"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0121"
+    },
+    {
+      "pattern": "in order to",
+      "suggestion": "to",
+      "alts": [
+        "to"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0122"
+    },
+    {
+      "pattern": "mix together",
+      "suggestion": "mix",
+      "alts": [
+        "mix"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0123"
+    },
+    {
+      "pattern": "pertaining to",
+      "suggestion": "about | of | on",
+      "alts": [
+        "about | of | on",
+        "about"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0124"
+    },
+    {
+      "pattern": "point in time",
+      "suggestion": "moment | now | point | time",
+      "alts": [
+        "moment | now | point | time",
+        "point"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0125"
+    },
+    {
+      "pattern": "readily apparent",
+      "suggestion": "clear",
+      "alts": [
+        "clear",
+        "apparent"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0126"
+    },
+    {
+      "pattern": "refer back",
+      "suggestion": "refer",
+      "alts": [
+        "refer"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0127"
+    },
+    {
+      "pattern": "span across",
+      "suggestion": "cross | span",
+      "alts": [
+        "cross | span",
+        "span"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0128"
+    },
+    {
+      "pattern": "successfully complete",
+      "suggestion": "complete | pass",
+      "alts": [
+        "complete | pass",
+        "complete"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0129"
+    },
+    {
+      "pattern": "until such time as",
+      "suggestion": "until",
+      "alts": [
+        "until"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0130"
+    },
+    {
+      "pattern": "various different",
+      "suggestion": "different | various",
+      "alts": [
+        "different | various",
+        "various"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0131"
+    },
+    {
+      "pattern": "whether or not",
+      "suggestion": "whether",
+      "alts": [
+        "whether"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0132"
+    },
+    {
+      "pattern": "with the exception of",
+      "suggestion": "except for",
+      "alts": [
+        "except for"
+      ],
+      "source": "MERGED.wordy_and_complex",
+      "id": "VEI-T1-SUB-0133"
+    },
+    {
+      "pattern": "a myriad of",
+      "suggestion": "myriad",
+      "alts": [
+        "myriad"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0134"
+    },
+    {
+      "pattern": "all across",
+      "suggestion": "across",
+      "alts": [
+        "across"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0135"
+    },
+    {
+      "pattern": "all of a sudden",
+      "suggestion": "suddenly",
+      "alts": [
+        "suddenly"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0136"
+    },
+    {
+      "pattern": "all of these",
+      "suggestion": "these",
+      "alts": [
+        "these"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0137"
+    },
+    {
+      "pattern": "all-time record",
+      "suggestion": "record",
+      "alts": [
+        "record"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0138"
+    },
+    {
+      "pattern": "almost all",
+      "suggestion": "most",
+      "alts": [
+        "most"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0139"
+    },
+    {
+      "pattern": "almost never",
+      "suggestion": "seldom",
+      "alts": [
+        "seldom"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0140"
+    },
+    {
+      "pattern": "an adequate number of",
+      "suggestion": "enough",
+      "alts": [
+        "enough"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0141"
+    },
+    {
+      "pattern": "an appreciable number of",
+      "suggestion": "many",
+      "alts": [
+        "many"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0142"
+    },
+    {
+      "pattern": "an estimated",
+      "suggestion": "about",
+      "alts": [
+        "about"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0143"
+    },
+    {
+      "pattern": "any and all",
+      "suggestion": "all",
+      "alts": [
+        "all"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0144"
+    },
+    {
+      "pattern": "are in agreement",
+      "suggestion": "agree",
+      "alts": [
+        "agree"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0145"
+    },
+    {
+      "pattern": "as a matter of fact",
+      "suggestion": "in fact",
+      "alts": [
+        "in fact"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0146"
+    },
+    {
+      "pattern": "as a result of",
+      "suggestion": "because of",
+      "alts": [
+        "because of"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0147"
+    },
+    {
+      "pattern": "as per",
+      "suggestion": "per",
+      "alts": [
+        "per"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0148"
+    },
+    {
+      "pattern": "at a later date",
+      "suggestion": "later",
+      "alts": [
+        "later"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0149"
+    },
+    {
+      "pattern": "at all times",
+      "suggestion": "always",
+      "alts": [
+        "always"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0150"
+    },
+    {
+      "pattern": "at this point in time",
+      "suggestion": "at this point",
+      "alts": [
+        "at this point"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0151"
+    },
+    {
+      "pattern": "based in large part on",
+      "suggestion": "based on",
+      "alts": [
+        "based on"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0152"
+    },
+    {
+      "pattern": "based on the fact that",
+      "suggestion": "because",
+      "alts": [
+        "because"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0153"
+    },
+    {
+      "pattern": "basic necessity",
+      "suggestion": "necessity",
+      "alts": [
+        "necessity"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0154"
+    },
+    {
+      "pattern": "came to a realization",
+      "suggestion": "realized",
+      "alts": [
+        "realized"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0155"
+    },
+    {
+      "pattern": "came to an abrupt end",
+      "suggestion": "ended abruptly",
+      "alts": [
+        "ended abruptly"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0156"
+    },
+    {
+      "pattern": "carry out an evaluation of",
+      "suggestion": "evaluate",
+      "alts": [
+        "evaluate"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0157"
+    },
+    {
+      "pattern": "close down",
+      "suggestion": "close",
+      "alts": [
+        "close"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0158"
+    },
+    {
+      "pattern": "closed down",
+      "suggestion": "closed",
+      "alts": [
+        "closed"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0159"
+    },
+    {
+      "pattern": "complete stranger",
+      "suggestion": "stranger",
+      "alts": [
+        "stranger"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0160"
+    },
+    {
+      "pattern": "completely separate",
+      "suggestion": "separate",
+      "alts": [
+        "separate"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0161"
+    },
+    {
+      "pattern": "concerning the matter of",
+      "suggestion": "regarding",
+      "alts": [
+        "regarding"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0162"
+    },
+    {
+      "pattern": "conduct a review of",
+      "suggestion": "review",
+      "alts": [
+        "review"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0163"
+    },
+    {
+      "pattern": "conduct an investigation",
+      "suggestion": "investigate",
+      "alts": [
+        "investigate"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0164"
+    },
+    {
+      "pattern": "conduct experiments",
+      "suggestion": "experiment",
+      "alts": [
+        "experiment"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0165"
+    },
+    {
+      "pattern": "continue on",
+      "suggestion": "continue",
+      "alts": [
+        "continue"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0166"
+    },
+    {
+      "pattern": "despite the fact that",
+      "suggestion": "although",
+      "alts": [
+        "although"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0167"
+    },
+    {
+      "pattern": "disappear from sight",
+      "suggestion": "disappear",
+      "alts": [
+        "disappear"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0168"
+    },
+    {
+      "pattern": "doomed to fail",
+      "suggestion": "doomed",
+      "alts": [
+        "doomed"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0169"
+    },
+    {
+      "pattern": "drag and drop",
+      "suggestion": "drag",
+      "alts": [
+        "drag"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0170"
+    },
+    {
+      "pattern": "drag-and-drop",
+      "suggestion": "drag",
+      "alts": [
+        "drag"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0171"
+    },
+    {
+      "pattern": "during the period of",
+      "suggestion": "during",
+      "alts": [
+        "during"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0172"
+    },
+    {
+      "pattern": "during the time that",
+      "suggestion": "while",
+      "alts": [
+        "while"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0173"
+    },
+    {
+      "pattern": "emergency situation",
+      "suggestion": "emergency",
+      "alts": [
+        "emergency"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0174"
+    },
+    {
+      "pattern": "establish connectivity",
+      "suggestion": "connect",
+      "alts": [
+        "connect"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0175"
+    },
+    {
+      "pattern": "except when",
+      "suggestion": "unless",
+      "alts": [
+        "unless"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0176"
+    },
+    {
+      "pattern": "excessive number",
+      "suggestion": "too many",
+      "alts": [
+        "too many"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0177"
+    },
+    {
+      "pattern": "extend an invitation",
+      "suggestion": "invite",
+      "alts": [
+        "invite"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0178"
+    },
+    {
+      "pattern": "fall down",
+      "suggestion": "fall",
+      "alts": [
+        "fall"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0179"
+    },
+    {
+      "pattern": "fell down",
+      "suggestion": "fell",
+      "alts": [
+        "fell"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0180"
+    },
+    {
+      "pattern": "for the duration of",
+      "suggestion": "during",
+      "alts": [
+        "during"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0181"
+    },
+    {
+      "pattern": "gather together",
+      "suggestion": "gather",
+      "alts": [
+        "gather"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0182"
+    },
+    {
+      "pattern": "has the ability to",
+      "suggestion": "can",
+      "alts": [
+        "can"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0183"
+    },
+    {
+      "pattern": "has the capacity to",
+      "suggestion": "can",
+      "alts": [
+        "can"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0184"
+    },
+    {
+      "pattern": "has the opportunity to",
+      "suggestion": "could",
+      "alts": [
+        "could"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0185"
+    },
+    {
+      "pattern": "hold a meeting",
+      "suggestion": "meet",
+      "alts": [
+        "meet"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0186"
+    },
+    {
+      "pattern": "if this is not the case",
+      "suggestion": "if not",
+      "alts": [
+        "if not"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0187"
+    },
+    {
+      "pattern": "in a careful manner",
+      "suggestion": "carefully",
+      "alts": [
+        "carefully"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0188"
+    },
+    {
+      "pattern": "in a thoughtful manner",
+      "suggestion": "thoughtfully",
+      "alts": [
+        "thoughtfully"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0189"
+    },
+    {
+      "pattern": "in most cases",
+      "suggestion": "usually",
+      "alts": [
+        "usually"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0190"
+    },
+    {
+      "pattern": "in some cases",
+      "suggestion": "sometimes",
+      "alts": [
+        "sometimes"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0191"
+    },
+    {
+      "pattern": "in spite of",
+      "suggestion": "despite",
+      "alts": [
+        "despite"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0192"
+    },
+    {
+      "pattern": "in spite of the fact that",
+      "suggestion": "although",
+      "alts": [
+        "although"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0193"
+    },
+    {
+      "pattern": "in the event that",
+      "suggestion": "if",
+      "alts": [
+        "if"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0194"
+    },
+    {
+      "pattern": "in the neighborhood of",
+      "suggestion": "roughly",
+      "alts": [
+        "roughly"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0195"
+    },
+    {
+      "pattern": "in the vicinity of",
+      "suggestion": "close to",
+      "alts": [
+        "close to"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0196"
+    },
+    {
+      "pattern": "it would appear that",
+      "suggestion": "apparently",
+      "alts": [
+        "apparently"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0197"
+    },
+    {
+      "pattern": "lift up",
+      "suggestion": "lift",
+      "alts": [
+        "lift"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0198"
+    },
+    {
+      "pattern": "made reference to",
+      "suggestion": "referred to",
+      "alts": [
+        "referred to"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0199"
+    },
+    {
+      "pattern": "make reference to",
+      "suggestion": "refer to",
+      "alts": [
+        "refer to"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0200"
+    },
+    {
+      "pattern": "none at all",
+      "suggestion": "none",
+      "alts": [
+        "none"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0201"
+    },
+    {
+      "pattern": "not in a position to",
+      "suggestion": "unable",
+      "alts": [
+        "unable"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0202"
+    },
+    {
+      "pattern": "not possible",
+      "suggestion": "impossible",
+      "alts": [
+        "impossible"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0203"
+    },
+    {
+      "pattern": "of major importance",
+      "suggestion": "important",
+      "alts": [
+        "important"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0204"
+    },
+    {
+      "pattern": "perform an assessment of",
+      "suggestion": "assess",
+      "alts": [
+        "assess"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0205"
+    },
+    {
+      "pattern": "place an order",
+      "suggestion": "order",
+      "alts": [
+        "order"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0206"
+    },
+    {
+      "pattern": "plays a key role in",
+      "suggestion": "is essential to",
+      "alts": [
+        "is essential to"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0207"
+    },
+    {
+      "pattern": "present time",
+      "suggestion": "now",
+      "alts": [
+        "now"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0208"
+    },
+    {
+      "pattern": "some of the",
+      "suggestion": "some",
+      "alts": [
+        "some"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0209"
+    },
+    {
+      "pattern": "subsequent to",
+      "suggestion": "after",
+      "alts": [
+        "after"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0210"
+    },
+    {
+      "pattern": "take action",
+      "suggestion": "act",
+      "alts": [
+        "act"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0211"
+    },
+    {
+      "pattern": "take into account",
+      "suggestion": "consider",
+      "alts": [
+        "consider"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0212"
+    },
+    {
+      "pattern": "the question as to whether",
+      "suggestion": "whether",
+      "alts": [
+        "whether"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0213"
+    },
+    {
+      "pattern": "there is no doubt but that",
+      "suggestion": "doubtless",
+      "alts": [
+        "doubtless"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0214"
+    },
+    {
+      "pattern": "this day and age",
+      "suggestion": "this age",
+      "alts": [
+        "this age"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0215"
+    },
+    {
+      "pattern": "this is a subject that",
+      "suggestion": "this subject",
+      "alts": [
+        "this subject"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0216"
+    },
+    {
+      "pattern": "under the provisions of",
+      "suggestion": "under",
+      "alts": [
+        "under"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0217"
+    },
+    {
+      "pattern": "used for fuel purposes",
+      "suggestion": "used for fuel",
+      "alts": [
+        "used for fuel"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0218"
+    },
+    {
+      "pattern": "with regard to",
+      "suggestion": "regarding",
+      "alts": [
+        "regarding"
+      ],
+      "source": "vale_microsoft.wordiness",
+      "id": "VEI-T1-SUB-0219"
+    },
+    {
+      "pattern": "a number of",
+      "suggestion": "many",
+      "alts": [
+        "many",
+        "some"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0220"
+    },
+    {
+      "pattern": "accede to",
+      "suggestion": "agree to",
+      "alts": [
+        "agree to",
+        "allow"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0221"
+    },
+    {
+      "pattern": "accelerate",
+      "suggestion": "speed up",
+      "alts": [
+        "speed up"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0222"
+    },
+    {
+      "pattern": "additional",
+      "suggestion": "added",
+      "alts": [
+        "added",
+        "extra",
+        "more",
+        "other"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0223"
+    },
+    {
+      "pattern": "address",
+      "suggestion": "discuss",
+      "alts": [
+        "discuss"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0224"
+    },
+    {
+      "pattern": "addressees are requested",
+      "suggestion": "please",
+      "alts": [
+        "please"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0225"
+    },
+    {
+      "pattern": "adversely impact on",
+      "suggestion": "hurt",
+      "alts": [
+        "hurt",
+        "set back"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0226"
+    },
+    {
+      "pattern": "afford an opportunity",
+      "suggestion": "allow",
+      "alts": [
+        "allow",
+        "let"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0227"
+    },
+    {
+      "pattern": "aforementioned",
+      "suggestion": "remove",
+      "alts": [
+        "remove"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0228"
+    },
+    {
+      "pattern": "all of",
+      "suggestion": "all",
+      "alts": [
+        "all"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0229"
+    },
+    {
+      "pattern": "already existing",
+      "suggestion": "existing",
+      "alts": [
+        "existing"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0230"
+    },
+    {
+      "pattern": "and/or",
+      "suggestion": "… or … or both",
+      "alts": [
+        "… or … or both"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0231"
+    },
+    {
+      "pattern": "appreciable",
+      "suggestion": "many",
+      "alts": [
+        "many"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0232"
+    },
+    {
+      "pattern": "appropriate",
+      "suggestion": "proper",
+      "alts": [
+        "proper",
+        "right"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0233"
+    },
+    {
+      "pattern": "approximate",
+      "suggestion": "about",
+      "alts": [
+        "about"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0234"
+    },
+    {
+      "pattern": "arrive onboard",
+      "suggestion": "arrive",
+      "alts": [
+        "arrive"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0235"
+    },
+    {
+      "pattern": "as prescribed by",
+      "suggestion": "in",
+      "alts": [
+        "in"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0236"
+    },
+    {
+      "pattern": "as to",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0237"
+    },
+    {
+      "pattern": "as yet",
+      "suggestion": "yet",
+      "alts": [
+        "yet"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0238"
+    },
+    {
+      "pattern": "assist",
+      "suggestion": "aid",
+      "alts": [
+        "aid",
+        "help"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0239"
+    },
+    {
+      "pattern": "at this time",
+      "suggestion": "now",
+      "alts": [
+        "now"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0240"
+    },
+    {
+      "pattern": "attributable to",
+      "suggestion": "because",
+      "alts": [
+        "because"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0241"
+    },
+    {
+      "pattern": "authorise",
+      "suggestion": "allow",
+      "alts": [
+        "allow",
+        "let"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0242"
+    },
+    {
+      "pattern": "be advised",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0243"
+    },
+    {
+      "pattern": "benefit",
+      "suggestion": "help",
+      "alts": [
+        "help"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0244"
+    },
+    {
+      "pattern": "benefit from",
+      "suggestion": "enjoy",
+      "alts": [
+        "enjoy"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0245"
+    },
+    {
+      "pattern": "by means of",
+      "suggestion": "by",
+      "alts": [
+        "by",
+        "with"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0246"
+    },
+    {
+      "pattern": "by virtue of",
+      "suggestion": "by",
+      "alts": [
+        "by",
+        "under"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0247"
+    },
+    {
+      "pattern": "capability",
+      "suggestion": "ability",
+      "alts": [
+        "ability"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0248"
+    },
+    {
+      "pattern": "caveat",
+      "suggestion": "warning",
+      "alts": [
+        "warning"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0249"
+    },
+    {
+      "pattern": "combat environment",
+      "suggestion": "combat",
+      "alts": [
+        "combat"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0250"
+    },
+    {
+      "pattern": "combined",
+      "suggestion": "joint",
+      "alts": [
+        "joint"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0251"
+    },
+    {
+      "pattern": "comply with",
+      "suggestion": "follow",
+      "alts": [
+        "follow"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0252"
+    },
+    {
+      "pattern": "component",
+      "suggestion": "part",
+      "alts": [
+        "part"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0253"
+    },
+    {
+      "pattern": "currently",
+      "suggestion": "now",
+      "alts": [
+        "now"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0254"
+    },
+    {
+      "pattern": "deem",
+      "suggestion": "believe",
+      "alts": [
+        "believe",
+        "consider",
+        "think"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0255"
+    },
+    {
+      "pattern": "delete",
+      "suggestion": "cut",
+      "alts": [
+        "cut",
+        "drop"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0256"
+    },
+    {
+      "pattern": "during the period",
+      "suggestion": "during",
+      "alts": [
+        "during"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0257"
+    },
+    {
+      "pattern": "e.g.",
+      "suggestion": "for example",
+      "alts": [
+        "for example",
+        "such as"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0258"
+    },
+    {
+      "pattern": "economical",
+      "suggestion": "cheap",
+      "alts": [
+        "cheap"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0259"
+    },
+    {
+      "pattern": "effect",
+      "suggestion": "choose",
+      "alts": [
+        "choose",
+        "pick",
+        "result"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0260"
+    },
+    {
+      "pattern": "effect modifications",
+      "suggestion": "make changes",
+      "alts": [
+        "make changes"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0261"
+    },
+    {
+      "pattern": "elect",
+      "suggestion": "choose",
+      "alts": [
+        "choose"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0262"
+    },
+    {
+      "pattern": "ensure",
+      "suggestion": "make sure",
+      "alts": [
+        "make sure"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0263"
+    },
+    {
+      "pattern": "equipments",
+      "suggestion": "equipment",
+      "alts": [
+        "equipment"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0264"
+    },
+    {
+      "pattern": "establish",
+      "suggestion": "set up",
+      "alts": [
+        "set up",
+        "prove",
+        "show"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0265"
+    },
+    {
+      "pattern": "evaluate",
+      "suggestion": "check",
+      "alts": [
+        "check",
+        "test"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0266"
+    },
+    {
+      "pattern": "evidenced",
+      "suggestion": "showed",
+      "alts": [
+        "showed"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0267"
+    },
+    {
+      "pattern": "evident",
+      "suggestion": "clear",
+      "alts": [
+        "clear"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0268"
+    },
+    {
+      "pattern": "exhibit",
+      "suggestion": "show",
+      "alts": [
+        "show"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0269"
+    },
+    {
+      "pattern": "expeditious",
+      "suggestion": "fast",
+      "alts": [
+        "fast",
+        "quick"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0270"
+    },
+    {
+      "pattern": "expend",
+      "suggestion": "spend",
+      "alts": [
+        "spend"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0271"
+    },
+    {
+      "pattern": "expertise",
+      "suggestion": "ability",
+      "alts": [
+        "ability"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0272"
+    },
+    {
+      "pattern": "expiration",
+      "suggestion": "end",
+      "alts": [
+        "end"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0273"
+    },
+    {
+      "pattern": "factual evidence",
+      "suggestion": "evidence",
+      "alts": [
+        "evidence",
+        "facts"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0274"
+    },
+    {
+      "pattern": "failed to",
+      "suggestion": "didn’t",
+      "alts": [
+        "didn’t"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0275"
+    },
+    {
+      "pattern": "feasible",
+      "suggestion": "can be done",
+      "alts": [
+        "can be done",
+        "workable"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0276"
+    },
+    {
+      "pattern": "finalise",
+      "suggestion": "complete",
+      "alts": [
+        "complete",
+        "finish"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0277"
+    },
+    {
+      "pattern": "first and foremost",
+      "suggestion": "first",
+      "alts": [
+        "first"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0278"
+    },
+    {
+      "pattern": "for a period of",
+      "suggestion": "for",
+      "alts": [
+        "for"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0279"
+    },
+    {
+      "pattern": "for the purpose of",
+      "suggestion": "to",
+      "alts": [
+        "to"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0280"
+    },
+    {
+      "pattern": "forfeit",
+      "suggestion": "give up",
+      "alts": [
+        "give up",
+        "lose"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0281"
+    },
+    {
+      "pattern": "formulate",
+      "suggestion": "plan",
+      "alts": [
+        "plan"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0282"
+    },
+    {
+      "pattern": "forward",
+      "suggestion": "send",
+      "alts": [
+        "send"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0283"
+    },
+    {
+      "pattern": "function",
+      "suggestion": "act",
+      "alts": [
+        "act",
+        "role",
+        "work"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0284"
+    },
+    {
+      "pattern": "furnish",
+      "suggestion": "give",
+      "alts": [
+        "give",
+        "send"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0285"
+    },
+    {
+      "pattern": "has a requirement for",
+      "suggestion": "needs",
+      "alts": [
+        "needs"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0286"
+    },
+    {
+      "pattern": "has no effect",
+      "suggestion": "does nothing",
+      "alts": [
+        "does nothing",
+        "does not apply"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0287"
+    },
+    {
+      "pattern": "herein",
+      "suggestion": "here",
+      "alts": [
+        "here"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0288"
+    },
+    {
+      "pattern": "heretofore",
+      "suggestion": "until now",
+      "alts": [
+        "until now"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0289"
+    },
+    {
+      "pattern": "herewith",
+      "suggestion": "here",
+      "alts": [
+        "here",
+        "below"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0290"
+    },
+    {
+      "pattern": "however",
+      "suggestion": "but",
+      "alts": [
+        "but",
+        "yet"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0291"
+    },
+    {
+      "pattern": "i.e.",
+      "suggestion": "as in",
+      "alts": [
+        "as in"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0292"
+    },
+    {
+      "pattern": "identify",
+      "suggestion": "find",
+      "alts": [
+        "find",
+        "name",
+        "show"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0293"
+    },
+    {
+      "pattern": "if and when",
+      "suggestion": "if",
+      "alts": [
+        "if",
+        "when"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0294"
+    },
+    {
+      "pattern": "immediately",
+      "suggestion": "at once",
+      "alts": [
+        "at once"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0295"
+    },
+    {
+      "pattern": "impacted",
+      "suggestion": "affected",
+      "alts": [
+        "affected",
+        "changed",
+        "harmed"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0296"
+    },
+    {
+      "pattern": "implement",
+      "suggestion": "carry out",
+      "alts": [
+        "carry out",
+        "install",
+        "put in place",
+        "tool",
+        "start"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0297"
+    },
+    {
+      "pattern": "in accordance with",
+      "suggestion": "by",
+      "alts": [
+        "by",
+        "under",
+        "following",
+        "per"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0298"
+    },
+    {
+      "pattern": "in all likelihood",
+      "suggestion": "probably",
+      "alts": [
+        "probably"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0299"
+    },
+    {
+      "pattern": "in excess of",
+      "suggestion": "more than",
+      "alts": [
+        "more than"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0300"
+    },
+    {
+      "pattern": "in light of the fact that",
+      "suggestion": "because",
+      "alts": [
+        "because"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0301"
+    },
+    {
+      "pattern": "in order for",
+      "suggestion": "for",
+      "alts": [
+        "for"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0302"
+    },
+    {
+      "pattern": "in order that",
+      "suggestion": "for",
+      "alts": [
+        "for",
+        "so"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0303"
+    },
+    {
+      "pattern": "in regard to",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "concerning",
+        "on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0304"
+    },
+    {
+      "pattern": "in relation to",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "with",
+        "to"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0305"
+    },
+    {
+      "pattern": "in some instances",
+      "suggestion": "sometimes",
+      "alts": [
+        "sometimes"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0306"
+    },
+    {
+      "pattern": "in terms of",
+      "suggestion": "as",
+      "alts": [
+        "as",
+        "for",
+        "with"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0307"
+    },
+    {
+      "pattern": "in the amount of",
+      "suggestion": "for",
+      "alts": [
+        "for"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0308"
+    },
+    {
+      "pattern": "in the event of",
+      "suggestion": "if",
+      "alts": [
+        "if"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0309"
+    },
+    {
+      "pattern": "in the near future",
+      "suggestion": "soon",
+      "alts": [
+        "soon",
+        "shortly"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0310"
+    },
+    {
+      "pattern": "in the process of",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0311"
+    },
+    {
+      "pattern": "in view of",
+      "suggestion": "since",
+      "alts": [
+        "since"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0312"
+    },
+    {
+      "pattern": "in view of the above",
+      "suggestion": "so",
+      "alts": [
+        "so"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0313"
+    },
+    {
+      "pattern": "inasmuch as",
+      "suggestion": "since",
+      "alts": [
+        "since"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0314"
+    },
+    {
+      "pattern": "inception",
+      "suggestion": "start",
+      "alts": [
+        "start"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0315"
+    },
+    {
+      "pattern": "incumbent upon",
+      "suggestion": "must",
+      "alts": [
+        "must"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0316"
+    },
+    {
+      "pattern": "indicate",
+      "suggestion": "show",
+      "alts": [
+        "show",
+        "say",
+        "state",
+        "write down"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0317"
+    },
+    {
+      "pattern": "initial",
+      "suggestion": "first",
+      "alts": [
+        "first"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0318"
+    },
+    {
+      "pattern": "inter alia",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0319"
+    },
+    {
+      "pattern": "interface",
+      "suggestion": "meet",
+      "alts": [
+        "meet",
+        "work with"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0320"
+    },
+    {
+      "pattern": "interpose no objection",
+      "suggestion": "don’t object",
+      "alts": [
+        "don’t object"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0321"
+    },
+    {
+      "pattern": "is applicable to",
+      "suggestion": "applies to",
+      "alts": [
+        "applies to"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0322"
+    },
+    {
+      "pattern": "is authorised to",
+      "suggestion": "may",
+      "alts": [
+        "may"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0323"
+    },
+    {
+      "pattern": "is authorized to",
+      "suggestion": "may",
+      "alts": [
+        "may"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0324"
+    },
+    {
+      "pattern": "is in consonance with",
+      "suggestion": "agrees with",
+      "alts": [
+        "agrees with",
+        "follows"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0325"
+    },
+    {
+      "pattern": "is responsible for",
+      "suggestion": "handles",
+      "alts": [
+        "handles"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0326"
+    },
+    {
+      "pattern": "it appears",
+      "suggestion": "seems",
+      "alts": [
+        "seems"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0327"
+    },
+    {
+      "pattern": "it is",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0328"
+    },
+    {
+      "pattern": "it is essential",
+      "suggestion": "must",
+      "alts": [
+        "must",
+        "need to"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0329"
+    },
+    {
+      "pattern": "it is requested",
+      "suggestion": "please",
+      "alts": [
+        "please"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0330"
+    },
+    {
+      "pattern": "liaison",
+      "suggestion": "discussion",
+      "alts": [
+        "discussion"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0331"
+    },
+    {
+      "pattern": "limited number",
+      "suggestion": "limits",
+      "alts": [
+        "limits"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0332"
+    },
+    {
+      "pattern": "literally",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0333"
+    },
+    {
+      "pattern": "magnitude",
+      "suggestion": "size",
+      "alts": [
+        "size"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0334"
+    },
+    {
+      "pattern": "maximum",
+      "suggestion": "greatest",
+      "alts": [
+        "greatest",
+        "largest",
+        "most"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0335"
+    },
+    {
+      "pattern": "minimise",
+      "suggestion": "cut",
+      "alts": [
+        "cut",
+        "decrease"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0336"
+    },
+    {
+      "pattern": "minimize",
+      "suggestion": "cut",
+      "alts": [
+        "cut",
+        "decrease"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0337"
+    },
+    {
+      "pattern": "minimum",
+      "suggestion": "least",
+      "alts": [
+        "least",
+        "small",
+        "smallest"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0338"
+    },
+    {
+      "pattern": "monitor",
+      "suggestion": "check",
+      "alts": [
+        "check",
+        "track",
+        "watch"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0339"
+    },
+    {
+      "pattern": "nevertheless",
+      "suggestion": "besides",
+      "alts": [
+        "besides",
+        "even so",
+        "still"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0340"
+    },
+    {
+      "pattern": "not certain",
+      "suggestion": "uncertain",
+      "alts": [
+        "uncertain"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0341"
+    },
+    {
+      "pattern": "not later than",
+      "suggestion": "by",
+      "alts": [
+        "by",
+        "before"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0342"
+    },
+    {
+      "pattern": "not many",
+      "suggestion": "few",
+      "alts": [
+        "few"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0343"
+    },
+    {
+      "pattern": "not often",
+      "suggestion": "rarely",
+      "alts": [
+        "rarely"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0344"
+    },
+    {
+      "pattern": "not unless",
+      "suggestion": "only if",
+      "alts": [
+        "only if"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0345"
+    },
+    {
+      "pattern": "not unlike",
+      "suggestion": "alike",
+      "alts": [
+        "alike",
+        "similar"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0346"
+    },
+    {
+      "pattern": "notwithstanding",
+      "suggestion": "despite",
+      "alts": [
+        "despite",
+        "in spite of",
+        "still"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0347"
+    },
+    {
+      "pattern": "null and void",
+      "suggestion": "null",
+      "alts": [
+        "null",
+        "void"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0348"
+    },
+    {
+      "pattern": "objective",
+      "suggestion": "aim",
+      "alts": [
+        "aim",
+        "goal"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0349"
+    },
+    {
+      "pattern": "observe",
+      "suggestion": "see",
+      "alts": [
+        "see"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0350"
+    },
+    {
+      "pattern": "obtain",
+      "suggestion": "get",
+      "alts": [
+        "get"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0351"
+    },
+    {
+      "pattern": "on the contrary",
+      "suggestion": "but",
+      "alts": [
+        "but",
+        "so"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0352"
+    },
+    {
+      "pattern": "on the other hand",
+      "suggestion": "but",
+      "alts": [
+        "but",
+        "so"
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0353"
+    },
+    {
+      "pattern": "one particular",
+      "suggestion": "one",
+      "alts": [
+        "one"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0354"
+    },
+    {
+      "pattern": "operate",
+      "suggestion": "run",
+      "alts": [
+        "run",
+        "use",
+        "work"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0355"
+    },
+    {
+      "pattern": "option",
+      "suggestion": "choice",
+      "alts": [
+        "choice"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0356"
+    },
+    {
+      "pattern": "overall",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0357"
+    },
+    {
+      "pattern": "owing to the fact that",
+      "suggestion": "because",
+      "alts": [
+        "because",
+        "since"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0358"
+    },
+    {
+      "pattern": "parameters",
+      "suggestion": "limits",
+      "alts": [
+        "limits"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0359"
+    },
+    {
+      "pattern": "participate",
+      "suggestion": "take part",
+      "alts": [
+        "take part"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0360"
+    },
+    {
+      "pattern": "particulars",
+      "suggestion": "details",
+      "alts": [
+        "details"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0361"
+    },
+    {
+      "pattern": "pass away",
+      "suggestion": "die",
+      "alts": [
+        "die"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0362"
+    },
+    {
+      "pattern": "perform",
+      "suggestion": "do",
+      "alts": [
+        "do"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0363"
+    },
+    {
+      "pattern": "practicable",
+      "suggestion": "practical",
+      "alts": [
+        "practical"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0364"
+    },
+    {
+      "pattern": "preclude",
+      "suggestion": "prevent",
+      "alts": [
+        "prevent"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0365"
+    },
+    {
+      "pattern": "prior to",
+      "suggestion": "before",
+      "alts": [
+        "before"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0366"
+    },
+    {
+      "pattern": "prioritise",
+      "suggestion": "focus on",
+      "alts": [
+        "focus on",
+        "rank"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0367"
+    },
+    {
+      "pattern": "proceed",
+      "suggestion": "do",
+      "alts": [
+        "do",
+        "go ahead",
+        "try"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0368"
+    },
+    {
+      "pattern": "proficiency",
+      "suggestion": "skill",
+      "alts": [
+        "skill"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0369"
+    },
+    {
+      "pattern": "promulgate",
+      "suggestion": "issue",
+      "alts": [
+        "issue",
+        "publish"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0370"
+    },
+    {
+      "pattern": "provided that",
+      "suggestion": "if",
+      "alts": [
+        "if"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0371"
+    },
+    {
+      "pattern": "provides guidance for",
+      "suggestion": "guides",
+      "alts": [
+        "guides"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0372"
+    },
+    {
+      "pattern": "pursuant to",
+      "suggestion": "by",
+      "alts": [
+        "by",
+        "following",
+        "per",
+        "under"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0373"
+    },
+    {
+      "pattern": "put simply",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0374"
+    },
+    {
+      "pattern": "reflect",
+      "suggestion": "say",
+      "alts": [
+        "say",
+        "show"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0375"
+    },
+    {
+      "pattern": "regarding",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "of",
+        "on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0376"
+    },
+    {
+      "pattern": "relative to",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0377"
+    },
+    {
+      "pattern": "remain",
+      "suggestion": "stay",
+      "alts": [
+        "stay"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0378"
+    },
+    {
+      "pattern": "remainder",
+      "suggestion": "rest",
+      "alts": [
+        "rest"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0379"
+    },
+    {
+      "pattern": "remuneration",
+      "suggestion": "pay",
+      "alts": [
+        "pay",
+        "payment"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0380"
+    },
+    {
+      "pattern": "render",
+      "suggestion": "give",
+      "alts": [
+        "give",
+        "make"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0381"
+    },
+    {
+      "pattern": "represents",
+      "suggestion": "is",
+      "alts": [
+        "is"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0382"
+    },
+    {
+      "pattern": "request",
+      "suggestion": "ask",
+      "alts": [
+        "ask"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0383"
+    },
+    {
+      "pattern": "require",
+      "suggestion": "must",
+      "alts": [
+        "must",
+        "need"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0384"
+    },
+    {
+      "pattern": "requirement",
+      "suggestion": "need",
+      "alts": [
+        "need",
+        "rule"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0385"
+    },
+    {
+      "pattern": "reside",
+      "suggestion": "live",
+      "alts": [
+        "live"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0386"
+    },
+    {
+      "pattern": "residence",
+      "suggestion": "house",
+      "alts": [
+        "house"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0387"
+    },
+    {
+      "pattern": "retain",
+      "suggestion": "keep",
+      "alts": [
+        "keep"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0388"
+    },
+    {
+      "pattern": "satisfy",
+      "suggestion": "meet",
+      "alts": [
+        "meet",
+        "please"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0389"
+    },
+    {
+      "pattern": "selection",
+      "suggestion": "choice",
+      "alts": [
+        "choice"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0390"
+    },
+    {
+      "pattern": "set forth in",
+      "suggestion": "in",
+      "alts": [
+        "in"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0391"
+    },
+    {
+      "pattern": "should you wish",
+      "suggestion": "if you want",
+      "alts": [
+        "if you want"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0392"
+    },
+    {
+      "pattern": "similar to",
+      "suggestion": "like",
+      "alts": [
+        "like"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0393"
+    },
+    {
+      "pattern": "strategise",
+      "suggestion": "plan",
+      "alts": [
+        "plan"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0394"
+    },
+    {
+      "pattern": "strategize",
+      "suggestion": "plan",
+      "alts": [
+        "plan"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0395"
+    },
+    {
+      "pattern": "submit",
+      "suggestion": "give",
+      "alts": [
+        "give",
+        "send"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0396"
+    },
+    {
+      "pattern": "subsequently",
+      "suggestion": "after",
+      "alts": [
+        "after",
+        "later",
+        "then"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0397"
+    },
+    {
+      "pattern": "take action to",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0398"
+    },
+    {
+      "pattern": "terminate",
+      "suggestion": "end",
+      "alts": [
+        "end",
+        "stop"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0399"
+    },
+    {
+      "pattern": "the month of",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0400"
+    },
+    {
+      "pattern": "the undersigned",
+      "suggestion": "I",
+      "alts": [
+        "I"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0401"
+    },
+    {
+      "pattern": "the use of",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0402"
+    },
+    {
+      "pattern": "there are",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0403"
+    },
+    {
+      "pattern": "there is",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0404"
+    },
+    {
+      "pattern": "therefore",
+      "suggestion": "so",
+      "alts": [
+        "so",
+        "thus"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0405"
+    },
+    {
+      "pattern": "therein",
+      "suggestion": "there",
+      "alts": [
+        "there"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0406"
+    },
+    {
+      "pattern": "thereof",
+      "suggestion": "its",
+      "alts": [
+        "its",
+        "their"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0407"
+    },
+    {
+      "pattern": "time period",
+      "suggestion": "period",
+      "alts": [
+        "period",
+        "time"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0408"
+    },
+    {
+      "pattern": "timely",
+      "suggestion": "prompt",
+      "alts": [
+        "prompt"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0409"
+    },
+    {
+      "pattern": "took advantage of",
+      "suggestion": "preyed on",
+      "alts": [
+        "preyed on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0410"
+    },
+    {
+      "pattern": "transpire",
+      "suggestion": "happen",
+      "alts": [
+        "happen"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0411"
+    },
+    {
+      "pattern": "type",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0412"
+    },
+    {
+      "pattern": "utilisation",
+      "suggestion": "use",
+      "alts": [
+        "use"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0413"
+    },
+    {
+      "pattern": "utilise",
+      "suggestion": "use",
+      "alts": [
+        "use"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0414"
+    },
+    {
+      "pattern": "validate",
+      "suggestion": "confirm",
+      "alts": [
+        "confirm"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0415"
+    },
+    {
+      "pattern": "very",
+      "suggestion": "",
+      "alts": [
+        ""
+      ],
+      "omit_ok": true,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0416"
+    },
+    {
+      "pattern": "viable",
+      "suggestion": "practical",
+      "alts": [
+        "practical",
+        "workable"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0417"
+    },
+    {
+      "pattern": "vice",
+      "suggestion": "instead of",
+      "alts": [
+        "instead of",
+        "versus"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0418"
+    },
+    {
+      "pattern": "warrant",
+      "suggestion": "call for",
+      "alts": [
+        "call for",
+        "permit"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0419"
+    },
+    {
+      "pattern": "whereas",
+      "suggestion": "because",
+      "alts": [
+        "because",
+        "since"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0420"
+    },
+    {
+      "pattern": "with reference to",
+      "suggestion": "about",
+      "alts": [
+        "about"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0421"
+    },
+    {
+      "pattern": "with respect to",
+      "suggestion": "about",
+      "alts": [
+        "about",
+        "on"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0422"
+    },
+    {
+      "pattern": "witnessed",
+      "suggestion": "saw",
+      "alts": [
+        "saw",
+        "seen"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0423"
+    },
+    {
+      "pattern": "your office",
+      "suggestion": "you",
+      "alts": [
+        "you"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "id": "VEI-T1-SUB-0424"
+    }
+  ],
+  "excluded": [
+    {
+      "pattern": "shall",
+      "suggestion": "must",
+      "alts": [
+        "must",
+        "will"
+      ],
+      "omit_ok": false,
+      "source": "retext_simplify",
+      "reason": "O3/DEC-TEC-TOOL-003: shall is the mandatory keyword, not slop"
+    }
+  ],
+  "skipped": [
+    {
+      "raw_key": "\"approximate(?",
+      "raw_value": "ly)?\": about",
+      "reason": "quote character, unbalanced parens, or regex artifact in key"
+    },
+    {
+      "raw_key": "objective(?! C?)",
+      "raw_value": "aim|goal",
+      "reason": "quote character, unbalanced parens, or regex artifact in key"
+    }
+  ],
+  "dropped_microsoft": [
+    {
+      "raw_key": "\"sufficient number(?",
+      "raw_value": "of)?\": enough",
+      "reconstructed": "\"sufficient number(?: of)?\": enough",
+      "reason": "reconstructed key:value still contains regex syntax"
+    },
+    {
+      "raw_key": "(?",
+      "raw_value": "utilize|make use of): use",
+      "reconstructed": "(?: utilize|make use of): use",
+      "reason": "reconstructed key:value still contains regex syntax"
+    },
+    {
+      "raw_key": "a (?",
+      "raw_value": "large)? number of: many",
+      "reconstructed": "a (?: large)? number of: many",
+      "reason": "reconstructed key:value still contains regex syntax"
+    },
+    {
+      "raw_key": "all of(?! a sudden| these)",
+      "raw_value": "all",
+      "reconstructed": null,
+      "reason": "key contains unresolved regex artifact"
+    },
+    {
+      "raw_key": "in the (?",
+      "raw_value": "very)? near future: soon",
+      "reconstructed": "in the (?: very)? near future: soon",
+      "reason": "reconstructed key:value still contains regex syntax"
+    },
+    {
+      "raw_key": "time (?",
+      "raw_value": "frame|period): time",
+      "reconstructed": "time (?: frame|period): time",
+      "reason": "reconstructed key:value still contains regex syntax"
+    }
+  ],
+  "counts": {
+    "redhat_clean": 105,
+    "redhat_skipped": 2,
+    "merged99": 99,
+    "microsoft_clean": 108,
+    "microsoft_dropped": 6,
+    "retext_simplify": 327,
+    "final_rules": 424,
+    "excluded": 1
+  }
+}

@@ -16,6 +16,14 @@ export const panesAndClusters: Body = {
       kind: "text",
       body: "Two layers, and the difference between them is the thing to get. **Panes** divide what you are looking at. **Clusters** divide what you are working on.",
     },
+    {
+      kind: "flow",
+      steps: [
+        "One window",
+        "**Clusters** — separate work",
+        "**Panes** inside each — separate views",
+      ],
+    },
 
     { kind: "heading", body: "Panes" },
     {
@@ -36,7 +44,12 @@ export const panesAndClusters: Body = {
     },
     {
       kind: "text",
-      body: "The split direction is not a setting and is not random: **the focused pane splits along its longer axis**. A pane wider than it is tall gains a right-hand column; one taller than it is wide gains a bottom row.",
+      body: "The split direction is not a setting and is not random: **the focused pane splits along its longer axis**. A pane wider than tall gains a right-hand column; one taller than wide gains a bottom row.",
+    },
+    {
+      kind: "mock",
+      view: "pane-split",
+      caption: "Before and after: a pane wider than tall splits into a right-hand column.",
     },
     {
       kind: "note",
@@ -50,11 +63,16 @@ export const panesAndClusters: Body = {
     { kind: "heading", body: "Clusters" },
     {
       kind: "text",
-      body: "A **cluster** is an independent workspace inside one window. It owns its project, its arrangement of panes, its terminals, and the branch or worktree it is operating on.",
+      body: "A **cluster** is an independent workspace inside one window. It owns its project, its arrangement of panes, its terminals, and the branch or worktree it operates on.",
     },
     {
       kind: "text",
       body: "The tabs on the left of the switcher bar are clusters. Switching between them swaps the entire layout underneath — the panes, and the terminal band with them.",
+    },
+    {
+      kind: "mock",
+      view: "switcher-bar",
+      caption: "Cluster tabs on the left; this cluster's own app tabs beside them.",
     },
     {
       kind: "step",
@@ -70,7 +88,7 @@ export const panesAndClusters: Body = {
     },
     {
       kind: "text",
-      body: "That is the whole point. The project belongs to the cluster and not to the process, so two clusters are two genuinely separate pieces of work — which is what makes reviewing one branch while building on another possible without two copies of HELVE.",
+      body: "That is the whole point. The project belongs to the cluster and not to the process, so two clusters are two genuinely separate pieces of work. That separation is what makes reviewing one branch while building on another possible without two copies of HELVE.",
     },
     {
       kind: "note",
@@ -104,15 +122,15 @@ export const panesAndClusters: Body = {
     { kind: "heading", body: "A second window" },
     {
       kind: "text",
-      body: "Drag a tab out of the bar and drop it on the desktop and it becomes its own window — the way tearing off a browser tab works. **New Window** in the File menu opens an empty one.",
+      body: "Drag a tab out of the bar and drop it on the desktop, and it becomes its own window — the way tearing off a browser tab works. **New Window** in the File menu opens an empty one.",
     },
     {
       kind: "text",
-      body: "A detached window is not a reduced build. It mounts the same shell, with the same bands and the same menus, which is what makes it feel like the same application rather than a viewer that came off it.",
+      body: "A detached window is not a reduced build. It mounts the same shell, with the same bands and the same menus — the same application, not a viewer that came off it.",
     },
     {
       kind: "note",
-      body: "**New Window** has no accelerator. `Ctrl+Shift+N` is deliberately left unbound — every browser binds it to a private window, and a menu item drawn with an accelerator it does not perform is worse than one drawn with none.",
+      body: "**New Window** has no accelerator. `Ctrl+Shift+N` is deliberately left unbound. Every browser binds it to a private window, and a menu item drawn with an accelerator it does not perform is worse than one drawn with none.",
     },
   ],
 };

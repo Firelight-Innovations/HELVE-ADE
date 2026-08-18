@@ -18,6 +18,11 @@ export const firstProject: Body = {
 
     { kind: "heading", body: "Open one" },
     {
+      kind: "mock",
+      view: "home-start",
+      caption: "**Start**, and **Recents** below it — one entry marked **missing**.",
+    },
+    {
       kind: "step",
       body: "On the Home screen, click **Open Project** under **Start**. A native folder picker opens.",
       chord: "Ctrl+O",
@@ -32,7 +37,7 @@ export const firstProject: Body = {
     },
     {
       kind: "note",
-      body: "The picker is a native OS dialog and it blocks until you answer it. If HELVE looks frozen after clicking, check your other monitor — the button says **choose a folder…** while it is waiting, which is the only clue you get.",
+      body: "The picker is a native OS dialog and it blocks until you answer it. If HELVE looks frozen after clicking, check your other monitor — the button says **choose a folder…** while it waits, which is the only clue you get.",
     },
 
     { kind: "heading", body: "A plain folder is a real project" },
@@ -45,8 +50,16 @@ export const firstProject: Body = {
       body: "Home marks such a folder **not set up** and offers a button: **Set up as a HELVE project**. Nothing forces you to press it.",
     },
     {
+      kind: "flow",
+      steps: [
+        "Open a plain folder",
+        "Home marks it **not set up**",
+        "Click **Set up as a HELVE project**",
+      ],
+    },
+    {
       kind: "note",
-      body: "**New Project** does the same thing to a folder it creates for you. There is no name field anywhere — the folder's own name becomes the project's, which is why renaming a project later means renaming the manifest file rather than editing a setting.",
+      body: "**New Project** does the same thing to a folder it creates for you. No name field exists anywhere — the folder's own name becomes the project's, which is why renaming a project later means renaming the manifest file rather than editing a setting.",
     },
 
     { kind: "heading", body: "What setting it up writes" },
@@ -55,12 +68,17 @@ export const firstProject: Body = {
       body: "Exactly two things, both at the top level of the folder. Nothing else, anywhere.",
     },
     {
-      kind: "step",
-      body: "A manifest named after the folder — a project called `Anvil` gets `Anvil.helve`. It is small, hand-editable TOML, and it is meant for version control.",
+      kind: "mock",
+      view: "project-files",
+      caption: "`Anvil.helve` and `.helve/`, added beside the files the folder already had.",
     },
     {
       kind: "step",
-      body: "A `.helve/` directory beside it. This is the opposite of the manifest: everything HELVE *produces* about the project — agent traces, designs, docs — and it grows. It is created empty.",
+      body: "A manifest named after the folder — a project called `Anvil` gets `Anvil.helve`. Small, hand-editable TOML, meant for version control.",
+    },
+    {
+      kind: "step",
+      body: "A `.helve/` directory beside it. This is the opposite of the manifest: everything HELVE *produces* about the project — agent traces, designs, docs — and it grows. It starts empty.",
     },
     {
       kind: "text",
@@ -81,17 +99,17 @@ created-unix-ms = 1755300000000`,
     },
     {
       kind: "text",
-      body: 'The `id` is the point of the file. It is a creation timestamp followed by a hash of that time and the path — not a UUID, because a dependency for one value is a poor trade — and it is stable across renames and moves. It is what HELVE means when it says "this project", since the path is not: you will move the folder eventually.',
+      body: 'The `id` is the point of the file. It combines a creation timestamp with a hash of that time and the path — not a UUID, because a dependency for one value is a poor trade. It stays stable across renames and moves, and that is what HELVE means when it says "this project": the path is not, since you will move the folder eventually.',
     },
     {
       kind: "note",
-      body: "The manifest takes the folder's name plus an extension, the way `.uproject` and `.sln` do, because the manifest and the generated directory cannot share one name and both want to be called after the project.",
+      body: "The manifest takes the folder's name plus an extension, the way `.uproject` and `.sln` do. The manifest and the generated directory cannot share one name, and both want to be called after the project.",
     },
 
     { kind: "heading", body: "Recents" },
     {
       kind: "text",
-      body: "The project you have open, and the last twenty before it, are remembered in `projects.json` in the OS config directory. It is the only orchestrator state that survives the process — everything else is worked out again at boot.",
+      body: "The project you have open, and the last twenty before it, are remembered in `projects.json` in the OS config directory. That is the only orchestrator state that survives the process — everything else is worked out again at boot.",
     },
     {
       kind: "text",
@@ -109,7 +127,7 @@ created-unix-ms = 1755300000000`,
     },
     {
       kind: "soon",
-      body: "**Clone Project** is drawn but does nothing, and says **soon** on the button. Cloning is a git operation with progress, authentication and partial-checkout failure, and it is being built on the branch that work lives on. Clone the repository yourself and use **Open Project**.",
+      body: "**Clone Project** is drawn but does nothing, and says **soon** on the button. Cloning is a git operation with progress, authentication and partial-checkout failure, and that work is happening on its own branch. Clone the repository yourself and use **Open Project**.",
     },
   ],
 };

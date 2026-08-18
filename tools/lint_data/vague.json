@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "test": "T2",
+  "name": "Unfalsifiable",
+  "default_tier": "warning",
+  "terms": [
+    {
+      "id": "VEI-T2-VAG-0001",
+      "pattern": "a few"
+    },
+    {
+      "id": "VEI-T2-VAG-0002",
+      "pattern": "a lot of"
+    },
+    {
+      "id": "VEI-T2-VAG-0003",
+      "pattern": "a number of"
+    },
+    {
+      "id": "VEI-T2-VAG-0004",
+      "pattern": "about"
+    },
+    {
+      "id": "VEI-T2-VAG-0005",
+      "pattern": "acceptable"
+    },
+    {
+      "id": "VEI-T2-VAG-0006",
+      "pattern": "accommodate"
+    },
+    {
+      "id": "VEI-T2-VAG-0007",
+      "pattern": "accurate"
+    },
+    {
+      "id": "VEI-T2-VAG-0008",
+      "pattern": "ad hoc"
+    },
+    {
+      "id": "VEI-T2-VAG-0009",
+      "pattern": "adequate"
+    },
+    {
+      "id": "VEI-T2-VAG-0010",
+      "pattern": "allowable"
+    },
+    {
+      "id": "VEI-T2-VAG-0011",
+      "pattern": "almost"
+    },
+    {
+      "id": "VEI-T2-VAG-0012",
+      "pattern": "almost always"
+    },
+    {
+      "id": "VEI-T2-VAG-0013",
+      "pattern": "ancillary"
+    },
+    {
+      "id": "VEI-T2-VAG-0014",
+      "pattern": "any"
+    },
+    {
+      "id": "VEI-T2-VAG-0015",
+      "pattern": "appropriate"
+    },
+    {
+      "id": "VEI-T2-VAG-0016",
+      "pattern": "approximate"
+    },
+    {
+      "id": "VEI-T2-VAG-0017",
+      "pattern": "approximately"
+    },
+    {
+      "id": "VEI-T2-VAG-0018",
+      "pattern": "as {adjective} as possible"
+    },
+    {
+      "id": "VEI-T2-VAG-0019",
+      "pattern": "bad"
+    },
+    {
+      "id": "VEI-T2-VAG-0020",
+      "pattern": "clear"
+    },
+    {
+      "id": "VEI-T2-VAG-0021",
+      "pattern": "close"
+    },
+    {
+      "id": "VEI-T2-VAG-0022",
+      "pattern": "close to"
+    },
+    {
+      "id": "VEI-T2-VAG-0023",
+      "pattern": "common"
+    },
+    {
+      "id": "VEI-T2-VAG-0024",
+      "pattern": "cost-effective"
+    },
+    {
+      "id": "VEI-T2-VAG-0025",
+      "pattern": "customary"
+    },
+    {
+      "id": "VEI-T2-VAG-0026",
+      "pattern": "easy"
+    },
+    {
+      "id": "VEI-T2-VAG-0027",
+      "pattern": "easy to use"
+    },
+    {
+      "id": "VEI-T2-VAG-0028",
+      "pattern": "effective"
+    },
+    {
+      "id": "VEI-T2-VAG-0029",
+      "pattern": "efficient"
+    },
+    {
+      "id": "VEI-T2-VAG-0030",
+      "pattern": "engaging"
+    },
+    {
+      "id": "VEI-T2-VAG-0031",
+      "pattern": "essential"
+    },
+    {
+      "id": "VEI-T2-VAG-0032",
+      "pattern": "expandable"
+    },
+    {
+      "id": "VEI-T2-VAG-0033",
+      "pattern": "far"
+    },
+    {
+      "id": "VEI-T2-VAG-0034",
+      "pattern": "fast"
+    },
+    {
+      "id": "VEI-T2-VAG-0035",
+      "pattern": "feels good"
+    },
+    {
+      "id": "VEI-T2-VAG-0036",
+      "pattern": "flexible"
+    },
+    {
+      "id": "VEI-T2-VAG-0037",
+      "pattern": "fun"
+    },
+    {
+      "id": "VEI-T2-VAG-0038",
+      "pattern": "game feel"
+    },
+    {
+      "id": "VEI-T2-VAG-0039",
+      "pattern": "generic"
+    },
+    {
+      "id": "VEI-T2-VAG-0040",
+      "pattern": "good"
+    },
+    {
+      "id": "VEI-T2-VAG-0041",
+      "pattern": "immersive"
+    },
+    {
+      "id": "VEI-T2-VAG-0042",
+      "pattern": "intuitive"
+    },
+    {
+      "id": "VEI-T2-VAG-0043",
+      "pattern": "juicy"
+    },
+    {
+      "id": "VEI-T2-VAG-0044",
+      "pattern": "large"
+    },
+    {
+      "id": "VEI-T2-VAG-0045",
+      "pattern": "many"
+    },
+    {
+      "id": "VEI-T2-VAG-0046",
+      "pattern": "multiple"
+    },
+    {
+      "id": "VEI-T2-VAG-0047",
+      "pattern": "near"
+    },
+    {
+      "id": "VEI-T2-VAG-0048",
+      "pattern": "nearly"
+    },
+    {
+      "id": "VEI-T2-VAG-0049",
+      "pattern": "normal"
+    },
+    {
+      "id": "VEI-T2-VAG-0050",
+      "pattern": "numerous"
+    },
+    {
+      "id": "VEI-T2-VAG-0051",
+      "pattern": "polished"
+    },
+    {
+      "id": "VEI-T2-VAG-0052",
+      "pattern": "proficient"
+    },
+    {
+      "id": "VEI-T2-VAG-0053",
+      "pattern": "punchy"
+    },
+    {
+      "id": "VEI-T2-VAG-0054",
+      "pattern": "rapid"
+    },
+    {
+      "id": "VEI-T2-VAG-0055",
+      "pattern": "reasonable"
+    },
+    {
+      "id": "VEI-T2-VAG-0056",
+      "pattern": "recent"
+    },
+    {
+      "id": "VEI-T2-VAG-0057",
+      "pattern": "relevant"
+    },
+    {
+      "id": "VEI-T2-VAG-0058",
+      "pattern": "responsive"
+    },
+    {
+      "id": "VEI-T2-VAG-0059",
+      "pattern": "robust"
+    },
+    {
+      "id": "VEI-T2-VAG-0060",
+      "pattern": "routine"
+    },
+    {
+      "id": "VEI-T2-VAG-0061",
+      "pattern": "safe"
+    },
+    {
+      "id": "VEI-T2-VAG-0062",
+      "pattern": "satisfying"
+    },
+    {
+      "id": "VEI-T2-VAG-0063",
+      "pattern": "seamless"
+    },
+    {
+      "id": "VEI-T2-VAG-0064",
+      "pattern": "several"
+    },
+    {
+      "id": "VEI-T2-VAG-0065",
+      "pattern": "significant"
+    },
+    {
+      "id": "VEI-T2-VAG-0066",
+      "pattern": "similar"
+    },
+    {
+      "id": "VEI-T2-VAG-0067",
+      "pattern": "similarly"
+    },
+    {
+      "id": "VEI-T2-VAG-0068",
+      "pattern": "slow"
+    },
+    {
+      "id": "VEI-T2-VAG-0069",
+      "pattern": "small"
+    },
+    {
+      "id": "VEI-T2-VAG-0070",
+      "pattern": "smooth"
+    },
+    {
+      "id": "VEI-T2-VAG-0071",
+      "pattern": "snappy"
+    },
+    {
+      "id": "VEI-T2-VAG-0072",
+      "pattern": "some"
+    },
+    {
+      "id": "VEI-T2-VAG-0073",
+      "pattern": "strong"
+    },
+    {
+      "id": "VEI-T2-VAG-0074",
+      "pattern": "sufficient"
+    },
+    {
+      "id": "VEI-T2-VAG-0075",
+      "pattern": "suitable"
+    },
+    {
+      "id": "VEI-T2-VAG-0076",
+      "pattern": "tight"
+    },
+    {
+      "id": "VEI-T2-VAG-0077",
+      "pattern": "timely"
+    },
+    {
+      "id": "VEI-T2-VAG-0078",
+      "pattern": "typical"
+    },
+    {
+      "id": "VEI-T2-VAG-0079",
+      "pattern": "up to"
+    },
+    {
+      "id": "VEI-T2-VAG-0080",
+      "pattern": "usable"
+    },
+    {
+      "id": "VEI-T2-VAG-0081",
+      "pattern": "useful"
+    },
+    {
+      "id": "VEI-T2-VAG-0082",
+      "pattern": "user-friendly"
+    },
+    {
+      "id": "VEI-T2-VAG-0083",
+      "pattern": "various"
+    },
+    {
+      "id": "VEI-T2-VAG-0084",
+      "pattern": "very nearly"
+    }
+  ],
+  "suppression": {
+    "rule": "Suppress a T2 finding when the sentence has a number with a unit, a named acceptance-condition ID reference, or a named verification phrase (G4).",
+    "id_prefixes": [
+      "TRU-",
+      "DEC-",
+      "TL-",
+      "TEST-",
+      "REQ-"
+    ]
+  },
+  "notes": {
+    "severity": "Warn in every profile (O1); design keeps T2 at warning explicitly (spec §7.4)."
+  },
+  "counts": {
+    "terms": 84
+  }
+}
