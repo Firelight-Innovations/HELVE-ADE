@@ -291,6 +291,14 @@ in a command is logic that cannot be tested without Tauri.
 - RPC methods are `namespace/verb`: `files/list`, `files/read`, `home/state`.
 - Directories are singular when they hold one concept (`viewer/`, `explorer/`)
   and plural when they hold many of a kind (`apps/`, `crates/`, `icons/`).
+- **The product's name is never written out in source.** It comes from
+  `branding.toml`, through the generated `branding.generated.ts` in the frontend
+  and `branding::product_name()` in Rust. `docs/branding.md` has the list of
+  surfaces and, more importantly, the list of names that are *not* branding and
+  must never be renamed — the `.helve` extension, the `helve/*` RPC namespace,
+  the `helve-tool://` scheme, the `@helve/*` scope, the crate names and the
+  bundle identifier are wire formats, and renaming one breaks every tool
+  repository ever written against this shell.
 
 ---
 
@@ -300,11 +308,11 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 369 tests, all passing:
+What exists today — 371 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
-| `src-tauri/src/**` | 274 | `cargo test` |
+| `src-tauri/src/**` | 276 | `cargo test` |
 | `crates/helve-rpc` | 15 | `cargo test` |
 | `crates/helve-tool-manifest` | 11 | `cargo test` |
 | `examples/echo-tool` | 5 | `cargo test` |
@@ -386,6 +394,7 @@ all run, and `pnpm lint` is the single command that runs the three checks.
 | §6.1 no `any` | `@typescript-eslint/no-explicit-any` |
 | §6.3 `type` vs `interface` | `consistent-type-definitions` |
 | §6.5 hooks own state | `react-hooks/rules-of-hooks` |
+| §7 the product name is never hardcoded | `scripts/check-branding.mjs` |
 | comment concentration | `scripts/check-comments.mjs` |
 
 Dependency licensing and advisories are checked by `cargo deny check`, run as

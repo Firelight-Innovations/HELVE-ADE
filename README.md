@@ -166,8 +166,13 @@ incremental rebuild. Artifacts land in `target/release/`:
 | Path | What |
 |---|---|
 | `helve-orchestrator.exe` | the app, self-contained |
-| `bundle/msi/Helve_<ver>_x64_en-US.msi` | MSI installer |
-| `bundle/nsis/Helve_<ver>_x64-setup.exe` | NSIS installer |
+| `bundle/msi/HELVE_<ver>_x64_en-US.msi` | MSI installer |
+| `bundle/nsis/HELVE_<ver>_x64-setup.exe` | NSIS installer |
+
+Those filenames come from `productName` in `tauri.conf.json`, which is checked
+against `branding.toml` — renaming the product renames the installers with it.
+The bundle identifier does *not* change, and neither does the OS configuration
+directory Tauri derives from it, so nobody's existing projects or settings move.
 
 WiX and NSIS are downloaded automatically on the first release build.
 
@@ -197,8 +202,10 @@ between them rather than once each.
 Cargo.toml            Rust workspace root
 pnpm-workspace.yaml   Node workspace root
 helve.toml            stack manifest — pinned component versions
+branding.toml         what the product is called, and what it is drawn as
 docs/
   tool-protocol.md      the wire contract between the shell and a tool
+  branding.md           which names are branding and which are wire formats
 crates/               Rust libraries shared with the tool repos
   helve-tool-manifest/  parses and validates helve-tool.toml
   helve-rpc/            JSON-RPC over the standard streams, both halves
