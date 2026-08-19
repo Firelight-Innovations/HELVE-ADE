@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.19.0",
   "scripts": {
     "dev": "vite",
     "dev:agent": "vite --mode agent",
@@ -16,6 +17,7 @@
     "lint:js": "eslint .",
     "lint:rust": "node scripts/clippy-baseline.mjs",
     "lint:comments": "node scripts/check-comments.mjs",
+    "lint:deps": "cargo deny check",
     "slop": "node scripts/slop.mjs",
     "lint:fix": "eslint . --fix",
     "test": "pnpm run test:js && pnpm run test:rust",

@@ -52,14 +52,11 @@ jobs:
       # pnpm is set up before Node, because `cache: pnpm` below asks pnpm where
       # its store lives and needs the binary to answer.
       #
-      # The version is pinned here because `package.json` carries no
-      # `packageManager` field. Adding one is the better fix — the version would
-      # then live in one place and this becomes `version: false` — but
-      # `package.json` belongs to another work package this week. The delta is
-      # written up in docs/handoffs/readiness/wp-b.md.
+      # No version pinned here on purpose: `package.json` carries a
+      # `packageManager` field, and this action reads it. That keeps the pnpm
+      # version in one place rather than two that can drift, and it is the same
+      # version a contributor's own `corepack` will select.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.19.0
 
       - uses: actions/setup-node@v5
         with:
