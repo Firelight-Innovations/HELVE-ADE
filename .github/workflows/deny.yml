@@ -48,19 +48,14 @@ jobs:
         with:
           tool: cargo-deny
 
-      # Non-blocking, on purpose and only for now. The dependency tree has never
-      # been audited, so the first honest run may well be red, and a check that
+      # Blocking, because the tree has now been audited and is clean:
+      # `advisories ok, bans ok, licenses ok, sources ok`, with no GPL-family
+      # dependency anywhere in it and sixteen `unmaintained` advisories answered
+      # one at a time in `deny.toml`.
+      #
+      # This step was written non-blocking, on the reasoning that a check which
       # is red on arrival teaches everyone to ignore it before it has ever said
-      # anything true.
-      #
-      # This flips to blocking — delete the line — once the tree is known clean
-      # and any exceptions are written down in `deny.toml` with a reason. That
-      # is the point of the exercise; leaving it advisory forever would make
-      # this workflow decoration.
-      #
-      # `continue-on-error` sits on this step rather than on the job so that a
-      # failure to check out or to install `cargo-deny` still goes red. Those
-      # are broken infrastructure, not findings.
+      # anything true. That reasoning expired the moment the first real run came
+      # back green — from here, red means something changed.
       - name: cargo deny check
-        continue-on-error: true
         run: cargo deny check
