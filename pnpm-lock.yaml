@@ -96,6 +96,9 @@ importers:
       vite:
         specifier: ^7.0.4
         version: 7.3.6
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(vite@7.3.6)
 
   examples/echo-tool/ui:
     dependencies:

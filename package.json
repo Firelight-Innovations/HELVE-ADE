@@ -19,7 +19,7 @@
     "slop": "node scripts/slop.mjs",
     "lint:fix": "eslint . --fix",
     "test": "pnpm run test:js && pnpm run test:rust",
-    "test:js": "pnpm --filter \"./packages/**\" --filter \"./examples/**\" --if-present test",
+    "test:js": "vitest run && pnpm --filter \"./packages/**\" --filter \"./examples/**\" --if-present test",
     "test:rust": "cargo test --workspace",
     "typecheck": "pnpm run build:bridge && pnpm run build:file-icons && pnpm run build:monaco-languages && tsc",
     "verify": "pnpm build && pnpm test && pnpm lint && pnpm format:check",
@@ -63,6 +63,7 @@
     "prettier": "^3.9.6",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.67.0",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.10"
   }
 }
