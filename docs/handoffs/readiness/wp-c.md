@@ -35,11 +35,20 @@ subjects from the log, what §9 asks of a pull request, and what will not be
 accepted — the commercial tools, the tool protocol as the license boundary, and
 the three that follow from it.
 
-Two things are deliberately written to survive a package landing beside them.
+One paragraph is deliberately written to survive a package landing beside it.
 The frontend test paragraph points at `STANDARDS.md` §8 for which runner covers
 `src/` and where a frontend test file goes, rather than naming a config file, so
-WP-D can land whatever shape it lands. And the pull request section describes
-the three §9 items rather than a CI check, so it is true before and after WP-B.
+WP-D can land whatever shape it lands.
+
+What happens after a pull request opens is checked against WP-B's `chore/ci`
+(690e52b): the workflow runs literally `pnpm verify` on `windows-latest` and the
+status check reads `verify`, and the template asks three questions rather than
+offering a checklist. It is phrased as "opening a pull request runs" rather than
+"cannot merge until", because branch protection is a checklist item for Braden
+and not something a file can set — so the sentence is true today and stays true
+once he applies it. The `cargo deny` workflow is described only as a
+supply-chain check that is advisory for now, which is what it is until the
+dependency tree has been audited once.
 
 ## Delta for WP-H
 
@@ -70,6 +79,14 @@ and saves them an evening; saying it again above the prerequisites is where they
 will actually be looking when it matters. Both are worded as "untested", which
 is the true claim — nobody has decided against those platforms, and the honest
 version is also the one that invites the port.
+
+**These three sentences and WP-B's `verify.yml` are one decision in three
+places.** If decision 2 comes back as anything other than Windows-only, the
+README, `CONTRIBUTING.md` and the workflow's single `windows-latest` job all
+move, and moving one without the others is worse than moving none — prose
+promising Linux over a runner that only proves Windows is the "looks like
+coverage" failure WP-B's own runner comment argues against. WP-B records the
+same coupling in `docs/handoffs/readiness/wp-b.md` (53545bf).
 
 ### 2. The `CONTRIBUTING.md` pointer
 

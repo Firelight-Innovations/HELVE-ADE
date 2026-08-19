@@ -236,6 +236,21 @@ normal here.
    are contracts that other code and other repositories are built against, and a
    change to one is reviewed as a change to an API rather than to a file.
 
+Opening a pull request runs the full `pnpm verify` on Windows, as a check named
+`verify`. That is the same command you ran before pushing rather than a
+re-implementation of it, and the sameness is the point: a job that runs a
+hand-assembled list *resembling* `pnpm verify` is a job that makes "passes
+locally, fails in CI" into a category of problem, and here it is not one. A
+supply-chain check over the dependency tree runs alongside it and is advisory
+for now.
+
+The template asks three questions rather than offering a checklist: which layer
+the change touches (§1), whether the *full* `pnpm verify` passed rather than
+`verify:fast`, and — if it is a bug fix — where the test that would have caught
+it lives. All three are above, so it should read as a reminder rather than a new
+demand. On the third: "no test" with a reason is fine, and "no test" on its own
+is the thing that question exists to catch.
+
 Small is better than complete. A pull request that fixes one thing and carries
 the test for it gets reviewed the same evening; one that fixes one thing and
 reformats four files it did not otherwise change gets reviewed slowly, because
