@@ -13,6 +13,7 @@
 //! is a *user interface* act, and this module is Home's user interface half.
 
 use crate::apps::CallContext;
+use crate::branding;
 use crate::error::AppError;
 use crate::git;
 use crate::project::{self, ProjectSnapshot};
@@ -67,7 +68,7 @@ pub fn call(
 
         "home/open-project" => {
             let cluster = context.require_cluster()?;
-            match pick(app, "Open a HELVE project") {
+            match pick(app, &format!("Open a {} project", branding::product_name())) {
                 Some(dir) => shape(project::open(app, &dir, cluster).map_err(rpc)?),
                 None => state(app, context),
             }

@@ -11,6 +11,7 @@
  * the bottom hairline. Setting either here would be two owners of one property.
  */
 import type { Menu, WindowKind } from "../contract";
+import { PRODUCT_NAME } from "../../branding.generated";
 import { BrandGlyph } from "../../ui/Icon";
 import MenuBar from "./MenuBar";
 import HamburgerMenu from "./HamburgerMenu";
@@ -49,7 +50,7 @@ export interface TitleBarProps {
 /**
  * The title is two segments the tabs cannot show.
  *
- * The spec's title was "HELVE Engine — [tool]", and that has been replaced: the
+ * The spec's title was "the product — [tool]", and that has been replaced: the
  * surface you are looking at is already named by the tab an arm's length below,
  * so repeating it here spent the most legible strip in the window on the one
  * fact nothing else could hide. What the tabs cannot say is *which project* and
@@ -77,10 +78,15 @@ export default function TitleBar({ kind, project, worktree, menus }: TitleBarPro
           collision-avoidance logic to look for here.
 
           A segment with no answer is dropped rather than drawn as a placeholder.
-          With nothing open this reads "HELVE Engine", which is true; "HELVE
-          Engine | — | —" would be three claims where there is one. */}
+          With nothing open this reads as the product's name alone, which is
+          true; "HELVE | — | —" would be three claims where there is one.
+
+          It used to read "HELVE Engine", which was a different bug: the engine
+          is a separate repository and this shell is not it. The name now comes
+          from branding.toml through the generated module, so there is one place
+          left that can be wrong. */}
       <div className="titlebar__title">
-        <span>HELVE Engine</span>
+        <span>{PRODUCT_NAME}</span>
         {project !== null && (
           <>
             <span className="titlebar__title-sep">|</span>

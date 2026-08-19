@@ -20,6 +20,7 @@
 mod marker;
 mod store;
 
+use crate::branding;
 use crate::commands;
 use crate::error::{AppError, Result};
 use crate::shell_state::ShellState;
@@ -426,9 +427,9 @@ fn folder_name(path: &Path) -> String {
 /// Put each window's own project in its OS window title.
 ///
 /// **Per window, from the cluster that window is showing.** A window showing a
-/// cluster with no project — or showing no cluster at all — falls back to plain
-/// "HELVE" rather than inheriting a neighbour's name. Why the title is per
-/// window at all, and what it is read by, is in
+/// cluster with no project — or showing no cluster at all — falls back to the
+/// product name alone rather than inheriting a neighbour's name. Why the title
+/// is per window at all, and what it is read by, is in
 /// `docs/design-notes/backend-project.md`.
 ///
 /// Called after anything that can change the answer: a project opening or
@@ -437,9 +438,10 @@ fn folder_name(path: &Path) -> String {
 /// showing without touching any project.
 pub fn retitle(app: &AppHandle) {
     for (label, project) in app.state::<ShellState>().window_projects() {
+        let product = branding::product_name();
         let title = match project.as_deref() {
-            Some(path) => format!("{} — HELVE", folder_name(Path::new(path))),
-            None => "HELVE".to_string(),
+            Some(path) => format!("{} — {product}", folder_name(Path::new(path))),
+            None => product.to_string(),
         };
         if let Some(window) = app.get_webview_window(&label) {
             let _ = window.set_title(&title);

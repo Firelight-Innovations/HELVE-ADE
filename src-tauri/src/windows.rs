@@ -9,6 +9,7 @@
 //! together — full account, and the `tool-<id>` scheme this replaced, in
 //! `docs/design-notes/backend-core.md`.
 
+use crate::branding;
 use crate::error::{AppError, Result};
 use crate::shell_state::{ShellState, WindowGeometry};
 use tauri::{
@@ -49,7 +50,9 @@ pub fn create(
     let window = WebviewWindowBuilder::new(app, label, url)
         // The custom title bar is part of the design, in a detached window as in the main one.
         .decorations(false)
-        .title("Helve")
+        // Replaced a moment later by `project::retitle`, which is what puts this window's own
+        // project in front of the name. This is what the taskbar shows in between.
+        .title(branding::product_name())
         .visible(false)
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .inner_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1)

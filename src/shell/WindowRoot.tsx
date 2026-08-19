@@ -1273,7 +1273,7 @@ export default function WindowRoot({
         onBottomCollapsedChange={setBottomCollapsed}
         onBottomMaximizedChange={setBottomMaximized}
         slots={{
-          // "HELVE Engine | project | branch". What the window is *pointed at*,
+          // "HELVE | project | branch". What the window is *pointed at*,
           // rather than which surface happens to be in front — the tab strip
           // already says that, and says it next to the thing it names. See the
           // note on the title element in `TitleBar.tsx`.
