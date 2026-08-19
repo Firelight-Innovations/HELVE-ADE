@@ -218,15 +218,22 @@ src/                  React frontend
   bindings.ts           typed wrappers over the Rust commands
   App.tsx               owns the stack snapshot, renders the shell
   tokens.css            palette and resets, shared by both windows
-  shell/                the frame tools run inside
-    Shell.tsx             title bar + rail + surface + status bar
-    ActivityRail.tsx      tool strip, generated from helve.toml
-    ToolSurface.tsx       where a tool renders — blank for now
-    StatusBar.tsx         stack health, active tool
-  views/
-    StackView.tsx         stack diagnostics, reached from the status bar
+  ui/                   leaf components shared across the shell
   splash/               the startup window
-  components/           ToolCard, StatusBadge
+  shell/                the frame tools run inside — one directory per region,
+                        each built against contract.ts (STANDARDS.md §1.2)
+    contract.ts           the sanctioned vocabulary every region shares
+    WindowRoot.tsx        one HELVE window
+    frame/                the window frame itself
+    titlebar/             title bar and its menus
+    panes/ panel/         the pane tree, and the side panel
+    switcher/ toolwindow/ tabs, and where an app actually mounts
+    terminal/             the terminal band
+    search/               project search and the locator
+    diff/ worktree/       git surfaces
+    settings/             the settings screen
+    state/                the shell's own state, mirrored from Rust
+    drag/ keys/ statusbar/
 src-tauri/            Rust backend
   src/
     main.rs             binary entry point (thin shim over lib.rs)
@@ -236,14 +243,27 @@ src-tauri/            Rust backend
     manifest.rs         locating and parsing helve.toml
     tool.rs             tool types: declared spec vs. resolved status
     discovery.rs        joins the manifest against the filesystem
+    shell_state.rs      clusters, panes and instances — the shell's own model
+    shell_store.rs      what of that survives a restart
+    layout.rs           the pane tree, and how an open splits it
+    windows.rs          creating and tracking OS windows
+    git.rs              status, diffs and worktrees
+    search.rs           the project search the overlay calls
+    pty.rs              terminals
+    sync.rs             the lock-poisoning answer, given once (STANDARDS.md §5)
     apps/               the first-party apps' Rust halves
       mod.rs              the registry, and `invoke` routing
       home.rs             home/state, and the folder pickers
       files.rs            files/list, files/read
+      trash.rs            deleting, and getting it back
+      tutorial.rs         tutorial progress
     project/            what a project is, and which one is open
       mod.rs              open / create / initialize / close / forget
       marker.rs           the <name>.helve manifest
       store.rs            the recents file, and what survives a restart
+    mcp/                the MCP servers HELVE hosts for a coding agent
+    settings/           the schema the settings screen is generated from
+    presets/            saved layouts
     error.rs            one error type, serializable across the IPC boundary
     state.rs            shared app state
   capabilities/       Tauri permissions, scoped per window label

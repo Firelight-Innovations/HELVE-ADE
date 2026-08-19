@@ -300,7 +300,7 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 333 tests, all passing:
+What exists today — 369 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
@@ -309,6 +309,7 @@ What exists today — 333 tests, all passing:
 | `crates/helve-tool-manifest` | 11 | `cargo test` |
 | `examples/echo-tool` | 5 | `cargo test` |
 | `packages/bridge` | 28 | vitest |
+| `src/**` | 36 | vitest |
 
 The protocol layer is covered because it is a published contract. The state
 machines are now covered too: `shell_state.rs` has 35 tests, `layout.rs` has 32,
@@ -321,9 +322,18 @@ What is expected going forward:
 2. **State machines get unit tests before they grow.** This was aspirational when
    first written and is now largely true; keep it that way. New state transitions
    arrive with `#[cfg(test)]` coverage in the same commit.
-3. **Pure functions in the frontend get vitest coverage** — `toolPresentation`,
-   `healthOf`, the layout math. Components do not need render tests yet; that is
-   a deliberate omission, not an oversight.
+3. **Pure functions in the frontend get vitest coverage.** A test lives beside
+   the module it tests, named for it — `query.ts` is tested by `query.test.ts`
+   in the same directory, which keeps it inside the same region and so under
+   the same import rules as §1.2 gives the source. The root `vitest.config.ts`
+   picks up `src/**/*.test.ts` and `apps/*/ui/src/**/*.test.ts`; the workspace
+   packages keep their own configs and their own runs.
+
+   The runner is `node`, with no jsdom and no rendering library, so a component
+   test is not merely absent but currently impossible. That is deliberate: the
+   shell's testable weight is in pure modules, and adding a DOM is a real
+   dependency decision that belongs to the first pull request that needs to
+   render something rather than to the commit that switched the runner on.
 4. **A bug fix comes with the test that would have caught it.** This is the only
    test rule that is non-negotiable.
 
