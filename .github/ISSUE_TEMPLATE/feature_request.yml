@@ -1,0 +1,70 @@
+# The last field is the one that matters. STANDARDS.md §4 asks the code to name
+# the alternative it rejected; asking a proposal for the same thing is not
+# ceremony, it is the difference between a request that can be argued with and a
+# wish that cannot.
+
+name: Feature request
+description: Something the orchestrator should do that it does not do yet.
+title: "[feature] "
+labels: [enhancement]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you are still working out whether this is a good idea, open a
+        [Discussion](https://github.com/Firelight-Innovations/helve/discussions)
+        instead. Issues are for proposals that are ready to be argued with.
+
+        One boundary worth knowing before you write: some first-party tools are
+        commercial and will stay that way, and the tool protocol
+        (`docs/tool-protocol.md`) is the line between them and this repository.
+        A proposal that moves work across that line gets declined on principle
+        rather than on quality, and it is fairer to say so here than in review.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you actually trying to do?
+      description: >-
+        The problem, not the feature. A concrete situation where the current
+        behaviour got in your way is worth more than a paragraph of rationale.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should happen instead
+      description: >-
+        What you would want to see and where you would expect to see it. Rough
+        is fine; the shape matters more than the detail.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead, and why it did not work
+      description: >-
+        The existing way of doing this, and what specifically failed about it.
+        If there is no existing way, say that — it is a stronger answer than a
+        workaround that nearly works.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where would this live?
+      description: >-
+        A guess is fine. STANDARDS.md §1 has the layer diagram if you want to
+        check, and §3 covers the difference between an app and a tool.
+      options:
+        - The shell interface (window, panes, tabs, search, title bar, terminal)
+        - A first-party app (Home, Files, Viewer, Tutorial)
+        - The Rust backend (projects, filesystem, processes, terminals, state)
+        - The tool protocol (manifests, RPC, the bridge)
+        - Build, lint, format, or tests
+        - Documentation
+        - Not sure

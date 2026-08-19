@@ -1,0 +1,66 @@
+# Supply chain: licenses and security advisories over the Rust dependency tree.
+#
+# This is a separate workflow from `verify.yml` rather than a second job inside
+# it, and the separation is not tidiness. `verify` answers "is this branch
+# correct", from one command that a contributor can run offline on a plane.
+# `cargo deny check` answers a different question — "is what we depend on still
+# acceptable" — it needs the network to fetch the advisory database, and its
+# answer can change on a day nobody pushed anything. Those want different
+# triggers and different failure meanings, and a required status check named
+# after a workflow should mean one thing. Keeping them apart also leaves room
+# to add a `schedule:` trigger here later without putting a cron on the gate.
+#
+# `deny.toml` at the repository root is what configures this; it arrives with
+# the licensing work package.
+
+name: deny
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deny-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deny:
+    # Windows, matching `verify`, and for a reason beyond consistency. `cargo
+    # deny` reads the resolved graph for the host target, and the Windows-only
+    # half of that graph — `windows-sys`, the WebView2 bindings, the MSVC
+    # runtime shims — is exactly where an unexpected license is most likely to
+    # be hiding. Resolving on Linux would check a dependency set this project
+    # never ships.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # A prebuilt binary rather than `cargo install cargo-deny --locked`, which
+      # is several minutes of compilation for a check that should take seconds,
+      # and rather than `EmbarkStudios/cargo-deny-action`, which is a container
+      # action and therefore Linux-only.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      # Non-blocking, on purpose and only for now. The dependency tree has never
+      # been audited, so the first honest run may well be red, and a check that
+      # is red on arrival teaches everyone to ignore it before it has ever said
+      # anything true.
+      #
+      # This flips to blocking — delete the line — once the tree is known clean
+      # and any exceptions are written down in `deny.toml` with a reason. That
+      # is the point of the exercise; leaving it advisory forever would make
+      # this workflow decoration.
+      #
+      # `continue-on-error` sits on this step rather than on the job so that a
+      # failure to check out or to install `cargo-deny` still goes red. Those
+      # are broken infrastructure, not findings.
+      - name: cargo deny check
+        continue-on-error: true
+        run: cargo deny check

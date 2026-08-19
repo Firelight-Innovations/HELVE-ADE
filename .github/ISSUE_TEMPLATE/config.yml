@@ -1,0 +1,26 @@
+# Blank issues are off, and the two links below are why rather than an
+# afterthought. A tracker fills up with questions unless there is somewhere
+# obviously better to put them, and a question that becomes an issue has to be
+# either answered or closed — neither of which is what the asker wanted. Send
+# them to Discussions, where a thread can stay open without ageing into a stale
+# bug count.
+#
+# The cost is that someone with a genuine report the forms do not fit has to
+# pick one anyway. That is the cheaper failure: every field on both forms is
+# skippable except the version and the reproduction.
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: Question, or an idea you want to talk through
+    url: https://github.com/Firelight-Innovations/helve/discussions
+    about: >-
+      How something works, whether an approach makes sense, or anything that
+      does not yet have a definite right answer. Ask here rather than in the
+      tracker.
+
+  - name: Security vulnerability
+    url: https://github.com/Firelight-Innovations/helve/security/policy
+    about: >-
+      Please do not open a public issue. The security policy has a private
+      reporting route and the response window you should expect.

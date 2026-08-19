@@ -1,0 +1,30 @@
+# Code owners. GitHub requests a review from the owner of every file a pull
+# request touches, and the last matching pattern in this file wins.
+#
+# For a repository with one maintainer this is close to a no-op, and it is here
+# anyway for the day it stops being one. The point is not the blanket rule at
+# the top; it is the four paths below it, which are the ones where an accepted
+# change is difficult to take back.
+
+* @Firelight-Innovations/maintainers
+
+# The tool protocol is the contract the whole open-core model rests on. Every
+# tool repository — first-party, commercial, and third-party alike — is written
+# against this document, so a change here is a change to somebody else's
+# software. It is called out separately from the rest of `docs/` for that
+# reason, not because documentation is otherwise unowned.
+/docs/tool-protocol.md @Firelight-Innovations/maintainers
+
+# The published surfaces the protocol document describes: the crates other
+# repositories depend on, and the npm package a tool author actually installs.
+# STANDARDS.md §10 already treats these differently from the application code —
+# `missing_docs` and `unreachable_pub` are set here and nowhere else — for the
+# same reason they are listed here.
+/crates/ @Firelight-Innovations/maintainers
+/packages/bridge/ @Firelight-Innovations/maintainers
+
+# The rule book, and the machinery that enforces it. A pull request that relaxes
+# a lint, widens a baseline, or edits the gate is a policy change wearing a
+# configuration change's clothes.
+/STANDARDS.md @Firelight-Innovations/maintainers
+/.github/ @Firelight-Innovations/maintainers

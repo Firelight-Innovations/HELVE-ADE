@@ -1,0 +1,99 @@
+# The gate is `pnpm verify`, run as a single step, and that is the whole point
+# of this file.
+#
+# CLAUDE.md tells a contributor to run `pnpm verify` before pushing. If this
+# workflow instead ran a hand-assembled list that merely resembled it — build,
+# then test, then lint, then format, each as its own step — then "passes
+# locally, fails in CI" would become a category of problem that exists in this
+# repository. It does not have to. A prettier log, with a green tick beside each
+# of the four checks, is not worth inventing that class of bug for; the four
+# checks are already named in `package.json`, which is where they belong.
+#
+# So do not split this into steps, however helpfully. If CI should check
+# something new, add it to `pnpm verify` and every contributor gets it locally
+# on the same day.
+#
+# One check is deliberately absent. `pnpm slop` stays out of the gate for the
+# reasons STANDARDS.md §10 already gives: it needs Python, `fd` and `rg` on
+# PATH, and one of its rules is a percentile ranking that is non-empty by
+# construction, so it can never answer "is this branch clean".
+
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only. Nothing here comments on a pull request, moves a tag, or publishes
+# a package, so nothing here needs a token that could.
+permissions:
+  contents: read
+
+# A second push to the same branch makes the first run's answer irrelevant, and
+# Windows minutes bill at a multiple of Linux ones — worth cancelling rather
+# than paying for an answer nobody will read.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # Windows only, and not as a placeholder for a matrix that arrives later.
+    # Tauri on Windows is what this ships as; WebView2 and the MSVC linker are
+    # where the surprises live. A green Linux job would report on a build nobody
+    # runs, which is worse than no job at all, because it looks like coverage. A
+    # second platform arrives when a second platform is supported.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # pnpm is set up before Node, because `cache: pnpm` below asks pnpm where
+      # its store lives and needs the binary to answer.
+      #
+      # The version is pinned here because `package.json` carries no
+      # `packageManager` field. Adding one is the better fix — the version would
+      # then live in one place and this becomes `version: false` — but
+      # `package.json` belongs to another work package this week. The delta is
+      # written up in docs/handoffs/readiness/wp-b.md.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # No `dtolnay/rust-toolchain` action here, deliberately. It is the one
+      # action this file would want that publishes no version tags to pin to —
+      # its tags *are* toolchain channels — and rustup is already on the Windows
+      # image, so the alternative is two lines that depend on nothing. A repo
+      # about to grow a supply-chain check should not add an unpinnable
+      # dependency to run it.
+      #
+      # `--profile minimal` skips the docs and the standard library sources. The
+      # two components are what `pnpm lint` and `pnpm format:check` shell out to.
+      - name: Install Rust stable, with clippy and rustfmt
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy --component rustfmt
+          rustup default stable
+
+      # Caching is not a nicety here. A cold Tauri dependency tree is minutes of
+      # compilation, and a gate nobody waits for is a gate nobody has.
+      #
+      # `save-if` restricts *writing* the cache to `main`. Pull requests still
+      # restore it. A Tauri `target/` directory is large, GitHub evicts at 10 GB
+      # per repository, and letting every branch write its own copy is how the
+      # cache thrashes itself into never hitting. The cost is that a pull
+      # request adding a dependency recompiles it on each push until it merges.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - run: pnpm install --frozen-lockfile
+
+      # The one command. See the note at the top before changing this line.
+      - run: pnpm verify
