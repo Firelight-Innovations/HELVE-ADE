@@ -80,6 +80,14 @@ will actually be looking when it matters. Both are worded as "untested", which
 is the true claim — nobody has decided against those platforms, and the honest
 version is also the one that invites the port.
 
+**These three sentences and WP-B's `verify.yml` are one decision in three
+places.** If decision 2 comes back as anything other than Windows-only, the
+README, `CONTRIBUTING.md` and the workflow's single `windows-latest` job all
+move, and moving one without the others is worse than moving none — prose
+promising Linux over a runner that only proves Windows is the "looks like
+coverage" failure WP-B's own runner comment argues against. WP-B records the
+same coupling in `docs/handoffs/readiness/wp-b.md` (53545bf).
+
 ### 2. The `CONTRIBUTING.md` pointer
 
 `README.md`, **"Development"**, as the first line of the section, before the
