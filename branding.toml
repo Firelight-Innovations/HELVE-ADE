@@ -34,7 +34,7 @@
 # Those are wire formats and on-disk contracts. Renaming one breaks every tool
 # repository ever written against this shell and stops existing projects
 # opening. A branding system that reaches them is a rename script with a config
-# file, which is a different and much worse thing. See `docs/branding.md` §4.
+# file, which is a different and much worse thing. See `docs/branding.md` §2.
 
 
 # --- The grammar this file is allowed to use ---------------------------------
