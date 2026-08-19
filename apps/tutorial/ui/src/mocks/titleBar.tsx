@@ -1,5 +1,6 @@
 /** The title bar alone: menus left, the title centred, window controls right —
  *  see `src/shell/titlebar/TitleBar.tsx`, which this is a still frame of. */
+import { PRODUCT_NAME } from "../branding.generated";
 import { Band, Row } from "./chrome";
 
 const MENUS = ["File", "Edit", "View", "Run", "Terminal", "Help"];
@@ -16,7 +17,7 @@ export default function TitleBar() {
       </Row>
 
       <Row justify="center" className="tut__mock-grow">
-        <span className="tut__mock-caption">HELVE Engine | Anvil</span>
+        <span className="tut__mock-caption">{PRODUCT_NAME} | Anvil</span>
       </Row>
 
       <Row gap="xs">

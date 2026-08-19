@@ -309,3 +309,18 @@ If you write something that names the product:
 
 If you want to add a *field*, name its reader first. If the answer is "nothing
 yet", it does not go in.
+
+### A drawing of a surface is a surface
+
+`apps/tutorial/` is a bundle in `OUTPUTS`, which looks like a mistake next to
+the rule that tutorial prose is never templated. The distinction is that its
+mocks do not *describe* the title bar, they *draw* it — `mocks/titleBar.tsx` and
+`mocks/windowBands.tsx` render the centred caption, and both read
+`HELVE Engine | Anvil` until they were wired to `PRODUCT_NAME`, which is a
+caption the shell had already stopped producing.
+
+The tutorials' whole argument is that the pictures are accurate. A picture that
+survives a rename by not being renamed is a picture that has quietly stopped
+being one, so anything that redraws a branded surface reads the name the same
+way the surface does. The prose around it still says HELVE, because prose about
+HELVE is teaching HELVE and a fork rewrites it anyway.

@@ -66,6 +66,7 @@ const SKIP_FILES = new Set([
   "src/branding.generated.ts",
   "apps/home/ui/src/branding.generated.ts",
   "apps/files/ui/src/branding.generated.ts",
+  "apps/tutorial/ui/src/branding.generated.ts",
 ]);
 
 function walk(dir, out = []) {
