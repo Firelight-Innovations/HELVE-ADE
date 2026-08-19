@@ -2,6 +2,7 @@
   "name": "@helve/bridge",
   "version": "0.1.0",
   "description": "Transport bridge between a Helve tool's frontend and its host — the orchestrator shell over window messages, or a standalone Tauri app over Tauri IPC.",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

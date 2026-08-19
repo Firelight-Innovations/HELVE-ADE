@@ -5,6 +5,12 @@ description = "Entry point for the Helve stack — loads and orchestrates the de
 authors = ["Firelight Innovations"]
 edition = "2021"
 
+# Inherited, so the license is stated in exactly one place. The three fields
+# above predate the workspace and are still spelled out here, which is only
+# untidy; this one must not be, because a member carrying its own license is
+# how a repository ends up with two answers to "what is this under".
+license.workspace = true
+
 # Lint levels come from [workspace.lints] in the root Cargo.toml.
 [lints]
 workspace = true
