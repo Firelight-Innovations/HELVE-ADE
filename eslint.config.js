@@ -142,6 +142,9 @@ export default tseslint.config(
       "public/**",
       // Regenerated from material-icon-theme on every install.
       "packages/file-icons/src/manifest.generated.ts",
+      // Regenerated from branding.toml on every typecheck and build, once per
+      // frontend bundle — hence the glob rather than three paths.
+      "**/branding.generated.ts",
     ],
   },
 
