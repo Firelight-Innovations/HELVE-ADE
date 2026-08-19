@@ -1,5 +1,29 @@
 # Contributor readiness — execution plan
 
+> **Status, 2026-08-18: WP-A through WP-F and WP-H are done**, on the branch
+> `chore/contributor-readiness`. WP-G, the issue backlog, is not — it depends on
+> roadmap #7, the bug-fix pass, which has not run, and filing invented issues
+> would be worse than filing none.
+>
+> What is left is decisions rather than work, and they are Braden's:
+>
+> 1. **Branch protection.** Cannot be set from a file. The checklist is in
+>    `docs/handoffs/readiness/wp-b.md`, including why required approvals should
+>    be 0 while there is one maintainer.
+> 2. **Fresh squashed history, or keep it.** Still open, and it decides how
+>    `docs/handoffs/` is removed — the brand packet and logo ideation are in the
+>    history either way unless the history goes.
+> 3. **The six placeholder stack repositories.** The README now says they are
+>    README-only, which is honest; whether they should exist yet is a separate
+>    question.
+> 4. **`docs/handoffs/` itself**, including the `readiness/` working notes this
+>    plan generated. Inventory and recommendation in
+>    `docs/handoffs/readiness/wp-e.md`. None of it should ship.
+>
+> Two answers found along the way that were not in the plan: the dependency tree
+> is clean of GPL-family licenses, and a tool's core is unsandboxed — see
+> `docs/tool-protocol.md` §6.
+
 `docs/open-source-plan.md` is the strategy: why open core, what the license
 boundary is, what must not happen. This is the execution plan for the part of it
 that is still missing, plus the branding system, decomposed into work packages
