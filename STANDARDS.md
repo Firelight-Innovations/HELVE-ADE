@@ -378,6 +378,13 @@ all run, and `pnpm lint` is the single command that runs the three checks.
 | §6.5 hooks own state | `react-hooks/rules-of-hooks` |
 | comment concentration | `scripts/check-comments.mjs` |
 
+Dependency licensing and advisories are checked by `cargo deny check`, run as
+`pnpm lint:deps` and as its own CI job. It is deliberately outside `pnpm verify`,
+because it needs the network to fetch the advisory database and `pnpm verify`
+must not. A check that exists but is absent from the aggregate command is the
+kind of thing that gets forgotten and then rediscovered as a surprise in CI, so
+it is written down here rather than left to be found.
+
 Two rules answer §5's ban on `unwrap`/`expect` in a way worth knowing about,
 because clippy cannot tell a genuine invariant from a fallible call. Tests are
 exempt wholesale (`clippy.toml`), and the one invariant shipping code leans on —

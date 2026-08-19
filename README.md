@@ -1,6 +1,6 @@
-# Helve
+# HELVE
 
-The entry point for the Helve stack. Organizes and loads the dev tools and
+The entry point for the HELVE stack. Organizes and loads the dev tools and
 holds the shared baseline code that glues everything together and gets the
 stack running.
 
@@ -8,13 +8,17 @@ Each dev tool is its own repository shipping a Rust core and a React frontend.
 Its own Tauri app is one host for that pair; this orchestrator is a second.
 `docs/tool-protocol.md` is the contract between them.
 
-This is a development tool; it does not ship with games built on Helve.
+This is a development tool; it does not ship with games built on HELVE.
 
-Status: pre-alpha. The shell frame runs and reports the stack, and its two
-first-party apps (Home and Files) mount in it and are answered by Rust. Projects
-exist: Home opens one, remembers it, and reopens it on the next launch. The tools
-themselves are not yet integrated — a tool's core is a child process and the
-broker that would reach it is not built.
+Status: pre-alpha. The shell frame runs and reports the stack, and its
+first-party apps — Home, Files, the file viewer and Tutorials — mount in it and
+are answered by Rust. Projects exist: Home opens one, remembers it, and reopens
+it on the next launch. The tools themselves are not yet integrated — a tool's
+core is a child process and the broker that would reach it is not built.
+
+HELVE is developed and tested on Windows only. macOS and Linux are untested
+rather than deliberately excluded, and nothing in the design is Windows-only in
+principle — there is simply no machine here that runs them.
 
 ## Tech stack
 
@@ -51,6 +55,14 @@ Set `HELVE_MANIFEST` to point a dev build at a different manifest.
 
 ## Development
 
+`CONTRIBUTING.md` is the guide for working on this repository — prerequisites,
+the verification gate, the conventions that are unusual, and what will not be
+accepted. `STANDARDS.md` is the rule book it points at.
+
+Every prerequisite below is a Windows prerequisite, and that is the whole
+supported surface today. A port to macOS or Linux is welcome as a piece of work
+with a CI runner attached to it, not as a patch — open an issue first.
+
 Prerequisites, all one-time:
 
 - **Rust** (stable) — `winget install Rustlang.Rustup`
@@ -83,7 +95,7 @@ pnpm verify
 | Check | Command | Covers |
 |---|---|---|
 | Build | `pnpm build` | runs `tsc` first, so this covers types |
-| Tests | `pnpm test` | 28 vitest + 212 `cargo test` |
+| Tests | `pnpm test` | 64 vitest + 305 `cargo test` |
 | Lint | `pnpm lint` | ESLint, clippy, comment density |
 | Format | `pnpm format:check` | Prettier and rustfmt |
 
@@ -111,7 +123,9 @@ pnpm slop         # structural report — advisory, not part of the gate
 ```
 
 A failing test is not fixed by deleting or skipping it. Per `STANDARDS.md` §8, a
-bug fix arrives with the test that would have caught it.
+bug fix arrives with the test that would have caught it. `CONTRIBUTING.md`
+explains why the full form is the one that matters and what the baselines are
+for.
 
 #### Lint baselines
 
@@ -173,7 +187,7 @@ orchestrator can be pointed at a workspace directly, run it from the repo.
 ### Layout
 
 This repo is both a Cargo workspace and a pnpm workspace. It isn't only the
-desktop app any more: the tool protocol needs libraries that *other* Helve
+desktop app any more: the tool protocol needs libraries that *other* HELVE
 repos depend on, so those live outside `src-tauri/` and are shared through the
 workspace. One consequence worth knowing — Rust build output is at `target/`,
 not `src-tauri/target/`, so every crate compiles the Tauri dependency tree once
@@ -195,7 +209,9 @@ examples/
 apps/                 first-party surfaces — see apps/README.md
   shared/app.css        the chrome every app draws inside
   home/ui/              Home: the stack at a glance
-  files/ui/             Files: browse and read the checkout
+  files/ui/             Files: browse the checkout
+  viewer/ui/            Viewer: read a file, whatever its format
+  tutorial/ui/          Tutorials: the guided tour, drawn from a catalog
 index.html            Vite entry point (main window)
 splash.html           Vite entry point (splash window)
 src/                  React frontend
@@ -300,19 +316,19 @@ empty. They come back when the broker does.
 
 ### Apps
 
-`apps/` holds the surfaces the orchestrator ships itself: Home and Files today.
-They mount in the same tool window a tool would, speak the same transport to the
+`apps/` holds the surfaces the orchestrator ships itself: Home, Files, the file
+viewer and Tutorials today. They mount in the same tool window a tool would, speak the same transport to the
 shell, and import the same `@helve/bridge` — but their frontends are entry points
 of *this* repo's Vite build and their Rust halves are modules in
 `src-tauri/src/apps/`, reached in-process rather than over a pipe. A tool is code
 the orchestrator finds; an app is code the orchestrator is. `apps/README.md` has
 the full comparison and the reasoning.
 
-How they will mount is settled: `company/docs/design/helve-tool-integration.md`
-has the reasoning, `docs/tool-protocol.md` has the wire format. In short, a tool
-ships a Rust core plus a React frontend, its own Tauri app is just one host for
-that pair and this shell is a second, and the frontend mounts in an iframe
-served from the checkout. The engine is not one of those surfaces — it is a C++
+How they will mount is settled, and `docs/tool-protocol.md` is the whole of
+it — the wire format, and the reasoning behind each rule that has one. In short,
+a tool ships a Rust core plus a React frontend, its own Tauri app is just one
+host for that pair and this shell is a second, and the frontend mounts in an
+iframe served from the checkout. The engine is not one of those surfaces — it is a C++
 runtime with no frontend that the orchestrator starts and the tools talk to
 directly.
 
@@ -340,21 +356,50 @@ the Rust structs — keep them in sync.
 
 ## The stack
 
-Helve is deliberately **multi-repo**, not a monorepo — each piece below is
+HELVE is deliberately **multi-repo**, not a monorepo — each piece below is
 its own repository, tagged with the `helve` and `helve-stack` topics on
 GitHub so they cluster together. This repo (`helve`) is the one that ties
 them together at runtime; it doesn't contain their code.
 
-| Repo | What it is | Ships with a game? |
-|---|---|---|
-| [helve-engine](https://github.com/Firelight-Innovations/helve-engine) | Runtime core (Rust) — lighting, audio playback, spatial audio built in | **Yes** |
-| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software — specs out the stack and its boundaries | No |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Game design software — design prototyping, rough playable systems | No |
-| [helve-turner](https://github.com/Firelight-Innovations/helve-turner) | Procedural art system — generates art from an artist's rough shape | No |
-| [helve-scrivener](https://github.com/Firelight-Innovations/helve-scrivener) | Narrative/dialogue authoring tool | No |
-| [helve-quickener](https://github.com/Firelight-Innovations/helve-quickener) | NPC behavior / AI tooling | No |
-| [helve-wright](https://github.com/Firelight-Innovations/helve-wright) | Audio authoring/composition tooling | No |
+| Repo | What it is | Ships with a game? | Status |
+|---|---|---|---|
+| helve-engine | Runtime core (Rust) — lighting, audio playback, spatial audio built in | **Yes** | Closed source, not published |
+| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software — specs out the stack and its boundaries | No | Placeholder — README only |
+| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Game design software — design prototyping, rough playable systems | No | Placeholder — README only |
+| [helve-turner](https://github.com/Firelight-Innovations/helve-turner) | Procedural art system — generates art from an artist's rough shape | No | Placeholder — README only |
+| [helve-scrivener](https://github.com/Firelight-Innovations/helve-scrivener) | Narrative/dialogue authoring tool | No | Placeholder — README only |
+| [helve-quickener](https://github.com/Firelight-Innovations/helve-quickener) | NPC behavior / AI tooling | No | Placeholder — README only |
+| [helve-wright](https://github.com/Firelight-Innovations/helve-wright) | Audio authoring/composition tooling | No | Placeholder — README only |
 
-Each repo cuts tagged semantic-version releases (`v0.1.0`, ...) rather than
-tracking a floating branch tip. `helve` pins to specific tagged versions of
-each component, not to branch heads.
+**Only this repository has code in it today.** The other six are a `v0.1.0` tag
+against a README — which is what `helve.toml` pins, and why the shell's own
+health list reports them as `unversioned` rather than matching the pin. The pin
+is a placeholder holding a shape, not a release, and the intent below is the
+plan rather than a description of something already happening.
+
+`helve-engine` is closed source and stays that way. That is the open-core line:
+the tool protocol is the boundary, everything on this side of it is Apache-2.0,
+and the engine sits on the other side along with the other first-party tools
+that will be commercial.
+
+Each repo is meant to cut tagged semantic-version releases (`v0.1.0`, ...)
+rather than tracking a floating branch tip, and `helve` pins to specific tagged
+versions of each component, not to branch heads.
+
+## License
+
+HELVE is Apache-2.0. The full text is in [LICENSE](LICENSE), and
+[NOTICE](NOTICE) is the file a redistributor has to carry with it.
+
+Apache rather than MIT because of the patent grant, which matters here
+specifically: a commercial engine loads into this shell through the tool
+protocol, and MIT says nothing about patents at all. Not GPL or AGPL under any
+circumstances — a copyleft core hands someone a real argument that the private
+tools mounting into it are derivative works.
+
+The license covers the code and not the names. HELVE, Forger and Journeyman, and
+the marks that go with them, are trademarks of Firelight Innovations. Fork this,
+sell what you build on it, and say plainly that your work is based on HELVE —
+all of that is fine. Shipping it *as* HELVE is not. `NOTICE` says why at length;
+the short version is that once the source is freely copyable, the name is the
+only thing left telling a user which build is executing tools on their machine.
