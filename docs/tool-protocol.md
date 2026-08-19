@@ -4,9 +4,11 @@ The wire contract between the orchestrator and a tool. This is the reference
 implementations are written against; if code and this document disagree, one of
 them is a bug.
 
-For *why* the design is shaped this way, see
-`company/docs/design/helve-tool-integration.md`. This file is the mechanical
-half: exact bytes, exact field names.
+It is both halves. The exact bytes and the exact field names, and — beside each
+rule whose shape is not obvious from the rule itself — why it is that way and
+what was rejected instead. Section 6 says which of this you may build a tool
+against today, which of it may still move, and what happens to your tool if it
+does.
 
 A tool is a **Rust core** plus a **React frontend**. Under the tool's own Tauri
 app those two halves talk over Tauri IPC. Under the orchestrator they don't talk
@@ -473,3 +475,156 @@ process dies rejects with `-32000`. Both surface as a `HelveRpcError` carrying
 
 `examples/echo-tool` in this repo is the reference implementation of all three,
 and is what the protocol's tests run against.
+
+## 6. Stability
+
+The protocol is at v1 and most of what is above is running code. But the broker
+is not built, so the one path this whole document exists to describe — a tool's
+frontend asking a question its own core answers — has never run end to end. That
+is an unusual place to publish a specification from, and leaving it implied
+would cost somebody a weekend, so this section is the map: what to build
+against, what is still moving, and what happens to your tool when it moves.
+
+### What is settled
+
+Implemented, covered by tests, and not changing shape under v1.
+
+- **`helve-tool.toml` (§1)** — every key, the path rules, and unknown keys being
+  an error. `crates/helve-tool-manifest` is the only parser there is;
+  `examples/echo-tool/helve-tool.toml` is the file its tests read.
+- **Transport A (§2)** — the framing, the three message shapes, `helve/shutdown`,
+  and the error codes. `crates/helve-rpc` is *both* halves of the pipe, which is
+  what stops a host and a tool drifting apart, and
+  `examples/echo-tool/tests/roundtrip.rs` drives a real child process through
+  handshake, call, bad params, unknown method, notification, and death.
+- **Transport B (§3)** — the `helve: 1` envelope, the five message kinds, the
+  client-initiated handshake, the five reserved `helve/*` methods, and the
+  origin rules. All of it runs on every launch: the orchestrator's own Home and
+  Files are not special-cased anywhere, they are frames speaking this transport
+  through this bridge.
+- **`@helve/bridge` (§4)** — the exported names, the thirty-second default
+  timeout, `HelveRpcError`'s `code`, `message` and `data`, and host detection.
+
+Two caveats on that list, both about the same gap and both worth stating before
+somebody discovers them. Transport B is exercised only by frames the shell
+answers *itself*; no tool frontend has been mounted in this shell yet. And the
+host half of the `helve/hello` check in §2 — reject the tool if `protocol != 1`
+or if `id` disagrees with the manifest — is specified here and enforced nowhere:
+`HANDSHAKE_FAILED` exists in `crates/helve-rpc` and nothing raises it, because
+the code that would is the broker. A tool must still answer `helve/hello`
+correctly. Nothing checks that it did.
+
+### What may still move
+
+- **The broker.** A tool frontend's non-`helve/*` `invoke` is refused today with
+  `-32603` and a message naming the gap, rather than hanging for thirty seconds.
+  When the broker lands no message shape above changes — specifying both
+  transports around one `method` and one `params` is what buys that — but it
+  will be the first end-to-end run of anything, and first runs find things.
+- **`[permissions]`.** The table is accepted and its contents are never looked
+  at: the manifest crate types it as an opaque `toml::Value` so that reserving
+  the space costs nothing today. Anything written in it is a note to yourself.
+  What it will actually mean is the second open question below.
+- **`Session`.** Both fields are null in every build that exists. The shape will
+  not lose a field, but `engineEndpoint` is unspecified past "a named pipe or
+  socket path", and it cannot be pinned down until the engine is on the far end
+  of one.
+- **Path safety.** §1 names the known gap: paths are not canonicalized, so a
+  symlink inside a checkout still escapes it. Closing that can only make a
+  manifest that parses today start failing, which is the direction a security
+  fix is allowed to move in.
+- **Command ids and app methods** are declared in §3 not to be part of this
+  protocol, and that is the point rather than an omission. A host adds, renames
+  and drops its own vocabulary without the protocol version moving.
+
+### The versioning rule
+
+Both transports carry an integer — `protocol` in `helve/hello`, `helve` on every
+window message — and **that integer is the only breaking-change lever.** It goes
+to 2 when something that already exists stops meaning what it meant: a field
+removed, a type changed, a result reshaped, a handshake reversed.
+
+Additive change leaves it at 1. A new reserved `helve/*` method, a new optional
+key in `helve-tool.toml`, a new field on `Session`, a new code in the Helve error
+range. A tool written against v1 keeps working across every one of those, and
+that is the entire promise the number is making.
+
+One asymmetry inside that, because it will otherwise be found the hard way. A
+new optional manifest key is additive for *tool authors* — every existing
+`helve-tool.toml` still parses — and is not additive for *hosts*, because
+unknown keys are a hard error. A manifest using a key added in a later shell is
+rejected by an earlier one, by name. That trade is deliberate and §1 already
+argues it: a key silently ignored is the worse failure. The consequence is that
+a tool adopting a new key has declared a minimum shell version, and should say
+so somewhere its users will read.
+
+`helve/hello` is specified to **reject a mismatch rather than negotiate down.**
+A shell and a tool from two majors half-working is a worse day than either of
+them stopping at the handshake.
+
+The crates and `@helve/bridge` carry ordinary semver, independent of this
+number. `@helve/bridge` 0.2.0 still speaks protocol 1. A package version is not
+a protocol version.
+
+And the rule this file lives under: a change to §1 through §4 lands in the same
+commit as the code that makes it true, and the commit message says the format
+moved. The line at the top is not decoration — if the code and this document
+disagree, one of them is a bug, and which one is a question with an answer.
+
+### Two security questions this document does not answer
+
+Both are open, both are Braden's, and both are written out here rather than
+deferred because they are free to answer on paper now and expensive to retrofit
+through a resolver later. A tool author's threat model depends on the answers.
+
+#### Open: does the shell clone a repository, or fetch a signed artifact?
+
+Nothing above says how a tool's checkout arrived on disk, and today nothing puts
+one there — `checkout-root` in `helve.toml` points at directories a person
+cloned by hand. The question becomes real the moment the shell does the
+fetching, which is the reason to answer it before it does.
+
+Cloning a repository named by a URL in a TOML file and running its `core.bin` is
+arbitrary code execution authorized by a line of configuration. It also needs
+`git` on the user's machine, and a version pin that resolves to a tag is a
+pointer somebody can move: the pin reads as reproducible and is not.
+
+A signed release artifact with a checksum is a fixed set of bytes that can be
+verified before anything executes, needs no `git`, and gives a pin that names
+one build permanently. It costs a release pipeline in every tool repository.
+
+**Recommendation: signed artifacts for anything the shell fetches itself, with
+the hand-cloned local checkout kept as the development path.** Those two are
+already separate in `helve-tool.toml` — `dist` is a built bundle, `dev-url` is a
+live server — so the cost lands on distribution rather than on a tool author's
+inner loop, which is the half that has to stay fast. **Not decided.**
+
+#### Open: what is a mounted tool permitted to do?
+
+The protocol bounds the frontend, and it is worth being exact about how far,
+because it stops well short of where a reader will assume it reaches. A tool
+frontend is an iframe on its own origin — `src-tauri/src/tool_frontend.rs` has
+why that is `helve-tool://` and not `file://`, and the answer is that `file://`
+would put every tool on one opaque origin and dissolve the checks below. The
+shell resolves who is speaking from `event.source` rather than from anything in
+the message body, so a tool cannot claim to be another tool. `helve/open`
+reaches only app *kinds*, and only inside the calling frame's own cluster.
+
+None of that touches the core. **A tool's core is a child process holding the
+user's full privileges, and nothing in this protocol constrains it** — the
+filesystem, the network, and everything else the user has. Tauri's capability
+system governs a webview; a core is not one.
+
+Prompting at install time is the obvious lever and a weak one alone. It is the
+only moment a person has the context to answer, and a prompt nobody understands
+is a prompt everybody accepts. `[permissions]` as it stands is a declaration by
+the tool's own author, which makes it a statement of intent; it becomes a
+constraint only where a host enforces it.
+
+**Recommendation: give `[permissions]` a real schema before the broker ships
+rather than after** — retrofitting it means breaking tools that already exist —
+**deny by default on the tool window's Tauri capability set**, since a tool
+frontend needs nothing from Tauri directly and talks to the shell for
+everything, **and say plainly in this document that a core is unsandboxed under
+v1** rather than letting the frontend's isolation imply a guarantee that does
+not extend to it. **Not decided.**
