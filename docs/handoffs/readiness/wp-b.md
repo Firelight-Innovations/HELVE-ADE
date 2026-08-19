@@ -111,6 +111,29 @@ versus a published policy to amend later.
 
 ---
 
+## Decision 2 lands in two places, and they have to move together
+
+WP-C confirmed the wording in `CONTRIBUTING.md` (commit 991a988 on
+`docs/contributing`): it describes Windows-only as untested-elsewhere rather than
+refused, and describes a port as work that arrives with a CI runner attached.
+That is the same reasoning `verify.yml` gives for running a single job, which is
+what makes the pair consistent rather than merely agreeing.
+
+The consequence: **if decision 2 comes back as anything other than Windows-only,
+the workflow and `CONTRIBUTING.md` both change, and changing one without the
+other is worse than changing neither.** Prose promising that Linux is supported,
+over CI that only ever proves Windows, is precisely the "looks like coverage"
+failure the runner comment in `verify.yml` is written against. The workflow half
+is a second job in `.github/workflows/verify.yml`; the prose half is WP-C's.
+
+`CONTRIBUTING.md` also states the CI behaviour as "opening a pull request runs
+the full `pnpm verify` on Windows, under a check named `verify`" — deliberately
+not "cannot merge until it passes", so it stays true whether or not the branch
+protection checklist above has been applied. If that check is ever renamed, that
+sentence is the other place the name appears.
+
+---
+
 ## Delta for WP-D (`package.json`)
 
 - Add `"packageManager": "pnpm@10.19.0"` at the top level, after
