@@ -1,0 +1,86 @@
+# A form rather than a free-text template, for one reason: the version and the
+# reproduction are the two things a bug report is useless without, and a form is
+# the only way to make them required. Everything else here is optional.
+
+name: Bug report
+description: Something behaves differently from how it is documented or intended.
+title: "[bug] "
+labels: [bug]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Two things this form is not for:
+
+        - **A question, or an idea you want to talk through** — those go to
+          Discussions, where they can stay open without ageing.
+        - **A security vulnerability** — please do not open an issue. The
+          [security policy](https://github.com/Firelight-Innovations/helve/security/policy)
+          has the private route.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected instead
+      description: Both halves. The gap between them is the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce it
+      description: >-
+        Numbered steps from a fresh launch, if you can. If it only happens
+        sometimes, say roughly how often and what seems to make it more likely.
+      placeholder: |
+        1. Open a project with ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The commit SHA if you built from source, otherwise the release.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version, and how you are running it
+      description: >-
+        Windows is currently the only supported platform. `pnpm app` from source
+        and an installed build fail in different ways, so say which one this is.
+      placeholder: Windows 11 24H2, running `pnpm app` from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where do you think it lives?
+      description: >-
+        A guess is fine and a wrong guess costs nothing. STANDARDS.md §1 has the
+        layer diagram if you want to check.
+      options:
+        - The shell interface (window, panes, tabs, search, title bar, terminal)
+        - A first-party app (Home, Files, Viewer, Tutorial)
+        - The Rust backend (projects, filesystem, processes, terminals, state)
+        - The tool protocol (manifests, RPC, the bridge)
+        - Build, lint, format, or tests
+        - Documentation
+        - Not sure
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything from the console or the terminal
+      description: >-
+        The DevTools console and whatever the `pnpm app` terminal printed. Paste
+        it as-is; no need to trim it down.
+      render: text
