@@ -1,0 +1,122 @@
+# cargo-deny: what is vendored into this binary, and under what terms.
+#
+# This answers a question that only starts being asked once a repository is
+# public — "what am I actually shipping when I ship your app" — and it answers
+# it about the whole transitive tree, which is the only place the answer can be
+# wrong in an interesting way. A Tauri dependency graph is several hundred
+# crates deep and nobody reads it by hand.
+#
+# `cargo deny check` is deliberately NOT part of `pnpm lint`, and so not part of
+# `pnpm verify`. The advisories check fetches the RustSec database over the
+# network, and `pnpm verify` is a gate that has to pass on a plane. It runs as
+# `pnpm lint:deps` locally and as its own CI job, on the grounds that supply
+# chain and correctness are different questions asked at different cadences —
+# a dependency that was clean yesterday can be a finding today with no commit
+# in between, which is exactly the failure mode a per-commit gate cannot model.
+
+# There is no [graph] section, and the omission is the decision. Left empty,
+# cargo-deny resolves every target rather than just the one this repo builds
+# for today, so a Linux-only dependency is checked even though nothing here
+# builds on Linux yet. Pinning to x86_64-pc-windows-msvc would make the report
+# shorter and quietly stop answering the question the moment platform support
+# widens.
+
+[advisories]
+# A yanked crate is a maintainer saying "do not use this version," and the
+# lockfile is where that gets ignored by accident. Treat it as an error rather
+# than the default warning: the fix is `cargo update -p <crate>`, which is
+# cheap, and a warning in a job nobody fails is a warning nobody reads.
+yanked = "deny"
+
+# Every suppression goes here with a comment saying why and what would let it
+# be removed. An empty list is the honest state until the check has been run
+# against a real advisory database — see the note at the bottom of this file.
+ignore = []
+
+[licenses]
+# An allow-list, not a deny-list, and that is what makes the GPL question
+# answer itself. cargo-deny denies anything not named here, so GPL-2.0,
+# GPL-3.0, AGPL-3.0, LGPL and the rest are findings by construction, along with
+# any license nobody has looked at yet. A deny-list would have to predict the
+# name of the thing we are trying to keep out, which is the wrong way round.
+#
+# A GPL-family transitive dependency is a real finding and not something to
+# quietly add to this list. The reason the core is Apache-2.0 in the first
+# place is that copyleft anywhere near it gives someone an argument that the
+# private tools loading into this shell are derivative works; pulling copyleft
+# in through a dependency reaches the same place by a longer road.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "CC0-1.0",
+    "Unlicense",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+
+    # MPL-2.0 is copyleft and is allowed anyway, which is the one entry in this
+    # list that deserves an argument rather than a nod. Its reciprocity is
+    # file-scoped: modify an MPL file and that file stays MPL, and nothing
+    # propagates to the code that links against it. That is a materially
+    # different bargain from the GPL family, and it is a bargain this repo can
+    # keep, because it has no intention of modifying a vendored crate in place.
+    # It appears in practice through `option-ext`, which arrives via `dirs-sys`
+    # under Tauri. If a future MPL dependency ever needs *patching*, that is a
+    # decision to make deliberately, not one to inherit from this line.
+    "MPL-2.0",
+]
+
+# cargo-deny's default. Left explicit because a license file scoring below the
+# threshold is reported as "unknown license" rather than as a mismatch, and the
+# first person to hit that will want to know the number is a knob and not a
+# fact about the crate.
+confidence-threshold = 0.8
+
+# Per-crate escapes for a dependency whose license is acceptable for a reason
+# specific to that dependency. Empty, and it should stay much shorter than the
+# `allow` list above — an exception is a judgement about one crate, whereas an
+# entry in `allow` is a policy about every crate that will ever arrive under
+# that license.
+exceptions = []
+
+[bans]
+# Both of these are set to "allow" rather than left at their defaults, because
+# in this workspace they report facts that are already understood and would
+# otherwise bury the findings that are not.
+#
+# `multiple-versions`: a Tauri tree carries dozens of duplicate crate versions.
+# That is a compile-time and binary-size question, not a legal or a security
+# one, and it is not what this file is for.
+#
+# `wildcards`: the intra-workspace path dependencies — `examples/echo-tool`
+# depending on `crates/helve-rpc` by path — have no version requirement and are
+# read as wildcards. They are the same repository at the same commit, so the
+# risk the check exists to catch cannot apply to them.
+multiple-versions = "allow"
+wildcards = "allow"
+
+[sources]
+# Where a crate came from matters as much as what it says about itself. Both of
+# these are cargo-deny's defaults and both are stated anyway, because "someone
+# added a git dependency pointing at a fork" is the supply chain problem this
+# project is most likely to actually have — a Tauri patch waiting on an
+# upstream release is a normal thing to want, and it should be a conversation
+# rather than a commit that slips through.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# On the first real run: this config was written without executing it, because
+# the worktree it was written in had no Cargo target directory and cargo-deny
+# needs to resolve the full graph. Expect the `allow` list to need one or two
+# additions — a crate under a license that is fine and simply was not
+# anticipated — and expect `[advisories] ignore` to need entries with reasons.
+# Neither is a reason to weaken the list wholesale. A denial is the check
+# working; read what it names before deciding it is noise.

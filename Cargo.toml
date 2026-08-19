@@ -22,7 +22,17 @@ members = [
 version = "0.1.0"
 edition = "2021"
 authors = ["Firelight Innovations"]
-license = "UNLICENSED"
+
+# Apache-2.0, and the deciding factor was the patent grant rather than a
+# preference between permissive licenses: a commercial engine loads into this
+# shell through the tool protocol, and MIT says nothing about patents at all.
+# GPL and AGPL were never candidates — a copyleft core hands someone a real
+# argument that the private tools mounting into it are derivative works, which
+# is precisely what the open core boundary exists to prevent.
+#
+# Every member inherits this with `license.workspace = true`. The text is in
+# LICENSE at the repository root; NOTICE says which names it does *not* cover.
+license = "Apache-2.0"
 
 # Versions are pinned here and referenced from members as `serde.workspace =
 # true`, so two crates in this repo can't drift onto different releases of the
