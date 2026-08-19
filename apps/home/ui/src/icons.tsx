@@ -13,6 +13,8 @@
  * the parent; no icon here hardcodes a hex.
  */
 
+import { MARK_PATH, MARK_VIEW_BOX } from "./branding.generated";
+
 interface IconProps {
   size?: number;
   className?: string;
@@ -39,15 +41,17 @@ function Outline({ size = 24, className, children }: IconProps & { children: Rea
 }
 
 /**
- * The HELVE mark, for the lockup at the top of the page.
+ * The product's mark, for the lockup at the top of the page.
  *
  * The one glyph here that is not an outline: it is the identity, not an icon,
- * and the brand packet draws it filled as a single continuous 14-point path so
- * there are no subpath seams to hairline at small sizes. The path is copied
- * verbatim from `assets/helve-mark.svg` — the same data the shell's
- * `BrandGlyph` carries — rather than imported, for the reason at the top of
- * this file. A capital H whose crossbar cants and tapers, reading as the grip
- * of a hafted tool.
+ * and the brand packet draws it filled as a single continuous path so there are
+ * no subpath seams to hairline at small sizes.
+ *
+ * The geometry comes from this directory's own `branding.generated.ts`, not the
+ * shell's — the rule at the top of this file, applied to the identity as well
+ * as to the icons. `scripts/generate-branding.mjs` emits one module per bundle
+ * for that reason, and a generated file inside the app's own tree is the only
+ * form that survives this directory becoming its own repository.
  *
  * `size` is the mark's *height* in the packet's sense: the lockup's other
  * measurements are ratios of the 24×24 box, not of the 18-unit ink inside it.
@@ -59,13 +63,13 @@ export function Mark({ size = 24, className }: IconProps) {
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={MARK_VIEW_BOX}
       fill="currentColor"
       aria-hidden="true"
       focusable="false"
       className={className}
     >
-      <path d="M6 3h2.5v9l7-3V3H20v16l-2 2h-2.5v-7l-7 2v5H4V5z" />
+      <path d={MARK_PATH} />
     </svg>
   );
 }

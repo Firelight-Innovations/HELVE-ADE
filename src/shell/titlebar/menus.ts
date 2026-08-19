@@ -9,6 +9,7 @@
  * hard to find and gave a 400-line module two reasons to change.
  */
 import type { Menu } from "../contract";
+import { PRODUCT_NAME } from "../../branding.generated";
 import { appsMenu } from "../appsMenu";
 import type { AppsMenuHandlers } from "../appsMenu";
 
@@ -331,7 +332,11 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         { label: "Documentation" },
         { label: "Keyboard Shortcuts" },
         { label: "Report Issue", separatorBefore: true },
-        { label: "About HELVE Engine", separatorBefore: true },
+        // The one menu item that names the product. It read "About HELVE
+        // Engine", which named a different repository: the engine is private
+        // and is not this shell. Taking the name from branding.toml leaves one
+        // place that can be wrong instead of nine.
+        { label: `About ${PRODUCT_NAME}`, separatorBefore: true },
       ],
     },
   ];
