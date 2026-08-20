@@ -13,6 +13,19 @@
 # something new, add it to `pnpm verify` and every contributor gets it locally
 # on the same day.
 #
+# `scripts/verify-ci.mjs` does not break that rule. It runs the same one
+# command, streams its output through untouched, and only afterwards reads back
+# what was printed in order to turn each failure into a GitHub annotation —
+# drawn against the offending line in the pull request's Files changed tab. A
+# contributor should not have to open a sixteen-minute Windows log and search it
+# to find out that a file needs `pnpm format`.
+#
+# Annotations rather than a posted comment, deliberately. A pull request from a
+# fork gets a read-only `GITHUB_TOKEN` on the `pull_request` trigger regardless
+# of what `permissions:` requests, so a commenting step would work for a branch
+# and fail silently for exactly the outside contributions this is for. Workflow
+# commands need no token, so they work the same either way.
+#
 # One check is deliberately absent. `pnpm slop` stays out of the gate for the
 # reasons STANDARDS.md §10 already gives: it needs Python, `fd` and `rg` on
 # PATH, and one of its rules is a percentile ranking that is non-empty by
@@ -92,5 +105,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The one command. See the note at the top before changing this line.
-      - run: pnpm verify
+      # Still the one command. The wrapper adds a reading of the output and
+      # nothing else, and exits with whatever `pnpm verify` exited with. See the
+      # note at the top before changing this line.
+      - run: node scripts/verify-ci.mjs
