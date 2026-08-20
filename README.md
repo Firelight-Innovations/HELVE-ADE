@@ -367,9 +367,7 @@ How they will mount is settled, and `docs/tool-protocol.md` is the whole of
 it — the wire format, and the reasoning behind each rule that has one. In short,
 a tool ships a Rust core plus a React frontend, its own Tauri app is just one
 host for that pair and this shell is a second, and the frontend mounts in an
-iframe served from the checkout. The engine is not one of those surfaces — it is a C++
-runtime with no frontend that the orchestrator starts and the tools talk to
-directly.
+iframe served from the checkout.
 
 ### Tools
 
@@ -400,26 +398,16 @@ its own repository, tagged with the `helve` and `helve-stack` topics on
 GitHub so they cluster together. This repo (`helve`) is the one that ties
 them together at runtime; it doesn't contain their code.
 
-| Repo | What it is | Ships with a game? | Status |
-|---|---|---|---|
-| helve-engine | Runtime core (Rust) — lighting, audio playback, spatial audio built in | **Yes** | Closed source, not published |
-| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software — specs out the stack and its boundaries | No | Placeholder — README only |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Game design software — design prototyping, rough playable systems | No | Placeholder — README only |
-| [helve-turner](https://github.com/Firelight-Innovations/helve-turner) | Procedural art system — generates art from an artist's rough shape | No | Placeholder — README only |
-| [helve-scrivener](https://github.com/Firelight-Innovations/helve-scrivener) | Narrative/dialogue authoring tool | No | Placeholder — README only |
-| [helve-quickener](https://github.com/Firelight-Innovations/helve-quickener) | NPC behavior / AI tooling | No | Placeholder — README only |
-| [helve-wright](https://github.com/Firelight-Innovations/helve-wright) | Audio authoring/composition tooling | No | Placeholder — README only |
+| Repo | What it is | Status |
+|---|---|---|
+| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software — specs out the stack and its boundaries | Placeholder — README only |
+| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Game design software — design prototyping, rough playable systems | Placeholder — README only |
 
-**Only this repository has code in it today.** The other six are a `v0.1.0` tag
+**Only this repository has code in it today.** The other two are a `v0.1.0` tag
 against a README — which is what `helve.toml` pins, and why the shell's own
 health list reports them as `unversioned` rather than matching the pin. The pin
-is a placeholder holding a shape, not a release, and the intent below is the
+is a placeholder holding a shape, not a release, and the table above is the
 plan rather than a description of something already happening.
-
-`helve-engine` is closed source and stays that way. That is the open-core line:
-the tool protocol is the boundary, everything on this side of it is Apache-2.0,
-and the engine sits on the other side along with the other first-party tools
-that will be commercial.
 
 Each repo is meant to cut tagged semantic-version releases (`v0.1.0`, ...)
 rather than tracking a floating branch tip, and `helve` pins to specific tagged
@@ -431,7 +419,7 @@ HELVE is Apache-2.0. The full text is in [LICENSE](LICENSE), and
 [NOTICE](NOTICE) is the file a redistributor has to carry with it.
 
 Apache rather than MIT because of the patent grant, which matters here
-specifically: a commercial engine loads into this shell through the tool
+specifically: third-party tools load into this shell through the tool
 protocol, and MIT says nothing about patents at all. Not GPL or AGPL under any
 circumstances — a copyleft core hands someone a real argument that the private
 tools mounting into it are derivative works.

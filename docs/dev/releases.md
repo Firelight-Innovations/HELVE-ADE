@@ -32,7 +32,7 @@ it, nothing signs the output, and nothing publishes it anywhere.
 - **No updater.** HELVE does not check for a newer version of itself, and
   there is no mechanism for one build to hand off to the next.
 - **No versioning or tagging convention for the orchestrator itself.** The
-  *stack* components (`helve-engine`, `helve-forger`, and so on) are meant to
+  *stack* components (`helve-forger`, `helve-journeyman`) are meant to
   cut tagged semver releases that `helve.toml` pins — see the root
   [README.md](../../README.md#the-stack) — but that convention has not yet
   been applied to this repository's own releases.

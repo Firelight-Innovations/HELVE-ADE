@@ -48,9 +48,9 @@ presets.
 
 The bar also holds a warning-triangle badge, listing any tool whose health is
 not **ok** — **needs update**, **not tracked**, or **not installed**. It
-counts only the six authoring tools; the Engine is a runtime and never appears
-there. On a fresh machine all six read **not installed**, which is correct
-rather than broken; see [The stack, end to end](the-stack.md) for why.
+counts the stack's authoring tools — Forger and Journeyman today. On a fresh
+machine both read **not installed**, which is correct rather than broken; see
+[The stack, end to end](the-stack.md) for why.
 
 ## 3. The tool window
 
@@ -79,12 +79,12 @@ Switch clusters → the terminal band swaps too → same as the panes above
 
 <!-- SCREENSHOT: the status bar along the bottom of the window, 1440x40 -->
 
-_Engine status, the branch and its diff stat, GitHub, then settings._
+_The branch and its diff stat, GitHub, then settings._
 
-The thin bar along the bottom. It reports, left to right, the engine's status,
-the open cluster's branch and how far it has diverged, and a diff-stat
-readout of the working tree. GitHub status and the sliders glyph that opens
-**Settings** finish the row.
+The thin bar along the bottom. It reports, left to right, the open cluster's
+branch and how far it has diverged, and a diff-stat readout of the working
+tree. GitHub status and the sliders glyph that opens **Settings** finish the
+row.
 
 ## Worth knowing now
 
