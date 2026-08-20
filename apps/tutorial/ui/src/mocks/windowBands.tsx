@@ -3,6 +3,7 @@
  *  rather than imported from `titleBar.tsx`, the same way that file states its
  *  own — two small arrays are cheaper than a cross-mock import for a picture. */
 import type { ReactNode } from "react";
+import { PRODUCT_NAME } from "../branding.generated";
 import { ArrowCallout, Band, Col, Row } from "./chrome";
 
 const MENUS = ["File", "Edit", "View", "Run", "Terminal", "Help"];
@@ -20,7 +21,7 @@ export default function WindowBands() {
             ))}
           </Row>
           <Row justify="center" className="tut__mock-grow">
-            <span className="tut__mock-caption">HELVE Engine | Anvil</span>
+            <span className="tut__mock-caption">{PRODUCT_NAME} | Anvil</span>
           </Row>
           <Row gap="xs">
             <span className="tut__mock-btn">—</span>

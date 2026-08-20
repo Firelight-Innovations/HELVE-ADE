@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Helve",
+  "productName": "HELVE",
   "version": "0.1.0",
   "identifier": "com.firelightinnovations.helve",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Helve",
+        "title": "HELVE",
         "width": 1440,
         "height": 900,
         "minWidth": 900,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { bootStatus, finishBoot, onBootStatus, type BootStatus } from "../bindings";
+import { WORDMARK } from "../branding.generated";
 import { snap } from "../shell/motion";
 import SplashArt from "./SplashArt";
 
@@ -136,7 +137,7 @@ export default function Splash() {
             </button>
           </div>
         ) : (
-          <p className="splash__wordmark">HELVE</p>
+          <p className="splash__wordmark">{WORDMARK}</p>
         )}
       </div>
 

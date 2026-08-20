@@ -291,6 +291,14 @@ in a command is logic that cannot be tested without Tauri.
 - RPC methods are `namespace/verb`: `files/list`, `files/read`, `home/state`.
 - Directories are singular when they hold one concept (`viewer/`, `explorer/`)
   and plural when they hold many of a kind (`apps/`, `crates/`, `icons/`).
+- **The product's name is never written out in source.** It comes from
+  `branding.toml`, through the generated `branding.generated.ts` in the frontend
+  and `branding::product_name()` in Rust. `docs/branding.md` has the list of
+  surfaces and, more importantly, the list of names that are *not* branding and
+  must never be renamed — the `.helve` extension, the `helve/*` RPC namespace,
+  the `helve-tool://` scheme, the `@helve/*` scope, the crate names and the
+  bundle identifier are wire formats, and renaming one breaks every tool
+  repository ever written against this shell.
 
 ---
 
@@ -300,15 +308,16 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 333 tests, all passing:
+What exists today — 371 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
-| `src-tauri/src/**` | 274 | `cargo test` |
+| `src-tauri/src/**` | 276 | `cargo test` |
 | `crates/helve-rpc` | 15 | `cargo test` |
 | `crates/helve-tool-manifest` | 11 | `cargo test` |
 | `examples/echo-tool` | 5 | `cargo test` |
 | `packages/bridge` | 28 | vitest |
+| `src/**` | 36 | vitest |
 
 The protocol layer is covered because it is a published contract. The state
 machines are now covered too: `shell_state.rs` has 35 tests, `layout.rs` has 32,
@@ -321,9 +330,18 @@ What is expected going forward:
 2. **State machines get unit tests before they grow.** This was aspirational when
    first written and is now largely true; keep it that way. New state transitions
    arrive with `#[cfg(test)]` coverage in the same commit.
-3. **Pure functions in the frontend get vitest coverage** — `toolPresentation`,
-   `healthOf`, the layout math. Components do not need render tests yet; that is
-   a deliberate omission, not an oversight.
+3. **Pure functions in the frontend get vitest coverage.** A test lives beside
+   the module it tests, named for it — `query.ts` is tested by `query.test.ts`
+   in the same directory, which keeps it inside the same region and so under
+   the same import rules as §1.2 gives the source. The root `vitest.config.ts`
+   picks up `src/**/*.test.ts` and `apps/*/ui/src/**/*.test.ts`; the workspace
+   packages keep their own configs and their own runs.
+
+   The runner is `node`, with no jsdom and no rendering library, so a component
+   test is not merely absent but currently impossible. That is deliberate: the
+   shell's testable weight is in pure modules, and adding a DOM is a real
+   dependency decision that belongs to the first pull request that needs to
+   render something rather than to the commit that switched the runner on.
 4. **A bug fix comes with the test that would have caught it.** This is the only
    test rule that is non-negotiable.
 
@@ -376,7 +394,15 @@ all run, and `pnpm lint` is the single command that runs the three checks.
 | §6.1 no `any` | `@typescript-eslint/no-explicit-any` |
 | §6.3 `type` vs `interface` | `consistent-type-definitions` |
 | §6.5 hooks own state | `react-hooks/rules-of-hooks` |
+| §7 the product name is never hardcoded | `scripts/check-branding.mjs` |
 | comment concentration | `scripts/check-comments.mjs` |
+
+Dependency licensing and advisories are checked by `cargo deny check`, run as
+`pnpm lint:deps` and as its own CI job. It is deliberately outside `pnpm verify`,
+because it needs the network to fetch the advisory database and `pnpm verify`
+must not. A check that exists but is absent from the aggregate command is the
+kind of thing that gets forgotten and then rediscovered as a surprise in CI, so
+it is written down here rather than left to be found.
 
 Two rules answer §5's ban on `unwrap`/`expect` in a way worth knowing about,
 because clippy cannot tell a genuine invariant from a fallible call. Tests are

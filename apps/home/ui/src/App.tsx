@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { HelveRpcError, invoke, openIn, reportPainted } from "@helve/bridge";
+import { PRODUCT_NAME, TAGLINE, WORDMARK } from "./branding.generated";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
 import WorktreeDialog from "./WorktreeDialog";
 import "./home.css";
@@ -253,14 +254,15 @@ export default function App() {
            * ratio of one number, so it lives in `home.css` rather than being
            * passed in here; `Mark` takes the size from the CSS. The word is set
            * in mixed case and uppercased by the stylesheet, exactly as the
-           * packet sets it, which also keeps a screen reader saying "Helve"
-           * rather than spelling out five letters.
+           * packet sets it, which also keeps a screen reader saying a word
+           * rather than spelling out five letters — and is why the wordmark is
+           * a field of its own in `branding.toml` beside the product's name.
            */}
           <h1 className="home__lockup">
             <Mark className="home__lockup-mark" />
-            <span className="home__lockup-word">Helve</span>
+            <span className="home__lockup-word">{WORDMARK}</span>
           </h1>
-          <p className="home__tagline">The Veistra custom game development stack</p>
+          <p className="home__tagline">{TAGLINE}</p>
         </header>
 
         {open && (
@@ -277,7 +279,7 @@ export default function App() {
                 disabled={pending !== null}
                 onClick={() => run("home/initialize-project", { path: open.path })}
               >
-                Set up as a HELVE project
+                Set up as a {PRODUCT_NAME} project
               </button>
             )}
             <button

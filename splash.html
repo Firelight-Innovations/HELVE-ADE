@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Helve</title>
+    <title>HELVE</title>
     <!--
       This file is deliberately standalone: no imports, no build step, no
       shared modules, no coupling of any kind to the rest of the application.
+
+      That includes the branding module the rest of the frontend reads: the
+      product name and the wordmark below are written out here, and
+      `scripts/check-branding.mjs` fails `pnpm lint` if either stops agreeing
+      with branding.toml. Checking rather than generating is what keeps this
+      file something you can open and read, which is the whole of its design.
 
       It used to be a Vite entry that mounted a React tree
       (src/splash/main.tsx -> Splash.tsx -> splash.css -> tokens.css ->
@@ -70,7 +76,7 @@
        * than the rest of this file put together.
        */
       @font-face {
-        font-family: "Helve Wordmark";
+        font-family: "Wordmark";
         font-style: normal;
         font-weight: 600;
         src: url(data:font/woff2;base64,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) format("woff2");
@@ -229,10 +235,16 @@
         left: 20px;
         bottom: 18px;
         margin: 0;
-        font-family: "Helve Wordmark", system-ui, sans-serif;
+        font-family: "Wordmark", system-ui, sans-serif;
         font-size: 22px;
         font-weight: 600;
         letter-spacing: 0.16em;
+        /* The markup holds "Helve" and this uppercases it, which is the trade
+           `home.css` already makes for the lockup: a screen reader is handed a
+           word rather than five letters to spell. The face above is subset to
+           uppercase Latin, and `text-transform` runs before shaping, so the
+           glyphs it needs are the ones it has. */
+        text-transform: uppercase;
         /* The field art behind this varies in brightness by pixel, unlike
            the flat surface colour it sat on before — a fixed text colour
            alone cannot guarantee contrast against every part of it, so this
@@ -370,7 +382,7 @@
         <img class="splash__field" src="/helve-splash-field.svg" alt="" />
         <div class="splash__field-seam"></div>
 
-        <p class="splash__wordmark">HELVE</p>
+        <p class="splash__wordmark">Helve</p>
 
         <div class="splash__error" hidden>
           <div class="splash__error-panel">

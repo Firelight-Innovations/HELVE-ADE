@@ -59,6 +59,10 @@ body {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.16em;
+  /* The markup holds the wordmark in mixed case and this uppercases it — the
+     same trade `home.css` makes for the lockup, so a screen reader is handed a
+     word rather than five letters to spell out. */
+  text-transform: uppercase;
   /* Optical centring for the added letter-spacing: without this the mark
      reads as shifted right, since tracking adds its full gap after the
      last letter too and nothing balances it on the left. */

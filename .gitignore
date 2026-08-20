@@ -33,3 +33,13 @@ __pycache__/
 # table would be vendoring a package the manifest already declares.
 /public/icons/material/
 /packages/file-icons/src/manifest.generated.ts
+
+# Generated branding
+# Emitted from branding.toml by `scripts/generate-branding.mjs`, one module per
+# frontend bundle that draws a brand string. Tracking them would put the
+# product's name in four files instead of one, which is the thing branding.toml
+# exists to prevent.
+/src/branding.generated.ts
+/apps/home/ui/src/branding.generated.ts
+/apps/files/ui/src/branding.generated.ts
+/apps/tutorial/ui/src/branding.generated.ts

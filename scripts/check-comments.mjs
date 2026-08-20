@@ -61,7 +61,13 @@ const SKIP_DIRS = new Set(["node_modules", "target", "dist", "dist-ssr", ".git",
 const EXTENSIONS = [".rs", ".ts", ".tsx", ".mjs"];
 
 /** Generated files nobody writes by hand. */
-const SKIP_FILES = new Set(["packages/file-icons/src/manifest.generated.ts"]);
+const SKIP_FILES = new Set([
+  "packages/file-icons/src/manifest.generated.ts",
+  "src/branding.generated.ts",
+  "apps/home/ui/src/branding.generated.ts",
+  "apps/files/ui/src/branding.generated.ts",
+  "apps/tutorial/ui/src/branding.generated.ts",
+]);
 
 function walk(dir, out = []) {
   let entries;

@@ -7,6 +7,7 @@
 
 mod apps;
 mod boot;
+mod branding;
 mod commands;
 mod discovery;
 mod error;

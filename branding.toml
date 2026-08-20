@@ -1,0 +1,96 @@
+# What this product is called, and what it is drawn as.
+#
+# The source in this repository is open. The names and the marks in this file
+# are not: they are trademarks of Firelight Innovations. That position is only
+# followable if a fork can strip them in one place instead of by grep, so this
+# file — plus `node scripts/check-branding.mjs --list`, which prints every
+# surface that has to agree with it — is that one place.
+#
+# Three things read it:
+#
+#   src-tauri/src/branding.rs      the product name, embedded at compile time
+#   scripts/generate-branding.mjs  emits the frontend's branding module
+#   scripts/check-branding.mjs     asserts the surfaces below still agree
+#
+# `docs/branding.md` is the design note: why the frontend is generated while
+# `tauri.conf.json` and the HTML entry points are only checked, and what a fork
+# actually has to replace.
+
+
+# --- What is frozen ----------------------------------------------------------
+# Everything below is presentation, and swapping it produces an unbranded build
+# that still works. The following names are NOT presentation and must not be
+# templated, renamed, or made configurable here, however much they look like
+# branding:
+#
+#   the `helve.toml` filename          the `helve-tool://` URL scheme
+#   the `.helve` file extension        the `@helve/*` npm scope
+#   the `.helve/` project directory    the crate names
+#   the `helve/*` RPC namespace        `com.firelightinnovations.helve`
+#     (helve/painted, helve/commands,  the OS config directory holding
+#      helve/open, helve/publish)        projects.json
+#                                      the `helve-<id>` MCP server key
+#
+# Those are wire formats and on-disk contracts. Renaming one breaks every tool
+# repository ever written against this shell and stops existing projects
+# opening. A branding system that reaches them is a rename script with a config
+# file, which is a different and much worse thing. See `docs/branding.md` §2.
+
+
+# --- The grammar this file is allowed to use ---------------------------------
+# Two of the three readers above are Node scripts, and Node has no TOML parser.
+# Rather than take a dependency for a file this size — or hand-roll a parser
+# that has to agree with Rust's for the whole of TOML — they read a deliberately
+# small grammar: `[table]` headers, `key = "value"` string entries, `#`
+# comments, blank lines, and nothing else. Anything further is refused by line
+# number instead of guessed at. Keep new entries to plain quoted strings.
+
+
+[product]
+
+# The name as it is written in prose, window titles and menus. All caps: the
+# product is HELVE. It is not "HELVE Engine" — `helve-engine` is a separate
+# repository, and the shell calling itself by the engine's name was a bug this
+# file exists to have answered once.
+name = "HELVE"
+
+# The same name as the wordmark's text node, in mixed case.
+#
+# Both stylesheets that draw the wordmark uppercase it, so this is what a screen
+# reader is handed: "Helve" is a word, where "HELVE" is five letters it may
+# spell out. The brand packet's lockup already made this trade in
+# `apps/home/ui/src/home.css`; the splash now makes it too.
+wordmark = "Helve"
+
+# The line under the lockup on Home's hero. Read by nothing else — a tagline
+# repeated on a second surface stops being a tagline.
+tagline = "The Veistra custom game development stack"
+
+
+[assets]
+# Paths are relative to this file. Every one of them is checked to exist, so a
+# fork that replaces the art gets told about the entry it missed.
+
+# The mark: a capital H whose crossbar cants and tapers. One continuous outline
+# in a 24×24 box, and that is a requirement rather than a description — the
+# generator lifts the path data out of this file into the frontend's branding
+# module so the shell can draw it as inline SVG in `currentColor`, and it
+# refuses a file it cannot reduce to one path.
+mark = "assets/helve-mark.svg"
+
+# The art behind the splash wordmark, requested by `splash.html` as a plain
+# image from `public/`. It stays a file rather than being inlined: at 230 kB it
+# would more than 10× the one document whose whole job is to be on screen
+# instantly.
+splash-field = "public/helve-splash-field.svg"
+
+# What the installer and taskbar icons are drawn from. Its reader is a person
+# running `pnpm tauri icon assets/app-icon-source.svg`, which rewrites the PNG
+# set below; nothing at build time touches it.
+icon-source = "assets/app-icon-source.svg"
+
+# The directory holding that generated PNG set. `tauri.conf.json`'s
+# `bundle.icon` list is checked against it — every entry has to resolve inside
+# this directory and exist on disk, so an icon dropped from the set fails the
+# lint rather than the installer.
+bundle-icons = "src-tauri/icons"

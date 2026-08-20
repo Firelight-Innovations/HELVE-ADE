@@ -11,7 +11,12 @@
  *
  * Every icon strokes `currentColor`, so colour comes from the CSS token on the
  * parent. No icon hardcodes a hex.
+ *
+ * `BrandGlyph` is the exception to the first paragraph: it is the identity
+ * rather than an icon, and it comes from `branding.toml`.
  */
+
+import { MARK_PATH, MARK_VIEW_BOX } from "../branding.generated";
 
 interface IconProps {
   size?: number;
@@ -54,26 +59,32 @@ function Outline({
 }
 
 /**
- * The HELVE mark: a capital H whose crossbar cants and tapers, reading as
- * the grip of a hafted tool. Filled, not stroked — the path comes straight
- * out of `assets/helve-mark.svg` in the brand packet, which draws it as one
- * continuous 14-point outline so there are no subpath seams to hairline at
- * small sizes. Also serves — at a larger size — as the placeholder every
- * tool shares, per the handoff's note that tool icons are placeholders
- * until each tool earns its own.
+ * The product's mark. Today that is a capital H whose crossbar cants and
+ * tapers, reading as the grip of a hafted tool. Filled, not stroked — the brand
+ * packet draws it as one continuous 14-point outline so there are no subpath
+ * seams to hairline at small sizes. Also serves, larger, as the placeholder
+ * every tool shares until each earns its own icon.
+ *
+ * The geometry is generated out of the SVG that `branding.toml` names, rather
+ * than copied here or loaded as a file. Copying is what it used to be, and the
+ * comment claiming the copy was faithful was the only thing checking it.
+ * Loading it as an `<img>` was the other option and is worse: this glyph is
+ * drawn on the title bar and again as a tool placeholder, and an `<img>` cannot
+ * inherit `currentColor` — every call site would have to decide a colour, which
+ * is exactly what the rest of this file exists not to do.
  */
 export function BrandGlyph({ size = 15, className }: IconProps) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={MARK_VIEW_BOX}
       fill="currentColor"
       aria-hidden="true"
       focusable="false"
       className={className}
     >
-      <path d="M6 3h2.5v9l7-3V3H20v16l-2 2h-2.5v-7l-7 2v5H4V5z" />
+      <path d={MARK_PATH} />
     </svg>
   );
 }

@@ -9,6 +9,7 @@
  * you can walk.
  */
 import { useCallback, useEffect, useState } from "react";
+import { PRODUCT_NAME } from "../branding.generated";
 import NoticeBar, { type Notice } from "../NoticeBar";
 import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
 import {
@@ -121,7 +122,7 @@ export default function TrashView({
    */
   const notice: Notice | null = purging && {
     tone: "err",
-    message: `Permanently delete ${purging.name}? This cannot be undone — it will not go back to the Recycle Bin, and nothing in HELVE or Windows will be able to recover it.`,
+    message: `Permanently delete ${purging.name}? This cannot be undone — it will not go back to the Recycle Bin, and nothing in ${PRODUCT_NAME} or Windows will be able to recover it.`,
     actions: [
       { label: "Cancel", run: () => setPurging(null) },
       {
