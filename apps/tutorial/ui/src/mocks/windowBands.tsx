@@ -54,8 +54,6 @@ export default function WindowBands() {
 
       <Labelled label="Status bar">
         <Band tone="surface">
-          <span className="tut__mock-dot tut__mock-dot--ok" />
-          <span className="tut__mock-caption">Engine idle</span>
           <div className="tut__mock-grow" />
           <span className="tut__mock-caption">main</span>
           <span className="tut__mock-dot tut__mock-dot--ok" />

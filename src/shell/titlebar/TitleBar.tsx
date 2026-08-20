@@ -81,10 +81,10 @@ export default function TitleBar({ kind, project, worktree, menus }: TitleBarPro
           With nothing open this reads as the product's name alone, which is
           true; "HELVE | — | —" would be three claims where there is one.
 
-          It used to read "HELVE Engine", which was a different bug: the engine
-          is a separate repository and this shell is not it. The name now comes
-          from branding.toml through the generated module, so there is one place
-          left that can be wrong. */}
+          It used to append a second word to the product's name, which was a
+          different bug: it named something this shell is not. The name now
+          comes from branding.toml through the generated module, so there is one
+          place left that can be wrong. */}
       <div className="titlebar__title">
         <span>{PRODUCT_NAME}</span>
         {project !== null && (

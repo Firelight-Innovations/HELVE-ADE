@@ -39,7 +39,7 @@ fn handshake_echo_upper_and_shutdown() {
     let hello = tool
         .call_timeout(
             "helve/hello",
-            Some(json!({"protocol": 1, "session": {"engineEndpoint": null, "projectPath": null}})),
+            Some(json!({"protocol": 1, "session": {"projectPath": null}})),
             T,
         )
         .expect("helve/hello should succeed");

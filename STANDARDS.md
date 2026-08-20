@@ -372,9 +372,9 @@ Before a pull request is ready:
    `src/shell/contract.ts`, the PR description says so explicitly. Those three
    are contracts other code and other repositories are built against.
 
-Item 1 is mechanical and belongs in CI; once that workflow lands
-(`docs/open-source-plan.md` phase 3) this list shortens to items 2 and 3. Until
-then it is on whoever opens the PR, which is why it is one command.
+Item 1 is mechanical and belongs in CI, and now runs there on every pull
+request — so in practice this list is items 2 and 3, which no workflow can
+check for you.
 
 ---
 
@@ -475,6 +475,5 @@ rule.
 - Prettier and `rustfmt` are not wired to a pre-commit hook, so formatting is
   checked (`pnpm format:check`) but not applied automatically.
 
-Each is a candidate rule for the architecture checker in
-`docs/open-source-plan.md`. A rule that can be stated precisely enough to appear
-in this section is a rule that can be mechanized.
+Each is a candidate rule for an architecture checker. A rule that can be stated
+precisely enough to appear in this section is a rule that can be mechanized.

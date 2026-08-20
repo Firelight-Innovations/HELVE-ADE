@@ -33,27 +33,33 @@ An issue that gets a first pull request names the file, describes the wrong
 behaviour and the right one, and says which check proves it. Eight to twelve is
 enough to seed a tracker.
 
-## 9. Contributor readiness (in progress)
+## 9. Contributor readiness (done)
 
-`docs/contributor-readiness-plan.md` is the execution plan;
-`docs/open-source-plan.md` is the strategy behind it.
+The repository is public, as `Firelight-Innovations/HELVE-ADE`. Landed:
+Apache-2.0 with the marks held back, CI running `pnpm verify` on every pull
+request and annotating each failure on the line that caused it, a dependency
+audit, `CONTRIBUTING.md` and a code of conduct, a frontend test harness, a
+tool-protocol stability statement, and the branding system that makes the
+trademark line something a fork can act on.
 
-Landing now: Apache-2.0 with the marks held back, CI running `pnpm verify` on
-every pull request, a dependency audit, `CONTRIBUTING.md` and a code of conduct,
-a frontend test harness, a tool-protocol stability statement, and the branding
-system that makes the trademark line something a fork can act on.
+`main` is protected: `verify` and `deny` are required, approvals are zero
+because requiring one with a single maintainer would mean nothing can ever
+merge, and admins are exempt so a hotfix is still possible. Tighten the last of
+those when there is a second maintainer.
 
-Still open, and each one is a decision rather than a task:
+`docs/handoffs/` has been removed. It was working material — a brand packet, a
+shell spec, agent coordination notes — and none of it was written to be read
+from outside the project. It is gone from HEAD only; removing a file in a commit
+does not remove it from history, so a fresh squashed history is still the only
+way to make it unreachable, and that remains an open call.
+
+Still open:
 
 - Whether the public repository starts from a fresh squashed history.
-  `docs/handoffs/` holds a brand packet and logo ideation that may not be ours
-  to publish, and removing files in a commit does not remove them from history.
-- Branch protection settings, which cannot be set from a file —
-  `docs/handoffs/readiness/wp-b.md` has the checklist.
-- What to do about the six placeholder stack repositories. They are a `v0.1.0`
-  tag against a README, and the README now says so.
-
-→ HELVE is ready to open source once those are answered.
+- What to do about the placeholder stack repositories. They are a `v0.1.0` tag
+  against a README, and the README now says so.
+- The issue backlog from #7, which is what a first-time contributor actually
+  needs and does not exist yet.
 
 ## 10. App download system
 
@@ -75,11 +81,19 @@ what is stable and what is not.
 
 ## 11. Forger (vague for now)
 
+**Built by the maintainer, like #10 and #12.** Not because outside help is
+unwelcome — so that nobody spends a weekend on a foundation that is already
+half-written. Once each of the three exists, features and quality-of-life work
+on top of it is where an outside change lands best, and a roadmap and a set of
+starter issues are coming to say where. This is stated in `CONTRIBUTING.md` and
+in the "What should we build next?" discussion, and the three places should
+keep agreeing.
+
 Scope intentionally undefined until reached — flesh out in-depth at that point.
-`docs/open-source-plan.md` phase 6 has the one idea worth keeping: the
-architecture linter and Forger's editor are the same boundary model, one
-checking it and one authoring it, and building the checker first is what forces
-the model to be precise before it has to be pretty.
+One idea is worth carrying: the architecture linter and Forger's editor are the
+same boundary model, one checking it and one authoring it, and building the
+checker first is what forces the model to be precise before it has to be
+pretty.
 
 ## 12. Journeyman
 

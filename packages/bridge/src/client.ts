@@ -215,7 +215,7 @@ export function createClient(opts: ClientOptions): Client {
   } else {
     // No shell exists under the Tauri host, so there's no handshake to wait
     // on — the session is knowable immediately, and is always empty.
-    resolveSession({ engineEndpoint: null, projectPath: null });
+    resolveSession({ projectPath: null });
   }
 
   function sendRequest(id: number, method: string, params: unknown) {

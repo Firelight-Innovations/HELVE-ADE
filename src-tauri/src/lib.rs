@@ -274,7 +274,6 @@ pub fn run() {
             commands::move_terminal,
             commands::set_active_terminal,
             commands::set_terminal_title,
-            commands::set_engine_state,
             commands::tool_frontend,
             commands::list_apps,
             commands::list_openables,
@@ -361,9 +360,6 @@ fn restore_session(app: &tauri::AppHandle) {
         windows: stored.windows,
         instances: stored.instances,
         terminals: stored.terminals,
-        // Not restored: a stale "building" would be a claim about a process
-        // that is not running. See `shell_store::Stored`.
-        engine: shell_state::EngineState::Idle,
     });
 
     migrate_global_project(app, &shell);

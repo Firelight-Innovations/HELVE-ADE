@@ -18,7 +18,6 @@ import type { ReactNode } from "react";
 import type {
   AppInfo,
   Cluster,
-  EngineState,
   GitChangeKind,
   GitCommit,
   GitDiff,
@@ -34,9 +33,7 @@ import type {
   WorktreeRef,
 } from "../bindings";
 
-// ---------------------------------------------------------------------------
-// Tools
-// ---------------------------------------------------------------------------
+// --- Tools ------------------------------------------------------------------
 
 /** How a tool's resolution state appears to a person. `ok` is silent: four of six
  *  tools normally show nothing and tabs stay plain. It drives the health list
@@ -113,34 +110,7 @@ function healthOf(status: ToolStatus): ToolHealth {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Engine status — stubbed, five strings and nothing else
-// ---------------------------------------------------------------------------
-
-/** The five strings, verbatim from the handoff. There is no sixth. */
-export const ENGINE_LABEL: Record<EngineState, string> = {
-  idle: "Engine idle",
-  building: "Engine building",
-  running: "Engine running",
-  failed: "Build failed",
-  none: "No engine",
-};
-
-export const ENGINE_TOKEN: Record<EngineState, string> = {
-  idle: "var(--ok)",
-  building: "var(--accent)",
-  running: "var(--ok)",
-  failed: "var(--err)",
-  none: "var(--dot-off)",
-};
-
-export interface EngineStatusSource {
-  subscribe(cb: (state: EngineState) => void): () => void;
-}
-
-// ---------------------------------------------------------------------------
-// Terminals — real PTYs, real emulation
-// ---------------------------------------------------------------------------
+// --- Terminals — real PTYs, real emulation ----------------------------------
 //
 // A session is two separate things, and they are deliberately two interfaces:
 // `TerminalSource` is identity and lifetime, which is Rust's and arrives on
@@ -250,9 +220,7 @@ export interface TerminalTransport {
   resize(id: string, cols: number, rows: number): void;
 }
 
-// ---------------------------------------------------------------------------
-// Source control — real git, one shot at a time
-// ---------------------------------------------------------------------------
+// --- Source control — real git, one shot at a time --------------------------
 //
 // Request/reply, because there is no watcher — the panel re-asks after every
 // mutation and when the shown tool changes, and that is the whole update model.
@@ -296,9 +264,7 @@ export interface GitControl {
   commit(clusterId: string, message: string): Promise<void>;
 }
 
-// ---------------------------------------------------------------------------
-// Worktrees — one cluster, one checkout of its own
-// ---------------------------------------------------------------------------
+// --- Worktrees — one cluster, one checkout of its own -----------------------
 //
 // A cluster can work inside a git worktree, so two clusters can hold two branches
 // of one repository open at once. `git worktree list` — not anything HELVE writes
@@ -349,9 +315,7 @@ export function clusterRoot(cluster: Cluster): string | null {
   return cluster.worktree?.path ?? cluster.project;
 }
 
-// ---------------------------------------------------------------------------
-// Search — stubbed index, real interaction
-// ---------------------------------------------------------------------------
+// --- Search — stubbed index, real interaction -------------------------------
 
 export type SearchType = "content" | "scripts" | "assets" | "terminal" | "settings";
 
@@ -373,9 +337,7 @@ export interface SearchIndex {
   query(text: string, types: SearchType[]): SearchResult[];
 }
 
-// ---------------------------------------------------------------------------
-// Menus — every menu opens, and an item that cannot act says so
-// ---------------------------------------------------------------------------
+// --- Menus — every menu opens, and an item that cannot act says so ----------
 
 export interface MenuItem {
   label: string;
@@ -426,9 +388,7 @@ export interface Menu {
   items: MenuItem[];
 }
 
-// ---------------------------------------------------------------------------
-// Instances, panes, clusters — the layout
-// ---------------------------------------------------------------------------
+// --- Instances, panes, clusters — the layout --------------------------------
 //
 // An *app id* is a type, an *instance id* is an identity: `files` names some
 // code, `files-1` and `files-2` name two live surfaces with their own open files.
@@ -438,9 +398,7 @@ export interface Menu {
 /** The layout itself. Mirrors Rust and is declared in `bindings.ts`. */
 export type { PaneNode, SplitDir, SurfaceInstance, SurfaceKind } from "../bindings";
 
-// ---------------------------------------------------------------------------
-// Layout presets — an arrangement, and which app belongs in each pane
-// ---------------------------------------------------------------------------
+// --- Layout presets — an arrangement, and which app belongs in each pane ----
 //
 // Mirrors `src-tauri/src/presets/mod.rs`: a `PaneNode` is made of *identities*, a
 // `PresetNode` is the same shape with all of them removed, leaving a direction,
@@ -470,7 +428,6 @@ export interface GitHunk {
  *  [`clusterRoot`] for which of a cluster's two possible roots wins. */
 export type {
   Cluster,
-  EngineState,
   GitCommit,
   GitDiff,
   GitDivergence,
@@ -529,9 +486,7 @@ export function paneLeaves(node: PaneNode): Extract<PaneNode, { kind: "leaf" }>[
   return node.kind === "leaf" ? [node] : node.children.flatMap(paneLeaves);
 }
 
-// ---------------------------------------------------------------------------
-// Drag — every interaction, one vocabulary
-// ---------------------------------------------------------------------------
+// --- Drag — every interaction, one vocabulary -------------------------------
 
 /** What is currently in the air. Two things can be dragged, and `what` is which;
  *  a union rather than a wide object with half its fields unused is what stops a
@@ -611,9 +566,7 @@ export interface DragHandleProps {
   style: { cursor: string };
 }
 
-// ---------------------------------------------------------------------------
-// The frame
-// ---------------------------------------------------------------------------
+// --- The frame --------------------------------------------------------------
 
 /** Which window this is. Only the title bar's traffic-light treatment still turns
  *  on this: both kinds now have a switcher bar and a panel, because a detached

@@ -90,8 +90,8 @@ costs a route. What separate endpoints buy is worth more than that route:
 - **A 1:1 map to the settings UI.** "Registered server" is exactly the row the
   user toggles, which is what the roadmap asked for.
 - **Scoping.** An agent working in Forger gets Forger's tools. It has no reason
-  to see Turner's, and every tool it can see but must not use is noise in its
-  context.
+  to see another tool's, and every tool it can see but must not use is noise in
+  its context.
 
 Enable and disable stay on our side — HELVE decides which routes are mounted and
 which entries are written — rather than living in the harness's own `/mcp` panel.

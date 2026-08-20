@@ -49,8 +49,8 @@ first thing that happens.
 Then:
 
 ```sh
-git clone https://github.com/Firelight-Innovations/helve.git
-cd helve
+git clone https://github.com/Firelight-Innovations/HELVE-ADE.git
+cd HELVE-ADE
 pnpm install
 pnpm verify
 ```
@@ -75,8 +75,8 @@ itself through `beforeDevCommand` and `beforeBuildCommand`. Use the `app`
 scripts.
 
 **A fresh clone reports most of the stack as `not cloned`, and that is
-correct.** `helve.toml` pins seven component repositories and looks for each one
-in a sibling directory of this checkout; on a machine that has only this repo,
+correct.** `helve.toml` pins each component repository and looks for it in a
+sibling directory of this checkout; on a machine that has only this repo,
 finding none of them is the accurate answer rather than a broken install. The
 shell, Home and Files all run in that state, which is the state most work on the
 orchestrator happens in.
@@ -261,11 +261,16 @@ the diff no longer says what happened.
 Stated up front, because the alternative is you finding out on your third
 weekend.
 
-**Some first-party tools are commercial and always will be.** The engine
-(`helve-engine`) is a private repository and is not going to become a public
-one. This is the open core model — an Apache-licensed core, proprietary
-first-party tools, one public protocol that both use — and VS Code is the exact
-precedent. `docs/open-source-plan.md` is the whole argument if you want it.
+**Some first-party tools are commercial and always will be.** Not every
+component of the stack is going to become a public repository. This is the open
+core model — an Apache-licensed core, proprietary first-party tools, one public
+protocol that both use — and VS Code is the exact precedent.
+
+**Forger, Journeyman, and the app download system are built by the maintainer.**
+Not because outside help is unwelcome, but so nobody spends a weekend on a
+foundation that is already half-written. Once each one exists, features and
+quality-of-life work on top of it are exactly where an outside change lands
+best. A roadmap and a set of starter issues are coming.
 
 **The tool protocol is the license boundary, and nothing crosses it.**
 `docs/tool-protocol.md` is what a tool may assume about the host and what the

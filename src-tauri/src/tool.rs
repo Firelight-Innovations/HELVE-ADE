@@ -13,9 +13,12 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ToolKind {
-    /// Part of the runtime — this code ships inside a finished game.
-    Runtime,
-    /// Authoring-time only. Never ships with a game.
+    /// An authoring tool: a window you open while you work.
+    ///
+    /// The only kind today. It stays an enum rather than collapsing into a
+    /// bare marker because `helve.toml` already writes `kind = "dev-tool"` on
+    /// every entry, and removing a field from a manifest format is a migration
+    /// while adding a variant to it is not.
     DevTool,
 }
 

@@ -20,20 +20,11 @@ version = "0.1.0"
 checkout-root = ".."
 
 
-# --- Runtime -----------------------------------------------------------------
-# `kind = "runtime"` means this code ships inside a finished game.
-
-[[tool]]
-id = "engine"
-name = "Helve Engine"
-kind = "runtime"
-repo = "https://github.com/Firelight-Innovations/helve-engine"
-version = "0.1.0"
-description = "Runtime core — lighting, audio playback, spatial audio built in."
-
-
 # --- Development tools -------------------------------------------------------
-# `kind = "dev-tool"` means authoring-time only; never shipped with a game.
+# `kind = "dev-tool"` means authoring-time only. It is the only kind today, and
+# the field stays anyway: the manifest's job is to say what a component *is*,
+# and a schema that omits the question cannot answer it later without a
+# migration.
 
 [[tool]]
 id = "forger"
@@ -51,34 +42,3 @@ repo = "https://github.com/Firelight-Innovations/helve-journeyman"
 version = "0.1.0"
 description = "Game design software — design prototyping, rough playable systems."
 
-[[tool]]
-id = "turner"
-name = "Turner"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-turner"
-version = "0.1.0"
-description = "Procedural art system — generates art from an artist's rough shape."
-
-[[tool]]
-id = "scrivener"
-name = "Scrivener"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-scrivener"
-version = "0.1.0"
-description = "Narrative and dialogue authoring tool."
-
-[[tool]]
-id = "quickener"
-name = "Quickener"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-quickener"
-version = "0.1.0"
-description = "NPC behavior and AI tooling."
-
-[[tool]]
-id = "wright"
-name = "Wright"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-wright"
-version = "0.1.0"
-description = "Audio authoring and composition tooling."

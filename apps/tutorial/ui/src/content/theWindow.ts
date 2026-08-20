@@ -53,7 +53,7 @@ export const theWindow: Body = {
     },
     {
       kind: "text",
-      body: "The bar also holds a warning-triangle badge, listing any tool whose health is not **ok** — **needs update**, **not tracked**, or **not installed**. It counts only the six authoring tools; the Engine is a runtime and never appears there. On a fresh machine all six read **not installed**, which is correct rather than broken; see **The stack, end to end** for why.",
+      body: "The bar also holds a warning-triangle badge, listing any tool whose health is not **ok** — **needs update**, **not tracked**, or **not installed**. It counts the stack's authoring tools. On a fresh machine they all read **not installed**, which is correct rather than broken; see **The stack, end to end** for why.",
     },
 
     { kind: "heading", body: "3. The tool window" },
@@ -92,11 +92,11 @@ export const theWindow: Body = {
     {
       kind: "mock",
       view: "status-bar",
-      caption: "Engine status, the branch and its diff stat, GitHub, then settings.",
+      caption: "The branch and its diff stat, GitHub, then settings.",
     },
     {
       kind: "text",
-      body: "The thin bar along the bottom. It reports, left to right, the engine's status, the open cluster's branch and how far it has diverged, and a diff-stat readout of the working tree. GitHub status and the sliders glyph that opens **Settings** finish the row.",
+      body: "The thin bar along the bottom. It reports, left to right, the open cluster's branch and how far it has diverged, and a diff-stat readout of the working tree. GitHub status and the sliders glyph that opens **Settings** finish the row.",
     },
 
     { kind: "heading", body: "Worth knowing now" },

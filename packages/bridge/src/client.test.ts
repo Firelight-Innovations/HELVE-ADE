@@ -23,7 +23,7 @@ function fakeWindow(): { win: WindowLike; dispatch: (event: IncomingWindowMessag
   return { win, dispatch: (event) => listeners.forEach((l) => l(event)) };
 }
 
-function readyMessage(session = { engineEndpoint: null, projectPath: null }) {
+function readyMessage(session = { projectPath: null }) {
   return {
     helve: 1 as const,
     kind: "ready" as const,
@@ -38,7 +38,7 @@ function readyMessage(session = { engineEndpoint: null, projectPath: null }) {
 function handshake(
   parent: WindowLike,
   dispatch: (event: IncomingWindowMessage) => void,
-  session?: { engineEndpoint: string | null; projectPath: string | null },
+  session?: { projectPath: string | null },
 ) {
   dispatch({ source: parent, origin: SHELL_ORIGIN, data: readyMessage(session) });
 }
@@ -68,7 +68,7 @@ describe("handshake", () => {
     const { win: self, dispatch } = fakeWindow();
     const { win: parent } = fakeWindow();
     const client = createClient({ self, parent });
-    const session = { engineEndpoint: "\\\\.\\pipe\\helve-1", projectPath: "C:\\proj" };
+    const session = { projectPath: "C:\\proj" };
 
     handshake(parent, dispatch, session);
 
@@ -570,6 +570,6 @@ describe("tauri host", () => {
   it("resolves session() immediately, with no handshake to wait for", async () => {
     const { win: self } = fakeWindow();
     const client = createClient({ self, parent: self });
-    await expect(client.session()).resolves.toEqual({ engineEndpoint: null, projectPath: null });
+    await expect(client.session()).resolves.toEqual({ projectPath: null });
   });
 });
