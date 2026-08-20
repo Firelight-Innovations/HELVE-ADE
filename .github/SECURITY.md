@@ -5,7 +5,7 @@
 **Please do not open a public issue.**
 
 Use GitHub's private vulnerability reporting: go to the
-[Security tab](https://github.com/Firelight-Innovations/helve/security) and
+[Security tab](https://github.com/Firelight-Innovations/HELVE-ADE/security) and
 choose **Report a vulnerability**. That opens a thread visible only to you and
 the maintainers, and it keeps the report, the discussion and the eventual
 advisory in one place.

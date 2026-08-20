@@ -1,8 +1,15 @@
+<img src="assets/helve-mark.svg" alt="" width="56" height="56">
+
 # HELVE
 
-The entry point for the HELVE stack. Organizes and loads the dev tools and
-holds the shared baseline code that glues everything together and gets the
-stack running.
+**HELVE is an ADE — an Agentic Development Environment — for building games.**
+It is one shell that a stack of separate authoring tools mount into, the way
+VS Code is one shell that extensions mount into, built around working
+alongside coding agents rather than around them being an afterthought.
+
+This repository is the **orchestrator**: the entry point for the HELVE stack.
+It organizes and loads the dev tools and holds the shared baseline code that
+glues everything together and gets the stack running.
 
 Each dev tool is its own repository shipping a Rust core and a React frontend.
 Its own Tauri app is one host for that pair; this orchestrator is a second.
@@ -10,15 +17,20 @@ Its own Tauri app is one host for that pair; this orchestrator is a second.
 
 This is a development tool; it does not ship with games built on HELVE.
 
+**New here?** [`docs/`](docs/README.md) splits into
+[using HELVE](docs/user/README.md) and [developing HELVE](docs/dev/README.md).
+If you just want to try it, keep reading — everything you need is below.
+
 Status: pre-alpha. The shell frame runs and reports the stack, and its
 first-party apps — Home, Files, the file viewer and Tutorials — mount in it and
 are answered by Rust. Projects exist: Home opens one, remembers it, and reopens
 it on the next launch. The tools themselves are not yet integrated — a tool's
 core is a child process and the broker that would reach it is not built.
 
-HELVE is developed and tested on Windows only. macOS and Linux are untested
-rather than deliberately excluded, and nothing in the design is Windows-only in
-principle — there is simply no machine here that runs them.
+**HELVE runs on Windows only today, and there is no installer yet.** Building
+it from source, below, is the only way to run it. macOS and Linux are
+untested rather than deliberately excluded, and nothing in the design is
+Windows-only in principle — there is simply no machine here that runs them.
 
 ## Tech stack
 

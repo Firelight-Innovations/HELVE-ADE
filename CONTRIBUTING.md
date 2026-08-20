@@ -49,8 +49,8 @@ first thing that happens.
 Then:
 
 ```sh
-git clone https://github.com/Firelight-Innovations/helve.git
-cd helve
+git clone https://github.com/Firelight-Innovations/HELVE-ADE.git
+cd HELVE-ADE
 pnpm install
 pnpm verify
 ```
