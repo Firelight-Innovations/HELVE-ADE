@@ -30,5 +30,5 @@ above, it is probably still here:
   [`tutorials.md`](tutorials.md) — one document per subsystem.
 - [`design-notes/`](design-notes/) — longer rationale moved out of module
   comments, one page per area.
-- [`open-source-plan.md`](open-source-plan.md) — the plan this whole
-  documentation effort is a phase of.
+- [`../TODO.md`](../TODO.md) — the roadmap: what has landed, what is being
+  built now, and what is still ahead.

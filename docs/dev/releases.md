@@ -39,8 +39,8 @@ it, nothing signs the output, and nothing publishes it anywhere.
 
 ## Where this is going
 
-`docs/open-source-plan.md` sequences the work that leads here — standards and
-CI land first, then GitHub infrastructure, and release automation is called
-out there as deliberately deferred until there is something worth releasing
-on a cadence. If you want to work on this, read that document first so a
+`TODO.md` sequences the work that leads here — standards and CI landed first,
+then the GitHub infrastructure, and release automation is deliberately deferred
+until there is something worth releasing on a cadence. If you want to work on
+this, read that first so a
 contribution fits the order rather than jumping ahead of it.

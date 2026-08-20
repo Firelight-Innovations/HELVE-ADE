@@ -382,15 +382,13 @@ both places:
 
 ```ts
 interface Session {
-  /** Named pipe (Windows) or Unix socket path for the engine runtime. */
-  engineEndpoint: string | null;
   /** Root of the open project. Null until projects exist. */
   projectPath: string | null;
 }
 ```
 
-This is how a tool finds the engine — the orchestrator generates one endpoint
-name per session and publishes it here. Both fields are null today.
+This is what the host tells a tool about the world it opened into. The single
+field is null today, and stays null until projects reach tools.
 
 ## 4. The bridge package
 
@@ -457,7 +455,7 @@ timing guess — there is no probe, no timeout, and no ambiguous middle state.
   so a frontend that supports menu commands does not log an error on a host where
   the feature does not apply. `onCommand` registers a handler nothing will ever
   call there, and its unsubscribe is real either way.
-- `session()` resolves immediately to `{engineEndpoint: null, projectPath: null}`.
+- `session()` resolves immediately to `{projectPath: null}`.
 - `@tauri-apps/api` is imported dynamically, so a tool built for the orchestrator
   alone doesn't have to ship it.
 
@@ -525,10 +523,12 @@ correctly. Nothing checks that it did.
   at: the manifest crate types it as an opaque `toml::Value` so that reserving
   the space costs nothing today. Anything written in it is a note to yourself.
   What it will actually mean is the second open question below.
-- **`Session`.** Both fields are null in every build that exists. The shape will
-  not lose a field, but `engineEndpoint` is unspecified past "a named pipe or
-  socket path", and it cannot be pinned down until the engine is on the far end
-  of one.
+- **`Session`.** Its one field is null in every build that exists. It carried a
+  second, `engineEndpoint`, removed rather than carried forward: it named a
+  component that is not part of this stack, it was null everywhere, and it had
+  no specification past "a named pipe or socket path". Removing it while the
+  protocol has no third-party implementors costs nothing — keeping it would have
+  meant documenting a field nobody could fill.
 - **Path safety.** §1 names the known gap: paths are not canonicalized, so a
   symlink inside a checkout still escapes it. Closing that can only make a
   manifest that parses today start failing, which is the direction a security

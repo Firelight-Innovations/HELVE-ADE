@@ -14,7 +14,7 @@
 
   "never_lint": [
     "handoff/", "tools/lint_data/", "tools/tests/corpus_dirty/", ".git/",
-    ".pi/", ".claude/", "docs/audits/", "docs/handoffs/"
+    ".pi/", ".claude/", "docs/audits/"
   ],
 
   "severity_defaults": {

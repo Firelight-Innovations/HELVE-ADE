@@ -199,10 +199,9 @@ holds "Helve" so a screen reader is handed a word; the screen shows "HELVE".
 - **Colours and fonts.** They are `src/tokens.css` and they stay there. This is
   not a theming system; a branding system that grows a palette is the settings
   screen with extra steps.
-- **A build flag that swaps one vocabulary for another.**
-  `docs/open-source-plan.md` phase 4.4 rejects a flag switching "game" for
-  "software" on the grounds that it is a fork with extra steps and small forks
-  grow. One config, read once, one build.
+- **A build flag that swaps one vocabulary for another.** A flag switching one
+  word for another across the interface is a fork with extra steps, and small
+  forks grow. One config, read once, one build.
 - **`package.json`.** It is checked by nothing here because it holds no brand
   string. Its `name` is `helve-orchestrator`, the npm identity of a package
   marked `private` and never published — the same category as the `@helve/*`

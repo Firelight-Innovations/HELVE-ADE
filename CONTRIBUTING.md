@@ -265,7 +265,6 @@ weekend.
 component of the stack is going to become a public repository. This is the open
 core model — an Apache-licensed core, proprietary first-party tools, one public
 protocol that both use — and VS Code is the exact precedent.
-`docs/open-source-plan.md` is the whole argument if you want it.
 
 **Forger, Journeyman, and the app download system are built by the maintainer.**
 Not because outside help is unwelcome, but so nobody spends a weekend on a

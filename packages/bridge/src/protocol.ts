@@ -13,8 +13,6 @@
 
 /** Mirrors the `Session` shape shared with the tool core's `helve/hello`. */
 export interface Session {
-  /** Named pipe (Windows) or Unix socket path for the engine runtime. */
-  engineEndpoint: string | null;
   /** Root of the open project. Null until projects exist. */
   projectPath: string | null;
 }

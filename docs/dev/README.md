@@ -53,7 +53,7 @@ updater).
 
 ## Where this is all going
 
-**[The open source plan](../open-source-plan.md)** is the sequencing
-argument for the whole effort this section is part of — why standards and CI
-had to land before the repository could go public, and what is deliberately
-still ahead of it.
+**[`TODO.md`](../../TODO.md)** is the roadmap, and it is the only forward-looking
+document that is kept current. It says what has landed, what is being built now,
+and what is deliberately still ahead — including which pieces the maintainer is
+building directly rather than farming out.

@@ -528,7 +528,7 @@ const ToolWindow = forwardRef<
         kind: "ready",
         toolId: frame.appId,
         protocol: 1,
-        session: { engineEndpoint: null, projectPath: null },
+        session: { projectPath: null },
       };
       source.postMessage(reply, origin);
       frame.origin = origin;
