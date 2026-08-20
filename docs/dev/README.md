@@ -19,6 +19,10 @@ who has never seen the repo.
 
 ## How the project works, technically
 
+- **[How the orchestrator is built](architecture.md)** — the tech stack, the
+  stack manifest, the directory layout, what a project is, the startup
+  sequence, the shell, the apps, the tools, and how to add a command. This is
+  the page that used to be most of the root `README.md`.
 - **[STANDARDS.md](../../STANDARDS.md)** — the rule book. Layering (what may
   import what), the two files that exist purely as chokepoints, the
   app/tool distinction, comment conventions, Rust and TypeScript style, test

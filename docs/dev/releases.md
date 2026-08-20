@@ -14,10 +14,34 @@ pnpm app:build
 ```
 
 This compiles the frontend to static files, embeds them in an optimized Rust
-binary, and produces installers. `README.md`'s **Release builds** section has
-the full account — where the artifacts land (`target/release/`), why the
-manifest needs `$HELVE_MANIFEST` or a `helve.toml` beside the installed
-executable, and why `productName` is checked against `branding.toml`.
+binary, and produces installers. It takes a few minutes: the release profile
+has no cheap incremental rebuild. Artifacts land in `target/release/`.
+
+| Path | What |
+|---|---|
+| `helve-orchestrator.exe` | the app, self-contained |
+| `bundle/msi/HELVE_<ver>_x64_en-US.msi` | MSI installer |
+| `bundle/nsis/HELVE_<ver>_x64-setup.exe` | NSIS installer |
+
+Those filenames come from `productName` in `tauri.conf.json`, which is checked
+against `branding.toml` — renaming the product renames the installers with it.
+The bundle identifier does *not* change, and neither does the OS configuration
+directory Tauri derives from it, so nobody's existing projects or settings move.
+
+WiX and NSIS are downloaded automatically on the first release build.
+
+**A release build needs a manifest pointed at a real stack checkout.**
+`bundle.resources` ships a copy of `helve.toml`, but its `checkout-root = ".."`
+resolves relative to wherever the manifest ends up — which is the install
+directory, not your code tree. `locate()` searches in this order:
+
+1. `$HELVE_MANIFEST`
+2. the repo root (dev builds only, via `CARGO_MANIFEST_DIR`)
+3. a `helve.toml` placed next to the installed executable
+4. the copy bundled into the app
+
+Steps 1 and 3 are the ones that make an installed build useful. Until the
+orchestrator can be pointed at a workspace directly, run it from the repo.
 
 That command works. It is not a pipeline: nobody runs it but the person doing
 it, nothing signs the output, and nothing publishes it anywhere.

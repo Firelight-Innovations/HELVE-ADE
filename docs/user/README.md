@@ -10,8 +10,8 @@ games. It is one shell that a stack of separate authoring tools mount into,
 the way VS Code is one shell that extensions mount into. `README.md` at the
 repository root has the full picture of the stack; the short version is that
 this repository — the **orchestrator** — is the shell, and each tool
-(design, art, dialogue, audio, NPC behaviour) is its own project that plugs
-into it.
+(Forger for technical design, Journeyman for game design) is its own project
+that plugs into it.
 
 Today the orchestrator itself is what runs: the window, Home, the File
 Explorer, the File Viewer, and Tutorials. The stack tools are placeholders —
@@ -22,9 +22,9 @@ machine.
 ## Getting it running
 
 There is no installer yet. Running HELVE today means building it from
-source, and it only runs on Windows. The root [README.md](../../README.md)
-has the exact prerequisites and commands under **Development**; the short
-version is `pnpm install` then `pnpm app`.
+source, and it only runs on Windows. The root
+[README.md](../../README.md#install-and-run) has the exact prerequisites and
+commands; the short version is `pnpm install` then `pnpm app`.
 
 ## Learning your way around
 
