@@ -228,14 +228,29 @@ export function parse(output, repoRoot = process.cwd()) {
 
 /** The `::error` form GitHub reads. A finding with no file becomes a bare one. */
 export function toWorkflowCommands(findings) {
-  return findings.map((f) => {
-    const escaped = String(f.message).replace(/%/g, "%25").replace(/\r?\n/g, "%0A");
-    if (!f.file) return `::error title=${f.tool}::${escaped}`;
-    const where = [`file=${f.file}`];
-    if (f.line) where.push(`line=${f.line}`);
-    if (f.col) where.push(`col=${f.col}`);
-    return `::error ${where.join(",")},title=${f.tool}::${escaped}`;
-  });
+  return findings.filter((f) => !MATCHED_BY_THE_RUNNER.has(f.tool)).map(toCommand);
+}
+
+/**
+ * `actions/setup-node` registers problem matchers for tsc and for both ESLint
+ * formatters, so the runner already annotates those two on its own — observed,
+ * not assumed, on the first red run of this workflow. Emitting them again would
+ * put two markers on one line saying the same thing.
+ *
+ * They are still parsed, because the job summary is a separate surface and a
+ * table that omitted every TypeScript error would be lying about what broke.
+ */
+const MATCHED_BY_THE_RUNNER = new Set(["eslint", "typescript"]);
+
+function toCommand(f) {
+  const escaped = String(f.message).replace(/%/g, "%25").replace(/\r?\n/g, "%0A");
+  if (!f.file) return `::error title=${f.tool}::${escaped}`;
+  // A line of zero is what a checker that reports per-file rather than per-line
+  // leaves behind, and GitHub accepts the annotation but will not draw it in the
+  // diff. Line one at least puts it on the right file.
+  const where = [`file=${f.file}`, `line=${f.line || 1}`];
+  if (f.col) where.push(`col=${f.col}`);
+  return `::error ${where.join(",")},title=${f.tool}::${escaped}`;
 }
 
 /** The run page's summary: the same findings, grouped, as a Markdown table. */

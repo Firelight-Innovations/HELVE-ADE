@@ -65,9 +65,3 @@ mod tests {
         assert!(!product_name().to_lowercase().contains("engine"));
     }
 }
-
-/// Deliberate CI probe: proves the gate goes red and annotates. Reverted next commit.
-pub fn zz_ci_probe() -> usize {
-    let value: Option<usize> = Some(1);
-    value.unwrap()
-}

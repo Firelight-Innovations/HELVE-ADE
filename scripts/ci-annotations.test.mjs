@@ -230,9 +230,26 @@ describe("when nothing matches", () => {
 describe("workflow commands", () => {
   it("emits a placeable annotation when there is a file", () => {
     const [command] = toWorkflowCommands([
-      { tool: "eslint", file: "src/a.ts", line: 4, col: 2, message: "bad" },
+      { tool: "rustfmt", file: "src/a.rs", line: 4, col: 2, message: "bad" },
     ]);
-    expect(command).toBe("::error file=src/a.ts,line=4,col=2,title=eslint::bad");
+    expect(command).toBe("::error file=src/a.rs,line=4,col=2,title=rustfmt::bad");
+  });
+
+  // Observed on the first red run: an annotation with line 0 is accepted and
+  // then never drawn in the diff, which is the one place it was meant to appear.
+  it("falls back to line one when the checker reports per file", () => {
+    const [command] = toWorkflowCommands([{ tool: "clippy", file: "src/a.rs", message: "bad" }]);
+    expect(command).toBe("::error file=src/a.rs,line=1,title=clippy::bad");
+  });
+
+  it("leaves tsc and eslint to the runner's own matchers", () => {
+    const commands = toWorkflowCommands([
+      { tool: "eslint", file: "a.ts", line: 1, message: "x" },
+      { tool: "typescript", file: "b.ts", line: 1, message: "y" },
+      { tool: "clippy", file: "c.rs", line: 1, message: "z" },
+    ]);
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain("title=clippy");
   });
 
   it("falls back to a bare annotation when there is not", () => {
@@ -260,5 +277,13 @@ describe("summary", () => {
 
   it("escapes a pipe so one message cannot break the table", () => {
     expect(summarize([{ tool: "t", message: "a | b" }])).toContain("a \\| b");
+  });
+
+  // The runner annotates these two itself, so they are dropped from the
+  // annotations — but the summary is meant to be the whole picture of what
+  // broke, and a table missing every type error would not be that.
+  it("keeps the tools the annotations leave out", () => {
+    const text = summarize([{ tool: "typescript", file: "a.ts", line: 1, message: "TS2345" }]);
+    expect(text).toContain("### typescript (1)");
   });
 });
