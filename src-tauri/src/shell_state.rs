@@ -31,20 +31,6 @@ use tauri::{AppHandle, Emitter};
 /// apply half an update.
 pub const SHELL_STATE_EVENT: &str = "shell:state";
 
-/// The five strings the status bar can show, and nothing else.
-///
-/// The engine's real reporting is not designed yet. This is deliberately the
-/// smallest thing that lets the interface be finished — a state, no payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EngineState {
-    Idle,
-    Building,
-    Running,
-    Failed,
-    None,
-}
-
 /// What kind of thing an instance is an instance *of*.
 ///
 /// The distinction the frontend cannot make any other way: an app's `invoke` is
@@ -287,7 +273,6 @@ pub struct ShellSnapshot {
     /// `TerminalSession` has never lived inside a window.
     pub instances: Vec<SurfaceInstance>,
     pub terminals: Vec<TerminalSession>,
-    pub engine: EngineState,
 }
 
 /// Every monotonic id counter, under one lock.
@@ -348,7 +333,6 @@ impl Default for ShellState {
                 // `lib.rs` opens the launch terminal properly, at setup,
                 // through the same path everything else uses.
                 terminals: Vec::new(),
-                engine: EngineState::Idle,
             }),
             counters: RwLock::new(counters),
             closing: RwLock::new(Vec::new()),
@@ -1628,10 +1612,6 @@ impl ShellState {
         });
     }
 
-    pub fn set_engine(&self, app: &AppHandle, engine: EngineState) {
-        self.mutate(app, |s| s.engine = engine);
-    }
-
     /// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
     /// and the emulator that saw it is reporting up.
     ///
@@ -2361,7 +2341,6 @@ mod tests {
                 })
                 .collect(),
             terminals: vec![in_cluster("cluster-3", "term-7", None)],
-            engine: EngineState::Idle,
         }
     }
 
@@ -2475,7 +2454,6 @@ mod tests {
             windows,
             instances: Vec::new(),
             terminals,
-            engine: EngineState::Idle,
         }
     }
 

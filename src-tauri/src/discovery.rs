@@ -23,13 +23,12 @@ pub struct StackSnapshot {
 
 /// Stack components this build actually resolves and reports health for.
 ///
-/// helve.toml pins all seven of Helve's components, because the manifest's job
-/// is to describe the whole stack — but walk the checkouts today and six of
-/// them are a README in an otherwise empty directory. There is no Cargo.toml
-/// or package.json in `forger`, `journeyman`, `turner`, `scrivener`,
-/// `quickener`, or `wright` for `probe_version` to read, so every one of them
-/// would resolve to `Unversioned` and the health popover would carry six
-/// warnings for components nobody can act on, drowning out anything that
+/// helve.toml pins every component of the stack, because the manifest's job is
+/// to describe the whole of it — but walk the checkouts today and each one is a
+/// README in an otherwise empty directory. There is no Cargo.toml or
+/// package.json in `forger` or `journeyman` for `probe_version` to read, so
+/// both would resolve to `Unversioned` and the health popover would carry a
+/// warning per component that nobody can act on, drowning out anything that
 /// might actually be worth seeing.
 ///
 /// This is the filter that keeps that from happening: a tool id not listed

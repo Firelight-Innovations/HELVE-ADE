@@ -32,11 +32,10 @@ const FILE: &str = "layout.json";
 ///
 /// A parallel type rather than `ShellSnapshot` itself, on the same reasoning
 /// `project::store` uses: the wire type and the on-disk type answer different
-/// questions and should be able to gain and lose fields independently. Two
-/// things are pointedly absent. `engine` is a live reading, and restoring a
-/// stale "building" would be a lie about a process that is not running. And a
-/// terminal's `agent_finished` dot means *this agent finished while you were
-/// looking away*, which is not a fact that outlives the session it happened in.
+/// questions and should be able to gain and lose fields independently. One
+/// thing is pointedly absent: a terminal's `agent_finished` dot means *this
+/// agent finished while you were looking away*, which is not a fact that
+/// outlives the session it happened in.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Stored {
@@ -546,7 +545,6 @@ mod tests {
                 agent_finished: true,
                 group_id: None,
             }],
-            engine: crate::shell_state::EngineState::Building,
         };
 
         let stored = Stored::from_snapshot(&snapshot);

@@ -325,9 +325,10 @@ workable.** It should be built so that the answer to "what must I change to ship
 an unbranded build" is a file and a command, not a conversation.
 
 The second reason is smaller but immediate: the product does not currently agree
-with itself on its own name. `tauri.conf.json` says `Helve`, the title bar says
-`HELVE Engine`, the splash wordmark says `HELVE`, `helve.toml` says `Helve`. One
-source of truth forces that to be answered once — which is decision 4.
+with itself on its own name. `tauri.conf.json` says `Helve`, the title bar
+appends a second word, the splash wordmark says `HELVE`, `helve.toml` says
+`Helve`. One source of truth forces that to be answered once — which is
+decision 4.
 
 #### Three tiers, and only one of them is in scope
 
@@ -481,8 +482,8 @@ unblocks wave 1 entirely.
 | 1 | Apache-2.0 confirmed, and the copyright line — "Firelight Innovations" or personal? | WP-A |
 | 2 | Platform support: Windows only, or others best-effort, or others supported? | WP-B, WP-C |
 | 3 | Fresh squashed history, or keep it? Phase 4.3 recommends squashing; it costs PRs #7–#13 as visible history | WP-E, publication |
-| 4 | The product's name: "HELVE" or "HELVE Engine"? Four surfaces currently disagree | WP-F |
-| 5 | Are the seven stack repos public, empty, or private? | WP-E |
+| 4 | The product's name — one word or two? Four surfaces currently disagree | WP-F |
+| 5 | Are the stack repos public, empty, or private? | WP-E |
 | 6 | Trademark policy: may a fork use the name? The usual answer is no for the mark, yes for "based on" | WP-A, WP-F |
 
 Decision 3 blocks publication rather than the work, so it does not need

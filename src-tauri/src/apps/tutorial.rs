@@ -87,7 +87,7 @@ static SECTIONS: &[Section] = &[
     Section {
         id: "stack",
         title: "The stack",
-        description: "What the seven Helve repositories are each for.",
+        description: "What the stack's repositories are each for.",
         order: 40,
     },
 ];

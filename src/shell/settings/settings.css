@@ -637,7 +637,7 @@
 }
 
 /* Ordinary dim text with a status dot beside it, the shape the status bar
-   already uses for engine and GitHub health. The sentence is the same weight
+   already uses for GitHub health. The sentence is the same weight
    either way — a red wall for "the listener did not start" would overstate it,
    since every switch below is still meaningful and still persists. */
 .settings-mcp__dot {

@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import type { EngineState, GitStatus } from "../contract";
-import { ENGINE_LABEL, ENGINE_TOKEN } from "../contract";
+import type { GitStatus } from "../contract";
 import { Sliders } from "../../ui/Icon";
 import SettingsPopover from "./SettingsPopover";
 import "./statusbar.css";
 
 export interface StatusBarProps {
-  engine: EngineState;
   /**
    * One status, read for both the branch line and the diff-stat readout
    * beside it — the same handle the source-control view reads, cluster-scoped
@@ -19,15 +17,15 @@ export interface StatusBarProps {
 }
 
 /**
- * Left to right: engine status, a spacer, the branch line, the diff-stat
- * readout, GitHub status, then settings. The bar's own height is
+ * Left to right: a spacer, the branch line, the diff-stat readout, GitHub
+ * status, then settings. The bar's own height is
  * `.frame__statusbar`'s — this component only lays out its contents and never
  * touches that box.
  *
  * Settings is the shell's only entry point for it: there is no left rail,
  * and settings moved here when the rail was removed.
  */
-export default function StatusBar({ engine, git, githubOk }: StatusBarProps) {
+export default function StatusBar({ git, githubOk }: StatusBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsWrapRef = useRef<HTMLDivElement>(null);
 
@@ -52,11 +50,6 @@ export default function StatusBar({ engine, git, githubOk }: StatusBarProps) {
 
   return (
     <div className="statusbar">
-      <div className="statusbar__engine">
-        <span className="statusbar__dot" style={{ background: ENGINE_TOKEN[engine] }} />
-        <span className="statusbar__label">{ENGINE_LABEL[engine]}</span>
-      </div>
-
       <div className="statusbar__spacer" />
 
       {git !== null && <span className="statusbar__branch">{branchText(git)}</span>}
@@ -129,7 +122,7 @@ function filesTouched(status: GitStatus): number {
  * `+142 -63 · 9 files` — additions and deletions in the same green/red the
  * spec's token table already assigns an added/deleted file (`--ok`/`--err`
  * in tokens.css), the file count left in the bar's ordinary dim text rather
- * than a third colour. Coloured inline, the same way the engine and GitHub
+ * than a third colour. Coloured inline, the same way the GitHub
  * dots above set their own `background` — this is the one other place in the
  * bar a value picks its own colour instead of taking the row's.
  *

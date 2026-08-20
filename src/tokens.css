@@ -32,7 +32,7 @@
   --text: #e4e7ec; /* active tab, selected labels */
   --text-dim: #949cab; /* inactive tabs, all icon strokes */
   --accent: #d98a3f; /* active tab rule, focus, drop targets, primary action */
-  --ok: #5fb37a; /* engine and GitHub healthy, agent finished */
+  --ok: #5fb37a; /* GitHub healthy, agent finished */
   --warn: #d9a93f; /* warning badge, needs update, modified file */
   --err: #d9635f; /* not installed, build failed, deleted file */
 
@@ -47,7 +47,7 @@
   --line-2: #3a404b; /* checkbox borders, detached window edge */
   --line-3: #343a45; /* the big empty-state glyph */
   --surface-gap: #191c21; /* the hole a dragged tab leaves behind */
-  --dot-off: #4f5663; /* the "No engine" status dot */
+  --dot-off: #4f5663; /* a status dot with nothing to report */
   --accent-dim: #8a6431; /* a keyboard hint inside an accent button */
 
   /* --- accent washes ----------------------------------------------------

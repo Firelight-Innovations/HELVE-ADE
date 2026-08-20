@@ -50,7 +50,7 @@ Still open, and each one is a decision rather than a task:
   to publish, and removing files in a commit does not remove them from history.
 - Branch protection settings, which cannot be set from a file —
   `docs/handoffs/readiness/wp-b.md` has the checklist.
-- What to do about the six placeholder stack repositories. They are a `v0.1.0`
+- What to do about the placeholder stack repositories. They are a `v0.1.0`
   tag against a README, and the README now says so.
 
 → HELVE is ready to open source once those are answered.

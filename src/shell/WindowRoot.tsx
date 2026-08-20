@@ -11,7 +11,6 @@ import {
   paneTabs,
   toolPresentation,
   type ClusterMember,
-  type EngineState,
   type PaneNode,
   type TerminalBusy,
   type TerminalSession,
@@ -43,7 +42,6 @@ import { useKeyboard } from "./keys/useKeyboard";
 import WorktreePanel from "./worktree/WorktreePanel";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
-import { idleEngineStatus } from "./stubs/engineStatus";
 import { callApp, useApps, useOpenables } from "./state/apps";
 import { applyPreset, savePreset, useLayoutPresets } from "./state/presets";
 import { useClusterProject } from "./state/project";
@@ -168,11 +166,11 @@ export default function WindowRoot({
   // None of them can mount in this build: a tool's core is a child process and
   // the broker that would reach it is not written, so a tool surface could only
   // ever open on a state explaining why there is nothing there. They are held
-  // back until that changes rather than offered as six dead entries.
+  // back until that changes rather than offered as dead entries.
   //
   // Still computed, because they are still *reported*: this is what the cluster
   // bar's warning badge and its health list read, and it is the only place in
-  // the shell that says Turner needs an update or Wright is not installed. Not
+  // the shell that says a tool needs an update or is not installed. Not
   // offering a tool and not knowing about it are different things, and only the
   // first is intended here.
   const stackTools = useMemo(
@@ -1143,9 +1141,6 @@ export default function WindowRoot({
     ],
   );
 
-  const [engine, setEngine] = useState<EngineState>("idle");
-  useEffect(() => idleEngineStatus.subscribe(setEngine), []);
-
   // The status bar and the source-control tab read one status. Two fetches
   // would be two chances to disagree about which branch is checked out, and the
   // whole point of the branch appearing in the status bar is that it is the
@@ -1526,7 +1521,7 @@ export default function WindowRoot({
             // worktree — so passing the handle whole removes a second reading
             // of a question already answered, and the totals cannot drift out
             // of step with the change lists they are totals of.
-            <StatusBar engine={engine} git={git.status} githubOk={!error} />
+            <StatusBar git={git.status} githubOk={!error} />
           ),
         }}
       />

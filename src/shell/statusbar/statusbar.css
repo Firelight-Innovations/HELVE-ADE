@@ -16,8 +16,7 @@
   gap: 14px;
 }
 
-/* Engine status and GitHub status share the same dot-then-label shape. */
-.statusbar__engine,
+/* GitHub status is a dot then a label. */
 .statusbar__github {
   display: flex;
   align-items: center;

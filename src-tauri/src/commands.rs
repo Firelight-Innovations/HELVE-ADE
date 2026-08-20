@@ -17,9 +17,7 @@ use crate::manifest::{self, Manifest};
 use crate::presets;
 use crate::project;
 use crate::pty::{self, PtySessions};
-use crate::shell_state::{
-    EngineState, OpenRequest, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry,
-};
+use crate::shell_state::{OpenRequest, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry};
 use crate::state::AppState;
 use crate::tool_frontend;
 use crate::windows;
@@ -1186,13 +1184,4 @@ pub(crate) fn apply_project_open_preset(app: &tauri::AppHandle, cluster_id: &str
 
     let ptys = app.state::<PtySessions>();
     fill_preset_gaps(app, &shell, &ptys, &label, cluster_id, gaps);
-}
-
-/// Stubbed until the engine has something real to report. Kept as a command so
-/// the seam is already the right shape — when the engine reports for itself,
-/// this stops being called by the frontend and starts being called by whatever
-/// supervises the process.
-#[tauri::command]
-pub fn set_engine_state(app: tauri::AppHandle, shell: State<'_, ShellState>, engine: EngineState) {
-    shell.set_engine(&app, engine);
 }

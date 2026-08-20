@@ -32,16 +32,16 @@ node scripts/check-branding.mjs --fix    # write that agreement in, once
 
 The second reason is smaller and was immediate. The product did not agree with
 itself about its own name. `tauri.conf.json` said `Helve`, `helve.toml` said
-`Helve`, the splash wordmark said `HELVE`, the title bar and the About item said
-`HELVE Engine`, and `windows.rs` built detached windows titled `Helve`. Five
-surfaces, three answers. One source of truth forces that to be answered once,
-and it is answered: **the product is HELVE**.
+`Helve`, the splash wordmark said `HELVE`, the title bar and the About item
+appended a second word to it, and `windows.rs` built detached windows titled
+`Helve`. Five surfaces, three answers. One source of truth forces that to be
+answered once, and it is answered: **the product is HELVE**.
 
-The title bar was not merely inconsistent, it was wrong. `helve-engine` is a
-separate, private repository. This shell is HELVE; it is not the engine, and it
-had been introducing itself as one in the two most visible strings in the
-window. `src-tauri/src/branding.rs` carries a test that fails if the product's
-name ever contains "engine" again.
+The title bar was not merely inconsistent, it was wrong. It named the shell as a
+runtime — something other software is built on top of — which HELVE is not, and
+it did so in the two most visible strings in the window.
+`src-tauri/src/branding.rs` carries a test that fails if the product's name ever
+contains "engine" again.
 
 ---
 
@@ -315,9 +315,9 @@ yet", it does not go in.
 `apps/tutorial/` is a bundle in `OUTPUTS`, which looks like a mistake next to
 the rule that tutorial prose is never templated. The distinction is that its
 mocks do not *describe* the title bar, they *draw* it — `mocks/titleBar.tsx` and
-`mocks/windowBands.tsx` render the centred caption, and both read
-`HELVE Engine | Anvil` until they were wired to `PRODUCT_NAME`, which is a
-caption the shell had already stopped producing.
+`mocks/windowBands.tsx` render the centred caption, and both drew the old
+two-word product name beside `Anvil` until they were wired to `PRODUCT_NAME` —
+a caption the shell itself had already stopped producing.
 
 The tutorials' whole argument is that the pictures are accurate. A picture that
 survives a rename by not being renamed is a picture that has quietly stopped

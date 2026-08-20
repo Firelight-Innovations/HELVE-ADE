@@ -332,10 +332,9 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         { label: "Documentation" },
         { label: "Keyboard Shortcuts" },
         { label: "Report Issue", separatorBefore: true },
-        // The one menu item that names the product. It read "About HELVE
-        // Engine", which named a different repository: the engine is private
-        // and is not this shell. Taking the name from branding.toml leaves one
-        // place that can be wrong instead of nine.
+        // The one menu item that names the product. It used to append a second
+        // word, naming something this shell is not. Taking the name from
+        // branding.toml leaves one place that can be wrong instead of nine.
         { label: `About ${PRODUCT_NAME}`, separatorBefore: true },
       ],
     },

@@ -57,11 +57,13 @@ mod tests {
         assert!(!product_name().is_empty());
     }
 
-    /// The bug this module was written for: the shell is not the engine.
-    /// `helve-engine` is a separate, private repository, and the title bar and
-    /// the About item both used to claim to be it.
+    /// The bug this module was written for: the title bar and the About item
+    /// both used to call the shell an engine. HELVE is an ADE — it hosts the
+    /// tools you work in, and is not a runtime that anything ships on top of.
+    /// The guard stays because the wrong name is easy to reintroduce and reads
+    /// as authoritative wherever it appears.
     #[test]
-    fn the_name_is_not_the_engines() {
+    fn the_name_is_not_an_engine() {
         assert!(!product_name().to_lowercase().contains("engine"));
     }
 }

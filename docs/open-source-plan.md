@@ -150,7 +150,8 @@ when there is something to release on a cadence.
 ## Phase 4 — Licensing and janitor work
 
 1. **Pick the license: Apache-2.0.** Not MIT — Apache carries an explicit patent
-   grant, which matters once a commercial game engine loads into the same shell.
+   grant, which matters once a commercial third-party tool loads into the same
+   shell.
    Not GPL or AGPL under any circumstances: a copyleft core gives someone a real
    argument that the private tools loading into it are derivative works.
    - Change `license = "UNLICENSED"` in `Cargo.toml` to `"Apache-2.0"`.

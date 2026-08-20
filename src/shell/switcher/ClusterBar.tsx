@@ -86,8 +86,8 @@ export interface ClusterBarProps {
   apps?: AppsMenuHandlers;
   /**
    * What the warning badge reports on. Deliberately *not* per-cluster: whether
-   * Turner needs an update is a property of the stack and has nothing to do with
-   * which cluster is open.
+   * a tool needs an update is a property of the stack and has nothing to do
+   * with which cluster is open.
    */
   healthOf?: ToolPresentation[];
   onRescan: () => void;

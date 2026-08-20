@@ -1,7 +1,7 @@
 import type { Body } from "./blocks";
 
 /**
- * What the seven repositories are for.
+ * What the stack's repositories are for.
  *
  * The one tutorial with almost nothing to click. It is here because every other
  * page says "the stack" as though the reader already knows, and because a fresh
@@ -14,7 +14,7 @@ export const theStack: Body = {
   blocks: [
     {
       kind: "text",
-      body: "HELVE is not one program: a **stack** of seven repositories. The orchestrator — the thing you are reading this in — is the one that ties them together at runtime, and it holds none of their code.",
+      body: "HELVE is not one program: a **stack** of separate repositories. The orchestrator — the thing you are reading this in — is the one that ties them together when it runs, and it holds none of their code.",
     },
     {
       kind: "text",
@@ -29,16 +29,10 @@ export const theStack: Body = {
       body: "The list lives in `helve.toml` at the root of the orchestrator's checkout. Each entry pins an exact version, so a given checkout of the orchestrator always describes one reproducible stack rather than whatever each repository's branch tip happens to be today.",
     },
 
-    { kind: "heading", body: "The one that ships" },
+    { kind: "heading", body: "The tools" },
     {
       kind: "text",
-      body: "**Engine** is the runtime core — lighting, audio playback, spatial audio built in. Only it ships inside a finished game, and only it has no frontend: a runtime the other tools talk to, not a window you open.",
-    },
-
-    { kind: "heading", body: "The six that don't" },
-    {
-      kind: "text",
-      body: "Everything else is authoring-time only. None of it ships with a game.",
+      body: "Every component is an authoring tool — a window you open while you work, never something that ships in whatever you build with it.",
     },
     {
       kind: "keys",
@@ -46,12 +40,8 @@ export const theStack: Body = {
         { chord: "Forger", what: "Technical design — specs out the stack and its boundaries." },
         {
           chord: "Journeyman",
-          what: "Game design — design prototyping and rough playable systems.",
+          what: "Design prototyping and rough playable systems.",
         },
-        { chord: "Turner", what: "Procedural art — generates art from an artist's rough shape." },
-        { chord: "Scrivener", what: "Narrative and dialogue authoring." },
-        { chord: "Quickener", what: "NPC behaviour and AI tooling." },
-        { chord: "Wright", what: "Audio authoring and composition." },
       ],
     },
     {
@@ -76,7 +66,7 @@ export const theStack: Body = {
       kind: "mock",
       view: "stack-list",
       caption:
-        "All three unwell states at once, with the count the badge carries. A healthy tool has no row here at all, and the Engine never gets one — it is a runtime, not one of the six.",
+        "Two unwell tools and the count the badge carries. A healthy tool has no row here at all, which is why an empty list is the good outcome rather than a broken one.",
     },
     {
       kind: "text",
@@ -88,7 +78,7 @@ export const theStack: Body = {
     },
     {
       kind: "soon",
-      body: "None of the six is docked in the switcher yet. A tool's core is a child process, and the broker that would reach it is not written. So a tool tab today could only open on a screen explaining why it is empty. They arrive when the broker does.",
+      body: "Neither tool is docked in the switcher yet. A tool's core is a child process, and the broker that would reach it is not written. So a tool tab today could only open on a screen explaining why it is empty. They arrive when the broker does.",
     },
     {
       kind: "text",

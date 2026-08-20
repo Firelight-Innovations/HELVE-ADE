@@ -601,10 +601,6 @@ export type PaneNode =
   | { kind: "split"; id: string; dir: SplitDir; sizes: number[]; children: PaneNode[] }
   | { kind: "leaf"; id: string; tabs: string[]; activeTab: string | null };
 
-/** Mirrors `shell_state::EngineState`. What the engine reports beyond these
- *  five stub strings is not designed yet. */
-export type EngineState = "idle" | "building" | "running" | "failed" | "none";
-
 /**
  * One tab in the switcher bar: a layout, the project it is about, and its
  * worktree. Mirrors `shell_state::Cluster`.
@@ -660,7 +656,6 @@ export interface ShellSnapshot {
   /** Every live app and tool surface, flat; the pane trees hold ids and resolve against this. */
   instances: SurfaceInstance[];
   terminals: TerminalSessionState[];
-  engine: EngineState;
 }
 
 export const SHELL_STATE_EVENT = "shell:state";
