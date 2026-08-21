@@ -1476,6 +1476,9 @@ export default function WindowRoot({
               githubView={
                 <GithubPanel
                   clusterId={activeClusterId}
+                  // Mounted always, fetching only when shown. A collapsed panel
+                  // counts as not shown: nothing is on screen to read.
+                  active={panelView === "github" && !panelCollapsed}
                   githubControl={githubControl}
                   authControl={githubAuthControl}
                   // The same interface source control uses. Opening an item is

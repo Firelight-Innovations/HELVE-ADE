@@ -5,18 +5,26 @@
  * a `refresh` — because the panel has the same shape of problem: a one-shot RPC
  * re-asked on a cluster switch, with no watcher behind it.
  *
- * One thing here that `useGitStatus` does not need. A fetch is keyed on both the
- * cluster and the fetch scope, and a scope change is something the user causes
- * by typing, so two requests can easily be in flight at once and finish in the
- * wrong order. Every reply is checked against the request that is current before
- * it is allowed to land.
+ * Two things here that `useGitStatus` does not need.
+ *
+ * A fetch is keyed on the cluster *and* the fetch scope, and a scope change is
+ * something the user causes by typing, so two requests are easily in flight at
+ * once and can finish in the wrong order. Every reply is checked against the
+ * request that is current before it is allowed to land.
+ *
+ * And nothing is fetched while the panel is not on screen. `git status` costs a
+ * process spawn against the local disk; this costs two requests against a quota
+ * that is sixty an hour for a signed-out user, so a cluster switch behind a
+ * hidden tab must not spend any of it. `useLibrary` gates on `active` for a
+ * milder version of the same reason.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GithubControl, GithubFeed, GithubScope } from "../contract";
 
 export interface GithubFeedHandle {
   /** `null` until the first reply. Distinct from a `notGithub` feed, which is
-   *  an answer — this is not having asked yet. */
+   *  an answer — this is not having asked yet, and stays `null` for as long as
+   *  the panel is hidden. */
   feed: GithubFeed | null;
   /** True while a request is out, including a refresh over an existing feed, so
    *  the panel can dim rather than blank what it is already showing. */
@@ -25,16 +33,18 @@ export interface GithubFeedHandle {
 }
 
 /**
- * The feed for one cluster at one scope.
+ * The feed for one cluster at one scope, fetched only while `active`.
  *
  * `null` for `clusterId` is "no cluster is active": no request goes out and the
  * feed stays `null`, which is the rule every other region follows for an unset
- * cluster.
+ * cluster. `active: false` behaves the same way and keeps whatever was last
+ * fetched, so switching away from the panel and back does not re-ask.
  */
 export function useGithubFeed(
   control: GithubControl,
   clusterId: string | null,
   scope: GithubScope,
+  active: boolean,
 ): GithubFeedHandle {
   const [feed, setFeed] = useState<GithubFeed | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +58,12 @@ export function useGithubFeed(
   const fetchFeed = useCallback(() => {
     if (clusterId === null) {
       setFeed(null);
+      setLoading(false);
+      return;
+    }
+    // Not an early `return` that leaves `loading` true: a panel switched away
+    // from mid-request would come back saying it was still loading forever.
+    if (!active) {
       setLoading(false);
       return;
     }
@@ -74,7 +90,7 @@ export function useGithubFeed(
         });
         setLoading(false);
       });
-  }, [control, clusterId, scope]);
+  }, [control, clusterId, scope, active]);
 
   useEffect(fetchFeed, [fetchFeed]);
 

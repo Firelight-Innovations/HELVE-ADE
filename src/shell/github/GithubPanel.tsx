@@ -32,6 +32,10 @@ export interface GithubPanelProps {
   /** `null` for "no cluster is active" — nothing is fetched, matching every
    *  other region's rule for an unset cluster. */
   clusterId: string | null;
+  /** Whether this view is the one on screen. The panel stays mounted when it is
+   *  not — see `SecondaryPanel` — and must not spend GitHub requests while
+   *  hidden, which at sixty an hour signed out is a real budget. */
+  active: boolean;
   githubControl: GithubControl;
   authControl: GithubAuthControl;
   /**
@@ -50,6 +54,7 @@ export interface GithubPanelProps {
 
 export default function GithubPanel({
   clusterId,
+  active,
   githubControl,
   authControl,
   worktreeControl,
@@ -63,7 +68,7 @@ export default function GithubPanel({
   const query = useMemo(() => parseQuery(filter), [filter]);
   const scope = fetchScopeOf(query);
 
-  const { feed, loading, refresh } = useGithubFeed(githubControl, clusterId, scope);
+  const { feed, loading, refresh } = useGithubFeed(githubControl, clusterId, scope, active);
 
   /** The item currently being opened, so its row can say so. `null` when idle;
    *  one at a time, because two worktrees from two clicks is never the intent. */
