@@ -310,8 +310,8 @@ fn starting_label(pending: &[(String, String)]) -> String {
 /// the only trace left that an app never answered, so it names which.
 fn give_up(pending: &[(String, String)]) {
     let names: Vec<&str> = pending.iter().map(|(_, name)| name.as_str()).collect();
-    eprintln!(
-        "helve: {} did not report a painted frame within {}s — showing the window anyway",
+    crate::helve_log!(
+        "{} did not report a painted frame within {}s — showing the window anyway",
         names.join(", "),
         APP_BOOT_TIMEOUT.as_secs(),
     );

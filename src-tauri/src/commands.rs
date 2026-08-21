@@ -1311,7 +1311,7 @@ fn fill_preset_gaps(
                         dir: None,
                     },
                 ) else {
-                    eprintln!("helve: could not open `{app_id}` for a preset slot");
+                    crate::helve_log!("could not open `{app_id}` for a preset slot");
                     continue;
                 };
                 // Only when appending would have put it in the wrong place,
@@ -1339,7 +1339,7 @@ fn fill_preset_gaps(
                     // the preset already decided the shape.
                     None,
                 ) {
-                    eprintln!("helve: could not open a terminal for a preset slot: {e}");
+                    crate::helve_log!("could not open a terminal for a preset slot: {e}");
                 }
             }
         }
@@ -1355,7 +1355,7 @@ fn fill_preset_gaps(
 /// than leaving it unarranged.
 pub(crate) fn apply_project_open_preset(app: &tauri::AppHandle, cluster_id: &str) {
     let Some(preset) = presets::find(app, presets::PROJECT_OPEN_PRESET_ID) else {
-        eprintln!("helve: the built-in project-open preset is missing");
+        crate::helve_log!("the built-in project-open preset is missing");
         return;
     };
 

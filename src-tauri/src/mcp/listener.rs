@@ -5,7 +5,7 @@
 //! bearer token, the routing table, and the adapter between `rmcp`'s handler
 //! trait and [`Registry`](super::Registry).
 
-use super::{route, Registry, ToolDescriptor};
+use super::{route, Registry, ToolAnswer, ToolDescriptor};
 use axum::response::IntoResponse;
 use base64::Engine;
 use rand::RngCore;
@@ -81,7 +81,7 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let std_listener = match StdTcpListener::bind(socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("helve: could not bind the MCP listener: {e}");
+            crate::helve_log!("could not bind the MCP listener: {e}");
             return None;
         }
     };
@@ -89,13 +89,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let port = match std_listener.local_addr() {
         Ok(addr) => addr.port(),
         Err(e) => {
-            eprintln!("helve: the MCP listener has no address: {e}");
+            crate::helve_log!("the MCP listener has no address: {e}");
             return None;
         }
     };
 
     if let Err(e) = std_listener.set_nonblocking(true) {
-        eprintln!("helve: could not make the MCP listener non-blocking: {e}");
+        crate::helve_log!("could not make the MCP listener non-blocking: {e}");
         return None;
     }
 
@@ -108,6 +108,11 @@ pub fn start(app: &AppHandle) -> Option<u16> {
         });
     }
 
+    // Safe to publish before serving starts: the socket is already bound, so a
+    // client that reads this file and connects in the gap below waits in the
+    // accept backlog rather than being refused.
+    super::handoff::publish(app, port, &token);
+
     let router = router(app, token);
 
     // `tauri::async_runtime` is tokio, and is already running. Standing up a
@@ -117,13 +122,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
         let listener = match tokio::net::TcpListener::from_std(std_listener) {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("helve: could not hand the MCP listener to the runtime: {e}");
+                crate::helve_log!("could not hand the MCP listener to the runtime: {e}");
                 return;
             }
         };
 
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("helve: the MCP listener stopped: {e}");
+            crate::helve_log!("the MCP listener stopped: {e}");
         }
     });
 
@@ -150,7 +155,12 @@ fn mint_token() -> String {
 fn router(app: &AppHandle, token: String) -> axum::Router {
     let mut router = axum::Router::new();
 
-    for info in app.state::<Registry>().list() {
+    // `list(true)` — every route this build has, developer-only ones included.
+    // The router is built once, at boot, and developer mode can move afterwards;
+    // a route left unmounted because the flag happened to be off at startup
+    // would 404 for the rest of the session. Mounting it costs nothing, because
+    // `list_tools` and `call_tool` below ask the flag again on every request.
+    for info in app.state::<Registry>().list(true) {
         let path = route(&info.id);
         let handle = app.clone();
         let id = info.id.clone();
@@ -243,7 +253,7 @@ impl ServerHandler for Bridge {
         let tools = self
             .app
             .state::<Registry>()
-            .tools(&self.id)
+            .tools(&self.id, super::dev_mode(&self.app))
             .into_iter()
             .map(into_rmcp_tool)
             .collect();
@@ -270,18 +280,26 @@ impl ServerHandler for Bridge {
     ) -> Result<CallToolResponse, ErrorData> {
         let params = request.arguments.map(serde_json::Value::Object);
 
-        let answered =
-            self.app
-                .state::<Registry>()
-                .call(&self.app, &self.id, &request.name, params);
+        let answered = self.app.state::<Registry>().call(
+            &self.app,
+            &self.id,
+            &request.name,
+            params,
+            super::dev_mode(&self.app),
+        );
 
         let result = match answered {
-            Ok(value) => match ContentBlock::json(value) {
+            Ok(ToolAnswer::Json(value)) => match ContentBlock::json(value) {
                 Ok(content) => CallToolResult::success(vec![content]),
                 Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
                     "the tool answered, but its answer could not be serialised: {e}"
                 ))]),
             },
+            // Straight through: the base64 is already what the wire carries, so
+            // there is nothing here to serialise and nothing that can fail.
+            Ok(ToolAnswer::Image { mime, data }) => {
+                CallToolResult::success(vec![ContentBlock::image(data, mime)])
+            }
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.message)]),
         };
 

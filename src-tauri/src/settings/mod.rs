@@ -186,9 +186,10 @@ impl Registry {
         }
         for setting in group.settings {
             if !setting.key.starts_with(&format!("{}.", group.id)) {
-                eprintln!(
-                    "helve: setting {:?} is in group {:?} but is not prefixed by it",
-                    setting.key, group.id
+                crate::helve_log!(
+                    "setting {:?} is in group {:?} but is not prefixed by it",
+                    setting.key,
+                    group.id
                 );
             }
         }
@@ -211,7 +212,7 @@ impl Registry {
                 Ok(coerced) => {
                     kept.insert(key, coerced);
                 }
-                Err(e) => eprintln!("helve: ignoring a stored setting: {e}"),
+                Err(e) => crate::helve_log!("ignoring a stored setting: {e}"),
             }
         }
         if let Ok(mut values) = self.values.lock() {
@@ -403,7 +404,38 @@ fn commit(app: &AppHandle) {
         },
     );
     if let Err(e) = app.emit(SETTINGS_CHANGED_EVENT, &values) {
-        eprintln!("helve: could not announce the settings change: {e}");
+        crate::helve_log!("could not announce the settings change: {e}");
+    }
+}
+
+/// Do whatever a changed setting needs done outside the settings store.
+///
+/// Almost nothing belongs here. A setting is read at the point it is used, so
+/// the overwhelming majority of them need no reaction at all — the next pty, the
+/// next editor, the next paint simply picks the new value up.
+///
+/// The exception is a setting whose reader is **a file on disk**. `.mcp.json` is
+/// written, not consulted, so a change that only moved a value in memory would
+/// leave that file describing a HELVE that no longer exists until something else
+/// happened to rewrite it. Both keys below decide what goes in it.
+///
+/// Matching on the key rather than syncing after every write, because that file
+/// belongs to the user's project and rewriting it on an accent-colour change is
+/// a diff they did not ask for.
+fn react(app: &AppHandle, key: &str) {
+    if matches!(key, keys::MCP_WRITE_PROJECT_CONFIG | keys::DEVELOPER_MODE) {
+        crate::mcp::sync_all(app);
+    }
+}
+
+/// The same, for a whole section going back to its defaults.
+///
+/// By group id, because `reset_group` reports how many settings moved and not
+/// which — and the answer only has to be "did anything in this section need a
+/// reaction", which the id already tells us.
+fn react_group(app: &AppHandle, id: &str) {
+    if matches!(id, "mcp" | "developer") {
+        crate::mcp::sync_all(app);
     }
 }
 
@@ -413,7 +445,7 @@ pub fn flag(app: &AppHandle, key: &str) -> bool {
         .get(key)
         .and_then(|v| v.as_bool())
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a toggle any build declares");
+            crate::helve_log!("{key:?} is not a toggle any build declares");
             false
         })
 }
@@ -424,7 +456,7 @@ pub fn number(app: &AppHandle, key: &str) -> i64 {
         .get(key)
         .and_then(|v| v.as_i64())
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a number any build declares");
+            crate::helve_log!("{key:?} is not a number any build declares");
             0
         })
 }
@@ -435,7 +467,7 @@ pub fn text(app: &AppHandle, key: &str) -> String {
         .get(key)
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a string any build declares");
+            crate::helve_log!("{key:?} is not a string any build declares");
             String::new()
         })
 }

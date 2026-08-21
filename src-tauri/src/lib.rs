@@ -9,6 +9,8 @@ mod apps;
 mod boot;
 mod branding;
 mod commands;
+mod devtools;
+mod diagnostics;
 mod discovery;
 mod error;
 mod git;
@@ -218,7 +220,7 @@ pub fn run() {
             // so it is safe this early, and having the list complete before the
             // first window means the settings surface never draws an empty one
             // it then has to correct.
-            mcp::seed(&app.state::<mcp::Registry>());
+            mcp::seed(app.handle());
 
             // Immediately after seeding and **before any terminal is spawned**,
             // because a terminal inherits the port and token as environment
@@ -309,7 +311,7 @@ pub fn run() {
                         80,
                         24,
                     ) {
-                        eprintln!("helve: could not open the launch terminal: {e}");
+                        crate::helve_log!("could not open the launch terminal: {e}");
                     }
                 }
             }
@@ -379,6 +381,7 @@ pub fn run() {
             commands::reload_plugin,
             commands::set_plugin_enabled,
             commands::app_call,
+            diagnostics::report_frontend_error,
             mcp::commands::mcp_status,
             mcp::commands::mcp_set_server_enabled,
             mcp::commands::mcp_sync_config,
@@ -426,7 +429,7 @@ pub fn run() {
     // this goes to stderr and takes the exit code with it. A panic here would
     // print a backtrace to a console nobody is looking at.
     if let Err(error) = launched {
-        eprintln!("helve: could not start the application: {error}");
+        crate::helve_log!("could not start the application: {error}");
         std::process::exit(1);
     }
 }
@@ -502,7 +505,7 @@ fn restore_session(app: &tauri::AppHandle) {
         }
 
         if let Err(e) = windows::create(app, &placement.label, geometry, false) {
-            eprintln!("helve: could not restore window {}: {e}", placement.label);
+            crate::helve_log!("could not restore window {}: {e}", placement.label);
         }
     }
 
@@ -567,10 +570,7 @@ fn respawn_terminals(app: &tauri::AppHandle, shell: &ShellState) {
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
         if let Err(e) = ptys.open(app, &terminal.id, &cwd, 80, 24) {
-            eprintln!(
-                "helve: could not restore the shell behind {}: {e}",
-                terminal.id
-            );
+            crate::helve_log!("could not restore the shell behind {}: {e}", terminal.id);
             shell.close_terminal(app, &terminal.id);
         }
     }

@@ -314,15 +314,15 @@ fn load(app: &AppHandle) -> Progress {
         Ok(raw) => raw,
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("helve: could not read {}: {e}", path.display());
+                crate::helve_log!("could not read {}: {e}", path.display());
             }
             return Progress::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        eprintln!(
-            "helve: {} is not readable, starting the tutorials over: {e}",
+        crate::helve_log!(
+            "{} is not readable, starting the tutorials over: {e}",
             path.display()
         );
         Progress::default()
@@ -334,7 +334,7 @@ fn save(app: &AppHandle, progress: &Progress) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!("helve: could not create {}: {e}", parent.display());
+            crate::helve_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -342,7 +342,7 @@ fn save(app: &AppHandle, progress: &Progress) {
     let json = match serde_json::to_string_pretty(progress) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!("helve: could not serialize the tutorial progress: {e}");
+            crate::helve_log!("could not serialize the tutorial progress: {e}");
             return;
         }
     };
@@ -352,11 +352,11 @@ fn save(app: &AppHandle, progress: &Progress) {
     // failure is identical and so is the fix.
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        eprintln!("helve: could not write {}: {e}", temp.display());
+        crate::helve_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        eprintln!("helve: could not replace {}: {e}", path.display());
+        crate::helve_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

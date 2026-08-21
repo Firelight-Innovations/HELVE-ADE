@@ -202,3 +202,19 @@ sha2 = "0.10"
 # `plugins.json`. Windows Credential Manager here; the crate abstracts the other
 # two platforms for the day they are supported.
 keyring = { version = "3", features = ["windows-native"] }
+
+# Driving the shell's own interface from an MCP tool — screenshots, clicks and
+# keystrokes. See `src/devtools.rs`.
+#
+# Neither is a new dependency in any real sense: wry already pulls both in, at
+# these versions, because it is what builds the webview in the first place. What
+# is named here is only that this crate calls them itself.
+#
+# The alternative was a debug port and a second process, which is what the
+# earlier `scripts/helve-ui.mjs` did. `CallDevToolsProtocolMethod` is the same
+# protocol over the COM interface Tauri already holds, so there is no socket, no
+# environment variable read at launch, and nothing an agent could point at a
+# build somebody is using.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"

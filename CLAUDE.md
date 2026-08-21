@@ -25,6 +25,83 @@ seen repeatedly:
 Do not kill a process on 1420 to make room for yourself. It is either Braden's running app or
 another agent's; ask instead.
 
+## Asking a running HELVE what it is doing
+
+**`pnpm probe` reads the live app.** It talks to the `helve-debug` MCP server the orchestrator
+hosts, and works from any terminal — you do not have to be inside HELVE, and nothing has to be
+launched or restarted:
+
+```sh
+pnpm probe                    # list the tools
+pnpm probe shell_snapshot     # windows, clusters, pane trees, instances, terminals — live
+pnpm probe recent_errors      # what has failed since launch, backend and webview
+pnpm probe boot_status        # how far startup got, and whether it gave up
+```
+
+It finds the port and token in `%APPDATA%\com.firelightinnovations.helve\mcp-endpoint.json`, which
+`mcp::handoff` writes at every launch, and it refuses a file whose pid is no longer running rather
+than talking to whatever took the port afterwards. If it says HELVE has exited, HELVE has exited —
+ask Braden to start it.
+
+Two limits worth knowing before you read a result:
+
+- **Every tool on this server is a read.** Nothing in `helve-debug` opens, closes or moves
+  anything, deliberately. The server that *does* act on the window is below, and it is off by
+  default.
+- **Errors inside an app's iframe are not captured**, only the shell's and the backend's. An empty
+  `recent_errors` means nothing went wrong *in those two places*. Every answer repeats this in its
+  `covers` field; do not report it as "no errors" without the qualifier.
+
+This does not replace looking at the screen. For that, see below.
+
+## Seeing and clicking the UI
+
+**HELVE hosts an MCP server that drives its own window** — screenshots, the DOM,
+and real mouse and keyboard input. It is `helve-ui`, it reaches the WebView2
+through the COM interface Tauri already holds, and it needs no debug port, no
+special launch and no separate build.
+
+It is **off, and invisible, unless developer mode is on.** That is the point: it
+is the one server that writes, so it is absent from settings, from `.mcp.json`
+and from `tools/list` until somebody switches on `developer.mode` and then throws
+its own switch as well.
+
+### If you are an agent, use your own instance
+
+```sh
+pnpm ui:build                 # once — a release build under the agent identifier
+pnpm ui launch                # starts it, with developer mode and the server on
+pnpm ui close                 # stops it, by pid, leaving anyone else's alone
+```
+
+Then drive it:
+
+```sh
+pnpm probe --agent --server ui screenshot     # writes helve-shot.png — then Read it
+pnpm probe --agent --server ui snapshot       # every clickable element, with refs
+pnpm probe --agent --server ui click '{"target":"e12"}'
+pnpm probe --agent --server ui type_text '{"text":"hello"}'
+pnpm probe --agent --server ui press_key '{"key":"Enter"}'
+pnpm probe --agent --server ui eval '{"expression":"document.title"}'
+```
+
+`--agent` is what points the probe at the instance `pnpm ui launch` started
+rather than at a HELVE Braden is using. **Do not drop it**, and do not drive his
+window without asking — this server clicks things, and `eval` reaches every
+`#[tauri::command]` through `window.__TAURI__`.
+
+`snapshot` walks into app iframes, so `e19 app button New Project` is Home's own
+content and not the shell's. Refs are renumbered by every `snapshot` — take a
+fresh one before clicking.
+
+**Avoid clicking anything that opens a native dialog.** Folder pickers block the
+webview, and every tool then times out after 20s until someone dismisses it by
+hand. `New Project`, `Open Project` and `Clone Project` on the Home screen are
+the ones to leave alone.
+
+There is no live console tail. `pnpm probe recent_errors` is what remembers
+failures, including the webview's — see above.
+
 ## Verification
 
 **Every commit and every pull request must pass all four checks. No exceptions, and none of them

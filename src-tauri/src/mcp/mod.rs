@@ -9,11 +9,44 @@
 pub mod commands;
 
 mod config;
+mod handoff;
 mod listener;
 mod registry;
 mod servers;
+mod store;
 
 pub use config::sync_all;
 pub use listener::{start, Endpoint};
-pub use registry::{config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolDescriptor};
-pub use servers::seed;
+pub use registry::{
+    config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolAnswer, ToolDescriptor,
+};
+use tauri::{AppHandle, Manager};
+
+/// Register every server this build hosts, then put back the switches somebody
+/// moved on a previous run.
+///
+/// One function rather than two calls in `lib.rs`, because doing the first
+/// without the second is a silent bug: everything works, and every switch is
+/// where it shipped rather than where it was left.
+pub fn seed(app: &AppHandle) {
+    let registry = app.state::<Registry>();
+    servers::seed(&registry);
+    registry.hydrate(store::load(app).switched);
+}
+
+/// Write down where the switches are now.
+pub fn remember(app: &AppHandle) {
+    let switched = app.state::<Registry>().switched();
+    store::save(app, &store::Stored { switched });
+}
+
+/// Whether developer-only servers are visible, advertised and dispatchable.
+///
+/// Read here rather than cached in [`Registry`], and read again on every call
+/// that depends on it. The cost is a map lookup; what it buys is that switching
+/// the setting off takes a server away from a connected client on its next
+/// request, with nothing to invalidate and no window in which the two
+/// disagree.
+pub fn dev_mode(app: &AppHandle) -> bool {
+    crate::settings::flag(app, crate::settings::keys::DEVELOPER_MODE)
+}

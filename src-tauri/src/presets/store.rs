@@ -58,15 +58,15 @@ pub fn load(app: &AppHandle) -> Stored {
         // the built-ins, which looks exactly like a first launch.
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("helve: could not read {}: {e}", path.display());
+                crate::helve_log!("could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        eprintln!(
-            "helve: {} is not readable, falling back to the built-in presets: {e}",
+        crate::helve_log!(
+            "{} is not readable, falling back to the built-in presets: {e}",
             path.display()
         );
         Stored::default()
@@ -86,7 +86,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!("helve: could not create {}: {e}", parent.display());
+            crate::helve_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -94,18 +94,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!("helve: could not serialize the preset store: {e}");
+            crate::helve_log!("could not serialize the preset store: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        eprintln!("helve: could not write {}: {e}", temp.display());
+        crate::helve_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        eprintln!("helve: could not replace {}: {e}", path.display());
+        crate::helve_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

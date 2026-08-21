@@ -26,6 +26,7 @@ pub mod keys {
     pub const SEARCH_MAX_FILE_SIZE_MB: &str = "search.maxFileSizeMb";
     pub const MCP_WRITE_PROJECT_CONFIG: &str = "mcp.writeProjectConfig";
     pub const UPDATES_CHECK_AUTOMATICALLY: &str = "updates.checkAutomatically";
+    pub const DEVELOPER_MODE: &str = "developer.mode";
 }
 
 /// Every group the shell itself registers, in no particular order — `Group::order`
@@ -34,7 +35,15 @@ pub fn groups() -> &'static [&'static Group] {
     GROUPS
 }
 
-static GROUPS: &[&Group] = &[&APPEARANCE, &EDITOR, &TERMINAL, &SEARCH, &UPDATES, &MCP];
+static GROUPS: &[&Group] = &[
+    &APPEARANCE,
+    &EDITOR,
+    &TERMINAL,
+    &SEARCH,
+    &UPDATES,
+    &MCP,
+    &DEVELOPER,
+];
 
 // --- appearance -------------------------------------------------------------
 //
@@ -445,6 +454,32 @@ static MCP: Group = Group {
     settings: MCP_SETTINGS,
 };
 
+// --- developer --------------------------------------------------------------
+//
+// Read by `mcp::dev_mode`, which every registry method that lists, advertises
+// or dispatches a server consults. Nothing caches it: the flag is asked for at
+// the point of use, so switching it off takes effect on the next call rather
+// than at the next launch.
+
+static DEVELOPER_SETTINGS: &[Setting] = &[Setting {
+    key: keys::DEVELOPER_MODE,
+    title: "Developer mode",
+    description: "Shows the MCP servers that drive this window rather than read it — \
+                  screenshots, clicks and keystrokes, for an agent working on HELVE itself. \
+                  Switching this on only makes them visible; each still has its own switch, and \
+                  every one of them starts off.",
+    control: Control::Toggle { default: false },
+    applies: Applies::Now,
+}];
+
+static DEVELOPER: Group = Group {
+    id: "developer",
+    title: "Developer",
+    description: "Tools for working on HELVE. Nothing here is needed to use it.",
+    order: 90,
+    settings: DEVELOPER_SETTINGS,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,6 +560,7 @@ mod tests {
             (keys::SEARCH_MAX_FILE_SIZE_MB, "number"),
             (keys::MCP_WRITE_PROJECT_CONFIG, "bool"),
             (keys::UPDATES_CHECK_AUTOMATICALLY, "bool"),
+            (keys::DEVELOPER_MODE, "bool"),
         ] {
             let value = registry
                 .get(key)

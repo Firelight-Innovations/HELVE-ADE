@@ -47,7 +47,7 @@ pub enum ConfigError {
 pub fn sync(app: &AppHandle, project: &Path) {
     let path = config_path(project);
     let enabled = if settings::flag(app, keys::MCP_WRITE_PROJECT_CONFIG) {
-        app.state::<Registry>().enabled_ids()
+        app.state::<Registry>().enabled_ids(super::dev_mode(app))
     } else {
         Vec::new()
     };
@@ -56,8 +56,8 @@ pub fn sync(app: &AppHandle, project: &Path) {
         Ok(raw) => match serde_json::from_str::<Value>(&raw) {
             Ok(value) => Some(value),
             Err(e) => {
-                eprintln!(
-                    "helve: {} is not valid JSON, leaving it alone: {e}",
+                crate::helve_log!(
+                    "{} is not valid JSON, leaving it alone: {e}",
                     path.display()
                 );
                 return;
@@ -73,8 +73,8 @@ pub fn sync(app: &AppHandle, project: &Path) {
     let merged = match merge(existing, &enabled) {
         Ok(merged) => merged,
         Err(ConfigError::NotAnObject) => {
-            eprintln!(
-                "helve: {} is JSON but not an object, leaving it alone",
+            crate::helve_log!(
+                "{} is JSON but not an object, leaving it alone",
                 path.display()
             );
             return;
@@ -89,7 +89,7 @@ pub fn sync(app: &AppHandle, project: &Path) {
     text.push('\n');
 
     if let Err(e) = std::fs::write(&path, text) {
-        eprintln!("helve: could not write {}: {e}", path.display());
+        crate::helve_log!("could not write {}: {e}", path.display());
     }
 }
 
