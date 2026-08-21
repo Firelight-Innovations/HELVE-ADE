@@ -81,7 +81,7 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let std_listener = match StdTcpListener::bind(socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("helve: could not bind the MCP listener: {e}");
+            crate::helve_log!("could not bind the MCP listener: {e}");
             return None;
         }
     };
@@ -89,13 +89,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let port = match std_listener.local_addr() {
         Ok(addr) => addr.port(),
         Err(e) => {
-            eprintln!("helve: the MCP listener has no address: {e}");
+            crate::helve_log!("the MCP listener has no address: {e}");
             return None;
         }
     };
 
     if let Err(e) = std_listener.set_nonblocking(true) {
-        eprintln!("helve: could not make the MCP listener non-blocking: {e}");
+        crate::helve_log!("could not make the MCP listener non-blocking: {e}");
         return None;
     }
 
@@ -108,6 +108,11 @@ pub fn start(app: &AppHandle) -> Option<u16> {
         });
     }
 
+    // Safe to publish before serving starts: the socket is already bound, so a
+    // client that reads this file and connects in the gap below waits in the
+    // accept backlog rather than being refused.
+    super::handoff::publish(app, port, &token);
+
     let router = router(app, token);
 
     // `tauri::async_runtime` is tokio, and is already running. Standing up a
@@ -117,13 +122,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
         let listener = match tokio::net::TcpListener::from_std(std_listener) {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("helve: could not hand the MCP listener to the runtime: {e}");
+                crate::helve_log!("could not hand the MCP listener to the runtime: {e}");
                 return;
             }
         };
 
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("helve: the MCP listener stopped: {e}");
+            crate::helve_log!("the MCP listener stopped: {e}");
         }
     });
 

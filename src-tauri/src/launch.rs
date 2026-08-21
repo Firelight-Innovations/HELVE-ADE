@@ -143,13 +143,13 @@ pub fn apply(app: &AppHandle, target: Target) {
         match app.state::<ShellState>().active_cluster_of("main") {
             Some(cluster_id) => {
                 if let Err(e) = crate::project::open(app, Path::new(&folder), &cluster_id) {
-                    eprintln!("helve: could not open `{folder}` as a project: {e}");
+                    crate::helve_log!("could not open `{folder}` as a project: {e}");
                 }
             }
             // No cluster yet means no window is showing work, which is not a
             // state a launch can create. Reported rather than ignored, because
             // reaching it means something above this changed.
-            None => eprintln!("helve: no cluster to open `{folder}` into"),
+            None => crate::helve_log!("no cluster to open `{folder}` into"),
         }
     }
 

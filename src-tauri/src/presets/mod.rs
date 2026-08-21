@@ -302,8 +302,8 @@ pub fn merge(user: Vec<LayoutPreset>) -> Vec<LayoutPreset> {
 
     for mut preset in user {
         if preset.id.starts_with(BUILTIN_PREFIX) {
-            eprintln!(
-                "helve: ignoring the preset `{}` — `{BUILTIN_PREFIX}` names HELVE's own presets",
+            crate::helve_log!(
+                "ignoring the preset `{}` — `{BUILTIN_PREFIX}` names HELVE's own presets",
                 preset.id
             );
             continue;
@@ -318,8 +318,8 @@ pub fn merge(user: Vec<LayoutPreset>) -> Vec<LayoutPreset> {
             .iter()
             .any(|p| p.name.eq_ignore_ascii_case(&preset.name))
         {
-            eprintln!(
-                "helve: ignoring the preset `{}` — that name is already taken",
+            crate::helve_log!(
+                "ignoring the preset `{}` — that name is already taken",
                 preset.name
             );
             continue;

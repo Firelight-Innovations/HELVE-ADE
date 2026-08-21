@@ -14,7 +14,12 @@
 //! What earns a server is something that exists only inside HELVE and has no
 //! filesystem equivalent — Forger's design model is the first real case, because
 //! an agent cannot read a spec's *boundaries* by opening a file.
+//!
+//! [`debug`] is the second, and passes the same test: the running shell's layout
+//! and the failures it has recorded exist only in this process's memory. Its
+//! module doc has the argument for why `layout.json` is not the same answer.
 
+pub mod debug;
 pub mod echo;
 
 use super::Registry;
@@ -23,10 +28,20 @@ use super::Registry;
 ///
 /// The echo server is registered unconditionally, release included, because a
 /// feature whose whole surface is compiled out cannot be verified by the person
-/// who most needs to verify it. Once a real server lands, this is the line that
-/// should grow a `cfg` rather than shipping a diagnostic tool forever.
+/// who most needs to verify it. Now that a real server has landed this is the
+/// line that should grow a `cfg` — left alone in this change so that switching
+/// echo off is its own decision, taken on its own evidence, rather than a side
+/// effect of adding something beside it.
+///
+/// `debug` is likewise unconditional, and for a reason that will outlast echo's:
+/// the builds worth debugging include the release one. A shipped HELVE that
+/// misbehaves on a machine none of us have is exactly the case where reading its
+/// layout and its failures is worth the most, and a server compiled out of that
+/// build cannot answer. It is read-only for the same reason — see its module
+/// doc.
 pub fn seed(registry: &Registry) {
     registry.register(&echo::SERVER);
+    registry.register(&debug::SERVER);
 }
 
 #[cfg(test)]
@@ -34,16 +49,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn seeding_registers_the_echo_server_switched_on() {
+    fn seeding_registers_every_server_switched_on() {
         let registry = Registry::default();
         seed(&registry);
 
         let listed = registry.list();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].id, "echo");
-        assert!(listed[0].enabled);
-        assert_eq!(listed[0].config_key, "helve-echo");
-        assert_eq!(listed[0].path, "/mcp/echo");
+        assert_eq!(listed.len(), 2);
+        assert!(
+            listed.iter().all(|s| s.enabled),
+            "a seeded server starts switched on"
+        );
+
+        let ids: Vec<&str> = listed.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec!["echo", "debug"]);
+    }
+
+    /// The id reaches two places a typo would not be caught in: a URL path and a
+    /// key in the user's own `.mcp.json`.
+    #[test]
+    fn each_server_gets_a_namespaced_key_and_route() {
+        let registry = Registry::default();
+        seed(&registry);
+
+        for server in registry.list() {
+            assert_eq!(server.config_key, format!("helve-{}", server.id));
+            assert_eq!(server.path, format!("/mcp/{}", server.id));
+        }
     }
 
     /// Seeding twice is what a re-seed after a settings change would do, and it
@@ -54,7 +85,7 @@ mod tests {
         seed(&registry);
         seed(&registry);
 
-        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list().len(), 2);
     }
 
     /// Held against the servers this build actually registers, not against a

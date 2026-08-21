@@ -548,6 +548,11 @@ export function onLaunchTarget(cb: () => void): Promise<UnlistenFn> {
   return listen<unknown>("helve://launch-target", () => cb());
 }
 
+/** One webview failure into Rust's ring buffer. Swallows its own failure — the caller is an error handler. */
+export function reportFrontendError(message: string): Promise<void> {
+  return invoke<void>("report_frontend_error", { message }).catch(() => {});
+}
+
 /* --- host window -------------------------------------------------------------
  *
  * Tauri exposes window and webview control as objects with methods rather

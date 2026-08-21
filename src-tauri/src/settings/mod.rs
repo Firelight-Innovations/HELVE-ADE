@@ -186,9 +186,10 @@ impl Registry {
         }
         for setting in group.settings {
             if !setting.key.starts_with(&format!("{}.", group.id)) {
-                eprintln!(
-                    "helve: setting {:?} is in group {:?} but is not prefixed by it",
-                    setting.key, group.id
+                crate::helve_log!(
+                    "setting {:?} is in group {:?} but is not prefixed by it",
+                    setting.key,
+                    group.id
                 );
             }
         }
@@ -211,7 +212,7 @@ impl Registry {
                 Ok(coerced) => {
                     kept.insert(key, coerced);
                 }
-                Err(e) => eprintln!("helve: ignoring a stored setting: {e}"),
+                Err(e) => crate::helve_log!("ignoring a stored setting: {e}"),
             }
         }
         if let Ok(mut values) = self.values.lock() {
@@ -403,7 +404,7 @@ fn commit(app: &AppHandle) {
         },
     );
     if let Err(e) = app.emit(SETTINGS_CHANGED_EVENT, &values) {
-        eprintln!("helve: could not announce the settings change: {e}");
+        crate::helve_log!("could not announce the settings change: {e}");
     }
 }
 
@@ -413,7 +414,7 @@ pub fn flag(app: &AppHandle, key: &str) -> bool {
         .get(key)
         .and_then(|v| v.as_bool())
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a toggle any build declares");
+            crate::helve_log!("{key:?} is not a toggle any build declares");
             false
         })
 }
@@ -424,7 +425,7 @@ pub fn number(app: &AppHandle, key: &str) -> i64 {
         .get(key)
         .and_then(|v| v.as_i64())
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a number any build declares");
+            crate::helve_log!("{key:?} is not a number any build declares");
             0
         })
 }
@@ -435,7 +436,7 @@ pub fn text(app: &AppHandle, key: &str) -> String {
         .get(key)
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_else(|| {
-            eprintln!("helve: {key:?} is not a string any build declares");
+            crate::helve_log!("{key:?} is not a string any build declares");
             String::new()
         })
 }

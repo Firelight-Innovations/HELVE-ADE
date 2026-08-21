@@ -9,6 +9,7 @@
 pub mod commands;
 
 mod config;
+mod handoff;
 mod listener;
 mod registry;
 mod servers;

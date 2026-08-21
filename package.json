@@ -22,6 +22,7 @@
     "lint:comments": "node scripts/check-comments.mjs",
     "lint:deps": "cargo deny check",
     "slop": "node scripts/slop.mjs",
+    "probe": "node scripts/helve-probe.mjs",
     "lint:fix": "eslint . --fix",
     "test": "pnpm run test:js && pnpm run test:rust",
     "test:js": "vitest run && pnpm --filter \"./packages/**\" --filter \"./examples/**\" --if-present test",

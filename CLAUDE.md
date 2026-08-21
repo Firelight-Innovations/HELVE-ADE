@@ -25,6 +25,35 @@ seen repeatedly:
 Do not kill a process on 1420 to make room for yourself. It is either Braden's running app or
 another agent's; ask instead.
 
+## Asking a running HELVE what it is doing
+
+**`pnpm probe` reads the live app.** It talks to the `helve-debug` MCP server the orchestrator
+hosts, and works from any terminal — you do not have to be inside HELVE, and nothing has to be
+launched or restarted:
+
+```sh
+pnpm probe                    # list the tools
+pnpm probe shell_snapshot     # windows, clusters, pane trees, instances, terminals — live
+pnpm probe recent_errors      # what has failed since launch, backend and webview
+pnpm probe boot_status        # how far startup got, and whether it gave up
+```
+
+It finds the port and token in `%APPDATA%\com.firelightinnovations.helve\mcp-endpoint.json`, which
+`mcp::handoff` writes at every launch, and it refuses a file whose pid is no longer running rather
+than talking to whatever took the port afterwards. If it says HELVE has exited, HELVE has exited —
+ask Braden to start it.
+
+Two limits worth knowing before you read a result:
+
+- **Every tool is a read.** Nothing here opens, closes or moves anything, deliberately. To *change*
+  the running app, ask Braden.
+- **Errors inside an app's iframe are not captured**, only the shell's and the backend's. An empty
+  `recent_errors` means nothing went wrong *in those two places*. Every answer repeats this in its
+  `covers` field; do not report it as "no errors" without the qualifier.
+
+This does not replace looking at the screen — there is still no DOM, no screenshot and no input
+from here. It replaces guessing about state that was previously unreachable.
+
 ## Verification
 
 **Every commit and every pull request must pass all four checks. No exceptions, and none of them
