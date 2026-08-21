@@ -1,6 +1,6 @@
 [package]
 name = "helve-orchestrator"
-version = "0.1.0"
+version.workspace = true
 description = "Entry point for the Helve stack — loads and orchestrates the dev tools"
 authors = ["Firelight Innovations"]
 edition = "2021"

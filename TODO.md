@@ -61,6 +61,23 @@ Still open:
 - The issue backlog from #7, which is what a first-time contributor actually
   needs and does not exist yet.
 
+## 9b. Release pipeline (done)
+
+Tagging `v*` builds on `windows-latest` and publishes a **draft** GitHub
+Release with the MSI and the NSIS setup attached. `workflow_dispatch` runs the
+same build without a tag, for changing the workflow without spending one.
+
+The version now lives in `package.json` alone. `tauri.conf.json` reads it
+through Tauri's own `"../package.json"` indirection, `src-tauri/Cargo.toml`
+inherits it from the workspace, and `scripts/check-version.mjs` — in
+`pnpm lint` — catches the one remaining copy drifting, plus any commit that
+turns an indirection back into a literal.
+
+Not done, and deliberately: **signing**. Unsigned installers hit SmartScreen,
+every release says so in `.github/release-preamble.md`, and a certificate is a
+purchase rather than a configuration. The **updater** waits on releases
+happening at a cadence rather than one at a time.
+
 ## 10. App download system
 
 Download full apps from GitHub repos and let the orchestrator execute them.
