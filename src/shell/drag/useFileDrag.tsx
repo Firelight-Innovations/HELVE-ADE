@@ -130,61 +130,72 @@ function useFrameFileDrag({
   rawY: { set: (v: number) => void; jump: (v: number) => void };
 }): { begin: (paths: string[]) => void; end: () => void } {
   const paths = useRef<string[] | null>(null);
-  const seeded = useRef(false);
+  // How this gesture takes its listeners down. Held rather than recreated, so
+  // `finish` can remove exactly the functions `begin` added.
+  const detach = useRef<(() => void) | null>(null);
 
   const finish = useCallback(() => {
     paths.current = null;
-    seeded.current = false;
+    detach.current?.();
+    detach.current = null;
     setFrameDrag(null);
     setTargetId(null);
   }, [setFrameDrag, setTargetId]);
 
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!paths.current) return;
-      // Seeded on the first move the shell actually sees, so the ghost springs
-      // from where the cursor left the frame rather than flying in from the
-      // origin. The press itself happened somewhere this document never heard
-      // about, so there is no earlier position to seed from.
-      if (!seeded.current) {
-        seeded.current = true;
-        rawX.jump(e.clientX);
-        rawY.jump(e.clientY);
-      }
-      rawX.set(e.clientX);
-      rawY.set(e.clientY);
-      setTargetId(terminalAt(e.clientX, e.clientY));
-    };
-
-    const onUp = (e: PointerEvent) => {
-      const carried = paths.current;
-      if (!carried) return;
-      finish();
-      commit(e.clientX, e.clientY, carried);
-    };
-
-    // A cancel is not a release, and is not committed — the same distinction
-    // `useDrag` draws, for the same reason: it carries the position of whatever
-    // took the gesture away, not the position the user meant.
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", finish);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", finish);
-    };
-  }, [finish, setTargetId, rawX, rawY]);
-
   const begin = useCallback(
     (started: string[]) => {
       if (started.length === 0) return;
+      // A second `begin` without an `end` should not leave the first one's
+      // listeners behind. Cheap, and the only ordering this cannot control:
+      // the frame is a separate document and its messages are tasks.
+      finish();
       paths.current = started;
-      seeded.current = false;
       setFrameDrag(started);
+
+      // Attached here rather than for the hook's whole life. A `pointermove`
+      // handler on `window` fires for every pixel the cursor travels anywhere
+      // in the app, and this one has something to do for the seconds a drag is
+      // in the air — so it exists for exactly those seconds, as `useDrag`'s do.
+      let seeded = false;
+
+      const onMove = (e: PointerEvent) => {
+        // Seeded on the first move out here, so the ghost springs from where
+        // the cursor left the frame rather than flying in from the origin. The
+        // press happened in a document this one never heard from, so there is
+        // no earlier position to seed from.
+        if (!seeded) {
+          seeded = true;
+          rawX.jump(e.clientX);
+          rawY.jump(e.clientY);
+        }
+        rawX.set(e.clientX);
+        rawY.set(e.clientY);
+        setTargetId(terminalAt(e.clientX, e.clientY));
+      };
+
+      const onUp = (e: PointerEvent) => {
+        const carried = paths.current;
+        finish();
+        if (carried) commit(e.clientX, e.clientY, carried);
+      };
+
+      // A cancel is not a release and commits nothing — the distinction
+      // `useDrag` draws, for its reason: it carries the position of whatever
+      // took the gesture away, not the position the user meant.
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", finish);
+      detach.current = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", finish);
+      };
     },
-    [setFrameDrag],
+    [finish, setFrameDrag, setTargetId, rawX, rawY],
   );
+
+  // A window closing mid-drag takes its listeners with it.
+  useEffect(() => () => detach.current?.(), []);
 
   return { begin, end: finish };
 }

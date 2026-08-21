@@ -299,18 +299,10 @@ impl PtySessions {
     /// longer exists — a terminal closed between the drag starting and the
     /// release, which is not an error.
     ///
-    /// **Insertion is [`write`](Self::write), which is to say it is
-    /// indistinguishable from typing.** There is no second path into a pty and
-    /// this is deliberately not one: the bytes go through [`tap_input`] like
-    /// every keystroke, so whatever eventually wraps a coding harness sees a
-    /// dropped path exactly as it sees a typed one. It also means the text
-    /// lands wherever the cursor already is — an empty prompt, halfway through
-    /// a half-typed command, or the input box of a full-screen program — which
-    /// is what "at the current input position" can honestly mean when the
-    /// orchestrator deliberately does not know what is running in there.
-    ///
-    /// Nothing appended. No trailing space, and above all no newline: a
-    /// newline is what would turn an insertion into an execution.
+    /// What is appended is one space, so the next thing typed is a new word.
+    /// What is never appended is a newline: a newline is the character that
+    /// would turn an insertion into an execution. See `quoting::quote_all`,
+    /// which is where both of those are decided and tested.
     pub fn insert_paths(&self, id: &str, paths: &[String]) -> Option<String> {
         // The map lock is taken and released before `write` takes it again,
         // rather than held across the quoting. Quoting is pure and cheap, but
@@ -325,6 +317,17 @@ impl PtySessions {
         if text.is_empty() {
             return Some(text);
         }
+
+        // **Insertion is [`write`], which is to say it is indistinguishable
+        // from typing.** There is no second path into a pty and this is
+        // deliberately not one: the bytes go through [`tap_input`] like every
+        // keystroke, so whatever eventually wraps a coding harness sees a
+        // dropped path exactly as it sees a typed one. It also means the text
+        // lands wherever the cursor already is — an empty prompt, halfway
+        // through a half-typed command, or the input box of a full-screen
+        // program — which is what "at the current input position" can honestly
+        // mean when the orchestrator deliberately does not know what is running
+        // in there.
         self.write(id, &text);
         Some(text)
     }
@@ -621,6 +624,18 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    /// A drop aimed at a terminal that has since closed answers `None` rather
+    /// than panicking or silently succeeding. It is the case a slow drag makes
+    /// reachable — the tab can be shut between the press and the release — and
+    /// the one branch of `insert_paths` that needs no pty to exercise.
+    #[test]
+    fn inserting_into_a_session_that_is_gone_is_not_an_error() {
+        let sessions = PtySessions::default();
+        assert!(sessions
+            .insert_paths("no-such-session", &["a.rs".to_string()])
+            .is_none());
+    }
 
     /// Nothing goes out before someone is listening, and nothing is lost
     /// waiting. This is the invariant the blank-terminal bug came down to.
