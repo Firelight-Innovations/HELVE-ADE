@@ -20,6 +20,11 @@
 mod marker;
 mod store;
 
+/// Re-exported because `.helve` is a wire format rather than a name (STANDARDS.md §7), so the one
+/// literal belongs in one place. `review::store` writes inside this directory and would otherwise
+/// hold a second copy of the string to drift from this one.
+pub use marker::TRACE_DIR;
+
 use crate::branding;
 use crate::commands;
 use crate::error::{AppError, Result};

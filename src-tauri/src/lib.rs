@@ -22,6 +22,7 @@ mod plugins;
 mod presets;
 mod project;
 mod pty;
+mod review;
 mod search;
 mod settings;
 mod shell_state;
