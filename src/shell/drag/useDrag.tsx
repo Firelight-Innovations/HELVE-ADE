@@ -22,7 +22,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { AnimatePresence, useMotionValue, useSpring } from "framer-motion";
 import type { ClusterDrag, DragHandleProps, DragPayload, DragState, DropTarget } from "../contract";
-import { snap } from "../motion";
 import {
   detachCluster,
   detachInstance,
@@ -32,6 +31,7 @@ import {
   windowAtCursor,
 } from "../state/shellState";
 import DragGhost from "./DragGhost";
+import { ghostSpring } from "./ghostSpring";
 import { DetachOutline } from "./DropTargets";
 import { hitTest } from "../dropZones";
 import "./drag.css";
@@ -43,22 +43,6 @@ import "./drag.css";
  * moves still selecting the tab.
  */
 const PRESS_THRESHOLD = 4;
-
-/**
- * The ghost's spring, derived from `snap` rather than invented. `snap` is the
- * scale's answer for "the default, for anything the pointer just caused" — its
- * stiffness is the highest in the scale, which is what "light lag only, it
- * should read as attached to the cursor" calls for. `motion.ts` types `snap` as
- * the general `Transition` shape (it has to, `settle` and `instant` share the
- * export), so its spring fields are read with a narrow cast here rather than by
- * widening the shared type for one caller.
- */
-const springSource = snap as unknown as { stiffness: number; damping: number; mass?: number };
-const ghostSpring = {
-  stiffness: springSource.stiffness,
-  damping: springSource.damping,
-  mass: springSource.mass,
-};
 
 interface Session {
   payload: DragPayload;

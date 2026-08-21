@@ -22,6 +22,7 @@ import {
   splitTerminal,
   terminalAttach,
   terminalBusy,
+  terminalInsertPaths,
   terminalResize,
   terminalWrite,
   type PtyChunk,
@@ -193,6 +194,19 @@ export const terminalTransport: TerminalTransport = {
 
   write(id, data) {
     void terminalWrite(id, data);
+  },
+
+  insertPaths(id, paths) {
+    // Unlike `write`, this one can be refused — the session may have closed
+    // between the drag starting and the release — and unlike a keystroke it is
+    // worth hearing about. A drop has no other confirmation: the text appears
+    // or it does not, and "nothing appeared" would otherwise be
+    // indistinguishable from the backend never having been asked. The same
+    // reasoning, and the same console-only answer, as `drag/useDrag.tsx`'s
+    // `attempt`.
+    void terminalInsertPaths(id, paths).catch((e: unknown) => {
+      console.error(`helve: inserting ${paths.length} path(s) into ${id} failed`, e);
+    });
   },
 
   resize(id, cols, rows) {

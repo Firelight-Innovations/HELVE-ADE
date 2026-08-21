@@ -239,6 +239,15 @@ export interface TerminalTransport {
    *  `docs/design-notes/shell-core.md`. */
   attach(id: string, onData: (chunk: string) => void): () => void;
   write(id: string, data: string): void;
+  /** Files were dropped on this session: put their paths at its prompt, and run
+   *  nothing. Separate from `write`, which would be enough to *send* the text,
+   *  because the quoting is not this side's to decide — whether
+   *  `C:\Program Files\x` needs quotes, and which kind, depends on the shell the
+   *  session spawned, and only Rust knows which that is (a tab's title is the
+   *  running program's to overwrite at will). So paths go over unquoted and are
+   *  quoted there; see `src-tauri/src/quoting.rs`. Fire-and-forget like `write`
+   *  and for the same reason: what happened is visible in the terminal. */
+  insertPaths(id: string, paths: string[]): void;
   /** Tell the PTY how big its viewport is, in character cells. Not optional and
    *  not cosmetic: a TUI asks the pty for its size and draws to exactly that, so
    *  a pty that disagrees with the emulator produces a corrupt frame rather than

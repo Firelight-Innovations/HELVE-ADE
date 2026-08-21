@@ -292,7 +292,10 @@ export function createClient(opts: ClientOptions): Client {
     // reason: it is fire-and-forget below, so the rejection is swallowed at the
     // call site, and having the two halves of one feature disagree about
     // whether this host supports it would be the confusing thing to read.
-    if (method === "helve/open" || method === "helve/publish") {
+    // `helve/drag` is refused with them, for `helve/open`'s reason: a drag out of
+    // a frame aims at somewhere else in the window, a standalone app has no
+    // elsewhere, and the user is mid-gesture while it is answered.
+    if (method === "helve/open" || method === "helve/publish" || method === "helve/drag") {
       throw new HelveRpcError(
         HelveErrorCode.MethodNotFound,
         `${method}: there is no shell here — this frontend is its own window`,

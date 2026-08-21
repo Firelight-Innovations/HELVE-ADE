@@ -795,6 +795,33 @@ pub fn terminal_write(ptys: State<'_, PtySessions>, id: String, data: String) {
     ptys.write(&id, &data);
 }
 
+/// Files were dropped onto this terminal. Insert their paths at its prompt.
+///
+/// Returns the text that was inserted, so the caller can report what happened
+/// without re-deriving it — and it could not re-derive it: quoting depends on
+/// which shell this session is talking to, which is a fact only this side has.
+/// See `quoting`'s module doc.
+///
+/// Unlike [`terminal_write`] this one answers, and can fail. A drop is a
+/// deliberate, low-frequency gesture aimed at a terminal the user can see, so
+/// "that session is gone" is worth a round trip to say, where the same news
+/// about a keystroke would be noise. `Ok("")` is the honest answer to a drop
+/// carrying no paths.
+///
+/// It executes nothing. That is a property of how the insertion is made rather
+/// than a promise kept here — `PtySessions::insert_paths` has it.
+#[tauri::command]
+pub fn terminal_insert_paths(
+    ptys: State<'_, PtySessions>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<String> {
+    ptys.insert_paths(&id, &paths).ok_or(AppError::Pty {
+        id,
+        reason: "no such terminal session to insert into".to_string(),
+    })
+}
+
 /// An emulator has mounted and is listening. Answers with everything the shell
 /// has said so far and where the live stream picks up.
 ///

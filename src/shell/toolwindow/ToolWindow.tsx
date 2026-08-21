@@ -182,6 +182,21 @@ const ToolWindow = forwardRef<
      */
     onCommandsChange?: (instanceId: string, commands: readonly string[]) => void;
     /**
+     * A frame has begun, or ended, dragging file paths out of itself.
+     *
+     * Relayed rather than acted on. An iframe's pointer events never reach this
+     * document, so a drag that starts in the Files tree is invisible out here
+     * until the frame says so; from `begin` the drag layer tracks it on
+     * `window`, which starts reporting the moment the cursor leaves the frame.
+     * `end` is the frame's own release — the one release this document cannot
+     * see, because letting go over the frame sends `pointerup` to the frame.
+     *
+     * Handed up as a prop rather than called directly, because the drag layer
+     * is another region and §1.2 lets this one import nothing but `contract.ts`
+     * — the same rule `renderPanes` answers below.
+     */
+    onFramePathDrag?: (drag: { phase: "begin" | "end"; paths: readonly string[] }) => void;
+    /**
      * Draw the pane layout this window measured.
      *
      * A render prop rather than an import, because `panes` is another region and
@@ -213,6 +228,7 @@ const ToolWindow = forwardRef<
     onResize,
     dropTarget,
     onCommandsChange,
+    onFramePathDrag,
     renderPanes,
     renderTerminal,
   },
@@ -333,6 +349,12 @@ const ToolWindow = forwardRef<
   // window in between where a frame's `hello` would land on nothing.
   const report = useRef(onCommandsChange);
   report.current = onCommandsChange;
+
+  // Held in a ref for the same reason, and it matters more here: this one is
+  // read in the middle of a gesture, so a listener re-added mid-drag would drop
+  // the frame's `end` and leave a ghost stuck to the cursor.
+  const relayDrag = useRef(onFramePathDrag);
+  relayDrag.current = onFramePathDrag;
 
   const registerFrame = useCallback(
     (instanceId: string, appId: string, isApp: boolean, win: Window) => {
@@ -829,6 +851,30 @@ const ToolWindow = forwardRef<
         return;
       }
 
+      // A frame dragging file paths out of itself. Host business in the
+      // strongest sense of the three above: the gesture *leaves* the frame, and
+      // where it lands is a fact about this window's layout the frame cannot
+      // see and must not be told. It hands over paths and says when its press
+      // begins and ends; everything else is answered out here and never travels
+      // back. Above the `isApp` refusal like the rest, and for the same reason:
+      // nothing is asked of a core.
+      if (method === "helve/drag") {
+        const drag = pathDragRequest(params);
+        if (!drag) {
+          respond({
+            id,
+            error: {
+              code: HelveErrorCode.InvalidParams,
+              message: 'helve/drag needs a `phase` of "begin" or "end"',
+            },
+          });
+          return;
+        }
+        respond({ id, result: null });
+        relayDrag.current?.(drag);
+        return;
+      }
+
       // Both kinds of surface go down the same line from here — the change the
       // broker made. A plugin's call used to be refused at this exact point;
       // `apps::call` forks on the id now. `frame.isApp` still decides where the
@@ -1322,6 +1368,24 @@ function openRequest(params: unknown): { appId: string; payload: unknown } | nul
  * refusal would leave the last real value retained and make an empty editor
  * indistinguishable from one nobody had heard from.
  */
+/**
+ * The `phase` and `paths` off a `helve/drag` request, or `null` for a phase
+ * this shell does not know. `end` carries no paths and need not.
+ *
+ * Unlike `openRequest`'s payload, `paths` is validated down to dropping every
+ * non-string entry. It is not the frame's own vocabulary here — these strings
+ * end up in a shell's input, and "opaque, the receiver knows what it means"
+ * cannot apply when the receiver is a running program. Rust's quoting is the
+ * real guard; this is the cheap one before it.
+ */
+function pathDragRequest(params: unknown): { phase: "begin" | "end"; paths: string[] } | null {
+  if (typeof params !== "object" || params === null) return null;
+  const { phase, paths } = params as { phase?: unknown; paths?: unknown };
+  if (phase !== "begin" && phase !== "end") return null;
+  const list = Array.isArray(paths) ? paths : [];
+  return { phase, paths: list.filter((p): p is string => typeof p === "string") };
+}
+
 function publishRequest(params: unknown): { topic: string; value: unknown } | null {
   if (typeof params !== "object" || params === null) return null;
   const { topic, value } = params as { topic?: unknown; value?: unknown };

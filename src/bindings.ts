@@ -1104,6 +1104,63 @@ export function terminalResize(id: string, cols: number, rows: number): Promise<
   return invoke("terminal_resize", { id, cols, rows });
 }
 
+/**
+ * Files were dropped onto a terminal. Resolves with the text that was inserted.
+ *
+ * The quoting is Rust's, not this side's, and that is the whole reason this is
+ * not `terminalWrite` with a string built here: only the backend knows which
+ * shell the session spawned. See `src-tauri/src/quoting.rs`.
+ */
+export function terminalInsertPaths(id: string, paths: string[]): Promise<string> {
+  return invoke<string>("terminal_insert_paths", { id, paths });
+}
+
+/* --- files dragged in from outside HELVE ------------------------------------
+ *
+ * Not a command and not one of our own events: the operating system's own drag,
+ * reported by the webview through Tauri. It is the one drag in the shell that
+ * does not begin with a `pointerdown` we saw.
+ */
+
+/** Where an outside drag is, and what it is carrying once it lets go. */
+export type FileDrag =
+  | { kind: "over"; x: number; y: number }
+  /** Absolute paths, as the operating system spells them. */
+  | { kind: "drop"; x: number; y: number; paths: string[] }
+  | { kind: "leave" };
+
+/**
+ * Subscribe to files being dragged over this window from outside it.
+ *
+ * Two things are absorbed here so no caller has to know them.
+ *
+ * **`enter` and `over` are one event.** Tauri distinguishes them, and only
+ * `enter` carries the paths; a drop target needs a position on both and the
+ * paths on neither, so they arrive here as one `over`.
+ *
+ * **The position is converted to CSS pixels.** Tauri reports *physical* device
+ * pixels; every rectangle the shell hit-tests against comes from
+ * `getBoundingClientRect`, which is CSS pixels. The divisor is
+ * `devicePixelRatio` rather than the window's `scaleFactor`, deliberately: this
+ * window can be zoomed (`setWebviewZoom`), zoom moves CSS pixels without moving
+ * the scale factor, and only `devicePixelRatio` accounts for both. The window
+ * is undecorated, so window-relative and client-relative share an origin — a
+ * titlebar would offset every y by its height.
+ */
+export function onFileDrag(cb: (drag: FileDrag) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => {
+    const e = event.payload;
+    if (e.type === "leave") return cb({ kind: "leave" });
+
+    const ratio = window.devicePixelRatio || 1;
+    const x = e.position.x / ratio;
+    const y = e.position.y / ratio;
+
+    if (e.type === "drop") return cb({ kind: "drop", x, y, paths: e.paths });
+    return cb({ kind: "over", x, y });
+  });
+}
+
 /* --- layout presets ----------------------------------------------------------
  *
  * Mirrors `src-tauri/src/presets/mod.rs`. A preset is a named arrangement,
