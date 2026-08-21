@@ -28,9 +28,9 @@ _**Start**, and **Recents** below it — one entry marked **missing**._
 ## A plain folder is a real project
 
 A folder with no HELVE manifest still opens, and this is deliberate rather
-than lenient. HELVE has to be able to point at a game that already exists, and
-the answer to "what happens when the project format changes" must never be
-"it stops opening".
+than lenient. HELVE has to be able to point at a project that already exists,
+and the answer to "what happens when the project format changes" must never
+be "it stops opening".
 
 Home marks such a folder **not set up** and offers a button: **Set up as a
 HELVE project**. Nothing forces you to press it.
