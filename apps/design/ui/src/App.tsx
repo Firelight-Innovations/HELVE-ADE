@@ -28,8 +28,18 @@ const HANDOFF_WORDING: Record<Handoff, string> = {
 };
 
 export default function App() {
-  const { frameRef, target, phase, notice, captured, onFrameLoad, load, togglePicking, dismiss } =
-    useProbeFrame();
+  const {
+    frameRef,
+    target,
+    generation,
+    phase,
+    notice,
+    captured,
+    onFrameLoad,
+    load,
+    togglePicking,
+    dismiss,
+  } = useProbeFrame();
   const [address, setAddress] = useState("");
   const [handoff, setHandoff] = useState<string | null>(null);
   const painted = useRef(false);
@@ -90,6 +100,9 @@ export default function App() {
         <div className="design__stage">
           {target ? (
             <iframe
+              // Remounts on every load, so re-opening the address already
+              // showing is a real reload rather than a no-op. See `generation`.
+              key={generation}
               ref={frameRef}
               className="design__frame"
               src={target.url}

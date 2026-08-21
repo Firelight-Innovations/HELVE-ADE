@@ -89,6 +89,11 @@ function frameChain(frame: HTMLIFrameElement): Rect[] | null {
 export interface ProbeFrame {
   frameRef: React.RefObject<HTMLIFrameElement | null>;
   target: Target | null;
+  /** Bumped by every {@link ProbeFrame.load}. The caller uses it as the
+   *  iframe's `key`, so asking for the address already showing remounts the
+   *  frame instead of doing nothing — which would leave `phase` stuck on
+   *  `"loading"` waiting for a `load` event that is never coming. */
+  generation: number;
   phase: Phase;
   /** Something the person needs to read: a refused address, a page that would
    *  not describe an element. Cleared by the next action. */
@@ -108,6 +113,7 @@ export function useProbeFrame(): ProbeFrame {
   const nextVeil = useRef(0);
 
   const [target, setTarget] = useState<Target | null>(null);
+  const [generation, setGeneration] = useState(0);
   const [phase, setPhase] = useState<Phase>("empty");
   const [notice, setNotice] = useState<string | null>(null);
   const [captured, setCaptured] = useState<Capture | null>(null);
@@ -237,6 +243,7 @@ export function useProbeFrame(): ProbeFrame {
         const { scriptId: id } = await arm(scriptId.current);
         scriptId.current = id;
         setTarget(resolved);
+        setGeneration((n) => n + 1);
       } catch (err) {
         setPhase("empty");
         setTarget(null);
@@ -249,18 +256,39 @@ export function useProbeFrame(): ProbeFrame {
     setPhase((current) => (current === "loading" ? "ready" : current));
   }, []);
 
+  // Reads `phase` rather than using an updater, deliberately: posting to the
+  // frame is a side effect, and React invokes an updater twice under
+  // StrictMode. The probe treats a repeated arm as a no-op, so the bug would
+  // never have shown — which is exactly why it is worth not writing.
   const togglePicking = useCallback(() => {
     setNotice(null);
-    setPhase((current) => {
-      if (current === "picking") {
-        tell({ kind: "disarm" });
-        return "ready";
-      }
-      if (current !== "ready") return current;
-      tell({ kind: "arm" });
-      return "picking";
-    });
-  }, [tell]);
+    if (phase === "picking") {
+      tell({ kind: "disarm" });
+      setPhase("ready");
+      return;
+    }
+    if (phase !== "ready") return;
+    tell({ kind: "arm" });
+    setPhase("picking");
+  }, [phase, tell]);
+
+  // Escape, from *this* document as well as from the page.
+  //
+  // The probe listens for it too, and cannot be relied on alone: hovering an
+  // iframe does not give it focus, so somebody who armed the picker and then
+  // changed their mind without clicking is pressing Escape at this window. The
+  // button says "Esc to stop", and a control that says so has to be right from
+  // wherever the person is looking.
+  useEffect(() => {
+    if (phase !== "picking") return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      tell({ kind: "disarm" });
+      setPhase("ready");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, tell]);
 
   const dismiss = useCallback(() => {
     setCaptured(null);
@@ -270,6 +298,7 @@ export function useProbeFrame(): ProbeFrame {
   return {
     frameRef,
     target,
+    generation,
     phase,
     notice,
     captured,
