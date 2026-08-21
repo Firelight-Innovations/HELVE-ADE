@@ -643,6 +643,101 @@ export function gitDivergenceDiff(
   return invoke<GitDiff>("git_divergence_diff", { clusterId, path, mergeBase });
 }
 
+/** Mirrors `github::GithubItemKind`. */
+export type GithubItemKind = "issue" | "pull";
+
+/**
+ * Mirrors `github::GithubItemState`.
+ *
+ * One union over both kinds rather than two. An issue is only ever `open` or
+ * `closed`; `merged` and `draft` belong to a pull request. Splitting them would
+ * make every renderer narrow on `kind` before it could read `state`, and one
+ * list draws both.
+ */
+export type GithubItemState = "open" | "closed" | "merged" | "draft";
+
+/** Mirrors `github::GithubItem`. */
+export interface GithubItem {
+  /** `issue-42` or `pull-17` — unique across both kinds, which is what a React
+   *  key over the merged list needs. The numbers alone are not. */
+  id: string;
+  kind: GithubItemKind;
+  number: number;
+  title: string;
+  state: GithubItemState;
+  /** The `html_url`, for opening in a browser. */
+  url: string;
+  labels: string[];
+  /** ISO-8601, unparsed. A `Date` may not cross this boundary (STANDARDS.md §2),
+   *  and this format sorts correctly as a string anyway. */
+  updatedAt: string;
+  /** `null` for an item whose author deleted their account. */
+  author: string | null;
+  /** A pull request's head branch, for display. `null` for an issue.
+   *  Deliberately not what opening the item checks out — see `suggestedBranch`. */
+  headBranch: string | null;
+  /**
+   * What to name the worktree and branch when this item is opened.
+   *
+   * Rust computes it so that opening an item is the *existing*
+   * `worktreeControl.create(clusterId, name)` and nothing more; this feature
+   * adds no second worktree path. For a pull request it names a fresh branch cut
+   * from HEAD rather than the pull request's own head, which would need a fetch
+   * — `github.rs` records why.
+   */
+  suggestedBranch: string;
+}
+
+/**
+ * Mirrors `github::GithubTrouble`.
+ *
+ * Four cases because they need four different affordances — sign in, wait,
+ * retry, and nothing-to-be-done. A single failure string would put a Sign in
+ * button under a rate limit.
+ */
+export type GithubTrouble =
+  | { kind: "auth" }
+  /** 404, which GitHub answers for both "no such repository" and "not yours to
+   *  see". One case here for the same reason it is one case there. */
+  | { kind: "missingOrPrivate" }
+  | { kind: "rateLimited"; resetsInMinutes: number | null }
+  | { kind: "unreachable"; reason: string };
+
+/**
+ * Mirrors `github::GithubFeed`.
+ *
+ * The variant is why an empty list is never ambiguous: `ready` with no items
+ * means the repository has nothing open, and every other empty list is one of
+ * the other two states carrying its own explanation.
+ */
+export type GithubFeed =
+  | { state: "notGithub" }
+  | { state: "unavailable"; repo: string | null; trouble: GithubTrouble }
+  | { state: "ready"; repo: string; items: GithubItem[]; authenticated: boolean };
+
+/**
+ * Mirrors `github::GithubScope`.
+ *
+ * Which items to ask GitHub for, as opposed to which to draw. The distinction
+ * is load-bearing: a closed item is not in an `open` reply at all, so the
+ * panel's `is:closed` has to reach the fetch or it could only ever filter down
+ * to nothing. `merged` is absent because GitHub's endpoint does not accept it —
+ * a merged pull request arrives under `closed` and is told apart by its merge
+ * date.
+ */
+export type GithubScope = "open" | "closed" | "all";
+
+/**
+ * Issues and pull requests for the repository behind a cluster.
+ *
+ * Never rejects for a network failure, a spent quota or a repository that is not
+ * on GitHub: all three are `GithubFeed` variants, because each is a state the
+ * panel draws rather than an exception to put in a dialog.
+ */
+export function githubFeed(clusterId: string, scope: GithubScope): Promise<GithubFeed> {
+  return invoke<GithubFeed>("github_feed", { clusterId, scope });
+}
+
 /**
  * Tell the backend that a first-party app's UI has drawn its first meaningful
  * frame.

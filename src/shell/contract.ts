@@ -24,6 +24,9 @@ import type {
   GitDivergence,
   GitStatus,
   GitWorktree,
+  GithubFeed,
+  GithubItemState,
+  GithubScope,
   Openable,
   PaneNode,
   ResolvedTool,
@@ -341,6 +344,54 @@ export function clusterRoot(cluster: Cluster): string | null {
   return cluster.worktree?.path ?? cluster.project;
 }
 
+// --- GitHub — what is open on the repository this cluster is a checkout of ---
+//
+// Read-only for 0.2.0: browse, and open a worktree from an item. Nothing here
+// writes to GitHub, which is why this interface has one fetch and no verbs — the
+// one action a person can take is `WorktreeControl.create` above, called with a
+// name the backend put on the item.
+
+/** Fetching the feed. One method, request/reply, for `GitControl`'s reason:
+ *  there is nothing to watch, and a refresh follows a cluster switch or a
+ *  button. */
+export interface GithubControl {
+  /** Every outcome is a `GithubFeed` variant rather than a rejection — a spent
+   *  quota and a project that is not on GitHub are both states to draw. The
+   *  promise rejecting at all means the IPC call itself failed. */
+  feed(clusterId: string, scope: GithubScope): Promise<GithubFeed>;
+}
+
+/** Whether a GitHub token is stored, and storing one. Separate from
+ *  `GithubControl` because it is not about a cluster and not about a repository:
+ *  one token serves every project, and the app library's sign-in writes the same
+ *  one. Passing an empty string signs out. The value is never read back — the
+ *  interface can ask *whether*, never *what*, which is what keeps a credential
+ *  out of the renderer. */
+export interface GithubAuthControl {
+  isSignedIn(): Promise<boolean>;
+  signIn(token: string): Promise<void>;
+}
+
+/** How a GitHub item's state is drawn. Backend vocabulary reaches the interface
+ *  here unchanged, which is the exception §2 warns about — and it is deliberate:
+ *  "open", "closed", "merged" and "draft" are GitHub's words on GitHub's own
+ *  screen, and translating them would be inventing a second vocabulary for
+ *  something the user already reads elsewhere in the same words. */
+export const GITHUB_STATE_TOKEN: Record<GithubItemState, string> = {
+  open: "var(--ok)",
+  closed: "var(--err)",
+  merged: "var(--accent)",
+  draft: "var(--text-dim-2)",
+};
+
+/** The label under each state's dot. */
+export const GITHUB_STATE_LABEL: Record<GithubItemState, string> = {
+  open: "Open",
+  closed: "Closed",
+  merged: "Merged",
+  draft: "Draft",
+};
+
 // --- Search — stubbed index, real interaction -------------------------------
 
 export type SearchType = "content" | "scripts" | "assets" | "terminal" | "settings";
@@ -538,6 +589,12 @@ export type {
   GitFileChange,
   GitStatus,
   GitWorktree,
+  GithubFeed,
+  GithubItem,
+  GithubItemKind,
+  GithubItemState,
+  GithubScope,
+  GithubTrouble,
   TerminalBusy,
   WorktreeRef,
 } from "../bindings";

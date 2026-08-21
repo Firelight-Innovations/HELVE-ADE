@@ -398,6 +398,40 @@ impl ApiItem {
 
 // --- talking to GitHub ---------------------------------------------------------
 
+/// Which items to ask GitHub for.
+///
+/// This exists because the panel's `is:closed` filter has to reach the *fetch*
+/// rather than only the list. GitHub's list endpoints take `state`, and a
+/// closed item is simply not in an `open` reply — so a filter applied client
+/// side over an open-only feed could only ever produce an empty list, which is
+/// the exact failure the whole `GithubFeed` shape exists to prevent.
+///
+/// Three rather than four: `merged` is not a state GitHub's endpoint accepts.
+/// A merged pull request comes back under `Closed`, and telling the two apart
+/// is `merged_at`'s job in [`ApiItem::into_item`]. The panel narrows to merged
+/// itself, over a closed fetch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GithubScope {
+    /// What the panel opens on, and the only one that stays cheap on a busy
+    /// repository — a year of closed issues sorted by activity is mostly noise.
+    #[default]
+    Open,
+    Closed,
+    All,
+}
+
+impl GithubScope {
+    /// The `state=` value. GitHub spells all three exactly as we do.
+    fn as_param(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+            Self::All => "all",
+        }
+    }
+}
+
 /// The HTTP client.
 ///
 /// `http_status_as_error(false)` is the one way this differs from the identical
@@ -447,6 +481,7 @@ fn resets_in_minutes(header: Option<&str>) -> Option<u64> {
 fn fetch_items(
     repo: &Repo,
     kind: GithubItemKind,
+    scope: GithubScope,
     token: Option<&str>,
     per_page: i64,
 ) -> std::result::Result<Vec<GithubItem>, GithubTrouble> {
@@ -455,8 +490,10 @@ fn fetch_items(
         GithubItemKind::Pull => "pulls",
     };
     let url = format!(
-        "https://api.github.com/repos/{}/{}/{path}?state=open&sort=updated&direction=desc&per_page={per_page}",
-        repo.owner, repo.name
+        "https://api.github.com/repos/{}/{}/{path}?state={}&sort=updated&direction=desc&per_page={per_page}",
+        repo.owner,
+        repo.name,
+        scope.as_param()
     );
 
     let mut request = agent()
@@ -533,8 +570,13 @@ fn fetch_items(
 /// upstream's pull requests. Here they are always the same repository reached
 /// the same way, so one failing means the other is about to, and a half-list
 /// under a warning would be a state that never honestly occurs.
-fn fetch_feed(repo: &Repo, token: Option<&str>, per_page: i64) -> GithubFeed {
-    let mut items = match fetch_items(repo, GithubItemKind::Issue, token, per_page) {
+fn fetch_feed(
+    repo: &Repo,
+    scope: GithubScope,
+    token: Option<&str>,
+    per_page: i64,
+) -> GithubFeed {
+    let mut items = match fetch_items(repo, GithubItemKind::Issue, scope, token, per_page) {
         Ok(items) => items,
         Err(trouble) => {
             return GithubFeed::Unavailable {
@@ -544,7 +586,7 @@ fn fetch_feed(repo: &Repo, token: Option<&str>, per_page: i64) -> GithubFeed {
         }
     };
 
-    match fetch_items(repo, GithubItemKind::Pull, token, per_page) {
+    match fetch_items(repo, GithubItemKind::Pull, scope, token, per_page) {
         Ok(pulls) => items.extend(pulls),
         Err(trouble) => {
             return GithubFeed::Unavailable {
@@ -621,7 +663,11 @@ fn is_github(url: &str) -> bool {
 /// to surface in a dialog. The `Result` is only for the thread hop itself
 /// failing, which is a panic in the worker and nothing this feature can cause.
 #[tauri::command]
-pub async fn github_feed(app: AppHandle, cluster_id: String) -> Result<GithubFeed> {
+pub async fn github_feed(
+    app: AppHandle,
+    cluster_id: String,
+    scope: GithubScope,
+) -> Result<GithubFeed> {
     let per_page = crate::settings::number(&app, crate::settings::keys::GITHUB_ITEM_LIMIT)
         .clamp(1, MAX_PER_PAGE);
 
@@ -638,7 +684,7 @@ pub async fn github_feed(app: AppHandle, cluster_id: String) -> Result<GithubFee
         // process for the length of two requests and is never returned, logged,
         // or put in a `GithubTrouble`.
         let token = crate::plugins::install::token();
-        fetch_feed(&repo, token.as_deref(), per_page)
+        fetch_feed(&repo, scope, token.as_deref(), per_page)
     })
     .await
     .unwrap_or(GithubFeed::Unavailable {
