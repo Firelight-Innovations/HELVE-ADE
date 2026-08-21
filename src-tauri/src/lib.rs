@@ -362,6 +362,7 @@ pub fn run() {
             commands::list_apps,
             commands::list_openables,
             commands::list_plugins,
+            commands::list_catalog,
             commands::install_plugin_folder,
             commands::choose_and_install_plugin,
             commands::uninstall_plugin,

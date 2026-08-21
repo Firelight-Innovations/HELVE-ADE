@@ -932,6 +932,17 @@ pub fn list_plugins(app: tauri::AppHandle) -> Vec<plugins::PluginRow> {
     plugins::rows(&app)
 }
 
+/// The app library: what this build offers to install, and what is already in.
+///
+/// Compiled in from `catalog.toml`, so this answers offline and answers the same
+/// thing every time within one build. Only `installed` moves, which is why the
+/// library is re-asked on `plugins:changed` rather than cached by the frontend.
+#[tauri::command]
+pub fn list_catalog(app: tauri::AppHandle) -> Vec<plugins::catalog::CatalogRow> {
+    let registry = app.state::<plugins::Registry>();
+    plugins::catalog::rows(|id| registry.contains(id))
+}
+
 /// Install a plugin from a folder already on this machine.
 ///
 /// The development path, and in this build the only one. `path` is a directory

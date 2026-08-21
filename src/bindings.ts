@@ -200,6 +200,31 @@ export function listPlugins(): Promise<PluginRow[]> {
   return invoke<PluginRow[]>("list_plugins");
 }
 
+/**
+ * Mirrors `plugins::catalog::CatalogRow` — one app in the library.
+ *
+ * The catalog half is compiled into the binary from `catalog.toml`, so it is
+ * fixed for a given build; `installed` is the only field that moves, which is
+ * why this is re-asked on `PLUGINS_CHANGED_EVENT` rather than fetched once.
+ */
+export interface CatalogRow {
+  id: string;
+  name: string;
+  description: string;
+  /** `owner/name` on GitHub. */
+  repo: string;
+  /** Installed on first run without being asked. */
+  default: boolean;
+  /** Only changes the wording when a fetch fails. GitHub decides access. */
+  private: boolean;
+  installed: boolean;
+}
+
+/** The app library this build ships. Answers offline. */
+export function listCatalog(): Promise<CatalogRow[]> {
+  return invoke<CatalogRow[]>("list_catalog");
+}
+
 /** Install a plugin from a folder already on this machine. */
 export function installPluginFolder(path: string): Promise<PluginRow> {
   return invoke<PluginRow>("install_plugin_folder", { path });

@@ -10,6 +10,7 @@
 //! `docs/design-notes/backend-plugins.md` has the argument for both.
 
 pub mod broker;
+pub mod catalog;
 pub mod store;
 pub mod watch;
 
