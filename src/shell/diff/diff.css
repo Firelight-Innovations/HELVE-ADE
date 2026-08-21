@@ -46,3 +46,55 @@
 .diff .char-delete {
   background-color: rgba(217, 99, 95, 0.25); /* --err */
 }
+
+/* --- review notes ---------------------------------------------------------
+   The glyph margin as an input surface (DiffView.tsx, `useMarginInput`). Three
+   states share it: a line nothing has been written on, which shows a faint
+   plus only while the pointer is over it; a line that carries notes, which
+   shows a permanent mark; and the range the notes panel is focused on, washed
+   so it can be found after a scroll.
+
+   Monaco sizes the glyph margin from the line height and gives each glyph the
+   whole cell, so these are drawn as centred backgrounds rather than as glyphs
+   in a font — a font would have to be loaded and measured, and the margin is
+   about twelve pixels wide. */
+
+.diff__add-glyph,
+.diff__noted-glyph {
+  background-repeat: no-repeat;
+  background-position: center;
+  cursor: pointer;
+}
+
+/* A plus, drawn as two bars. `currentColor` is not available to a background,
+   so the colour is inlined here and is --text-dim-3. */
+.diff__add-glyph {
+  background-image: linear-gradient(#5b616c, #5b616c), linear-gradient(#5b616c, #5b616c);
+  background-size:
+    7px 1px,
+    1px 7px;
+}
+
+.diff__add-glyph:hover {
+  background-image:
+    linear-gradient(#d98a3f, #d98a3f), linear-gradient(#d98a3f, #d98a3f); /* --accent */
+}
+
+/* A filled dot: a line somebody has already written on. --accent, so a note
+   reads as the one thing on this surface a person put there by hand. */
+.diff__noted-glyph {
+  background-image: radial-gradient(circle, #d98a3f 0 3px, transparent 3px);
+  background-size: 100% 100%;
+}
+
+.diff__noted-line {
+  background-color: var(--accent-wash-faint);
+}
+
+/* Stronger than the noted wash and with a rule down the margin edge, because
+   this is the range a click in the notes list just scrolled to and it has to
+   be findable in one glance. */
+.diff__active-line {
+  background-color: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent-line-strong);
+}

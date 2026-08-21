@@ -26,6 +26,8 @@ import type {
   GitDivergence,
   GitFileChange,
   GitWorktree,
+  ReviewControl,
+  ReviewSend,
   WorktreeControl,
 } from "../contract";
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
@@ -36,8 +38,12 @@ import "./worktreePanel.css";
 
 /** Lazy for the same reason `SourceControlView` lazy-loads it: this file is
  *  mounted for the life of the window, and a static import would make every
- *  window pay for Monaco to render a tab most sessions never open. */
-const DiffView = lazy(() => import("../diff/DiffView"));
+ *  window pay for Monaco to render a tab most sessions never open.
+ *
+ *  The annotating wrapper, because a worktree's divergence *is* the
+ *  agent-produced diff — what this branch changed since it forked is the thing
+ *  a person opens this panel to review. */
+const AnnotatedDiff = lazy(() => import("../diff/AnnotatedDiff"));
 
 /** Plenty for a lane diagram a few hundred pixels tall; the graph draws
  *  whatever fits and scrolls the rest, so this only bounds how much history
@@ -85,6 +91,10 @@ export interface WorktreePanelProps {
    *  everything else here; it used to be scoped to the focused tool, which is
    *  what made this whole section render an error instead of a change list. */
   gitControl: GitControl;
+  /** Passed to both diff surfaces below — this section's divergence view and
+   *  the `SourceControlView` that replaces it for a cluster with no worktree. */
+  reviewControl: ReviewControl;
+  reviewSend: ReviewSend;
   git: GitStatusHandle;
   /**
    * Resolved by the caller, not here. `WorktreeControl.list` returns every
@@ -112,6 +122,8 @@ export default function WorktreePanel({
   clusterId,
   worktreeControl,
   gitControl,
+  reviewControl,
+  reviewSend,
   git,
   activeBranch,
 }: WorktreePanelProps) {
@@ -272,12 +284,20 @@ export default function WorktreePanel({
         style={{ flexBasis: sectionBasis(1 - topRatio) }}
       >
         {data.divergence === null ? (
-          <SourceControlView control={gitControl} clusterId={clusterId} git={git} />
+          <SourceControlView
+            control={gitControl}
+            clusterId={clusterId}
+            git={git}
+            review={reviewControl}
+            reviewSend={reviewSend}
+          />
         ) : (
           <DivergenceView
             clusterId={clusterId}
             worktreeControl={worktreeControl}
             divergence={data.divergence}
+            review={reviewControl}
+            reviewSend={reviewSend}
           />
         )}
       </div>
@@ -304,10 +324,14 @@ function DivergenceView({
   clusterId,
   worktreeControl,
   divergence,
+  review,
+  reviewSend,
 }: {
   clusterId: string;
   worktreeControl: WorktreeControl;
   divergence: GitDivergence;
+  review: ReviewControl;
+  reviewSend: ReviewSend;
 }) {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [diff, setDiff] = useState<GitDiff | null>(null);
@@ -392,11 +416,20 @@ function DivergenceView({
             <div className="worktreepanel__quiet">Loading diff…</div>
           ) : (
             <Suspense fallback={<div className="worktreepanel__quiet">Loading diff…</div>}>
-              <DiffView
+              {/* `scope` is "branch" and is fixed rather than derived: every
+                  file in a divergence is measured from the fork point, so
+                  there is no staged/unstaged distinction here to carry (see
+                  `GitDivergence`, whose `staged` is always false). */}
+              <AnnotatedDiff
                 original={diff.original}
                 modified={diff.modified}
                 language={isTomlPath(selected.path) ? TOML_LANGUAGE_ID : undefined}
                 renderSideBySide={false}
+                path={selected.path}
+                scope="branch"
+                clusterId={clusterId}
+                control={review}
+                send={reviewSend}
               />
             </Suspense>
           )}

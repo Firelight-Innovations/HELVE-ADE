@@ -643,6 +643,104 @@ export function gitDivergenceDiff(
   return invoke<GitDiff>("git_divergence_diff", { clusterId, path, mergeBase });
 }
 
+/* --- review comments ---------------------------------------------------------
+ *
+ * Notes a person left on lines of a diff, so an agent can be handed them.
+ * Mirrors `src-tauri/src/review/`, which keeps them in `.helve/` inside the
+ * checkout — cluster-scoped for the same reason every git command is, so the
+ * frontend never names a directory for the backend to write in.
+ */
+
+/** Mirrors `review::ReviewScope` — which of the three diffs a note was written against. */
+export type ReviewScope = "unstaged" | "staged" | "branch";
+
+/**
+ * Mirrors `review::ReviewComment`.
+ *
+ * `startLine`/`endLine` are 1-based and inclusive at both ends, and both name
+ * the **modified** side of the diff. A single-line note has them equal rather
+ * than omitting the end, so no caller has to special-case the common shape.
+ *
+ * There is no `side` and no author: `review`'s module doc has why. `sentAt` is
+ * absent until the note has been handed to an agent, and editing the body
+ * clears it again.
+ */
+export interface ReviewComment {
+  id: string;
+  /** Repo-relative, forward slashes — the same string `GitFileChange.path` carries. */
+  path: string;
+  scope: ReviewScope;
+  startLine: number;
+  endLine: number;
+  body: string;
+  /** Milliseconds since the Unix epoch, like every other timestamp crossing this boundary. */
+  createdAt: number;
+  updatedAt?: number;
+  sentAt?: number;
+  resolved: boolean;
+}
+
+/** Mirrors `review::ReviewDraft` — a note before the backend gives it an id and a clock reading. */
+export interface ReviewDraft {
+  path: string;
+  scope: ReviewScope;
+  startLine: number;
+  endLine: number;
+  body: string;
+}
+
+/**
+ * Every note stored for this cluster's checkout, in file-then-line order.
+ *
+ * An **empty array**, never an error, for a cluster with no project or one that
+ * is not a repository — the same two states `gitClusterStatus` answers `null`
+ * for. Re-read from disk on every call, so it doubles as the refresh after
+ * another window has written.
+ */
+export function reviewComments(clusterId: string): Promise<ReviewComment[]> {
+  return invoke<ReviewComment[]>("review_comments", { clusterId });
+}
+
+/** Write a note. Rejects on an empty body or a line range that is not one. */
+export function reviewCommentAdd(clusterId: string, draft: ReviewDraft): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_add", { clusterId, draft });
+}
+
+/** Rewrite a note's body. Clears its `sentAt` — the agent was given different words. */
+export function reviewCommentUpdate(
+  clusterId: string,
+  id: string,
+  body: string,
+): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_update", { clusterId, id, body });
+}
+
+/** Mark a note dealt with, or put it back. Nothing sets this automatically. */
+export function reviewCommentResolve(
+  clusterId: string,
+  id: string,
+  resolved: boolean,
+): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_resolve", { clusterId, id, resolved });
+}
+
+/** Delete a note. No undo. */
+export function reviewCommentRemove(clusterId: string, id: string): Promise<void> {
+  return invoke("review_comment_remove", { clusterId, id });
+}
+
+/**
+ * Stamp notes as handed to an agent, and answer how many were.
+ *
+ * Called *after* the text has reached the clipboard or a terminal, so an id
+ * that names nothing is skipped rather than fatal — the send already happened,
+ * and failing here would report it as though it had not. The count can be lower
+ * than the ids asked for if another window deleted one in between.
+ */
+export function reviewCommentsMarkSent(clusterId: string, ids: string[]): Promise<number> {
+  return invoke<number>("review_comments_mark_sent", { clusterId, ids });
+}
+
 /**
  * Tell the backend that a first-party app's UI has drawn its first meaningful
  * frame.

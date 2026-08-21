@@ -19,6 +19,49 @@ stay that way. Being able to build and run those tools does not put them under
 this license, and a repository that is not this one is not covered by it.
 
 
+INCORPORATED THIRD-PARTY CODE
+
+This product incorporates code adapted from `stablyai/orca`
+(https://github.com/stablyai/orca), which is licensed under the MIT License,
+Copyright (c) Stably AI.
+
+What was adapted, and where it is:
+
+  * src/shell/diff/reviewPrompt.ts -- the format review notes are serialized
+    into for an agent to read, and the escaping rule that makes that format
+    survive being pasted at a shell prompt. Adapted from
+    `src/shared/diff-comments-format.ts`.
+
+  * The review-comment data model in src-tauri/src/review/mod.rs -- how a note
+    anchors to a line range, and which of its timestamps mean what. Modelled on
+    `src/shared/diff-comment-types.ts`.
+
+Each of those files carries the same attribution in its own header. The MIT
+License requires its copyright notice and permission notice to travel with the
+code, and this section together with those headers is how they do. Nothing of
+Orca's branding is used, and none of it appears in any user-facing string.
+
+The MIT License text, as it applies to that code:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+
 TRADEMARKS
 
 The license covers the code. It does not cover the names.
