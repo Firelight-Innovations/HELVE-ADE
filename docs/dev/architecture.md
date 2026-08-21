@@ -93,6 +93,8 @@ src/                  React frontend
     terminal/             the terminal band
     search/               project search and the locator
     diff/ worktree/       git surfaces
+    github/               issues and pull requests, and opening a worktree
+                          from one
     settings/             the settings screen
     state/                the shell's own state, mirrored from Rust
     drag/ keys/ statusbar/
@@ -110,6 +112,7 @@ src-tauri/            Rust backend
     layout.rs           the pane tree, and how an open splits it
     windows.rs          creating and tracking operating system windows
     git.rs              status, diffs and worktrees
+    github.rs           what is open on the repository a cluster checks out
     search.rs           the project search the overlay calls
     pty.rs              terminals
     sync.rs             the lock-poisoning answer, given once (STANDARDS.md 5)

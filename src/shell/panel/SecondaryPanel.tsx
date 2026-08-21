@@ -17,6 +17,15 @@ import { type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, GitBranch } from "../../ui/Icon";
 import "./panel.css";
 
+/** Which of the panel's views is on screen. A union rather than a boolean so a
+ *  third view is a case to handle rather than a rewrite. */
+export type PanelView = "worktree" | "github";
+
+const VIEW_LABEL: Record<PanelView, string> = {
+  worktree: "Source Control",
+  github: "GitHub",
+};
+
 export interface SecondaryPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -24,6 +33,11 @@ export interface SecondaryPanelProps {
   branch?: string | null;
   /** Another parcel fills this. Undefined renders nothing, not a placeholder. */
   worktreeView?: ReactNode;
+  /** The GitHub view, filled the same way. A window given neither view gets a
+   *  header with no name in it, which is a state nothing constructs. */
+  githubView?: ReactNode;
+  view: PanelView;
+  onSelectView: (view: PanelView) => void;
 }
 
 export default function SecondaryPanel({
@@ -31,20 +45,50 @@ export default function SecondaryPanel({
   onToggleCollapse,
   branch,
   worktreeView,
+  githubView,
+  view,
+  onSelectView,
 }: SecondaryPanelProps) {
   if (collapsed) {
     return <CollapsedStrip branch={branch} onToggleCollapse={onToggleCollapse} />;
   }
 
+  // Only the views this window was actually handed. Checked rather than
+  // assumed: a name in the header that switches to nothing is worse than one
+  // name and no switcher.
+  const available: PanelView[] = [
+    ...(worktreeView ? (["worktree"] as const) : []),
+    ...(githubView ? (["github"] as const) : []),
+  ];
+  const active = available.includes(view) ? view : (available[0] ?? view);
+
   return (
     <div className="panel">
-      {/* A header rather than a tab row. It names what is below it and holds
-          the one control the panel still has of its own. The row went with the
-          terminals rather than staying behind, because a tab row with one tab
-          in it is a control that can only ever be in one state. What is left is
-          one view, so the panel shows it and says its name. */}
+      {/* The list of views the note here used to promise, now that there is a
+          second one to list. Deliberately not the segmented tab row that left
+          with the terminals: that scrolled and pinned groups for an unbounded
+          number of tabs, and this has two and will have few. With one view it
+          falls back to a plain title, so a window given only source control
+          looks exactly as it did before this existed. */}
       <div className="panel__head">
-        <span className="panel__headtitle">Source Control</span>
+        {available.length < 2 ? (
+          <span className="panel__headtitle">{VIEW_LABEL[active]}</span>
+        ) : (
+          <div className="panel__views" role="tablist" aria-label="Panel view">
+            {available.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                role="tab"
+                aria-selected={candidate === active}
+                className={`panel__view${candidate === active ? " panel__view--on" : ""}`}
+                onClick={() => onSelectView(candidate)}
+              >
+                {VIEW_LABEL[candidate]}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           className="panel__collapsebtn"
@@ -55,12 +99,18 @@ export default function SecondaryPanel({
         </button>
       </div>
 
-      {/* Deliberately more room than source control currently fills. The panel
-          is meant to grow other things beside it, and the shape it will need
-          then is a list of views rather than the segmented row that just left —
-          so this stops short of building a row for one view and calling it the
-          pattern. */}
-      <div className="panel__body">{worktreeView ?? null}</div>
+      {/* Both mounted, one hidden — the arrangement the two-slot body used to
+          have for terminals, brought back for the same kind of reason. The
+          GitHub view holds a filter somebody has typed and a list fetched over
+          the network, and unmounting it on every switch would discard both and
+          spend a GitHub request coming back. There it was a scrollback; here it
+          is a quota. */}
+      <div className="panel__body" hidden={active !== "worktree"}>
+        {worktreeView ?? null}
+      </div>
+      <div className="panel__body" hidden={active !== "github"}>
+        {githubView ?? null}
+      </div>
     </div>
   );
 }

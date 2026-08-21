@@ -19,6 +19,34 @@ stay that way. Being able to build and run those tools does not put them under
 this license, and a repository that is not this one is not covered by it.
 
 
+THIRD-PARTY CODE INCORPORATED HERE
+
+Some of the source in this repository was not written for it. Where that is so,
+the file says so at the top, and the whole of it is listed here.
+
+  stablyai/orca — https://github.com/stablyai/orca
+  Copyright (c) Stably AI
+  MIT License
+
+  HELVE's GitHub panel is adapted from Orca's, which does the same job in an
+  Electron application. What was taken is design rather than text: the data
+  model for one list holding issues and pull requests together, the `is:` and
+  `label:` filter vocabulary, and the arrangement of a row. Orca's own client
+  shells out to the `gh` command line from Node, which has no counterpart in a
+  Rust backend, so none of it was translated line for line.
+
+  The files carrying a note that names the Orca file they came from:
+
+    src-tauri/src/github.rs
+    src/shell/github/query.ts
+    src/shell/github/GithubPanel.tsx
+
+  MIT and Apache-2.0 are compatible in this direction: MIT-licensed code may be
+  incorporated into an Apache-2.0 work so long as the copyright notice and the
+  permission notice travel with it, which is what this section is for. The MIT
+  license's full text is at https://opensource.org/license/mit.
+
+
 TRADEMARKS
 
 The license covers the code. It does not cover the names.

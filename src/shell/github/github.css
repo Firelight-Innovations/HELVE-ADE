@@ -1,0 +1,310 @@
+/*
+ * `GithubPanel`: the head, the filter box, the item list and its several
+ * empty states.
+ *
+ * No handoff crop covers this panel, so — like `worktreePanel.css` before it —
+ * everything here follows the numbers already in `worktree.css` rather than
+ * inventing a second scale: the same row padding, the same type sizes, the same
+ * `--accent-wash` hover, and the same 10px scrollbar for a full-height column.
+ * Nothing below is a new design decision; where a value looks arbitrary it was
+ * copied from a list that already exists in this panel's neighbourhood.
+ */
+
+.github {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* `worktreePanel.css`'s reasoning, unchanged: this is a full-height column
+   whose list is dragged rather than flicked, and 5px is a hard thumb to catch.
+   Deliberately not paired with `scrollbar-width`, which on Chromium 121+ wins
+   outright and substitutes the UA's own rounded thumb. */
+.github ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* --- head ---------------------------------------------------------------- */
+
+.github__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.github__repo {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  /* The slug is `owner/name` and the panel is 380px wide by default, so a long
+     one has to give way rather than push the refresh button off the end. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github__refresh {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim-2);
+  cursor: pointer;
+}
+
+.github__refresh:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.github__refresh:disabled {
+  cursor: default;
+  color: var(--text-faint);
+}
+
+/* --- filter -------------------------------------------------------------- */
+
+.github__filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim-2);
+  flex: 0 0 auto;
+}
+
+.github__filterinput {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.github__filterinput::placeholder {
+  /* Faint rather than dim: the placeholder is a syntax reminder, and at
+     `--text-dim` it read as a value already in the box. */
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* --- list ---------------------------------------------------------------- */
+
+.github__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A refresh over a list already on screen dims it rather than replacing it
+   with a spinner, so the reader keeps their place. Pointer events stay on:
+   the rows are still the ones being shown and still work. */
+.github__list--stale {
+  opacity: 0.55;
+}
+
+.github__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--surface-gap);
+}
+
+.github__row:hover {
+  background: var(--accent-wash-faint);
+}
+
+.github__kind {
+  flex: 0 0 auto;
+  display: flex;
+  /* Optical alignment with the first line of the title rather than the top of
+     the row, which the 13px glyph would otherwise sit a pixel above. */
+  padding-top: 2px;
+}
+
+.github__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.github__title {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.github__title:hover {
+  color: var(--accent);
+}
+
+.github__number {
+  font-family: var(--mono);
+  color: var(--text-dim-3);
+}
+
+.github__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-dim-3);
+}
+
+.github__branch {
+  font-family: var(--mono);
+  color: var(--text-dim-2);
+}
+
+.github__label {
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--text-dim-2);
+  /* Labels come from the repository and can be long sentences. One line each,
+     clipped, rather than a chip that wraps and doubles the row's height. */
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github__open {
+  flex: 0 0 auto;
+  align-self: center;
+  background: none;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.github__open:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.github__open:disabled {
+  cursor: default;
+  color: var(--text-faint);
+  border-color: var(--line);
+}
+
+/* --- empty and trouble states -------------------------------------------- */
+
+.github__empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 14px;
+}
+
+.github__emptytitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.github__emptydetail {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim-3);
+}
+
+.github__signin {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.github__token {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+}
+
+.github__token:focus {
+  border-color: var(--accent-line);
+}
+
+.github__signinbtn {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.github__signinbtn:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.github__signinbtn:disabled {
+  cursor: default;
+  color: var(--text-faint);
+  border-color: var(--line);
+}
+
+.github__failure {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--err);
+  flex: 0 0 auto;
+}
+
+.github__hint {
+  margin: 0;
+  padding: 5px 10px;
+  border-top: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
