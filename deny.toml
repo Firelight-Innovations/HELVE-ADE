@@ -103,6 +103,40 @@ allow = [
     "Unlicense",
     "Unicode-3.0",
 
+    # ISC, added 2026-08-20 — the "one-line decision" the paragraph above
+    # describes, taken. It arrives through `inotify` and `inotify-sys` under
+    # `notify`, the file watcher the plugin reload loop uses to notice a
+    # rebuilt core.
+    #
+    # Both are Linux-only and this app is Windows-only, so neither is compiled
+    # here. They are a finding anyway because there is deliberately no
+    # `[graph] targets` narrowing above — which is the omission working as
+    # intended rather than a false positive to suppress. Answering it in
+    # `allow` rather than `exceptions` follows the standing rule at the foot of
+    # this file: widen for a license, never for a crate.
+    #
+    # ISC is permissive, OSI-approved and FSF Free/Libre — functionally MIT
+    # with tidier wording, and the license OpenBSD publishes under. It carries
+    # no reciprocity, so it raises none of the derivative-work question that
+    # keeps the GPL family off this list.
+    "ISC",
+
+    # CDLA-Permissive-2.0, added 2026-08-21 — the same one-line decision, taken
+    # for the in-app updater.
+    #
+    # It arrives through `webpki-root-certs`, under `rustls-platform-verifier`,
+    # under `reqwest`. `reqwest` was already here through Tauri; what
+    # `tauri-plugin-updater` adds is the TLS stack it needs to fetch
+    # `latest.json` and an installer over HTTPS from a host we do not control.
+    #
+    # It is a **data** license, not a code license, and that is why it is
+    # unfamiliar: the crate is Mozilla's CA root store packaged as a crate, and
+    # the Linux Foundation wrote this family for exactly that shape of thing.
+    # Version 2.0 imposes no obligation of any kind on software that uses the
+    # data — not even attribution, which 1.0 required — so it raises none of
+    # the derivative-work question that keeps the GPL family off this list.
+    "CDLA-Permissive-2.0",
+
     # MPL-2.0 is copyleft and is allowed anyway, which is the one entry in this
     # list that deserves an argument rather than a nod. Its reciprocity is
     # file-scoped: modify an MPL file and that file stays MPL, and nothing

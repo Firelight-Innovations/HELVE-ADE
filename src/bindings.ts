@@ -107,8 +107,14 @@ export function listApps(): Promise<AppInfo[]> {
   return invoke<AppInfo[]>("list_apps");
 }
 
-/** Mirrors `apps::OpenableKind`. How the shell opens the thing, in one word. */
-export type OpenableKind = "app" | "terminal";
+/**
+ * Mirrors `apps::OpenableKind`. How the shell opens the thing, in one word.
+ *
+ * `plugin` opens exactly as `app` does. It is a separate word because an app's
+ * `invoke` is answered inside the orchestrator while a plugin's goes over the
+ * broker to its own process, and its frontend address resolves on demand.
+ */
+export type OpenableKind = "app" | "plugin" | "terminal";
 
 /**
  * Mirrors `apps::Openable` — one row in the Apps menu.
@@ -123,6 +129,10 @@ export type OpenableKind = "app" | "terminal";
  *
  * So the two lists stay apart: `AppInfo` is "things with a frontend", this is
  * "things you can open". `kind` is what the caller routes on.
+ *
+ * A plugin surface has no `url` here either, for a different reason with the
+ * same consequence: where its frontend is served from can change while the
+ * shell runs. Its `id` is a `<package>.<surface>` address, not a bare app id.
  */
 export interface Openable {
   id: string;
@@ -132,11 +142,185 @@ export interface Openable {
 }
 
 /**
- * Everything the Apps menu offers: every app, then a terminal. Compiled in, so
- * — like `listApps` — this is worth asking exactly once.
+ * Everything the Apps menu offers: every app, every listed plugin surface, then
+ * a terminal.
+ *
+ * **Unlike `listApps`, this is not asked once.** Installing, removing, enabling
+ * or reloading a plugin changes it, so re-ask on `PLUGINS_CHANGED_EVENT`. Each
+ * call re-reads the installed manifests off disk.
  */
 export function listOpenables(): Promise<Openable[]> {
   return invoke<Openable[]>("list_openables");
+}
+
+// --- plugins ----------------------------------------------------------------
+
+/** Mirrors `plugins::ResolvedSurface`. One thing a plugin can put in a pane. */
+export interface PluginSurface {
+  /** `<package>.<surface>` — what goes wherever an app id goes. */
+  address: string;
+  name: string;
+  description: string;
+  /** In the Apps menu, or only reachable through `helve/open`. */
+  listed: boolean;
+}
+
+/** Mirrors `plugins::ResolvedPlugin` — a package, read off its checkout. */
+export interface ResolvedPlugin {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  path: string;
+  enabled: boolean;
+  surfaces: PluginSurface[];
+  /** Declares a core. Tells a backend-only plugin from a broken one, which
+   *  otherwise look identical: no surfaces either way. */
+  hasCore: boolean;
+}
+
+/**
+ * Mirrors `plugins::PluginRow` — one row in the plugin management screen.
+ *
+ * Flat with an `error` rather than a discriminated union, deliberately against
+ * STANDARDS §6.2: `id` and `path` come from the install record and are known
+ * *even when the plugin will not load*, which is exactly when they are needed.
+ */
+export interface PluginRow {
+  id: string;
+  path: string;
+  enabled: boolean;
+  resolved: ResolvedPlugin | null;
+  error: string | null;
+  running: boolean;
+}
+
+/** Every installed plugin, failures kept. Re-reads every manifest off disk. */
+export function listPlugins(): Promise<PluginRow[]> {
+  return invoke<PluginRow[]>("list_plugins");
+}
+
+/**
+ * Mirrors `plugins::catalog::CatalogRow` — one app in the library.
+ *
+ * The catalog half is compiled into the binary from `catalog.toml`, so it is
+ * fixed for a given build; `installed` is the only field that moves, which is
+ * why this is re-asked on `PLUGINS_CHANGED_EVENT` rather than fetched once.
+ */
+export interface CatalogRow {
+  id: string;
+  name: string;
+  description: string;
+  /** `owner/name` on GitHub. */
+  repo: string;
+  /** Installed on first run without being asked. */
+  default: boolean;
+  /** Only changes the wording when a fetch fails. GitHub decides access. */
+  private: boolean;
+  installed: boolean;
+}
+
+/** The app library this build ships. Answers offline. */
+export function listCatalog(): Promise<CatalogRow[]> {
+  return invoke<CatalogRow[]>("list_catalog");
+}
+
+/**
+ * Install from a GitHub repository — a URL, or `owner/name`.
+ *
+ * `expectedId` comes from a library row, where the catalog already claims which
+ * package this is; a release whose manifest disagrees is refused. Omit it when
+ * the user typed the address themselves, since nothing has promised anything.
+ *
+ * Slow, and reports on `INSTALL_PROGRESS_EVENT` while it runs.
+ */
+export function installPluginRepo(
+  input: string,
+  expectedId?: string,
+  privateHint?: boolean,
+): Promise<PluginRow> {
+  return invoke<PluginRow>("install_plugin_repo", { input, expectedId, privateHint });
+}
+
+/** Whether a GitHub token is stored. Never returns the token itself. */
+export function hasGithubToken(): Promise<boolean> {
+  return invoke<boolean>("has_github_token");
+}
+
+/** Store a GitHub token, or clear it with an empty string. */
+export function setGithubToken(token: string): Promise<void> {
+  return invoke<void>("set_github_token", { token });
+}
+
+/** Mirrors `plugins::install::Phase`. */
+export type InstallPhase =
+  "resolving" | "downloading" | "verifying" | "unpacking" | "done" | "failed";
+
+/** Mirrors `plugins::install::Progress`. */
+export interface InstallProgress {
+  /** The catalog id, or the repo address when there is none. Key rows on this. */
+  key: string;
+  name: string;
+  phase: InstallPhase;
+  received: number;
+  /** 0 when the server sent no length — render indeterminate, not 0%. */
+  total: number;
+  /** Set only on `failed`, and it is the sentence to show. */
+  error: string | null;
+}
+
+/** Mirrors `plugins::install::PROGRESS_EVENT`. */
+export const INSTALL_PROGRESS_EVENT = "plugins:install-progress";
+
+/** Mirrors `plugins::LIBRARY_OPEN_EVENT`. */
+export const LIBRARY_OPEN_EVENT = "library:open";
+
+/** Home asking the shell to show the app library. Carries nothing. */
+export function onLibraryOpen(cb: () => void): Promise<UnlistenFn> {
+  return listen(LIBRARY_OPEN_EVENT, () => cb());
+}
+
+/** Every install's progress, from every window. Filter on `key`. */
+export function onInstallProgress(cb: (p: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>(INSTALL_PROGRESS_EVENT, (event) => cb(event.payload));
+}
+
+/** Install a plugin from a folder already on this machine. */
+export function installPluginFolder(path: string): Promise<PluginRow> {
+  return invoke<PluginRow>("install_plugin_folder", { path });
+}
+
+/** Pick a folder and install it. `null` is a cancelled dialog, not a failure. */
+export function chooseAndInstallPlugin(): Promise<PluginRow | null> {
+  return invoke<PluginRow | null>("choose_and_install_plugin");
+}
+
+/** Forget a plugin and stop its core. Never deletes the folder it points at. */
+export function uninstallPlugin(id: string): Promise<boolean> {
+  return invoke<boolean>("uninstall_plugin", { id });
+}
+
+/** Stop a plugin's core and re-read its manifest — the watcher's manual form. */
+export function reloadPlugin(id: string): Promise<boolean> {
+  return invoke<boolean>("reload_plugin", { id });
+}
+
+/** Turn a plugin's surfaces on or off without forgetting it. */
+export function setPluginEnabled(id: string, enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("set_plugin_enabled", { id, enabled });
+}
+
+/** Mirrors `plugins::CHANGED_EVENT`. */
+export const PLUGINS_CHANGED_EVENT = "plugins:changed";
+
+/**
+ * The installed set moved: something was installed, removed, toggled or
+ * reloaded. Carries no payload deliberately — there is more than one window,
+ * and a payload assembled once would have to describe whose registry state it
+ * was, so each listener re-asks instead.
+ */
+export function onPluginsChanged(cb: () => void): Promise<UnlistenFn> {
+  return listen(PLUGINS_CHANGED_EVENT, () => cb());
 }
 
 /**
@@ -1090,6 +1274,60 @@ export function onSettingsChanged(
   cb: (values: Record<string, SettingValue>) => void,
 ): Promise<UnlistenFn> {
   return listen<Record<string, SettingValue>>(SETTINGS_CHANGED_EVENT, (e) => cb(e.payload));
+}
+
+/* --- updates ---------------------------------------------------------------
+ *
+ * Mirrors `src-tauri/src/updater.rs`, which runs the check, the download and
+ * the installer — STANDARDS.md §1, and that module's header says why
+ * `@tauri-apps/plugin-updater` is deliberately not a dependency here.
+ */
+
+/**
+ * Mirrors `updater::UpdateState`. Internally tagged, so narrowing on `state`
+ * gives you the fields that variant carries. `percent` is sent rather than
+ * derived because `total` can be null — a release asset served without a
+ * `Content-Length` leaves nothing to derive it from.
+ */
+export type UpdateState =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "up-to-date"; version: string }
+  | { state: "available"; version: string; notes: string }
+  | { state: "downloading"; received: number; total: number | null; percent: number | null }
+  | { state: "installing" }
+  | { state: "failed"; message: string }
+  | { state: "unsupported"; reason: string };
+
+export const UPDATE_CHANGED_EVENT = "updater:changed";
+
+/**
+ * Where the updater is, without touching the network. Asked once on mount, for
+ * `bootStatus`'s reason: Tauri events have no replay, so a window created after
+ * the launch check would otherwise never learn its result.
+ */
+export function updateState(): Promise<UpdateState> {
+  return invoke<UpdateState>("update_state");
+}
+
+/** Ask the releases endpoint now, resolving with the state it settled in. */
+export function checkForUpdate(): Promise<UpdateState> {
+  return invoke<UpdateState>("check_for_update");
+}
+
+/**
+ * Download the standing offer and run its installer. **This promise does not
+ * resolve on Windows** — the installer ends the process awaiting it, so treat
+ * it as a one-way door. Rejects with a sentence meant to be shown when there is
+ * no offer standing, or when the download or the signature check failed.
+ */
+export function installUpdate(): Promise<void> {
+  return invoke<void>("install_update");
+}
+
+/** Subscribe to every transition, from the launch check or from any window. */
+export function onUpdateChanged(cb: (state: UpdateState) => void): Promise<UnlistenFn> {
+  return listen<UpdateState>(UPDATE_CHANGED_EVENT, (e) => cb(e.payload));
 }
 
 /* --- MCP -------------------------------------------------------------------

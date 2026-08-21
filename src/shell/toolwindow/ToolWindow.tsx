@@ -829,27 +829,14 @@ const ToolWindow = forwardRef<
         return;
       }
 
-      // Where the two kinds of surface part company. A first-party app's call
-      // goes to `app_call` below, which answers in the orchestrator's own
-      // process. A tool's would have to reach its core over the broker, which is
-      // not built — so a tool gets an error naming that, rather than the silence
-      // that used to be here. Silence is the worse answer: the bridge times a
-      // pending call out after thirty seconds, so a tool asking a question this
-      // build cannot answer would hang for half a minute before finding out.
-      if (!frame.isApp) {
-        respond({
-          id,
-          error: {
-            code: HelveErrorCode.InternalError,
-            message: `${method}: this build cannot reach a tool's core — the broker is not implemented`,
-          },
-        });
-        return;
-      }
+      // Both kinds of surface go down the same line from here — the change the
+      // broker made. A plugin's call used to be refused at this exact point;
+      // `apps::call` forks on the id now. `frame.isApp` still decides where the
+      // *frontend* resolves from, not whether a call is answered at all.
 
       // Both ids, and they answer different questions. `frame.appId` says which
-      // code runs: `apps::call` dispatches into a registry keyed by app id, and
-      // there is one entry for Files however many Files are open.
+      // code runs: `apps::call` dispatches on the surface id, and there is one
+      // entry for Files however many Files are open.
       // `frame.id` — the *instance* — says where it runs. That is the half this
       // used to be unable to send, and the half a per-cluster project needs:
       // Rust walks the pane trees to find which cluster holds the instance, and

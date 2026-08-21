@@ -25,6 +25,7 @@ pub mod keys {
     pub const SEARCH_MAX_FILES: &str = "search.maxFiles";
     pub const SEARCH_MAX_FILE_SIZE_MB: &str = "search.maxFileSizeMb";
     pub const MCP_WRITE_PROJECT_CONFIG: &str = "mcp.writeProjectConfig";
+    pub const UPDATES_CHECK_AUTOMATICALLY: &str = "updates.checkAutomatically";
     pub const DEVELOPER_MODE: &str = "developer.mode";
 }
 
@@ -34,7 +35,15 @@ pub fn groups() -> &'static [&'static Group] {
     GROUPS
 }
 
-static GROUPS: &[&Group] = &[&APPEARANCE, &EDITOR, &TERMINAL, &SEARCH, &MCP, &DEVELOPER];
+static GROUPS: &[&Group] = &[
+    &APPEARANCE,
+    &EDITOR,
+    &TERMINAL,
+    &SEARCH,
+    &UPDATES,
+    &MCP,
+    &DEVELOPER,
+];
 
 // --- appearance -------------------------------------------------------------
 //
@@ -392,6 +401,34 @@ static SEARCH: Group = Group {
     settings: SEARCH_SETTINGS,
 };
 
+// --- updates ----------------------------------------------------------------
+//
+// Read once, in `lib.rs`'s setup, by `updater::start`. The one thing this
+// governs is whether HELVE asks — the Help menu's Check for Updates works
+// either way, and nothing downloads or installs without the button being
+// pressed.
+
+static UPDATES_SETTINGS: &[Setting] = &[Setting {
+    key: keys::UPDATES_CHECK_AUTOMATICALLY,
+    title: "Check for a newer version at launch",
+    description: "One request to the releases endpoint, in the background, once per launch. \
+                  Switching this off stops HELVE asking; it does not stop you asking, and it \
+                  has never downloaded or installed anything on its own either way.",
+    control: Control::Toggle { default: true },
+    // `Restart` for `terminal.openOnLaunch`'s reason: the launch is the only
+    // moment this is read, so there is no later point at which switching it on
+    // could do anything, and "applies now" would be a lie the screen tells.
+    applies: Applies::Restart,
+}];
+
+static UPDATES: Group = Group {
+    id: "updates",
+    title: "Updates",
+    description: "How HELVE finds out that a newer HELVE exists.",
+    order: 50,
+    settings: UPDATES_SETTINGS,
+};
+
 // --- MCP --------------------------------------------------------------------
 //
 // The section with the servers in it. Those are not settings — they are a list
@@ -522,6 +559,7 @@ mod tests {
             (keys::SEARCH_MAX_FILES, "number"),
             (keys::SEARCH_MAX_FILE_SIZE_MB, "number"),
             (keys::MCP_WRITE_PROJECT_CONFIG, "bool"),
+            (keys::UPDATES_CHECK_AUTOMATICALLY, "bool"),
             (keys::DEVELOPER_MODE, "bool"),
         ] {
             let value = registry
@@ -584,6 +622,17 @@ mod tests {
             registry.get(keys::MCP_WRITE_PROJECT_CONFIG),
             Some(json!(true)),
             "discovery is on by default, or nothing finds the servers"
+        );
+    }
+
+    /// On by default. A build that shipped with this off would never tell
+    /// anybody a fix existed, and the whole point of wiring an updater is that
+    /// the people who need one least are the ones who go looking.
+    #[test]
+    fn the_launch_check_is_on_by_default() {
+        assert_eq!(
+            seeded().get(keys::UPDATES_CHECK_AUTOMATICALLY),
+            Some(json!(true))
         );
     }
 }

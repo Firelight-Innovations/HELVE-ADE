@@ -15,6 +15,7 @@ use crate::error::{AppError, Result};
 use crate::launch;
 use crate::layout::SplitDir;
 use crate::manifest::{self, Manifest};
+use crate::plugins;
 use crate::presets;
 use crate::project;
 use crate::pty::{self, PtySessions};
@@ -193,7 +194,7 @@ pub fn open_instance(
         });
     }
 
-    // An app ships in this binary; a tool is a checkout that may not be here.
+    // An app ships in this binary; a plugin is a checkout that may not be here.
     // The distinction decides where an `invoke` from the resulting frame is
     // answered, so it is resolved once, here, from the registry itself rather
     // than trusted from the frontend.
@@ -203,11 +204,7 @@ pub fn open_instance(
         SurfaceKind::Tool
     };
 
-    let title = apps::list()
-        .into_iter()
-        .find(|a| a.id == app_id)
-        .map(|a| a.name.to_string())
-        .unwrap_or_else(|| app_id.clone());
+    let title = apps::display_name(&app, &app_id);
 
     shell
         .open_instance(
@@ -898,7 +895,8 @@ pub fn list_apps() -> Vec<apps::AppInfo> {
     apps::list()
 }
 
-/// Everything the Apps menu offers: every app, then a terminal.
+/// Everything the Apps menu offers: every app, every listed plugin surface, then
+/// a terminal.
 ///
 /// A second command rather than a wider `list_apps`, because the two answer
 /// different questions and only one of them has a URL in it. `apps::openables`
@@ -908,11 +906,178 @@ pub fn list_apps() -> Vec<apps::AppInfo> {
 /// straight off the app list, so an entry in it is a promise there is something
 /// to mount.
 ///
-/// Asked once per window, like `list_apps` and for the same reason: both lists
-/// are compiled in and cannot change while the process runs.
+/// **Unlike `list_apps`, this is not asked once.** Installing, removing or
+/// reloading a plugin changes it, so the shell re-asks whenever
+/// `plugins:changed` fires — see `plugins::CHANGED_EVENT`. Repeat calls are safe
+/// and cheap; each one re-reads the installed manifests off disk, which is the
+/// same read that makes a rebuilt plugin's new surfaces appear.
 #[tauri::command]
-pub fn list_openables() -> Vec<apps::Openable> {
-    apps::openables()
+pub fn list_openables(app: tauri::AppHandle) -> Vec<apps::Openable> {
+    apps::openables(&app)
+}
+
+// --- plugins ----------------------------------------------------------------
+
+/// Every installed plugin, resolved against its checkout right now.
+///
+/// The failures are **kept**, unlike the list the switcher is built from: this
+/// is the management screen, and a plugin whose checkout has moved is exactly
+/// what a person opened it to find out about. A row here is a record plus
+/// either what its manifest says or why it could not be read.
+///
+/// Re-reads every manifest off disk on each call, which is what makes it correct
+/// after a rebuild and is why it is not cached anywhere.
+#[tauri::command]
+pub fn list_plugins(app: tauri::AppHandle) -> Vec<plugins::PluginRow> {
+    plugins::rows(&app)
+}
+
+/// Install an app from a GitHub repository — a URL, or `owner/name`.
+///
+/// `expected_id` is set when the install came from the library, where the
+/// catalog already claims which package this is; a release whose manifest
+/// disagrees is refused rather than quietly installed under another name.
+///
+/// `spawn_blocking` for the same reason the folder picker uses it: every call
+/// inside is a blocking request, and running them on the main thread would
+/// freeze the window for the length of a download. Progress arrives separately,
+/// on `plugins:install-progress`.
+#[tauri::command]
+pub async fn install_plugin_repo(
+    app: tauri::AppHandle,
+    input: String,
+    expected_id: Option<String>,
+    private_hint: Option<bool>,
+) -> Result<plugins::PluginRow> {
+    let handle = app.clone();
+    let installed = tauri::async_runtime::spawn_blocking(move || {
+        plugins::install::from_repo(
+            &handle,
+            &input,
+            expected_id.as_deref(),
+            private_hint.unwrap_or(false),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| AppError::Plugin {
+        action: "install",
+        reason: format!("the install could not be started: {e}"),
+    })?
+    .map_err(|reason| AppError::Plugin {
+        action: "install",
+        reason,
+    })?;
+
+    Ok(plugins::PluginRow::installed(installed, &app))
+}
+
+/// Whether a GitHub token is stored. Never returns the token.
+///
+/// The frontend needs to know whether to offer *Sign in* or *Signed in*, and
+/// has no use at all for the value — so this answers the question actually
+/// being asked rather than handing over a credential to be inspected.
+#[tauri::command]
+pub fn has_github_token() -> bool {
+    plugins::install::has_token()
+}
+
+/// Store a GitHub token, or clear it when given an empty string.
+///
+/// Goes to the OS credential store — Windows Credential Manager — rather than
+/// to `plugins.json`, which is a plain file beside the layout and the project
+/// list. A token is the one piece of per-user state here that is a secret.
+#[tauri::command]
+pub fn set_github_token(token: String) -> Result<()> {
+    plugins::install::set_token(&token).map_err(|reason| AppError::Plugin {
+        action: "sign in",
+        reason,
+    })
+}
+
+/// The app library: what this build offers to install, and what is already in.
+///
+/// Compiled in from `catalog.toml`, so this answers offline and answers the same
+/// thing every time within one build. Only `installed` moves, which is why the
+/// library is re-asked on `plugins:changed` rather than cached by the frontend.
+#[tauri::command]
+pub fn list_catalog(app: tauri::AppHandle) -> Vec<plugins::catalog::CatalogRow> {
+    let registry = app.state::<plugins::Registry>();
+    plugins::catalog::rows(|id| registry.contains(id))
+}
+
+/// Install a plugin from a folder already on this machine.
+///
+/// The development path, and in this build the only one. `path` is a directory
+/// the person picked; everything about what the plugin *is* comes from the
+/// `helve-tool.toml` inside it rather than from anything the frontend asserts.
+#[tauri::command]
+pub fn install_plugin_folder(app: tauri::AppHandle, path: String) -> Result<plugins::PluginRow> {
+    let path = PathBuf::from(path);
+    plugins::install_folder(&app, &path)
+        .map(|resolved| plugins::PluginRow::installed(resolved, &app))
+        .map_err(|e| AppError::Plugin {
+            action: "install",
+            reason: e.to_string(),
+        })
+}
+
+/// Pick a folder and install what is in it, in one step.
+///
+/// Separate from [`install_plugin_folder`] because the picker has to be opened
+/// from Rust — the same reason `home/open-project` does it there. `Ok(None)` is
+/// a cancelled dialog, which is an ordinary outcome and not an error.
+#[tauri::command]
+pub async fn choose_and_install_plugin(
+    app: tauri::AppHandle,
+) -> Result<Option<plugins::PluginRow>> {
+    // `spawn_blocking` for the same reason `app_call` uses it: `pick_folder` is
+    // a native modal that needs the main thread free to pump its events, and
+    // called *from* the main thread it would wait on the thread it is occupying.
+    let picked = tauri::async_runtime::spawn_blocking(|| rfd::FileDialog::new().pick_folder())
+        .await
+        .map_err(|e| AppError::Plugin {
+            action: "install",
+            reason: format!("the folder picker failed: {e}"),
+        })?;
+
+    let Some(path) = picked else { return Ok(None) };
+
+    plugins::install_folder(&app, &path)
+        .map(|resolved| Some(plugins::PluginRow::installed(resolved, &app)))
+        .map_err(|e| AppError::Plugin {
+            action: "install",
+            reason: e.to_string(),
+        })
+}
+
+/// Forget a plugin, stopping its core first.
+///
+/// The record only. A folder install points at a working tree the person already
+/// had, and this never deletes what it did not create — see `plugins::Source`.
+#[tauri::command]
+pub fn uninstall_plugin(app: tauri::AppHandle, id: String) -> bool {
+    plugins::uninstall(&app, &id)
+}
+
+/// Stop a plugin's core and have every window re-read its manifest.
+///
+/// The inner loop for someone building a plugin: `cargo build` in a terminal,
+/// then this, and the next call reaches the new binary. The frontend half needs
+/// nothing — a surface pointed at the plugin's own dev server already has Vite's
+/// hot reload running inside the real shell.
+///
+/// Safe to call on a plugin whose core was never started; `false` means only
+/// that no plugin has that id.
+#[tauri::command]
+pub fn reload_plugin(app: tauri::AppHandle, id: String) -> bool {
+    plugins::reload(&app, &id)
+}
+
+/// Turn a plugin's surfaces on or off without forgetting it.
+#[tauri::command]
+pub fn set_plugin_enabled(app: tauri::AppHandle, id: String, enabled: bool) -> bool {
+    plugins::set_enabled(&app, &id, enabled)
 }
 
 /// One `invoke` from an app's frontend, routed to that app's Rust half.
@@ -1129,7 +1294,7 @@ fn fill_preset_gaps(
                 } else {
                     SurfaceKind::Tool
                 };
-                let title = apps::display_name(&app_id);
+                let title = apps::display_name(app, &app_id);
                 // **No direction, so no split.** The apply has already built
                 // the tree the preset describes and named the pane each gap
                 // belongs to; an open that split that pane would rearrange

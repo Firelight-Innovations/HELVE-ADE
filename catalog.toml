@@ -1,0 +1,61 @@
+# The app library: what HELVE offers to install, and what it installs by itself.
+#
+# This file is the whole of the "library" tab. There is no server behind it and
+# no database — it ships in the repository, is compiled into the binary by
+# `src-tauri/src/plugins/catalog.rs`, and changes only when somebody merges a
+# change to it. That is a deliberate trade: adding an app to the library needs a
+# HELVE release, and in exchange the list cannot be altered by anything that is
+# not a reviewed commit.
+#
+# ## This list is not a permission boundary
+#
+# A user can still install any repository by URL, and any folder on their disk.
+# The library is a *recommendation*, not an allow-list, and nothing in the app
+# refuses an install because it is absent from here. Do not add a check that
+# does — a curated list that also gates installs would make every unlisted app
+# look broken rather than unlisted, and it would not stop anybody, because the
+# folder path exists for development and cannot be closed.
+#
+# ## `default = true` is the part that deserves care
+#
+# An entry marked `default` is installed **automatically, on first run, without
+# being asked for**. That makes this file the one place in the repository where
+# adding four lines causes code to be downloaded and executed on every machine
+# that installs HELVE. A plugin core is unsandboxed — `docs/tool-protocol.md` §6
+# — so a default entry is, precisely, a decision to run somebody's binary on
+# every user's computer.
+#
+# `scripts/check-catalog.mjs` therefore fails any pull request that edits this
+# file unless the author is the maintainer. See that script's header for what
+# that check does and does not protect against.
+#
+# ## Fields
+#
+#   id           Must equal the `[tool] id` in the app's own helve-tool.toml.
+#                Checked at install time; a mismatch refuses the install.
+#   name         Display name in the library.
+#   description  One line. Shown under the name.
+#   repo         `owner/name` on GitHub. The install path resolves this to the
+#                repository's latest release and downloads the asset from it.
+#                A repository with no published release cannot be installed —
+#                by design, per the distribution decision in §6 of the protocol
+#                doc: a release artifact, never a clone.
+#   default      Optional, defaults to false. See above before setting it.
+#   private      Optional, defaults to false. Marks an entry as living in a
+#                private repository, which changes only the *message* shown
+#                when it cannot be fetched — "sign in to install" rather than
+#                "not found". GitHub still decides access; HELVE never does.
+
+[[app]]
+id = "forger"
+name = "Forger"
+description = "Technical design software — specs out the stack and its boundaries."
+repo = "Firelight-Innovations/HELVE-Forger"
+default = true
+
+[[app]]
+id = "journeyman"
+name = "Journeyman"
+description = "The build side of the stack, downstream of what Forger specifies."
+repo = "Firelight-Innovations/HELVE-Journeyman"
+default = true

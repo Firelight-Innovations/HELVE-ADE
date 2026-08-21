@@ -16,12 +16,13 @@ use crate::apps::CallContext;
 use crate::branding;
 use crate::error::AppError;
 use crate::git;
+use crate::plugins;
 use crate::project::{self, ProjectSnapshot};
 use crate::state::AppState;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Every method here is scoped to the cluster that called it.
 ///
@@ -111,6 +112,21 @@ pub fn call(
             context.cluster_id.as_deref(),
         )),
         "home/close-project" => shape(project::close(app, context.require_cluster()?)),
+
+        // Opens the shell's app library rather than a folder picker.
+        //
+        // A `home/*` method rather than a Tauri command, because Home is an
+        // *app*: STANDARDS.md §1.4 has apps reach the shell only through
+        // `@helve/bridge`. It cannot touch the shell's React tree either, so
+        // "show me the library" goes app -> Rust -> event -> shell, which is
+        // the same path `helve/open` takes and for the same reason.
+        //
+        // The folder picker is still reachable, from inside the library, beside
+        // the other two ways in rather than being the only one.
+        "home/install-plugin" => {
+            let _ = app.emit(plugins::LIBRARY_OPEN_EVENT, ());
+            state(app, context)
+        }
 
         // Whether this cluster could work in a worktree, and whether it already
         // is. Home asks after every open so it knows whether to offer one, and

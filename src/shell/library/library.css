@@ -1,0 +1,423 @@
+/*
+ * The app library screen.
+ *
+ * Every colour is a token from src/tokens.css, with the one exception the
+ * settings screen also makes: the backdrop's wash is a scrim rather than a
+ * palette entry, so it is black at an alpha.
+ *
+ * The geometry deliberately matches settings.css — the band between the two
+ * bars, not the window — because these are the same kind of surface and a
+ * second set of numbers would be a second thing to keep in step. That file's
+ * header carries the argument for why the title bar and status bar stay
+ * uncovered; it applies here unchanged.
+ *
+ * No transitions on controls, for the reason settings.css states: a control
+ * that eases into its new state lags behind the click that caused it. The one
+ * animation here is the indeterminate progress bar, which is not a control and
+ * is reporting rather than responding.
+ */
+
+.library__backdrop {
+  position: fixed;
+  top: var(--h-titlebar);
+  bottom: var(--h-statusbar);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.library__screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.library__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.library__title {
+  margin: 0;
+  font: 600 15px/1.2 var(--sans);
+  color: var(--text);
+}
+
+.library__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.library__close:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.library__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* --- notices ---------------------------------------------------------------
+   Stacked at the top of the scroll area rather than floating over a corner.
+   An install failure here is a sentence somebody has to read and act on — a
+   repository that needs signing in to, a release that does not exist — so it
+   stays until dismissed instead of timing out while they are looking away. */
+
+.library__notices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library__notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font: 400 13px/1.4 var(--sans);
+  color: var(--text);
+}
+
+.library__notice span {
+  flex: 1;
+}
+
+.library__notice button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.library__notice button:hover {
+  color: var(--text);
+}
+
+.library__notice--ok {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.library__notice--ok svg {
+  color: var(--ok);
+}
+
+.library__notice--error svg {
+  color: var(--err);
+}
+
+/* --- sections --------------------------------------------------------------- */
+
+.library__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.library__section h2 {
+  margin: 0;
+  font: 600 12px/1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.library__hint {
+  margin: 0;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--text-dim);
+}
+
+.library__hint code {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.library__empty {
+  font: 400 13px/1.4 var(--sans);
+  color: var(--text-faint);
+}
+
+/* --- the library grid ------------------------------------------------------- */
+
+.library__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.library__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.library__cardName {
+  font: 600 13px/1.2 var(--sans);
+  color: var(--text);
+}
+
+.library__cardDescription {
+  flex: 1;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--text-dim);
+}
+
+.library__cardRepo {
+  font: 400 11px/1.3 var(--mono);
+  color: var(--text-faint);
+}
+
+.library__installedTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 12px/1 var(--sans);
+  color: var(--ok);
+}
+
+/* --- controls ---------------------------------------------------------------- */
+
+.library__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.library__input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.2 var(--sans);
+}
+
+.library__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.library__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 12px/1.2 var(--sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.library__button:hover:not(:disabled) {
+  border-color: var(--accent-line);
+}
+
+.library__button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.library__button--danger:hover {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.library__link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* --- progress ---------------------------------------------------------------- */
+
+.library__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.library__track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-);
+  overflow: hidden;
+}
+
+.library__fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* No content length from the server means no honest percentage. A bar frozen at
+   zero for the length of a download reads as a hang, so it sweeps instead. */
+.library__track--indeterminate .library__fill {
+  width: 35%;
+  animation: library-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes library-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library__track--indeterminate .library__fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+.library__phase {
+  font: 400 11px/1 var(--mono);
+  color: var(--text-dim);
+  min-width: 92px;
+}
+
+/* --- installed --------------------------------------------------------------- */
+
+.library__installed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.library__itemMain {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.library__itemName {
+  font: 600 13px/1.2 var(--sans);
+  color: var(--text);
+}
+
+.library__version,
+.library__path {
+  font: 400 11px/1.3 var(--mono);
+  color: var(--text-faint);
+}
+
+/* The path is the long one, and the row must not grow to fit it. */
+.library__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library__badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font: 500 10px/1.6 var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.library__itemActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.library__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 12px/1 var(--sans);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+/* --- toasts ------------------------------------------------------------------
+   Where the notices go when the screen is closed. Bottom-right, above the
+   status bar rather than over it, because the status bar keeps reporting while
+   any transient surface is up — the same rule settings.css states.
+
+   This exists because of the first run: the catalog's default apps install
+   before anybody has opened the library, so their outcome needs somewhere to
+   land. Not auto-dismissed, for the reason the notice list gives — a failure
+   here is a sentence to act on, not a status flicker. */
+
+.library__toasts {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--h-statusbar) + 16px);
+  z-index: 55;
+  width: min(380px, calc(100vw - 32px));
+}
+
+.library__toasts .library__notice {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}

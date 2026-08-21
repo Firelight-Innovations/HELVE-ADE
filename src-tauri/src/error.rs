@@ -63,6 +63,16 @@ pub enum AppError {
     #[error("git {op} failed: {reason}")]
     Git { op: String, reason: String },
 
+    // A flattened string for the same reason `Git` above uses one: the cause is
+    // a `plugins::InstallError` whose whole value is its `Display` text, written
+    // to be shown in the dialog the person just used rather than matched on.
+    // `action` is `&'static str` because only this crate ever names one.
+    #[error("could not {action} the plugin: {reason}")]
+    Plugin {
+        action: &'static str,
+        reason: String,
+    },
+
     #[error("could not create window `{label}`: {source}")]
     Window {
         label: String,
@@ -108,6 +118,13 @@ pub enum AppError {
     /// list, not an error.
     #[error("{0}")]
     Search(String),
+
+    /// The updater could not do the one thing asked of it. Flattened to a
+    /// string for `Git`'s reason — `tauri_plugin_updater::Error` names the
+    /// transport it failed in, which is not what the sentence on screen should
+    /// say, so `updater::describe` rewrites it before it gets here.
+    #[error("could not {op} an update: {reason}")]
+    Update { op: &'static str, reason: String },
 
     /// A settings write the schema refused: an unknown key, a value of the
     /// wrong type, or a choice that is not one of the options. Wrapped rather

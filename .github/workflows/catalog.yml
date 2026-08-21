@@ -1,0 +1,73 @@
+# Who may change the app library.
+#
+# `catalog.toml` is what HELVE offers to install and, for entries marked
+# `default`, what it downloads and runs on first launch with nobody asked. A
+# plugin core is unsandboxed (`docs/tool-protocol.md` §6), so an entry there
+# executes on every machine that installs HELVE. `scripts/check-catalog.mjs`
+# refuses a pull request that edits it unless the maintainer is its author, and
+# that script's header is where the reasoning lives — including an honest
+# account of what this cannot protect against on its own.
+#
+# Its own workflow rather than a step inside `verify`, for the reason deny.yml
+# gives for the same choice: `verify` answers "is this branch correct" from one
+# command a contributor can run offline. This answers "who is asking", needs the
+# pull request's author and the base commit, and cannot be run locally at all. A
+# required status check named after a workflow should mean one thing.
+#
+# Nothing here runs the project's code. It reads a diff and a login, which is
+# what keeps this cheap enough to be its own job — seconds on a Linux runner
+# rather than minutes on a Windows one.
+
+name: catalog
+
+on:
+  pull_request:
+
+# Read-only, and specifically not `pull-requests: write`. This reports through
+# the job's own pass/fail rather than by commenting, so it needs nothing that a
+# fork's read-only token would not be given.
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  catalog:
+    # Linux, unlike `verify` and `deny`. Those two are Windows because they
+    # reason about the build this project ships; this one reads a git diff, and
+    # Windows minutes bill at a multiple of Linux ones.
+    runs-on: ubuntu-latest
+
+    steps:
+      # `fetch-depth: 0` because the check diffs against the base commit, and a
+      # shallow clone does not have it. This is the one workflow here that needs
+      # real history.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # `package-manager-cache: false` because this job runs no package manager.
+      # Left at its default, setup-node reads `packageManager` from package.json,
+      # goes looking for pnpm to ask where its store is, and fails the job before
+      # the check runs — pnpm is not installed here, deliberately.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          package-manager-cache: false
+
+      # `pull_request.user.login` is the author of the pull request. Deliberately
+      # not `github.actor`, which is whoever pushed or re-ran — gating on that
+      # would let the maintainer re-running somebody else's branch pass the check
+      # on their behalf.
+      #
+      # No `pnpm install` first: the script imports only `node:` built-ins, so it
+      # runs against a bare checkout. That is worth keeping — a gate with fewer
+      # moving parts is a gate with fewer ways to be wrong.
+      - name: Check who is changing the app library
+        run: |
+          node scripts/check-catalog.mjs \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --author "${{ github.event.pull_request.user.login }}"

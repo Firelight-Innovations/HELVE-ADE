@@ -64,7 +64,7 @@ wordmark = "Helve"
 
 # The line under the lockup on Home's hero. Read by nothing else — a tagline
 # repeated on a second surface stops being a tagline.
-tagline = "The Veistra custom game development stack"
+tagline = "The Veistra custom agentic development stack"
 
 
 [assets]

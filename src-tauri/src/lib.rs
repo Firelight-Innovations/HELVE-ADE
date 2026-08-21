@@ -18,6 +18,7 @@ mod launch;
 mod layout;
 mod manifest;
 mod mcp;
+mod plugins;
 mod presets;
 mod project;
 mod pty;
@@ -29,6 +30,7 @@ mod state;
 mod sync;
 mod tool;
 mod tool_frontend;
+mod updater;
 mod windows;
 
 use project::ProjectState;
@@ -50,6 +52,12 @@ pub fn run() {
             launch::from_second_instance(app, args);
         }))
         .plugin(tauri_plugin_opener::init())
+        // Reads `plugins.updater` out of tauri.conf.json — the endpoint and the
+        // public key. Registered unconditionally, including in a debug build
+        // where `updater::unsupported` refuses to use it: a plugin that is
+        // absent half the time is a second configuration to keep straight, and
+        // `app.updater()` failing is not the diagnostic that would explain it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Tool frontends mount as iframes on their own origin. In a release
         // build that origin is this scheme, backed by each tool's built `dist`
         // directory — see `tool_frontend`. In development the frames point at
@@ -116,6 +124,34 @@ pub fn run() {
         // groups answers every read with "no such setting", which is why the
         // seed happens before anything on screen can ask.
         .manage(settings::Registry::default())
+        // What this person has installed. Empty until `hydrate` reads
+        // `plugins.json`, which happens in setup below — before the first window
+        // asks for the app list, because a switcher drawn from an empty registry
+        // would be missing every plugin until something else caused a redraw.
+        //
+        // It holds records rather than resolved surfaces on purpose: the
+        // manifest is re-read off the checkout every time it is asked for, which
+        // is what makes a rebuilt plugin's new surfaces appear with nothing to
+        // invalidate. See `plugins`'s module doc.
+        .manage(plugins::Registry::default())
+        // The running plugin cores. Empty until something calls one: the broker
+        // spawns lazily, so a plugin whose surfaces nobody has opened costs no
+        // process — and the first call after a rebuild starts the new binary
+        // with nothing to invalidate. Kept apart from the registry above for the
+        // same reason `PtySessions` is kept out of `ShellState`: that is a small
+        // serializable record, this holds OS handles and reader threads.
+        .manage(plugins::Broker::default())
+        // One filesystem watch per folder-installed plugin, so a `cargo build`
+        // in a terminal beside the shell restarts that plugin's core without
+        // anyone asking. Empty until `plugins::changed` syncs it, which the
+        // setup below does once and every install does after.
+        .manage(plugins::Watchers::default())
+        // Whether a newer HELVE exists, and how far through fetching it we are.
+        // One value for the process rather than one per window: two windows
+        // offering two different answers to "is there an update" is a bug with
+        // no correct resolution, and the event that keeps them level carries
+        // this exact state.
+        .manage(updater::UpdateStatus::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -196,6 +232,29 @@ pub fn run() {
             // orchestrator; what it loses is agent access to HELVE's own tools.
             mcp::start(app.handle());
 
+            // Before `restore_session`, because a restored layout may hold a
+            // surface belonging to a plugin. Resolving one asks this registry
+            // which package the address names, so a restore that ran first would
+            // find every plugin surface unknown and drop it — silently closing
+            // the tabs a person left open.
+            //
+            // Reading a file, and only that: the manifests behind these records
+            // are opened on demand rather than here, so a plugin whose checkout
+            // is unreachable costs a resolve later instead of a slow launch now.
+            app.state::<plugins::Registry>().hydrate(app.handle());
+
+            // Immediately after, so a plugin rebuilt *during* this launch is
+            // noticed rather than waiting for the first install of the session
+            // to sync the set as a side effect.
+            app.state::<plugins::Watchers>().sync(app.handle());
+
+            // On a machine that has never had a plugin store, install the
+            // catalog's `default` apps. Returns at once and does the work on
+            // its own thread — a first launch must not wait on the network to
+            // put a window on screen — and every failure inside is quiet, for
+            // the reasons on `seed_defaults`.
+            plugins::install::seed_defaults(app.handle());
+
             let handle = app.handle().clone();
             restore_session(&handle);
 
@@ -257,6 +316,13 @@ pub fn run() {
                 }
             }
 
+            // Last, and off this thread. It is a network round trip, nothing on
+            // screen waits for it, and a machine with no route to GitHub must
+            // reach `Ok(())` at exactly the same speed as one that does. It
+            // reads `updates.checkAutomatically` and returns immediately when
+            // that is off — see `updater::start`.
+            updater::start(handle.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -304,6 +370,16 @@ pub fn run() {
             commands::tool_frontend,
             commands::list_apps,
             commands::list_openables,
+            commands::list_plugins,
+            commands::list_catalog,
+            commands::install_plugin_repo,
+            commands::has_github_token,
+            commands::set_github_token,
+            commands::install_plugin_folder,
+            commands::choose_and_install_plugin,
+            commands::uninstall_plugin,
+            commands::reload_plugin,
+            commands::set_plugin_enabled,
             commands::app_call,
             diagnostics::report_frontend_error,
             mcp::commands::mcp_status,
@@ -328,8 +404,26 @@ pub fn run() {
             git::git_hunks,
             git::git_head_text,
             search::search_content,
+            updater::update_state,
+            updater::check_for_update,
+            updater::install_update,
         ])
-        .run(tauri::generate_context!());
+        // `build` + `run` rather than `run` alone, for one reason: a plugin core
+        // is a **child process**, and nothing else in this application has one.
+        // A pty is reaped by `PtySessions::close` when its terminal closes, and
+        // the MCP listener is a task inside this process — but a plugin's core
+        // outlives every window and would be orphaned by an exit that did not go
+        // looking for it. `RunEvent::Exit` is the one hook that fires once, for
+        // the application, rather than once per window.
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|handle, event| {
+                if matches!(event, tauri::RunEvent::Exit) {
+                    handle.state::<plugins::Watchers>().stop_all();
+                    handle.state::<plugins::Broker>().stop_all();
+                }
+            });
+        });
 
     // A GUI process that never got a window up has nowhere to report into, so
     // this goes to stderr and takes the exit code with it. A panic here would

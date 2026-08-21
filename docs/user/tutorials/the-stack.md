@@ -28,7 +28,7 @@ repository's branch tip happens to be today.
 | Tool       | What                                                                |
 | ------------ | ---------------------------------------------------------------------- |
 | Forger     | Technical design — specs out the stack and its boundaries.             |
-| Journeyman | Game design — design prototyping and rough playable systems.           |
+| Journeyman | Product design — design prototyping and rough, interactive systems.    |
 
 ## Why the badge says things are missing
 

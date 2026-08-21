@@ -2,12 +2,18 @@
 //!
 //! See `docs/tool-protocol.md` section 1 for the spec this implements. The
 //! short version: every tool checkout carries one of these files, and it says
-//! how to run the tool — its id, its frontend bundle, its core binary. Unknown
-//! keys are a hard error rather than a warning, because a typo'd key that's
-//! silently ignored is a bug that only shows up at runtime, and a couple of
-//! the fields (`dist`, `bin`) are load-bearing for path safety: a tool is
-//! third-party code, and nothing here should let its manifest point outside
-//! its own checkout.
+//! how to run the tool — its id, its frontend bundle, its core binary, and the
+//! surfaces it can put on screen. Unknown keys are a hard error rather than a
+//! warning, because a typo'd key that's silently ignored is a bug that only
+//! shows up at runtime, and three of the fields (`dist`, `bin`, a surface's
+//! `path`) are load-bearing for path safety: a tool is third-party code, and
+//! nothing here should let its manifest point outside its own checkout.
+//!
+//! A package used to be exactly one surface, and the file said so — `[frontend]`
+//! and `[core]` were both required and there was one of each. It carries several
+//! now, because a repository worth installing is usually several related views
+//! over one domain rather than a single window. See [`ToolManifest`] for the
+//! shape that came out of that and what each combination means.
 
 // Published contract — see the note in crates/helve-rpc/src/lib.rs.
 #![warn(missing_docs)]
@@ -19,15 +25,41 @@ use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
 /// A parsed and validated `helve-tool.toml`.
+///
+/// One file describes a **package**: an identity, at most one core process, and
+/// zero or more **surfaces** — the things a person can put in a pane. The two
+/// counts are independent, and every combination is a real tool.
+///
+/// | Surfaces | Core | What it is |
+/// |---|---|---|
+/// | one | yes | the ordinary tool; `examples/echo-tool` |
+/// | many | yes | several views over one domain, one process behind them |
+/// | none | yes | a backend with no UI — a package that only registers MCP tools |
+/// | some | no | a frontend needing nothing from Rust of its own |
+///
+/// The bottom two rows are why `frontend` and `core` are `Option`. Requiring
+/// both, as this file did when a package could only ever be one surface, would
+/// make the no-UI case express itself with a `dist` pointing at a directory
+/// nobody serves — a lie in the manifest written to satisfy a parser.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolManifest {
     /// Who the tool is. The only section with a second source of truth: the
     /// `[[tool]]` entry in `helve.toml` has to agree with it.
     pub tool: ToolSection,
-    /// Where the tool window points its iframe.
-    pub frontend: FrontendSection,
-    /// How to start the tool's core process.
-    pub core: CoreSection,
+    /// Where the tool window points its iframes, for every surface at once.
+    /// `None` when the package ships no UI.
+    pub frontend: Option<FrontendSection>,
+    /// How to start the tool's core process. `None` when the package is
+    /// frontend-only.
+    pub core: Option<CoreSection>,
+    /// What the package can put on screen, in declaration order — which is the
+    /// order the switcher offers them in, so it is the author's to choose.
+    ///
+    /// Empty only when there is no `[frontend]` either: a manifest with a
+    /// frontend and no `[[surface]]` blocks gets one synthesised, so the
+    /// single-surface tool this format started as needs no new keys. See
+    /// [`DEFAULT_SURFACE_ID`].
+    pub surfaces: Vec<Surface>,
 }
 
 /// `[tool]` — required. Identity, independent of how the tool runs.
@@ -41,10 +73,27 @@ pub struct ToolSection {
     /// version `helve.toml` pins. The pin decides what gets checked out, this
     /// is only what the checkout claims to be.
     pub version: Version,
+    /// What to call the package where a person reads it.
+    ///
+    /// `Option` rather than defaulted to `id` at parse time, because the host
+    /// has a use for the difference: an install list can say "this author named
+    /// it" or fall back on its own terms.
+    pub name: Option<String>,
+    /// One line, shown beside the name. Empty rather than `Option` — there is
+    /// no difference worth preserving between no description and an empty one.
+    pub description: String,
 }
 
-/// `[frontend]` — required. Both keys describe the same UI, one built and one
+/// `[frontend]` — optional. Both keys describe the same UI, one built and one
 /// live; which is used depends on the build of the shell, not on the manifest.
+///
+/// **Package-level, not per-surface, and that is the load-bearing choice.** A
+/// `dev-url` on every surface would mean a Vite server per surface — four of
+/// them for a package with four views. One server with several HTML entry
+/// points is what this repository's own `vite.config.ts` does for Home, Files,
+/// Viewer and Tutorials, so a plugin repo is laid out the way the orchestrator
+/// already is. Each surface picks its document out of the one bundle with
+/// [`Surface::path`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontendSection {
     /// Built bundle, relative to the checkout root.
@@ -53,8 +102,14 @@ pub struct FrontendSection {
     pub dev_url: Option<String>,
 }
 
-/// `[core]` — required. The child process the shell speaks JSON-RPC to over
+/// `[core]` — optional. The child process the shell speaks JSON-RPC to over
 /// standard streams.
+///
+/// One process per **package**, shared by every surface in it — not one per
+/// surface. The same reasoning that has File Explorer and File Viewer dispatch
+/// into a single `files::call` in the orchestrator: the surfaces are views over
+/// one domain, and a second process would be a second copy of that domain's
+/// state with no way to keep the two honest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoreSection {
     /// Relative to the checkout root. Never includes a platform extension —
@@ -64,6 +119,58 @@ pub struct CoreSection {
     /// when the key is absent, which is the flag the protocol expects; set it
     /// only if the binary enters RPC mode some other way.
     pub args: Vec<String>,
+}
+
+/// The surface id given to the one surface synthesised for a manifest that
+/// declares a `[frontend]` and no `[[surface]]` blocks.
+///
+/// A fixed name rather than the package's own id, so a surface's address is
+/// `<package>.<surface>` with no exceptions — `echo.main`, never a bare `echo`
+/// for the one-surface case and a dotted pair for every other. An address
+/// format with a special case is one every consumer has to remember, and these
+/// strings are persisted in the shell's saved layout.
+pub const DEFAULT_SURFACE_ID: &str = "main";
+
+/// One `[[surface]]` — a thing the shell can put in a pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Surface {
+    /// Matches `^[a-z][a-z0-9-]*$`, and is unique within the package. The
+    /// shell addresses this surface as `<package id>.<this id>`.
+    pub id: String,
+    /// What the switcher tab and the Apps menu row say. Falls back to the
+    /// surface id when absent, for the same reason [`ToolSection::name`] does.
+    pub name: Option<String>,
+    /// One line under the name in the Apps menu.
+    pub description: String,
+    /// Where this surface's `index.html` sits inside the package's one bundle,
+    /// relative to `frontend.dist` — and, in a dev build, appended to
+    /// `frontend.dev-url` instead.
+    ///
+    /// `None` is the bundle root, which is what a single-surface package wants
+    /// and what the synthesised default surface uses.
+    pub path: Option<PathBuf>,
+    /// Whether the surface is offered in the menus or only reachable when
+    /// another frame asks for it.
+    pub present: Presentation,
+}
+
+/// How a surface is offered — the `present` key.
+///
+/// Deliberately without a third variant for "has no frontend at all". A package
+/// with no UI declares **no surfaces**, which is a different fact and is read by
+/// different code: "there is nothing to show" and "there is something the menus
+/// do not list" would, sharing one spelling, leave every consumer re-deriving
+/// which of the two it was holding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Presentation {
+    /// Listed in the Apps menu and the `+`; opens into a pane. The default.
+    #[default]
+    Pane,
+    /// Covers its cluster and is absent from both menus, reachable only when
+    /// something calls `helve/open` for it. Home and Tutorials are the
+    /// first-party precedent.
+    Cover,
 }
 
 /// Why a `helve-tool.toml` was rejected.
@@ -146,6 +253,28 @@ pub enum ManifestError {
         path: String,
     },
 
+    /// Two `[[surface]]` blocks share an `id`. The shell addresses a surface as
+    /// `<package>.<surface>`, so a duplicate is two rows naming one thing.
+    #[error("duplicate surface id {id:?}: each [[surface]] needs its own")]
+    DuplicateSurfaceId {
+        /// The id declared twice.
+        id: String,
+    },
+
+    /// A `[[surface]]` without a `[frontend]` to resolve it against. A surface
+    /// is a document in the package's bundle; declaring one while declaring no
+    /// bundle names a file with nowhere to live.
+    #[error("surface {id:?} needs a [frontend] section — there is no bundle to serve it from")]
+    SurfaceWithoutFrontend {
+        /// The first surface found without a bundle behind it.
+        id: String,
+    },
+
+    /// `resolve_bin` on a package that declares no `[core]`. Not a malformed
+    /// manifest — a question with no answer for this one.
+    #[error("this package declares no [core]; there is no binary to resolve")]
+    NoCore,
+
     /// Nothing exists at `core.bin`. Raised by `resolve_bin` against a real
     /// checkout, not by parsing; the usual cause is a tool that isn't built yet.
     #[error("core binary not found at {bin} or {bin_exe}")]
@@ -183,22 +312,38 @@ impl ToolManifest {
                 source,
             })?;
 
-        let dist = validate_relative_path("frontend.dist", &raw.frontend.dist)?;
-        let bin = validate_relative_path("core.bin", &raw.core.bin)?;
+        let frontend = raw
+            .frontend
+            .map(|f| {
+                Ok::<_, ManifestError>(FrontendSection {
+                    dist: validate_relative_path("frontend.dist", &f.dist)?,
+                    dev_url: f.dev_url,
+                })
+            })
+            .transpose()?;
+
+        let core = raw
+            .core
+            .map(|c| {
+                Ok::<_, ManifestError>(CoreSection {
+                    bin: validate_relative_path("core.bin", &c.bin)?,
+                    args: c.args,
+                })
+            })
+            .transpose()?;
+
+        let surfaces = build_surfaces(raw.surfaces, frontend.is_some())?;
 
         Ok(ToolManifest {
             tool: ToolSection {
                 id: raw.tool.id,
                 version,
+                name: raw.tool.name,
+                description: raw.tool.description,
             },
-            frontend: FrontendSection {
-                dist,
-                dev_url: raw.frontend.dev_url,
-            },
-            core: CoreSection {
-                bin,
-                args: raw.core.args,
-            },
+            frontend,
+            core,
+            surfaces,
         })
     }
 
@@ -208,8 +353,13 @@ impl ToolManifest {
     /// are tried on every platform, not just Windows: a cross-compiled
     /// artifact (building a Windows tool's binary on a Linux CI box, say) is
     /// a real case, and the cost of the extra check is one `exists()` call.
+    ///
+    /// [`ManifestError::NoCore`] when the package declares no `[core]` — the
+    /// caller asked where a process is that the author said does not exist,
+    /// and answering with "not found at ''" would blame the wrong thing.
     pub fn resolve_bin(&self, checkout_root: &Path) -> Result<PathBuf, ManifestError> {
-        let bin = checkout_root.join(&self.core.bin);
+        let core = self.core.as_ref().ok_or(ManifestError::NoCore)?;
+        let bin = checkout_root.join(&core.bin);
         if bin.is_file() {
             return Ok(bin);
         }
@@ -229,9 +379,74 @@ impl ToolManifest {
     }
 
     /// The built frontend's absolute path inside a checkout.
-    pub fn resolve_dist(&self, checkout_root: &Path) -> PathBuf {
-        checkout_root.join(&self.frontend.dist)
+    ///
+    /// `None` for a package with no `[frontend]`, which has no bundle to point
+    /// at. Callers serving assets treat that as "nothing to serve" rather than
+    /// falling back to the checkout root — serving the root is precisely what
+    /// [`validate_relative_path`] exists to prevent.
+    pub fn resolve_dist(&self, checkout_root: &Path) -> Option<PathBuf> {
+        self.frontend.as_ref().map(|f| checkout_root.join(&f.dist))
     }
+
+    /// The surface with this id, if the package declares one.
+    pub fn surface(&self, id: &str) -> Option<&Surface> {
+        self.surfaces.iter().find(|s| s.id == id)
+    }
+}
+
+/// Turn the declared `[[surface]]` blocks into the resolved list, synthesising
+/// the default one where a manifest declares a frontend and no surfaces.
+///
+/// The `has_frontend` flag is what decides between "synthesise one" and "leave
+/// it empty": a package with neither surfaces nor a frontend is the backend-only
+/// case and must not be given a surface pointing at a bundle it does not have.
+fn build_surfaces(raw: Vec<RawSurface>, has_frontend: bool) -> Result<Vec<Surface>, ManifestError> {
+    if raw.is_empty() {
+        if !has_frontend {
+            return Ok(Vec::new());
+        }
+        return Ok(vec![Surface {
+            id: DEFAULT_SURFACE_ID.to_string(),
+            name: None,
+            description: String::new(),
+            path: None,
+            present: Presentation::Pane,
+        }]);
+    }
+
+    let mut surfaces: Vec<Surface> = Vec::with_capacity(raw.len());
+    for one in raw {
+        validate_id(&one.id)?;
+
+        // Checked here rather than left to the shell, because the shell's own
+        // id space is `<package>.<surface>` — two surfaces sharing an id are
+        // two rows that address the same thing, and whichever the lookup found
+        // first would silently win. A duplicate is an authoring mistake with a
+        // one-word fix, so it is worth failing the parse for.
+        if surfaces.iter().any(|s| s.id == one.id) {
+            return Err(ManifestError::DuplicateSurfaceId { id: one.id });
+        }
+
+        if !has_frontend {
+            return Err(ManifestError::SurfaceWithoutFrontend { id: one.id });
+        }
+
+        let path = one
+            .path
+            .as_deref()
+            .map(|p| validate_relative_path("surface.path", p))
+            .transpose()?;
+
+        surfaces.push(Surface {
+            id: one.id,
+            name: one.name,
+            description: one.description,
+            path,
+            present: one.present,
+        });
+    }
+
+    Ok(surfaces)
 }
 
 /// `id` matches `^[a-z][a-z0-9-]*$`. Hand-rolled rather than pulling in a
@@ -306,8 +521,14 @@ fn default_args() -> Vec<String> {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct RawManifest {
     tool: RawTool,
-    frontend: RawFrontend,
-    core: RawCore,
+    #[serde(default)]
+    frontend: Option<RawFrontend>,
+    #[serde(default)]
+    core: Option<RawCore>,
+    // TOML reads better singular in an array-of-tables, Rust reads better
+    // plural — the same rename the stack manifest does for `[[tool]]`.
+    #[serde(default, rename = "surface")]
+    surfaces: Vec<RawSurface>,
     // `[permissions]` is reserved space: legal for the table to be present,
     // legal for it to hold anything, ignored either way. `toml::Value` (not
     // a `deny_unknown_fields` struct like its siblings) is what makes the
@@ -322,6 +543,24 @@ struct RawManifest {
 struct RawTool {
     id: String,
     version: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct RawSurface {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    present: Presentation,
 }
 
 #[derive(Debug, Deserialize)]
@@ -366,16 +605,23 @@ mod tests {
 
         assert_eq!(manifest.tool.id, "echo");
         assert_eq!(manifest.tool.version, Version::new(0, 1, 0));
-        assert_eq!(manifest.frontend.dist, PathBuf::from("ui/dist"));
-        assert_eq!(
-            manifest.frontend.dev_url.as_deref(),
-            Some("http://localhost:5174")
-        );
-        assert_eq!(
-            manifest.core.bin,
-            PathBuf::from("target/debug/helve-echo-tool")
-        );
-        assert_eq!(manifest.core.args, vec!["--helve-rpc".to_string()]);
+
+        let frontend = manifest.frontend.as_ref().expect("declares a [frontend]");
+        assert_eq!(frontend.dist, PathBuf::from("ui/dist"));
+        assert_eq!(frontend.dev_url.as_deref(), Some("http://localhost:5174"));
+
+        let core = manifest.core.as_ref().expect("declares a [core]");
+        assert_eq!(core.bin, PathBuf::from("target/debug/helve-echo-tool"));
+        assert_eq!(core.args, vec!["--helve-rpc".to_string()]);
+
+        // The reference manifest declares no `[[surface]]`, and must keep
+        // working untouched — the whole point of synthesising one. Anything
+        // that made this file need a new key would have broken every tool
+        // written against the format before surfaces existed.
+        assert_eq!(manifest.surfaces.len(), 1);
+        assert_eq!(manifest.surfaces[0].id, DEFAULT_SURFACE_ID);
+        assert_eq!(manifest.surfaces[0].path, None);
+        assert_eq!(manifest.surfaces[0].present, Presentation::Pane);
     }
 
     #[test]
@@ -393,8 +639,14 @@ mod tests {
         "#;
 
         let manifest = ToolManifest::parse(toml).unwrap();
-        assert_eq!(manifest.core.args, vec!["--helve-rpc".to_string()]);
-        assert_eq!(manifest.frontend.dev_url, None);
+        assert_eq!(
+            manifest.core.expect("declares a [core]").args,
+            vec!["--helve-rpc".to_string()]
+        );
+        assert_eq!(
+            manifest.frontend.expect("declares a [frontend]").dev_url,
+            None
+        );
     }
 
     #[test]
@@ -677,6 +929,213 @@ mod tests {
     fn resolve_dist_joins_checkout_root() {
         let manifest = ToolManifest::parse(REFERENCE).unwrap();
         let resolved = manifest.resolve_dist(Path::new("/checkout"));
-        assert_eq!(resolved, Path::new("/checkout/ui/dist"));
+        assert_eq!(resolved, Some(PathBuf::from("/checkout/ui/dist")));
+    }
+
+    // --- surfaces -----------------------------------------------------------
+
+    const MULTI: &str = r#"
+        [tool]
+        id      = "forger"
+        version = "0.1.0"
+        name    = "Forger"
+        description = "Technical design software."
+
+        [frontend]
+        dist    = "ui/dist"
+        dev-url = "http://localhost:5174"
+
+        [[surface]]
+        id          = "specs"
+        name        = "Spec Editor"
+        description = "Write and edit technical specs."
+        path        = "specs/"
+
+        [[surface]]
+        id      = "graph"
+        name    = "Boundary Graph"
+        path    = "graph/"
+        present = "cover"
+
+        [core]
+        bin = "target/release/helve-forger"
+    "#;
+
+    #[test]
+    fn parses_several_surfaces_in_declaration_order() {
+        let manifest = ToolManifest::parse(MULTI).expect("multi-surface manifest should parse");
+
+        assert_eq!(manifest.tool.name.as_deref(), Some("Forger"));
+        assert_eq!(manifest.tool.description, "Technical design software.");
+
+        let ids: Vec<&str> = manifest.surfaces.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec!["specs", "graph"], "order is the author's");
+
+        assert_eq!(manifest.surfaces[0].path, Some(PathBuf::from("specs/")));
+        assert_eq!(manifest.surfaces[0].present, Presentation::Pane);
+        assert_eq!(manifest.surfaces[1].present, Presentation::Cover);
+        assert_eq!(manifest.surfaces[1].description, "");
+    }
+
+    #[test]
+    fn surface_looks_up_by_id() {
+        let manifest = ToolManifest::parse(MULTI).unwrap();
+        assert_eq!(
+            manifest.surface("graph").map(|s| s.id.as_str()),
+            Some("graph")
+        );
+        assert!(manifest.surface("nope").is_none());
+    }
+
+    /// The backend-only package: no UI, no surfaces, and still a valid manifest.
+    #[test]
+    fn a_package_may_declare_no_frontend_and_no_surfaces() {
+        let toml = r#"
+            [tool]
+            id = "indexer"
+            version = "0.1.0"
+
+            [core]
+            bin = "target/release/indexer"
+        "#;
+
+        let manifest = ToolManifest::parse(toml).expect("backend-only package should parse");
+        assert!(manifest.frontend.is_none());
+        assert!(manifest.surfaces.is_empty(), "nothing to put in a pane");
+        assert!(manifest.core.is_some());
+    }
+
+    #[test]
+    fn a_package_may_declare_no_core() {
+        let toml = r#"
+            [tool]
+            id = "notes"
+            version = "0.1.0"
+
+            [frontend]
+            dist = "ui/dist"
+        "#;
+
+        let manifest = ToolManifest::parse(toml).expect("frontend-only package should parse");
+        assert!(manifest.core.is_none());
+        assert_eq!(manifest.surfaces.len(), 1);
+        assert!(matches!(
+            manifest.resolve_bin(Path::new("/checkout")),
+            Err(ManifestError::NoCore)
+        ));
+        assert_eq!(
+            manifest.resolve_dist(Path::new("/checkout")),
+            Some(PathBuf::from("/checkout/ui/dist"))
+        );
+    }
+
+    #[test]
+    fn a_package_with_neither_half_still_parses() {
+        // Useless, but not malformed — and refusing it would mean inventing a
+        // rule the format does not otherwise need. The shell decides there is
+        // nothing to offer; the parser only reports what was written.
+        let toml = r#"
+            [tool]
+            id = "empty"
+            version = "0.1.0"
+        "#;
+        let manifest = ToolManifest::parse(toml).expect("parses");
+        assert!(manifest.frontend.is_none() && manifest.core.is_none());
+        assert!(manifest.surfaces.is_empty());
+    }
+
+    #[test]
+    fn duplicate_surface_ids_are_rejected() {
+        let toml = r#"
+            [tool]
+            id = "dup"
+            version = "0.1.0"
+            [frontend]
+            dist = "ui/dist"
+            [[surface]]
+            id = "one"
+            [[surface]]
+            id = "one"
+        "#;
+
+        match ToolManifest::parse(toml) {
+            Err(ManifestError::DuplicateSurfaceId { id }) => assert_eq!(id, "one"),
+            other => panic!("expected DuplicateSurfaceId, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_surface_without_a_frontend_is_rejected() {
+        let toml = r#"
+            [tool]
+            id = "nobundle"
+            version = "0.1.0"
+            [[surface]]
+            id = "one"
+        "#;
+
+        match ToolManifest::parse(toml) {
+            Err(ManifestError::SurfaceWithoutFrontend { id }) => assert_eq!(id, "one"),
+            other => panic!("expected SurfaceWithoutFrontend, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_surface_id_follows_the_same_rule_as_a_tool_id() {
+        let toml = r#"
+            [tool]
+            id = "pkg"
+            version = "0.1.0"
+            [frontend]
+            dist = "ui/dist"
+            [[surface]]
+            id = "Not-Lowercase"
+        "#;
+
+        match ToolManifest::parse(toml) {
+            Err(ManifestError::InvalidId { id }) => assert_eq!(id, "Not-Lowercase"),
+            other => panic!("expected InvalidId, got {other:?}"),
+        }
+    }
+
+    /// `surface.path` is joined onto a trusted root exactly as `dist` and `bin`
+    /// are, so it is held to the same rule — and the error names the key.
+    #[test]
+    fn a_surface_path_may_not_escape_the_bundle() {
+        let toml = r#"
+            [tool]
+            id = "pkg"
+            version = "0.1.0"
+            [frontend]
+            dist = "ui/dist"
+            [[surface]]
+            id = "sneaky"
+            path = "../../etc"
+        "#;
+
+        match ToolManifest::parse(toml) {
+            Err(ManifestError::PathEscapesRoot { field, .. }) => {
+                assert_eq!(field, "surface.path");
+            }
+            other => panic!("expected PathEscapesRoot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_unknown_surface_key_is_an_error() {
+        let toml = r#"
+            [tool]
+            id = "pkg"
+            version = "0.1.0"
+            [frontend]
+            dist = "ui/dist"
+            [[surface]]
+            id = "one"
+            titel = "typo"
+        "#;
+        assert!(matches!(
+            ToolManifest::parse(toml),
+            Err(ManifestError::Toml(_))
+        ));
     }
 }
