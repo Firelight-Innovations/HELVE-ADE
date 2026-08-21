@@ -67,6 +67,7 @@ export default defineConfig(async ({ mode }) => ({
         files: resolve(__dirname, "apps/files/ui/index.html"),
         viewer: resolve(__dirname, "apps/viewer/ui/index.html"),
         tutorial: resolve(__dirname, "apps/tutorial/ui/index.html"),
+        design: resolve(__dirname, "apps/design/ui/index.html"),
       },
     },
   },
