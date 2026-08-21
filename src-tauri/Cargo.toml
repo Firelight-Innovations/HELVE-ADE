@@ -30,6 +30,14 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 
+# One HELVE process per machine, and the reason is Explorer's context menu.
+# "Open with HELVE" on a folder launches this binary again, and a second
+# process would hold its own ShellState and write its own layout.json and
+# projects.json over the first one's. This plugin hands the argv of the second
+# launch to the process already running and exits it, so the context menu
+# routes into the live window instead of racing it. See `launch.rs`.
+tauri-plugin-single-instance = "2"
+
 # The native folder picker behind Home's New/Open Project.
 #
 # `rfd` directly rather than `tauri-plugin-dialog`, which is a thin wrapper over
