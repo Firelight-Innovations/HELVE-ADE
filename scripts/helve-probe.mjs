@@ -4,12 +4,14 @@
  * Usage:
  *   node scripts/helve-probe.mjs                     list the debug tools
  *   node scripts/helve-probe.mjs shell_snapshot
- *   node scripts/helve-probe.mjs recent_errors
  *   node scripts/helve-probe.mjs recent_errors '{"after":12}'
- *   node scripts/helve-probe.mjs --server echo ping
+ *   node scripts/helve-probe.mjs --server ui snapshot
+ *   node scripts/helve-probe.mjs --agent --server ui click '{"target":"e12"}'
  *
  * Prints the tool's JSON result on stdout and nothing else, so it can be piped
  * into `jq` or read straight by an agent. Everything explanatory goes to stderr.
+ * A tool that answers with an image is written to a PNG instead, and the path
+ * printed — a screenshot is not something to put through a terminal.
  *
  * This exists because the endpoint speaks MCP over streamable HTTP, which is a
  * three-step handshake and a session header — reachable with `curl` only if you
@@ -17,19 +19,41 @@
  * `docs/design-notes/agent-debugging.md` for how the port and token are found.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** Matches `tauri::path::app_config_dir` on Windows, and the identifier in tauri.conf.json. */
-const IDENTIFIER = "com.firelightinnovations.helve";
+/**
+ * Matches `tauri::path::app_config_dir` on Windows, and the identifier in
+ * tauri.conf.json.
+ *
+ * A different identifier is a different config directory, and therefore a
+ * different endpoint file. `--agent` picks the one `pnpm ui:build` compiles, so
+ * an agent testing a change talks to its own instance rather than to a HELVE
+ * somebody is using. `HELVE_IDENTIFIER` covers anything else.
+ */
+const IDENTIFIER = process.env.HELVE_IDENTIFIER || "com.firelightinnovations.helve";
+const AGENT_IDENTIFIER = "com.firelightinnovations.helve.agent";
+
+/** Which one this run is talking to. `--agent` moves it; nothing else does. */
+let identifier = IDENTIFIER;
 const ENDPOINT_FILE = "mcp-endpoint.json";
 
 /** The version this client claims to speak. Rejected outright if the server disagrees. */
 const PROTOCOL_VERSION = "2025-06-18";
 
+/**
+ * Thrown by [`die`] to unwind, rather than exiting where it stands.
+ *
+ * `process.exit` here tore down an HTTP socket that was still open and printed
+ * a libuv assertion after the message — noise on exactly the path somebody is
+ * already reading carefully, and easy to mistake for part of the failure.
+ */
+class Bail extends Error {}
+
 function die(message) {
   process.stderr.write(`helve-probe: ${message}\n`);
-  process.exit(1);
+  process.exitCode = 1;
+  throw new Bail(message);
 }
 
 /**
@@ -42,7 +66,7 @@ function die(message) {
 function endpointPath() {
   const roaming = process.env.APPDATA;
   if (!roaming) die("APPDATA is not set, so the config directory cannot be found");
-  return join(roaming, IDENTIFIER, ENDPOINT_FILE);
+  return join(roaming, identifier, ENDPOINT_FILE);
 }
 
 /**
@@ -187,6 +211,12 @@ async function connect(endpoint, server) {
 async function main() {
   const args = process.argv.slice(2);
 
+  const agentAt = args.indexOf("--agent");
+  if (agentAt !== -1) {
+    identifier = AGENT_IDENTIFIER;
+    args.splice(agentAt, 1);
+  }
+
   let server = "debug";
   const serverAt = args.indexOf("--server");
   if (serverAt !== -1) {
@@ -226,6 +256,14 @@ async function main() {
     die(`${tool} reported an error: ${JSON.stringify(message.result.content)}`);
   }
 
+  const image = message?.result?.content?.find((block) => block.type === "image");
+  if (image) {
+    const path = process.env.HELVE_SHOT || "helve-shot.png";
+    writeFileSync(path, Buffer.from(image.data, "base64"));
+    process.stdout.write(`${path}\n`);
+    return;
+  }
+
   process.stdout.write(`${JSON.stringify(unwrap(message.result), null, 2)}\n`);
 }
 
@@ -248,4 +286,9 @@ function unwrap(result) {
   }
 }
 
-main().catch((e) => die(e.stack ?? String(e)));
+main().catch((e) => {
+  // A `Bail` has already said what went wrong and set the exit code.
+  if (e instanceof Bail) return;
+  process.stderr.write(`helve-probe: ${e.stack ?? String(e)}\n`);
+  process.exitCode = 1;
+});
