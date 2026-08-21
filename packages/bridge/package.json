@@ -1,8 +1,17 @@
 {
   "name": "@helve/bridge",
   "version": "0.1.0",
-  "description": "Transport bridge between a Helve tool's frontend and its host — the orchestrator shell over window messages, or a standalone Tauri app over Tauri IPC.",
+  "description": "Transport bridge between a Helve tool's frontend and its host \u2014 the orchestrator shell over window messages, or a standalone Tauri app over Tauri IPC.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Firelight-Innovations/HELVE-ADE.git",
+    "directory": "packages/bridge"
+  },
+  "homepage": "https://github.com/Firelight-Innovations/HELVE-ADE/blob/main/docs/tool-protocol.md",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
