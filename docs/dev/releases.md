@@ -1,9 +1,10 @@
 # Releases and updates
 
 A release is cut from a **tag**, built on GitHub, and published as a **draft**
-that a person reviews before it goes out. Nothing is signed yet, and there is
-no updater. Both of those absences are deliberate and are described at the
-bottom rather than left to be discovered.
+that a person reviews before it goes out. An installed HELVE finds the next one
+by itself, if — and only if — the release it came from was built with the
+updater signing key. Nothing is code-signed, which is a different absence and is
+described at the bottom rather than left to be discovered.
 
 ## Cutting one
 
@@ -123,6 +124,90 @@ optional. Without it, "Open with HELVE" on a second folder starts a second
 process, and two processes writing `layout.json` and `projects.json` is data
 loss rather than a glitch.
 
+## The updater
+
+An installed HELVE checks once per launch — in the background, after everything
+else in `lib.rs`'s setup — and again whenever somebody picks **Help ▸ Check for
+Updates**. What it finds appears as one line in the status bar and nowhere else:
+no dialog, no toast, nothing that takes the screen away from what it was
+showing. Nothing is downloaded until that line is clicked.
+
+`updates.checkAutomatically` in Settings turns the launch check off. It does not
+turn the menu item off, and neither of them ever installs anything on its own.
+
+| Piece | Where |
+|---|---|
+| the check, the download, the installer | `src-tauri/src/updater.rs` |
+| the status bar line, and when it stays silent | `updateNotice` in `src/shell/contract.ts` |
+| the endpoint and the public key | `plugins.updater` in `src-tauri/tauri.conf.json` |
+| the manifest the endpoint serves | `scripts/update-manifest.mjs` |
+
+The endpoint is `/releases/latest/download/latest.json`, which is why releases
+are not marked prerelease — see the last bullet at the bottom. Publishing the
+draft is what makes that URL start serving the new manifest, so an update is
+offered at the moment a person decides it is ready and not when a tag was
+pushed.
+
+`plugins.updater.windows.installMode` is `passive`, which is also Tauri's
+default and is pinned anyway: it is the one part of an update the user actually
+watches — a progress window that needs no clicks — and an upstream default
+moving to `quiet` or `basicUi` would change that silently.
+
+### The signing key, and why the flag is not in `tauri.conf.json`
+
+Update artifacts are signed with a **minisign** keypair. It is free, it is
+generated once, and it is unrelated to the code signing certificate the bottom
+of this page is about: minisign proves an update came from whoever holds this
+repository's release key, and says nothing at all to SmartScreen.
+
+`bundle.createUpdaterArtifacts` is the flag that produces the signed artifacts,
+and `tauri build` **fails outright** when it is set and no key is in the
+environment. Setting it in `tauri.conf.json` would therefore break `pnpm
+app:build` for everyone who is not the release workflow. So it lives in
+`src-tauri/tauri.updater.conf.json` instead, merged over the real config with
+`--config`, and only on the branch of `release.yml` that has the secret:
+
+```sh
+pnpm app:build --config src-tauri/tauri.updater.conf.json   # needs the key
+pnpm app:build                                              # always works
+```
+
+The workflow gates on `TAURI_SIGNING_PRIVATE_KEY` being non-empty rather than on
+a `secrets` lookup, because a workflow cannot read `secrets` in a step's `if:`.
+A release built without it still publishes installers; it simply publishes no
+`latest.json`, and no installed HELVE will offer that version.
+
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is set from a secret that may not exist, in
+which case Actions supplies an empty string — and an empty string is exactly
+what a key with no password wants. **A variable that is absent is not the same
+as one that is empty**: absent, the CLI prints "expect a prompt for password"
+and waits forever on a runner nobody can type into.
+
+That difference bites locally on Windows, because `$env:X = ""` in PowerShell
+*deletes* the variable rather than emptying it. A signed build by hand wants
+bash — `export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=` — or a `-p ""` on the
+command.
+
+### Creating the secret
+
+Once, by whoever owns the repository. The private half must never be committed.
+
+```sh
+pnpm tauri signer generate -w "$HOME/.helve/updater.key"
+gh secret set TAURI_SIGNING_PRIVATE_KEY < "$HOME/.helve/updater.key"
+# only if the key was given a password:
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+Then paste the contents of `updater.key.pub` into `plugins.updater.pubkey` in
+`tauri.conf.json` and commit *that* half. The two have to be generated together:
+a build signed with a key whose public half is not in the shipped binary
+produces updates every installed copy downloads and then refuses.
+
+**Losing the private key is not recoverable.** Every already-installed HELVE
+carries the public half compiled in, so a new keypair means those copies stop
+accepting updates and have to be reinstalled by hand.
+
 ## The installed build cannot find a stack
 
 **This is the one caveat that will be mistaken for a bug.** `bundle.resources`
@@ -151,10 +236,15 @@ the answer arrives with the download rather than after a bug report.
   a year. When one exists it arrives as a repository secret and `release.yml`
   gains two `env:` lines. That is why signing is absent from the workflow
   rather than stubbed out in it.
-- **No updater.** HELVE does not check for a newer version of itself. Tauri's
-  updater needs a minisign keypair — free, unrelated to the certificate above —
-  a `latest.json` endpoint, and `bundle.createUpdaterArtifacts`. It is worth
-  wiring once releases happen on a cadence rather than one at a time.
+- **No update signing key yet.** The updater is wired end to end, but
+  `TAURI_SIGNING_PRIVATE_KEY` does not exist as a repository secret, so every
+  release until it does ships installers and no `latest.json`. See "Creating the
+  secret" above; it is one command and a commit.
+- **No rollback, and no channels.** There is one endpoint and it always names
+  the newest published release. Going back a version means downloading the
+  installer for it from `/releases` by hand.
 - **Releases are not marked prerelease.** `0.1.x` and the status badge already
-  say pre-alpha, and marking them would stop `/releases/latest` resolving,
-  which is the stable download URL worth having.
+  say pre-alpha, and marking them would stop `/releases/latest` resolving —
+  which is both the stable download URL worth having and, now, the URL the
+  updater's endpoint is built on. Marking one release prerelease would take
+  every installed HELVE off the update path silently.

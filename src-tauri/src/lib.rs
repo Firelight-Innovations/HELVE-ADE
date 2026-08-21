@@ -28,6 +28,7 @@ mod state;
 mod sync;
 mod tool;
 mod tool_frontend;
+mod updater;
 mod windows;
 
 use project::ProjectState;
@@ -49,6 +50,12 @@ pub fn run() {
             launch::from_second_instance(app, args);
         }))
         .plugin(tauri_plugin_opener::init())
+        // Reads `plugins.updater` out of tauri.conf.json — the endpoint and the
+        // public key. Registered unconditionally, including in a debug build
+        // where `updater::unsupported` refuses to use it: a plugin that is
+        // absent half the time is a second configuration to keep straight, and
+        // `app.updater()` failing is not the diagnostic that would explain it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Tool frontends mount as iframes on their own origin. In a release
         // build that origin is this scheme, backed by each tool's built `dist`
         // directory — see `tool_frontend`. In development the frames point at
@@ -137,6 +144,12 @@ pub fn run() {
         // anyone asking. Empty until `plugins::changed` syncs it, which the
         // setup below does once and every install does after.
         .manage(plugins::Watchers::default())
+        // Whether a newer HELVE exists, and how far through fetching it we are.
+        // One value for the process rather than one per window: two windows
+        // offering two different answers to "is there an update" is a bug with
+        // no correct resolution, and the event that keeps them level carries
+        // this exact state.
+        .manage(updater::UpdateStatus::default())
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -294,6 +307,13 @@ pub fn run() {
                 }
             }
 
+            // Last, and off this thread. It is a network round trip, nothing on
+            // screen waits for it, and a machine with no route to GitHub must
+            // reach `Ok(())` at exactly the same speed as one that does. It
+            // reads `updates.checkAutomatically` and returns immediately when
+            // that is off — see `updater::start`.
+            updater::start(handle.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -370,6 +390,9 @@ pub fn run() {
             git::git_hunks,
             git::git_head_text,
             search::search_content,
+            updater::update_state,
+            updater::check_for_update,
+            updater::install_update,
         ])
         // `build` + `run` rather than `run` alone, for one reason: a plugin core
         // is a **child process**, and nothing else in this application has one.

@@ -11,6 +11,7 @@ import {
   paneOfTab,
   paneTabs,
   toolPresentation,
+  updateNotice,
   type ClusterMember,
   type PaneNode,
   type TerminalBusy,
@@ -46,6 +47,7 @@ import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
 import { callApp, useApps, useOpenables } from "./state/apps";
 import { applyPreset, savePreset, useLayoutPresets } from "./state/presets";
 import { useClusterProject } from "./state/project";
+import { useUpdates } from "./state/updates";
 import {
   activateInstance,
   addCluster,
@@ -1176,6 +1178,13 @@ export default function WindowRoot({
   // one and the project when there is not.
   const git = useGitStatus(gitControl, activeClusterId);
 
+  // Whether a newer HELVE exists. Per-window, but not a per-window *answer*:
+  // the state is one value in Rust and arrives on `updater:changed`, so two
+  // windows can never offer two different versions. What is genuinely local is
+  // `asked` — a check started from this window's Help menu is this window's
+  // question, and the other one has no reason to start narrating.
+  const updates = useUpdates();
+
   // Which branch the graph should mark as *this* cluster's.
   //
   // It has to be resolved here rather than inside the panel, and not for
@@ -1328,6 +1337,7 @@ export default function WindowRoot({
                   onClear,
                   enabled: Boolean(focusedPaneId),
                 },
+                help: { checkForUpdates: updates.check },
               })}
             />
           ),
@@ -1535,7 +1545,11 @@ export default function WindowRoot({
             // worktree — so passing the handle whole removes a second reading
             // of a question already answered, and the totals cannot drift out
             // of step with the change lists they are totals of.
-            <StatusBar git={git.status} githubOk={!error} />
+            <StatusBar
+              git={git.status}
+              githubOk={!error}
+              update={updateNotice(updates.state, updates.asked, updates.install)}
+            />
           ),
         }}
       />

@@ -119,6 +119,13 @@ pub enum AppError {
     #[error("{0}")]
     Search(String),
 
+    /// The updater could not do the one thing asked of it. Flattened to a
+    /// string for `Git`'s reason — `tauri_plugin_updater::Error` names the
+    /// transport it failed in, which is not what the sentence on screen should
+    /// say, so `updater::describe` rewrites it before it gets here.
+    #[error("could not {op} an update: {reason}")]
+    Update { op: &'static str, reason: String },
+
     /// A settings write the schema refused: an unknown key, a value of the
     /// wrong type, or a choice that is not one of the options. Wrapped rather
     /// than flattened, because unlike everything else here the message is
