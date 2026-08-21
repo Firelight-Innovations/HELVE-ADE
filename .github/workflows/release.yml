@@ -1,0 +1,134 @@
+# Build the installers and attach them to a GitHub Release.
+#
+# The gate in `verify.yml` answers "is this branch correct". This file answers
+# "what does a person download", and the two are deliberately separate jobs
+# rather than one workflow with a conditional: a release build is a different
+# cargo profile, takes minutes rather than seconds, and must not run on every
+# pull request that touches a stylesheet.
+#
+# Nothing here signs anything. The MSI and the setup.exe are unsigned, so
+# Windows SmartScreen will warn about them, and the release notes have to say
+# so. A code signing certificate is a purchase rather than a configuration, and
+# when there is one it arrives as a repository secret and this file gains two
+# `env:` lines — not a rewrite. That is why signing is absent instead of
+# stubbed.
+#
+# Two triggers, doing genuinely different jobs:
+#
+#   push a v* tag     the real thing, and it publishes a *draft* release
+#   workflow_dispatch a dry run: same build, artifacts only, nothing published
+#
+# The dry run exists because the alternative way to test this file is to push a
+# tag, and a tag is the one thing here that cannot be taken back cleanly.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# `contents: write` is what creating a release needs, and it is the only
+# elevated permission in this repository. `verify.yml` is read-only and should
+# stay that way; this is the file where publishing lives.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust stable
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - run: pnpm install --frozen-lockfile
+
+      # Before anything expensive, and before anything is published. A tag that
+      # disagrees with package.json produces installers whose filenames state a
+      # version that is not the one compiled into them, and that is not
+      # detectable afterwards by looking at the artifact. Fail here instead.
+      #
+      # Skipped on workflow_dispatch, which has no tag to compare against.
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: node scripts/check-version.mjs --tag "${{ github.ref_name }}"
+
+      # No `Swatinem/rust-cache` here, unlike `verify.yml`, and that is a
+      # decision rather than an omission. Release-profile artifacts are a
+      # separate cache entry from the dev-profile ones that gate every pull
+      # request, GitHub evicts at 10 GB per repository, and a release runs a
+      # handful of times a month. Paying a cold build for something people
+      # download beats making the gate everyone waits for miss its cache.
+      - name: Build the installers
+        run: pnpm app:build
+
+      # `tauri build` names its own output, from `productName` and the version.
+      # Rather than reconstruct those filenames here — a second place that has
+      # to agree with `tauri.conf.json` — find what was actually produced.
+      - name: Collect the artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          # Actions runs bash with `set -e`, so a `find` over a directory
+          # that does not exist would kill the step with find's own error
+          # rather than the diagnostic below. Check first, and say what
+          # was actually there.
+          if [ ! -d target/release/bundle ]; then
+            echo "tauri build produced no bundle/ directory. target/release held:"
+            ls -la target/release || true
+            exit 1
+          fi
+          find target/release/bundle -type f \( -name '*.msi' -o -name '*-setup.exe' \) \
+            -exec cp {} artifacts/ \;
+          if [ -z "$(ls -A artifacts)" ]; then
+            echo "A bundle/ exists but held no installer. Its tree:"
+            find target/release/bundle -type f | head -50
+            exit 1
+          fi
+          ls -la artifacts
+
+      # The dry run stops here. Artifacts hang off the workflow run for a
+      # fortnight, which is long enough to download one and check it launches.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          name: helve-installers
+          path: artifacts/
+          retention-days: 14
+
+      # Draft, always. A draft is invisible until a person opens it, edits the
+      # notes and presses publish, which is the review step that a tag push on
+      # its own does not have.
+      - name: Publish a draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" artifacts/* --clobber
+          else
+            gh release create "${{ github.ref_name }}" artifacts/* \
+              --draft \
+              --title "HELVE ${{ github.ref_name }}" \
+              --generate-notes \
+              --notes-file .github/release-preamble.md
+          fi

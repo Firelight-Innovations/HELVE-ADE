@@ -51,9 +51,10 @@ who has never seen the repo.
 
 ## Releases and updates
 
-**[Releases and updates](releases.md)** says plainly what exists today (a
-manual `pnpm app:build`) and what does not (CI-driven builds, signing, an
-updater).
+**[Releases and updates](releases.md)** is how a build reaches a person: tag,
+build on GitHub, review the draft, publish. It also covers where the version
+lives — `package.json`, once, with everything else inheriting or checked — and
+what still does not exist (signing, an updater).
 
 ## Where this is all going
 
