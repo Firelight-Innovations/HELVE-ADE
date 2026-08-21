@@ -170,14 +170,18 @@ notify = "8"
 # configuration beside the one Tauri already links. `ureq` is the same job in a
 # fraction of the tree.
 #
-# `native-tls` rather than the default `rustls`, and not for the usual reasons.
-# ureq's rustls feature bundles Mozilla's CA list through `webpki-roots`, so the
-# trust store would be fixed at compile time. On Windows `native-tls` is
-# schannel, which verifies against the *machine's* store — what makes this work
-# behind a corporate proxy that terminates TLS with a private root, the exact
-# network a new developer at a company is most likely to be on. It also drops a
-# dependency whose CDLA-Permissive-2.0 would otherwise be the first data licence
-# in `deny.toml`.
+# `native-tls` rather than the default `rustls`, for the trust store rather than
+# for the crypto. ureq's rustls feature bundles Mozilla's CA list through
+# `webpki-roots`, fixing the trust store at compile time; on Windows
+# `native-tls` is schannel, which verifies against the *machine's* store. That
+# is what makes an install work behind a corporate proxy terminating TLS with a
+# private root — the exact network a new developer at a company is most likely
+# to be on, and not a case a bundled CA list can ever be taught about.
+#
+# It also avoids a second copy of Mozilla's roots. `tauri-plugin-updater`
+# already brings `webpki-root-certs` in through reqwest, which is why
+# CDLA-Permissive-2.0 is in `deny.toml`; this needing it too would have been
+# the same data vendored twice for two different fetchers.
 ureq = { version = "3", default-features = false, features = [
     "native-tls-no-default",
     "json",
