@@ -51,8 +51,45 @@ Two limits worth knowing before you read a result:
   `recent_errors` means nothing went wrong *in those two places*. Every answer repeats this in its
   `covers` field; do not report it as "no errors" without the qualifier.
 
-This does not replace looking at the screen — there is still no DOM, no screenshot and no input
-from here. It replaces guessing about state that was previously unreachable.
+This does not replace looking at the screen. For that, see below.
+
+## Seeing and clicking the UI: `pnpm ui`
+
+**`pnpm ui` drives HELVE's real interface** — screenshots, DOM, and real mouse and keyboard input —
+by talking Chrome DevTools Protocol to the WebView2 the app already runs. Not a browser serving the
+frontend: the real shell with the real Rust backend under it.
+
+```sh
+pnpm ui:build                 # once — builds an agent-owned binary (own identifier)
+pnpm ui launch                # start it with the debug port open
+pnpm ui snapshot              # every interactive element, with a ref and a position
+pnpm ui click e12             # click a ref, or any CSS selector
+pnpm ui type "hello"          # type into whatever has focus
+pnpm ui key Enter
+pnpm ui shot out.png          # screenshot — then Read the file to actually look at it
+pnpm ui eval "document.title"
+pnpm ui close
+```
+
+`snapshot` walks into app iframes, so `e19 app button (305,301) New Project` is Home's own content,
+not the shell's. Refs are renumbered by every `snapshot` — take a fresh one before clicking.
+
+Three things to know:
+
+- **It launches its own instance**, built by `pnpm ui:build` with the identifier
+  `com.firelightinnovations.helve.agent`. That is what lets it run beside a HELVE Braden started
+  without single-instance swallowing it. It gets a private `%APPDATA%` tree, so it starts empty and
+  cannot corrupt his layout or project list.
+- **Never point this at a build a user is running.** `withGlobalTauri` is on and `csp` is null, so
+  anything holding the debug port can call every `#[tauri::command]` through
+  `window.__TAURI__.core.invoke`. The port only opens for a process deliberately launched with the
+  environment variable, and it must stay that way.
+- **Avoid clicking anything that opens a native dialog** — folder pickers and the like block the
+  webview, and the session stops responding until someone dismisses it by hand. `New Project`,
+  `Open Project` and `Clone Project` on the Home screen are the ones to leave alone.
+
+`pnpm ui console` only reports what is logged while it is listening; CDP keeps no backlog. For
+failures that already happened, `pnpm probe recent_errors` is the one that remembers.
 
 ## Verification
 
