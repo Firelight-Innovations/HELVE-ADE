@@ -5,9 +5,8 @@
 # HELVE-ADE
 
 <p>
-  <strong>An Agentic Development Environment.</strong><br/>
-  One window. Your tools, your terminals, your repository, and your coding agent,
-  all in the same frame.
+  <strong>An Agentic Development Environment (ADE).</strong><br/>
+  One window for your tools, your terminal, your files, and your coding agent.
 </p>
 
 <p>
@@ -31,31 +30,74 @@
 
 ## What HELVE is
 
-HELVE is one shell that separate authoring tools mount into. VS Code is one
-shell that extensions mount into, and HELVE works the same way. The difference
-is the starting assumption. HELVE is built around working next to a coding
-agent, not around bolting one on later.
+HELVE is an Agentic Development Environment, or ADE. An ADE is a desktop app.
+It holds your development tools in one window. It also holds a coding agent
+that works alongside you.
 
-This repository holds the **orchestrator**, which is the window itself. The
-orchestrator loads your tools, holds the shared code they run on, and gets the
-stack running.
+VS Code works in a similar way. VS Code is a code editor. Extensions add tools
+to VS Code. HELVE works the same way: tools mount into HELVE.
 
-HELVE is a development tool, not a runtime. It does not ship whatever gets
-built on top of it.
+HELVE makes one assumption that VS Code does not. HELVE assumes you work next
+to a coding agent from the start.
+
+This repository holds the orchestrator. The orchestrator is the main window
+itself. It loads your tools. It also runs the code that your tools share.
+
+HELVE is a development tool. It does not run the software that you build with
+it.
+
+## What makes HELVE different
+
+Most tools bolt a coding agent onto an existing code editor. HELVE takes a
+different approach: it keeps design and code in one place.
+
+<table>
+<tr>
+<td>
+
+Two design tools mount into HELVE.
+
+**A product design tool.** Use it to write a product requirements document, or
+PRD. A PRD describes what to build and why.
+
+**A technical design tool.** Use it to turn the PRD into a technical design. A
+technical design specifies the architecture, the interfaces, and the
+boundaries between systems.
+
+A team of coding agents reads both documents and builds the software. The
+agents work inside an environment that enforces strict code quality rules.
+
+HELVE traces every step. The trace starts at the PRD. It runs through the
+technical design, the code, the tests, and the build. You can follow any line
+of code back to the decision that produced it.
+
+This traceability is the idea that sets HELVE apart from other development
+environments.
+
+[Forger](https://github.com/Firelight-Innovations/helve-forger) builds the
+technical design tool. [Journeyman](https://github.com/Firelight-Innovations/helve-journeyman)
+builds the product design tool. Neither tool is built yet.
+[What does not work yet](#what-does-not-work-yet) has the full list.
+
+</td>
+</tr>
+</table>
 
 ## The window
 
-Five bands stack in a column. Only the middle one grows.
+HELVE has one main window. The window has five bands. The bands stack in a
+column. Only the middle band grows or shrinks. The other four bands stay a
+fixed height.
 
 ![The five bands of the HELVE window: title bar, switcher bar, tool window, terminal band, status bar](assets/ui/window.png)
 
-Every tutorial uses these names, so they are worth four minutes.
-[The HELVE window](docs/user/tutorials/the-window.md) walks through each one.
+[The HELVE window](docs/user/tutorials/the-window.md) tutorial explains each
+band. Read it first. Every other tutorial uses these five names.
 
 ## What works today
 
-The window runs. Its own apps run inside it: Home, the File Explorer, the File
-Viewer, and Tutorials. Rust answers all of them.
+The window runs. Its own tools run inside it: Home, the File Explorer, the
+File Viewer, and Tutorials. Rust answers all of them.
 
 <table>
 <tr>
@@ -63,10 +105,11 @@ Viewer, and Tutorials. Rust answers all of them.
 
 ### Panes and clusters
 
-A **cluster** is one workspace, with its own project and its own arrangement of
-panes. Split a pane and the app beside it keeps working. Clusters sit along the
-switcher bar; switching clusters swaps the panes and the terminals under them
-together.
+A cluster is one workspace. Each cluster has its own project and its own
+arrangement of panes. Split a pane. The tool beside it keeps working.
+
+Clusters sit along the switcher bar. Switch clusters. The panes and the
+terminals under them swap together.
 
 </td>
 <td width="50%">
@@ -78,9 +121,11 @@ together.
 
 ### Terminals
 
-The terminal band runs the full width, under your panes. Ctrl and the key under
-Escape opens and closes it. Terminals belong to the cluster, not to the window,
-so switching clusters swaps the band with everything else.
+The terminal band runs the full width, under your panes. Press Ctrl and the
+key under Escape to open and close it.
+
+Terminals belong to the cluster, not to the window. Switch clusters. The
+terminal band swaps with everything else.
 
 </td>
 <td width="50%">
@@ -92,8 +137,8 @@ so switching clusters swaps the band with everything else.
 
 ### Search
 
-`Ctrl+K` searches the open project. Results, the file they came from, and a
-preview sit on one screen.
+Press `Ctrl+K` to search the open project. The results, the file each result
+came from, and a preview all sit on one screen.
 
 </td>
 <td width="50%">
@@ -105,9 +150,11 @@ preview sit on one screen.
 
 ### Source control
 
-The panel on the right shows the branch, what is staged, and what is not. A box
-underneath takes the commit message. `Ctrl+B` collapses the panel and brings it
-back. Worktrees are there too, so a second branch does not cost a second clone.
+The panel on the right shows your branch, your staged changes, and your
+unstaged changes. A box below takes your commit message. Press `Ctrl+B` to
+collapse the panel and bring it back.
+
+Git worktrees are here too. A second branch does not need a second clone.
 
 </td>
 <td width="50%">
@@ -119,11 +166,12 @@ back. Worktrees are there too, so a second branch does not cost a second clone.
 
 ### MCP servers for your agent
 
-HELVE hosts MCP servers and writes them into `.mcp.json` for you. Turn one on,
-and your coding agent can call it.
+MCP stands for Model Context Protocol. MCP lets your coding agent call
+external tools. HELVE hosts MCP servers for you. It writes each one into
+`.mcp.json`. Turn on a server. Your coding agent can then call it.
 
-[The MCP server manager](docs/mcp-server-manager.md) says which servers exist
-and what earns a new one.
+[The MCP server manager](docs/mcp-server-manager.md) explains which servers
+exist and when a new one is worth adding.
 
 </td>
 <td width="50%">
@@ -135,8 +183,8 @@ and what earns a new one.
 
 ### Settings
 
-Every setting is generated from one schema, so a row you can see is a value
-something reads.
+HELVE generates every setting from one schema. A row you can see is a value
+that something reads.
 
 </td>
 <td width="50%">
@@ -147,29 +195,40 @@ something reads.
 
 ## What does not work yet
 
-HELVE is **pre-alpha**, and the honest list is short.
+HELVE is pre-alpha. The honest list is short.
 
-- **The stack tools are not integrated.** Forger and Journeyman are placeholder
-  repositories. A tool's core is a child process, and the broker that reaches
-  it is not built. The switcher shows the orchestrator's own apps only.
-- **No installer exists.** Building from source is the only way to run HELVE.
+- **The design and stack tools are not built yet.** Forger and Journeyman are
+  placeholder repositories today. A tool's core runs as a child process. HELVE
+  does not yet have the broker that starts and talks to that process. The
+  switcher bar shows only the orchestrator's own tools.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
-  design is Windows-only in principle. No machine here runs them.
-- **Some menu items do nothing.** The command palette, the **Run** menu and the
-  four **Help** items are drawn already. The shape of the menu is settled, but
-  none of those items acts yet.
+  design is Windows-only. No machine here runs them yet.
+- **Some menu items do nothing.** The command palette, the Run menu, and the
+  four Help items already exist. The shape of the menu is settled. None of
+  those items acts yet.
 
 ## Install and run
 
-Every prerequisite is a Windows prerequisite, and each one is a one-time step.
+### Download the installer
+
+Go to the [releases page](https://github.com/Firelight-Innovations/HELVE-ADE/releases).
+Download the latest `.exe` file. Run it. HELVE installs itself and adds a
+shortcut to your Start menu.
+
+### Build from source
+
+Use this option to build HELVE yourself, or to contribute code to it.
+
+Every prerequisite below is a Windows prerequisite. Install each one once.
 
 - **Rust** (stable): `winget install Rustlang.Rustup`
-- **MSVC build tools**: Visual Studio Build Tools 2022, with the *Desktop
-  development with C++* workload. Rust uses the MSVC linker on Windows.
-- **WebView2 runtime**: already on Windows 11.
-- **Node 20+** and **pnpm**: `npm i -g pnpm`
+- **MSVC build tools**: install Visual Studio Build Tools 2022. Choose the
+  *Desktop development with C++* workload. Rust needs the MSVC linker on
+  Windows.
+- **WebView2 runtime**: Windows 11 already has this.
+- **Node 20+** and **pnpm**: run `npm i -g pnpm`.
 
-Then:
+Then run:
 
 ```sh
 git clone https://github.com/Firelight-Innovations/HELVE-ADE.git
@@ -178,47 +237,47 @@ pnpm install
 pnpm app
 ```
 
-The first `pnpm app` compiles the whole Rust dependency tree, which takes
-several minutes. Later runs are fast.
+The first `pnpm app` command compiles the whole Rust dependency tree. This
+step takes several minutes. Later runs are fast.
 
 ## Learn your way around
 
-[Ten short tutorials](docs/user/tutorials/README.md) cover the window, panes and
-clusters, files, search, terminals, git, MCP servers and settings. HELVE ships
-the same ten pages in its own Tutorials app. Read them beside the thing they
-describe.
+[Ten short tutorials](docs/user/tutorials/README.md) cover the window, panes
+and clusters, files, search, terminals, git, MCP servers, and settings. HELVE
+ships the same ten pages in its own Tutorials tool. Read each tutorial beside
+the thing it describes.
 
 Start with [The HELVE window](docs/user/tutorials/the-window.md).
 
 ## The stack
 
-HELVE is **multi-repo** on purpose. Each tool is its own repository, and
-`helve.toml` pins the exact version of each one this orchestrator expects.
+HELVE is multi-repo on purpose. Each tool is its own repository. `helve.toml`
+pins the exact version of each tool that this orchestrator expects.
 
 | Repository | What it is | Status |
 |---|---|---|
-| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software. Specs out the stack and its boundaries. | Placeholder, README only |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Design prototyping software. Rough, interactive systems built fast. | Placeholder, README only |
+| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | The technical design tool. Turns a PRD into an architecture and a set of system specs. | Placeholder, README only |
+| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | The product design tool. Writes the PRD and prototypes rough, interactive systems. | Placeholder, README only |
 
 ![The stack list, showing each tool and its health](assets/ui/stack.png)
 
-**Only this repository has code in it today.** The other two are a `v0.1.0` tag
-against a README. That tag is what `helve.toml` pins, which is why HELVE reports
-them as `unversioned` rather than matching. The pin holds a shape, not a
-release.
+Only this repository has code in it today. The other two repositories each
+have a `v0.1.0` tag against a README. They have nothing else. `helve.toml`
+pins that tag, so HELVE reports both tools as `unversioned` rather than
+matching. The pin holds a shape, not a release.
 
-On a fresh machine every tool reads **not installed**. That reading is correct,
+On a fresh machine, every tool reads `not installed`. That reading is correct,
 not broken. [The stack, end to end](docs/user/tutorials/the-stack.md) explains
 why.
 
 ## Contributing
 
-Pull requests are welcome. Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before
-your first one. The guide covers getting a build, the four checks every pull
-request must pass, and what will not be accepted.
+Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. It
+explains how to get a build running, the four checks every pull request must
+pass, and what we will not accept.
 
-Then read the **[developer docs](docs/dev/README.md)**. Those pages map the
-technical material:
+Then read the [developer docs](docs/dev/README.md). These pages cover the
+technical details:
 
 - [How the orchestrator is built](docs/dev/architecture.md)
 - [The rule book](STANDARDS.md)
@@ -226,29 +285,32 @@ technical material:
 - [What exists around releases](docs/dev/releases.md)
 
 The maintainer builds three pieces directly: the app download system, Forger,
-and Journeyman. The reason is not a closed door. Nobody should spend a weekend
-on a foundation that is already half-written. Features and quality-of-life work on
-top of those three is where an outside change lands best. A roadmap and a set of
-starter issues are coming to say where.
+and Journeyman. This is not a closed door. Nobody should spend a weekend on a
+foundation that already has an owner. Outside contributions fit best as
+features and quality-of-life work on top of those three pieces. A roadmap and
+a set of starter issues are coming. They will point to exactly where.
 
-Found a bug, or want something that is not here? Open an issue. Want to talk
-about it first? Open a
+Found a bug? Open an issue. Want something that is not here? Open an issue
+too. Want to talk about an idea first? Open a
 [discussion](https://github.com/Firelight-Innovations/HELVE-ADE/discussions).
 
 ## License
 
-HELVE is Apache-2.0. [LICENSE](LICENSE) has the full text, and
-[NOTICE](NOTICE) is the file a redistributor carries with it.
+HELVE uses the Apache-2.0 license. [LICENSE](LICENSE) has the full text.
+[NOTICE](NOTICE) is the file that a redistributor must carry with it.
 
-Apache rather than MIT, because of the patent grant. Third-party tools load into
-this shell through the tool protocol, and MIT says nothing about patents at all.
-Not GPL or AGPL under any circumstances. A copyleft core hands someone a real
-argument that the private tools mounting into it are derivative works.
+HELVE uses Apache, not MIT, because of the patent grant. Third-party tools
+load into HELVE through the tool protocol. MIT says nothing about patents.
+HELVE does not use GPL or AGPL, under any circumstances. A copyleft license
+would give someone a real argument that private tools mounting into HELVE are
+derivative works.
 
-The license covers the code and not the names. HELVE, Forger and Journeyman, and
-the marks that go with them, are trademarks of Firelight Innovations.
+The license covers the code. It does not cover the names. HELVE, Forger, and
+Journeyman, and the marks that go with them, are trademarks of Firelight
+Innovations.
 
-Fork this, sell what you build on it, and say plainly that your work is based on
-HELVE. All of that is fine. Shipping it *as* HELVE is not. Once the source is
-freely copyable, the name is the last thing left. The name is what tells a user
-which build runs tools on their machine.
+You can fork HELVE. You can sell what you build on it. State plainly that your
+work is based on HELVE. All of that is fine.
+
+Do not ship your fork as HELVE itself. The code is free to copy. The name is
+not. The name tells a user which build runs the tools on their machine.
