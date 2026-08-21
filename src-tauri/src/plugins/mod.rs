@@ -11,6 +11,8 @@
 
 pub mod broker;
 pub mod catalog;
+pub mod install;
+pub mod remote;
 pub mod store;
 pub mod watch;
 
@@ -152,9 +154,7 @@ impl Registry {
             .lock_or_panic()
             .iter()
             .find(|r| r.id == id)
-            .map(|r| match &r.source {
-                Source::Folder { path } => path.clone(),
-            })
+            .map(|r| r.source.path().clone())
     }
 
     /// Add a record and persist. The caller has already validated the checkout.
@@ -245,9 +245,7 @@ pub fn resolve_all(registry: &Registry) -> Vec<(Record, Result<ResolvedPlugin, R
         .records()
         .into_iter()
         .map(|record| {
-            let resolved = match &record.source {
-                Source::Folder { path } => resolve_one(&record, path),
-            };
+            let resolved = resolve_one(&record, record.source.path());
             (record, resolved)
         })
         .collect()
@@ -336,7 +334,7 @@ pub fn rows(app: &AppHandle) -> Vec<PluginRow> {
     resolve_all(&app.state::<Registry>())
         .into_iter()
         .map(|(record, result)| {
-            let Source::Folder { path } = &record.source;
+            let path = record.source.path();
             match result {
                 Ok(resolved) => PluginRow::installed(resolved, app),
                 Err(err) => PluginRow {
@@ -386,6 +384,16 @@ pub enum InstallError {
     /// resolved before the registry is consulted, so a plugin claiming one would
     /// be permanently unreachable rather than merely confusing.
     ShadowsAnApp { id: String },
+    /// Something went wrong between here and GitHub. Its own type because every
+    /// variant of it is a sentence a person can act on, and flattening them into
+    /// this enum would lose that.
+    Remote(remote::RemoteError),
+}
+
+impl From<remote::RemoteError> for InstallError {
+    fn from(err: remote::RemoteError) -> Self {
+        Self::Remote(err)
+    }
 }
 
 impl std::fmt::Display for InstallError {
@@ -403,6 +411,7 @@ impl std::fmt::Display for InstallError {
                 f,
                 "`{id}` is the id of an app this build ships, so a plugin cannot use it"
             ),
+            Self::Remote(err) => write!(f, "{err}"),
         }
     }
 }
@@ -456,8 +465,29 @@ pub fn uninstall(app: &AppHandle, id: &str) -> bool {
     // leave the process running until exit.
     app.state::<Broker>().stop(id);
 
+    // Read the source before the record goes, because whether the directory is
+    // ours to delete is recorded *on* the record. A folder install points at a
+    // working tree the person already had and must survive; a downloaded
+    // release was put there by this application and would otherwise be left
+    // behind with nothing referring to it.
+    let owned = app
+        .state::<Registry>()
+        .records()
+        .into_iter()
+        .find(|record| record.id == id)
+        .filter(|record| record.source.is_owned())
+        .map(|record| record.source.path().clone());
+
     let removed = app.state::<Registry>().remove(app, id);
     if removed {
+        if let Some(directory) = owned {
+            if let Err(e) = std::fs::remove_dir_all(&directory) {
+                // Not fatal, and deliberately not a failed uninstall: the
+                // record is gone, which is what was asked for. A directory left
+                // behind is untidy, not broken.
+                eprintln!("helve: could not delete {}: {e}", directory.display());
+            }
+        }
         changed(app);
     }
     removed

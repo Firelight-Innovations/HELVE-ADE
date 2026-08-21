@@ -160,3 +160,41 @@ rand = "0.9"
 # `recv_timeout` until it goes quiet, which is the whole of what the debouncer
 # crate does for this case.
 notify = "8"
+
+# Installing an app from GitHub — see `src/plugins/remote.rs`.
+#
+# `ureq` rather than `reqwest`, which is the reflex. Every call this makes is a
+# blocking request from inside `spawn_blocking`: resolve a release, download an
+# asset, and nothing else. `reqwest` would bring an async stack to be driven
+# from a thread that immediately blocks on it, along with a second TLS
+# configuration beside the one Tauri already links. `ureq` is the same job in a
+# fraction of the tree.
+#
+# `native-tls` rather than the default `rustls`, and not for the usual reasons.
+# ureq's rustls feature bundles Mozilla's CA list through `webpki-roots`, so the
+# trust store would be fixed at compile time. On Windows `native-tls` is
+# schannel, which verifies against the *machine's* store — what makes this work
+# behind a corporate proxy that terminates TLS with a private root, the exact
+# network a new developer at a company is most likely to be on. It also drops a
+# dependency whose CDLA-Permissive-2.0 would otherwise be the first data licence
+# in `deny.toml`.
+ureq = { version = "3", default-features = false, features = [
+    "native-tls-no-default",
+    "json",
+    "gzip",
+] }
+
+# A release asset is a zip. `default-features = false` drops bzip2, zstd and the
+# rest of the codec list; a release built by the workflow in `docs/dev/
+# releases.md` is deflate, and a format nobody produces is a decompressor
+# nobody audits.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Checksums. The distribution decision in `docs/tool-protocol.md` §6 is a
+# release artifact verified before anything executes, and this is the verifying.
+sha2 = "0.10"
+
+# The token for a private repository, in the OS credential store rather than in
+# `plugins.json`. Windows Credential Manager here; the crate abstracts the other
+# two platforms for the day they are supported.
+keyring = { version = "3", features = ["windows-native"] }

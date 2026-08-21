@@ -225,6 +225,58 @@ export function listCatalog(): Promise<CatalogRow[]> {
   return invoke<CatalogRow[]>("list_catalog");
 }
 
+/**
+ * Install from a GitHub repository — a URL, or `owner/name`.
+ *
+ * `expectedId` comes from a library row, where the catalog already claims which
+ * package this is; a release whose manifest disagrees is refused. Omit it when
+ * the user typed the address themselves, since nothing has promised anything.
+ *
+ * Slow, and reports on `INSTALL_PROGRESS_EVENT` while it runs.
+ */
+export function installPluginRepo(
+  input: string,
+  expectedId?: string,
+  privateHint?: boolean,
+): Promise<PluginRow> {
+  return invoke<PluginRow>("install_plugin_repo", { input, expectedId, privateHint });
+}
+
+/** Whether a GitHub token is stored. Never returns the token itself. */
+export function hasGithubToken(): Promise<boolean> {
+  return invoke<boolean>("has_github_token");
+}
+
+/** Store a GitHub token, or clear it with an empty string. */
+export function setGithubToken(token: string): Promise<void> {
+  return invoke<void>("set_github_token", { token });
+}
+
+/** Mirrors `plugins::install::Phase`. */
+export type InstallPhase =
+  "resolving" | "downloading" | "verifying" | "unpacking" | "done" | "failed";
+
+/** Mirrors `plugins::install::Progress`. */
+export interface InstallProgress {
+  /** The catalog id, or the repo address when there is none. Key rows on this. */
+  key: string;
+  name: string;
+  phase: InstallPhase;
+  received: number;
+  /** 0 when the server sent no length — render indeterminate, not 0%. */
+  total: number;
+  /** Set only on `failed`, and it is the sentence to show. */
+  error: string | null;
+}
+
+/** Mirrors `plugins::install::PROGRESS_EVENT`. */
+export const INSTALL_PROGRESS_EVENT = "plugins:install-progress";
+
+/** Every install's progress, from every window. Filter on `key`. */
+export function onInstallProgress(cb: (p: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>(INSTALL_PROGRESS_EVENT, (event) => cb(event.payload));
+}
+
 /** Install a plugin from a folder already on this machine. */
 export function installPluginFolder(path: string): Promise<PluginRow> {
   return invoke<PluginRow>("install_plugin_folder", { path });
