@@ -28,8 +28,34 @@ fn reference_tool_manifest_loads_from_disk() {
     // and the protocol says the host rejects a tool whose `helve/hello` reply
     // disagrees with this — so it is the one field with two sources of truth.
     assert_eq!(manifest.tool.id, "echo");
-    assert_eq!(manifest.core.args, vec!["--helve-rpc".to_string()]);
-    assert!(manifest.frontend.dev_url.is_some());
+    assert_eq!(
+        manifest.core.expect("the example declares a [core]").args,
+        vec!["--helve-rpc".to_string()]
+    );
+    assert!(manifest
+        .frontend
+        .expect("the example declares a [frontend]")
+        .dev_url
+        .is_some());
+}
+
+/// The example declares no `[[surface]]`, and must not have to.
+///
+/// This is the regression guard for the change that made a package carry
+/// several surfaces: every manifest written before that key existed still has
+/// to load, and still has to end up with something mountable. If adding a
+/// surface to the example is ever the fix for this test, the format moved in a
+/// way `docs/tool-protocol.md` §6 does not permit under protocol 1.
+#[test]
+fn reference_tool_gets_one_synthesised_surface() {
+    let manifest = ToolManifest::load(&echo_tool_checkout()).unwrap();
+
+    assert_eq!(manifest.surfaces.len(), 1);
+    assert_eq!(
+        manifest.surfaces[0].id,
+        helve_tool_manifest::DEFAULT_SURFACE_ID
+    );
+    assert_eq!(manifest.surfaces[0].path, None, "serves the bundle root");
 }
 
 #[test]
@@ -39,7 +65,9 @@ fn reference_tool_frontend_path_stays_inside_the_checkout() {
 
     // `load` already rejects an escaping path, so this is really asserting
     // that the example models the thing tool authors should copy.
-    let dist = manifest.resolve_dist(&checkout);
+    let dist = manifest
+        .resolve_dist(&checkout)
+        .expect("the example declares a [frontend]");
     assert!(
         dist.starts_with(&checkout),
         "dist escaped: {}",

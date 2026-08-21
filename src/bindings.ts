@@ -107,8 +107,14 @@ export function listApps(): Promise<AppInfo[]> {
   return invoke<AppInfo[]>("list_apps");
 }
 
-/** Mirrors `apps::OpenableKind`. How the shell opens the thing, in one word. */
-export type OpenableKind = "app" | "terminal";
+/**
+ * Mirrors `apps::OpenableKind`. How the shell opens the thing, in one word.
+ *
+ * `plugin` opens exactly as `app` does. It is a separate word because an app's
+ * `invoke` is answered inside the orchestrator while a plugin's goes over the
+ * broker to its own process, and its frontend address resolves on demand.
+ */
+export type OpenableKind = "app" | "plugin" | "terminal";
 
 /**
  * Mirrors `apps::Openable` — one row in the Apps menu.
@@ -123,6 +129,10 @@ export type OpenableKind = "app" | "terminal";
  *
  * So the two lists stay apart: `AppInfo` is "things with a frontend", this is
  * "things you can open". `kind` is what the caller routes on.
+ *
+ * A plugin surface has no `url` here either, for a different reason with the
+ * same consequence: where its frontend is served from can change while the
+ * shell runs. Its `id` is a `<package>.<surface>` address, not a bare app id.
  */
 export interface Openable {
   id: string;
@@ -132,11 +142,100 @@ export interface Openable {
 }
 
 /**
- * Everything the Apps menu offers: every app, then a terminal. Compiled in, so
- * — like `listApps` — this is worth asking exactly once.
+ * Everything the Apps menu offers: every app, every listed plugin surface, then
+ * a terminal.
+ *
+ * **Unlike `listApps`, this is not asked once.** Installing, removing, enabling
+ * or reloading a plugin changes it, so re-ask on `PLUGINS_CHANGED_EVENT`. Each
+ * call re-reads the installed manifests off disk.
  */
 export function listOpenables(): Promise<Openable[]> {
   return invoke<Openable[]>("list_openables");
+}
+
+// --- plugins ----------------------------------------------------------------
+
+/** Mirrors `plugins::ResolvedSurface`. One thing a plugin can put in a pane. */
+export interface PluginSurface {
+  /** `<package>.<surface>` — what goes wherever an app id goes. */
+  address: string;
+  name: string;
+  description: string;
+  /** In the Apps menu, or only reachable through `helve/open`. */
+  listed: boolean;
+}
+
+/** Mirrors `plugins::ResolvedPlugin` — a package, read off its checkout. */
+export interface ResolvedPlugin {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  path: string;
+  enabled: boolean;
+  surfaces: PluginSurface[];
+  /** Declares a core. Tells a backend-only plugin from a broken one, which
+   *  otherwise look identical: no surfaces either way. */
+  hasCore: boolean;
+}
+
+/**
+ * Mirrors `plugins::PluginRow` — one row in the plugin management screen.
+ *
+ * Flat with an `error` rather than a discriminated union, deliberately against
+ * STANDARDS §6.2: `id` and `path` come from the install record and are known
+ * *even when the plugin will not load*, which is exactly when they are needed.
+ */
+export interface PluginRow {
+  id: string;
+  path: string;
+  enabled: boolean;
+  resolved: ResolvedPlugin | null;
+  error: string | null;
+  running: boolean;
+}
+
+/** Every installed plugin, failures kept. Re-reads every manifest off disk. */
+export function listPlugins(): Promise<PluginRow[]> {
+  return invoke<PluginRow[]>("list_plugins");
+}
+
+/** Install a plugin from a folder already on this machine. */
+export function installPluginFolder(path: string): Promise<PluginRow> {
+  return invoke<PluginRow>("install_plugin_folder", { path });
+}
+
+/** Pick a folder and install it. `null` is a cancelled dialog, not a failure. */
+export function chooseAndInstallPlugin(): Promise<PluginRow | null> {
+  return invoke<PluginRow | null>("choose_and_install_plugin");
+}
+
+/** Forget a plugin and stop its core. Never deletes the folder it points at. */
+export function uninstallPlugin(id: string): Promise<boolean> {
+  return invoke<boolean>("uninstall_plugin", { id });
+}
+
+/** Stop a plugin's core and re-read its manifest — the watcher's manual form. */
+export function reloadPlugin(id: string): Promise<boolean> {
+  return invoke<boolean>("reload_plugin", { id });
+}
+
+/** Turn a plugin's surfaces on or off without forgetting it. */
+export function setPluginEnabled(id: string, enabled: boolean): Promise<boolean> {
+  return invoke<boolean>("set_plugin_enabled", { id, enabled });
+}
+
+/** Mirrors `plugins::CHANGED_EVENT`. */
+export const PLUGINS_CHANGED_EVENT = "plugins:changed";
+
+/**
+ * The installed set moved: something was installed, removed, toggled or
+ * reloaded. Carries no payload deliberately — there is more than one window,
+ * and a payload assembled once would have to describe whose registry state it
+ * was, so each listener re-asks instead.
+ */
+export function onPluginsChanged(cb: () => void): Promise<UnlistenFn> {
+  return listen(PLUGINS_CHANGED_EVENT, () => cb());
 }
 
 /**

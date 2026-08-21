@@ -140,3 +140,13 @@ tokio-util = "0.7"
 # out of casual reach, but a port is scannable by anything else on the machine
 # and these tools reach into the live application.
 rand = "0.9"
+
+# Noticing that a plugin under development has been rebuilt, so its core can be
+# restarted without anyone asking — see `src/plugins/watch.rs`.
+#
+# The alternative was `notify-debouncer-mini`, which exists because raw `notify`
+# reports every write a build makes and almost nobody wants that. Rejected for
+# one dependency's worth of one loop: `watch::debounce` drains the channel with
+# `recv_timeout` until it goes quiet, which is the whole of what the debouncer
+# crate does for this case.
+notify = "8"

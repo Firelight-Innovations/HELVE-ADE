@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { HelveRpcError, invoke, openIn, reportPainted } from "@helve/bridge";
 import { PRODUCT_NAME, TAGLINE, WORDMARK } from "./branding.generated";
-import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark } from "./icons";
+import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark, PackagePlus } from "./icons";
 import WorktreeDialog from "./WorktreeDialog";
 import "./home.css";
 
@@ -69,6 +69,11 @@ const START: {
     icon: GitBranch,
     unavailable: "Not built yet. Clone the repository yourself, then use Open Project.",
   },
+  // Not a way a *session* starts, which is what the other three are — but it is
+  // the same gesture (pick a folder, something appears) and this is the only
+  // screen a person reliably passes through. It sits last so the three that do
+  // start a session keep their order and their prominence.
+  { method: "home/install-plugin", label: "Install App", icon: PackagePlus },
 ];
 
 /**
