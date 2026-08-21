@@ -570,12 +570,7 @@ fn fetch_items(
 /// upstream's pull requests. Here they are always the same repository reached
 /// the same way, so one failing means the other is about to, and a half-list
 /// under a warning would be a state that never honestly occurs.
-fn fetch_feed(
-    repo: &Repo,
-    scope: GithubScope,
-    token: Option<&str>,
-    per_page: i64,
-) -> GithubFeed {
+fn fetch_feed(repo: &Repo, scope: GithubScope, token: Option<&str>, per_page: i64) -> GithubFeed {
     let mut items = match fetch_items(repo, GithubItemKind::Issue, scope, token, per_page) {
         Ok(items) => items,
         Err(trouble) => {
@@ -695,6 +690,49 @@ pub async fn github_feed(
     });
 
     Ok(feed)
+}
+
+/// Open one item on github.com in the user's browser.
+///
+/// Here rather than through the `opener` plugin's own JS binding, and the
+/// difference is the point: `opener:default` in `capabilities/default.json`
+/// would let the renderer hand the operating system *any* URL, and this
+/// feature only ever needs to open one shape of one host. Refusing everything
+/// else in Rust is a smaller permission than the capability file could express,
+/// so the capability is left exactly as it was.
+///
+/// The URL arrives back from the frontend having originally come from GitHub's
+/// own `html_url`, and is re-checked anyway. A value that has been through the
+/// renderer is a value the renderer could have changed.
+#[tauri::command]
+pub fn github_open_in_browser(app: AppHandle, url: String) -> Result<()> {
+    if !is_item_url(&url) {
+        return Err(crate::error::AppError::OpenUrl {
+            url,
+            reason: "only a github.com address can be opened from this panel".to_string(),
+        });
+    }
+
+    tauri_plugin_opener::OpenerExt::opener(&app)
+        .open_url(&url, None::<&str>)
+        .map_err(|source| crate::error::AppError::OpenUrl {
+            url,
+            reason: source.to_string(),
+        })
+}
+
+/// Whether a URL is an `https://github.com/...` page and nothing else.
+///
+/// `https` only, and a literal host match rather than a `contains`: a
+/// `https://github.com.evil.example/` would satisfy a substring test and is
+/// precisely what this is here to refuse. No userinfo either — a
+/// `https://user:pass@github.com/` is a shape nothing here produces and one
+/// that hides the real host behind an `@`.
+fn is_item_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://github.com/") else {
+        return false;
+    };
+    !rest.is_empty() && !url.contains('@') && !rest.contains("..")
 }
 
 #[cfg(test)]

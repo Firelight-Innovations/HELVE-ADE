@@ -73,6 +73,18 @@ pub enum AppError {
         reason: String,
     },
 
+    /// A web address the shell was asked to hand to the browser and either
+    /// would not or could not. Flattened for `Git`'s reason: the cause is
+    /// either a refusal written in this crate or a `tauri_plugin_opener::Error`
+    /// whose whole value is its message, and the only consumer prints it.
+    ///
+    /// Distinct from [`Self::Reveal`], which is about a checkout on this
+    /// machine. The two read as one thing and are not: one hands a path to the
+    /// file manager, the other hands a URL to the browser, and only the second
+    /// can be refused for *where it points*.
+    #[error("could not open {url}: {reason}")]
+    OpenUrl { url: String, reason: String },
+
     #[error("could not create window `{label}`: {source}")]
     Window {
         label: String,

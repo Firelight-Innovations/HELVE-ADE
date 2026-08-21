@@ -359,6 +359,9 @@ export interface GithubControl {
    *  quota and a project that is not on GitHub are both states to draw. The
    *  promise rejecting at all means the IPC call itself failed. */
   feed(clusterId: string, scope: GithubScope): Promise<GithubFeed>;
+  /** Show one item on github.com. Rejects for any other address — the check is
+   *  Rust's, so the interface cannot be talked into opening something else. */
+  openInBrowser(url: string): Promise<void>;
 }
 
 /** Whether a GitHub token is stored, and storing one. Separate from

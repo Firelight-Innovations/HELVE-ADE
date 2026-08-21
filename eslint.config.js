@@ -48,6 +48,7 @@ const REGIONS = [
   "diff",
   "drag",
   "frame",
+  "github",
   "keys",
   "panel",
   "panes",

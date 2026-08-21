@@ -646,14 +646,9 @@ export function gitDivergenceDiff(
 /** Mirrors `github::GithubItemKind`. */
 export type GithubItemKind = "issue" | "pull";
 
-/**
- * Mirrors `github::GithubItemState`.
- *
- * One union over both kinds rather than two. An issue is only ever `open` or
- * `closed`; `merged` and `draft` belong to a pull request. Splitting them would
- * make every renderer narrow on `kind` before it could read `state`, and one
- * list draws both.
- */
+/** Mirrors `github::GithubItemState`. One union over both kinds: an issue is
+ *  only ever `open` or `closed`, and `merged`/`draft` belong to a pull request.
+ *  Two unions would make every renderer narrow on `kind` to read `state`. */
 export type GithubItemState = "open" | "closed" | "merged" | "draft";
 
 /** Mirrors `github::GithubItem`. */
@@ -668,74 +663,60 @@ export interface GithubItem {
   /** The `html_url`, for opening in a browser. */
   url: string;
   labels: string[];
-  /** ISO-8601, unparsed. A `Date` may not cross this boundary (STANDARDS.md §2),
-   *  and this format sorts correctly as a string anyway. */
+  /** ISO-8601, unparsed — a `Date` may not cross this boundary (§2), and this
+   *  format sorts correctly as a string anyway. */
   updatedAt: string;
   /** `null` for an item whose author deleted their account. */
   author: string | null;
-  /** A pull request's head branch, for display. `null` for an issue.
-   *  Deliberately not what opening the item checks out — see `suggestedBranch`. */
+  /** A pull request's head branch, for display. `null` for an issue, and
+   *  deliberately not what opening the item checks out. */
   headBranch: string | null;
-  /**
-   * What to name the worktree and branch when this item is opened.
-   *
-   * Rust computes it so that opening an item is the *existing*
-   * `worktreeControl.create(clusterId, name)` and nothing more; this feature
-   * adds no second worktree path. For a pull request it names a fresh branch cut
-   * from HEAD rather than the pull request's own head, which would need a fetch
-   * — `github.rs` records why.
-   */
+  /** What to name the worktree when this item is opened. Rust computes it so
+   *  opening is the *existing* `worktreeControl.create` and nothing more. For a
+   *  pull request it names a fresh branch rather than the author's head, which
+   *  would need a fetch — `github.rs` records why. */
   suggestedBranch: string;
 }
 
-/**
- * Mirrors `github::GithubTrouble`.
- *
- * Four cases because they need four different affordances — sign in, wait,
- * retry, and nothing-to-be-done. A single failure string would put a Sign in
- * button under a rate limit.
- */
+/** Mirrors `github::GithubTrouble`. Four cases because they need four different
+ *  affordances — sign in, wait, retry, and nothing-to-be-done. One failure
+ *  string would put a Sign in button under a rate limit. `missingOrPrivate` is
+ *  GitHub's 404, which covers "no such repository" and "not yours to see"
+ *  deliberately: it answers the same for both so the difference is not leaked. */
 export type GithubTrouble =
   | { kind: "auth" }
-  /** 404, which GitHub answers for both "no such repository" and "not yours to
-   *  see". One case here for the same reason it is one case there. */
   | { kind: "missingOrPrivate" }
   | { kind: "rateLimited"; resetsInMinutes: number | null }
   | { kind: "unreachable"; reason: string };
 
-/**
- * Mirrors `github::GithubFeed`.
- *
- * The variant is why an empty list is never ambiguous: `ready` with no items
- * means the repository has nothing open, and every other empty list is one of
- * the other two states carrying its own explanation.
- */
+/** Mirrors `github::GithubFeed`. The variant is why an empty list is never
+ *  ambiguous: `ready` with no items means the repository has nothing open, and
+ *  every other empty list is one of the other two states with its own reason. */
 export type GithubFeed =
   | { state: "notGithub" }
   | { state: "unavailable"; repo: string | null; trouble: GithubTrouble }
   | { state: "ready"; repo: string; items: GithubItem[]; authenticated: boolean };
 
-/**
- * Mirrors `github::GithubScope`.
- *
- * Which items to ask GitHub for, as opposed to which to draw. The distinction
- * is load-bearing: a closed item is not in an `open` reply at all, so the
- * panel's `is:closed` has to reach the fetch or it could only ever filter down
- * to nothing. `merged` is absent because GitHub's endpoint does not accept it —
- * a merged pull request arrives under `closed` and is told apart by its merge
- * date.
- */
+/** Mirrors `github::GithubScope` — which items to ask GitHub for, as opposed to
+ *  which to draw. A closed item is not in an `open` reply at all, so `is:closed`
+ *  has to reach the fetch or it could only filter down to nothing. `merged` is
+ *  absent because the endpoint does not accept it: a merged pull request arrives
+ *  under `closed`, told apart by its merge date. */
 export type GithubScope = "open" | "closed" | "all";
 
-/**
- * Issues and pull requests for the repository behind a cluster.
- *
- * Never rejects for a network failure, a spent quota or a repository that is not
- * on GitHub: all three are `GithubFeed` variants, because each is a state the
- * panel draws rather than an exception to put in a dialog.
- */
+/** Issues and pull requests for the repository behind a cluster. Never rejects
+ *  for a network failure, a spent quota or a non-GitHub project — all three are
+ *  `GithubFeed` variants, each a state the panel draws rather than a dialog. */
 export function githubFeed(clusterId: string, scope: GithubScope): Promise<GithubFeed> {
   return invoke<GithubFeed>("github_feed", { clusterId, scope });
+}
+
+/** Hand a github.com address to the browser. Rust re-checks it and rejects
+ *  anything else, which is why this is a command of our own rather than the
+ *  opener plugin's binding: the capability file can only say "may open URLs",
+ *  and this needs "may open one host". */
+export function githubOpenInBrowser(url: string): Promise<void> {
+  return invoke<void>("github_open_in_browser", { url });
 }
 
 /**

@@ -405,6 +405,7 @@ pub fn run() {
             git::git_hunks,
             git::git_head_text,
             github::github_feed,
+            github::github_open_in_browser,
             search::search_content,
             updater::update_state,
             updater::check_for_update,
