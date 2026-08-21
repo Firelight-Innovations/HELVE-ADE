@@ -18,6 +18,7 @@ mod home;
 mod trash;
 pub mod tutorial;
 
+use crate::plugins;
 use crate::project;
 use crate::shell_state::ShellState;
 use helve_rpc::{RpcError, INTERNAL_ERROR, METHOD_NOT_FOUND};
@@ -245,6 +246,15 @@ pub const TERMINAL_ID: &str = "terminal";
 pub enum OpenableKind {
     /// Mint an instance and mount its frontend. `id` names a `REGISTRY` entry.
     App,
+    /// Mint an instance and resolve its frontend *on demand*. `id` is a surface
+    /// address — `<package>.<surface>` — naming something in the installed
+    /// plugin registry rather than anything compiled in.
+    ///
+    /// Opened exactly as an `App` is, which is why this is a kind rather than a
+    /// second list. What differs is where the two halves come from, and the
+    /// shell needs to know: a first-party app's `invoke` is answered by [`call`]
+    /// below, in this process, and a plugin's goes over the broker to its own.
+    Plugin,
     /// Spawn a pty and put it in a pane. `id` is [`TERMINAL_ID`], which names no
     /// registry entry and never will.
     Terminal,
@@ -258,12 +268,19 @@ pub enum OpenableKind {
 /// Giving it an empty or invented URL would put a blank iframe behind every
 /// terminal and break the thing that actually renders it, because
 /// `state/toolFrontend.ts` resolves a mountable URL straight off the app list.
+///
+/// A plugin surface has no `url` here for a different reason with the same
+/// effect: it *has* a frontend, but where that frontend is served from can
+/// change while the shell runs, so it is resolved on demand.
+///
+/// Owned `String`s rather than `&'static str` because a plugin's strings are
+/// read from a manifest at runtime. Same wire shape either way.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Openable {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub description: &'static str,
+    pub id: String,
+    pub name: String,
+    pub description: String,
     pub kind: OpenableKind,
 }
 
@@ -284,37 +301,81 @@ pub struct Openable {
 /// Rust: an app added to `REGISTRY` appears in both menu surfaces without a
 /// second edit in a file whose author would have no reason to look.
 ///
-/// The terminal comes last, after the apps, because the apps are the things this
-/// build is *about* and the ordering should not shuffle when one is added.
-pub fn openables() -> Vec<Openable> {
+pub fn openables(app: &AppHandle) -> Vec<Openable> {
+    // `resolve_enabled` has already dropped a plugin that will not load, so a
+    // surface reaching here is one there is something to mount for.
+    let installed = plugins::resolve_enabled(&app.state::<plugins::Registry>())
+        .into_iter()
+        .flat_map(|plugin| plugin.surfaces)
+        // **Only what a plugin asked to have listed.** `present = "cover"` is
+        // reachable by `helve/open` and absent from both menus, as Home and
+        // Tutorials already are. A package with *no* surfaces — an MCP server,
+        // an indexer — contributes nothing, which is the whole answer to "there
+        // should be no button offering to add a backend".
+        .filter(|surface| surface.listed)
+        .map(|surface| Openable {
+            id: surface.address,
+            name: surface.name,
+            description: surface.description,
+            kind: OpenableKind::Plugin,
+        })
+        .collect();
+
+    compose_openables(installed)
+}
+
+/// The ordering rule on its own: apps first, plugins next, terminal always last.
+///
+/// The terminal comes last because the apps are the things this build is *about*
+/// and the ordering should not shuffle when one is added.
+///
+/// Split out from [`openables`] because that one needs an `AppHandle` and this
+/// needs nothing, so the rule can be tested against a synthetic plugin list
+/// rather than against whatever happens to be installed on the machine running
+/// `cargo test`.
+fn compose_openables(installed: Vec<Openable>) -> Vec<Openable> {
     REGISTRY
         .iter()
         .map(|a| Openable {
-            id: a.id,
-            name: a.name,
-            description: a.description,
+            id: a.id.to_string(),
+            name: a.name.to_string(),
+            description: a.description.to_string(),
             kind: OpenableKind::App,
         })
+        .chain(installed)
         .chain(std::iter::once(Openable {
-            id: TERMINAL_ID,
-            name: "Terminal",
+            id: TERMINAL_ID.to_string(),
+            name: "Terminal".to_string(),
             // Says *where it lands*, because that is the one thing that is not
             // obvious: the panel already has a "+" that makes a terminal, and
             // this makes a different one. See `commands::open_terminal_in_pane`.
-            description: "A shell in a pane of this cluster, rather than in the panel.",
+            description: "A shell in a pane of this cluster, rather than in the panel.".to_string(),
             kind: OpenableKind::Terminal,
         }))
         .collect()
 }
 
+// [`is_app`] is deliberately *not* widened to cover plugins, and the gap that
+// leaves is real: `presets::PresetNode::normalized` filters a preset's slots
+// through it, so **a layout preset cannot hold a plugin surface**. Not new and
+// not plugin-specific — a preset could never hold a tool either, by that same
+// line. Fixing it means threading an `AppHandle` into `normalized`, which is a
+// pure function today and tested as one.
+
 /// What a new instance of `id` is called, before its own frontend renames the
 /// tab. Falls back to the id, which is what a surface with no registry entry
 /// would have shown anyway and is better than an untitled tab.
-pub fn display_name(id: &str) -> String {
-    REGISTRY
-        .iter()
-        .find(|a| a.id == id)
-        .map(|a| a.name.to_string())
+///
+/// Looks through [`openables`] rather than `REGISTRY` alone so a plugin surface
+/// gets its declared name too. The fallback still matters and is now more
+/// reachable than it was: a plugin whose checkout has gone missing has no
+/// manifest to read a name out of, and a tab reading `forger.specs` is a better
+/// answer than an empty one.
+pub fn display_name(app: &AppHandle, id: &str) -> String {
+    openables(app)
+        .into_iter()
+        .find(|o| o.id == id)
+        .map(|o| o.name)
         .unwrap_or_else(|| id.to_string())
 }
 
@@ -375,13 +436,32 @@ pub fn call(
             .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not read settings: {e}")));
     }
 
-    let Some(registered) = REGISTRY.iter().find(|a| a.id == id) else {
-        return Err(RpcError::new(
-            METHOD_NOT_FOUND,
-            format!("no app with id `{id}`"),
-        ));
-    };
-    (registered.call)(app, context, method, params)
+    if let Some(registered) = REGISTRY.iter().find(|a| a.id == id) {
+        return (registered.call)(app, context, method, params);
+    }
+
+    // Not a first-party app, so the answer is not in this process. A plugin
+    // surface's call goes down the broker to its own package's core — the other
+    // half of the symmetry this module's doc claims, and the path
+    // `docs/tool-protocol.md` was written to describe. Until it existed this
+    // line was a `METHOD_NOT_FOUND` and `ToolWindow.tsx` refused the call before
+    // it ever got here.
+    //
+    // `CallContext` is deliberately *not* forwarded. It resolves a cluster and
+    // that cluster's project — facts about this shell's layout — and a core is
+    // told about the world it opened into through `session` in `helve/hello`
+    // instead. Handing a plugin the shell's internal vocabulary would make the
+    // layout part of the plugin contract, which §3 of the protocol is shaped to
+    // avoid; when a core needs to know about a project, `Session` is the field
+    // that grows.
+    if plugins::split_address(id).is_some() {
+        return plugins::broker::call(app, id, method, params);
+    }
+
+    Err(RpcError::new(
+        METHOD_NOT_FOUND,
+        format!("no app or plugin surface with id `{id}`"),
+    ))
 }
 
 /// What any app frontend calls to read the settings, over the ordinary bridge.
@@ -486,7 +566,7 @@ mod tests {
         assert!(is_app("viewer"));
         assert!(is_app("files"));
         assert!(
-            openables()
+            compose_openables(Vec::new())
                 .iter()
                 .any(|o| o.id == "viewer" && o.kind == OpenableKind::App),
             "the Apps menu offers it"
@@ -502,7 +582,8 @@ mod tests {
 
     #[test]
     fn everything_in_the_registry_is_offered_plus_a_terminal() {
-        let offered: Vec<&str> = openables().iter().map(|o| o.id).collect();
+        let composed = compose_openables(Vec::new());
+        let offered: Vec<&str> = composed.iter().map(|o| o.id.as_str()).collect();
         for app in REGISTRY {
             assert!(offered.contains(&app.id), "{} is not offered", app.id);
         }
@@ -512,6 +593,54 @@ mod tests {
             "the terminal comes last, after the apps"
         );
         assert_eq!(offered.len(), REGISTRY.len() + 1);
+    }
+
+    // --- plugin surfaces sit between the apps and the terminal ---------------
+
+    fn plugin_row(address: &str) -> Openable {
+        Openable {
+            id: address.to_string(),
+            name: address.to_string(),
+            description: String::new(),
+            kind: OpenableKind::Plugin,
+        }
+    }
+
+    /// The terminal's position is the invariant, not "last of the compiled-in
+    /// things". A plugin row appended after it would put the Apps menu's one
+    /// non-app entry in the middle of the list, which is exactly the shuffle
+    /// [`compose_openables`] documents itself as preventing.
+    #[test]
+    fn the_terminal_stays_last_once_plugins_are_offered() {
+        let composed = compose_openables(vec![plugin_row("forger.specs")]);
+
+        assert_eq!(composed.last().map(|o| o.id.as_str()), Some(TERMINAL_ID));
+        assert_eq!(composed.len(), REGISTRY.len() + 2);
+
+        let plugin_at = composed
+            .iter()
+            .position(|o| o.id == "forger.specs")
+            .expect("the plugin surface is offered");
+        assert_eq!(
+            plugin_at,
+            REGISTRY.len(),
+            "plugins come after every app and before the terminal"
+        );
+    }
+
+    /// A plugin surface must not be mistaken for a first-party app anywhere
+    /// downstream: the kind is what `open_instance` reads to decide whether an
+    /// `invoke` from the frame is answered in this process or over the broker.
+    #[test]
+    fn a_plugin_surface_is_not_an_app() {
+        let composed = compose_openables(vec![plugin_row("forger.specs")]);
+        let row = composed
+            .iter()
+            .find(|o| o.id == "forger.specs")
+            .expect("offered");
+
+        assert_eq!(row.kind, OpenableKind::Plugin);
+        assert!(!is_app("forger.specs"), "and `is_app` stays narrow");
     }
 
     /// The boot roster is what the splash blocks on until each app reports a

@@ -63,6 +63,16 @@ pub enum AppError {
     #[error("git {op} failed: {reason}")]
     Git { op: String, reason: String },
 
+    // A flattened string for the same reason `Git` above uses one: the cause is
+    // a `plugins::InstallError` whose whole value is its `Display` text, written
+    // to be shown in the dialog the person just used rather than matched on.
+    // `action` is `&'static str` because only this crate ever names one.
+    #[error("could not {action} the plugin: {reason}")]
+    Plugin {
+        action: &'static str,
+        reason: String,
+    },
+
     #[error("could not create window `{label}`: {source}")]
     Window {
         label: String,

@@ -24,6 +24,7 @@ import type {
   GitDivergence,
   GitStatus,
   GitWorktree,
+  Openable,
   PaneNode,
   ResolvedTool,
   SplitDir,
@@ -94,6 +95,30 @@ export function appPresentation(app: AppInfo): ToolPresentation {
     health: "ok",
     interactive: true,
     isApp: true,
+  };
+}
+
+/** The third door: one surface of an installed plugin.
+ *
+ *  `isApp: false` is the load-bearing field, and the reason this cannot reuse
+ *  `appPresentation` however alike the two look. It is what sends the surface's
+ *  `invoke` over the broker to the plugin's own process rather than into
+ *  `apps::call`, and resolves its frontend through `useToolFrontend` rather than
+ *  straight off the app list.
+ *
+ *  `health` is `ok` because an `Openable` only ever describes a plugin that
+ *  resolved: `plugins::resolve_enabled` drops the ones that will not load before
+ *  the menu is built, so a row here is already a promise there is something to
+ *  mount. The failures are not lost — they are what the plugin management screen
+ *  draws, from `listPlugins`. */
+export function pluginPresentation(surface: Openable): ToolPresentation {
+  return {
+    id: surface.id,
+    name: surface.name,
+    description: surface.description,
+    health: "ok",
+    interactive: true,
+    isApp: false,
   };
 }
 

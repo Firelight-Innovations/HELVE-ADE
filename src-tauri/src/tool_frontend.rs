@@ -18,7 +18,7 @@
 //! state rather than as an iframe pointing at nothing.
 
 use crate::error::Result;
-use crate::state::AppState;
+use crate::plugins;
 use helve_tool_manifest::ToolManifest;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -44,11 +44,16 @@ pub enum ToolFrontend {
     Unavailable { reason: String },
 }
 
-/// Resolve one tool's frontend.
+/// Resolve one surface's frontend.
+///
+/// `id` is whatever the shell is holding in an app id's position, which is one
+/// of two things: a first-party app id (`home`), or a plugin surface address
+/// (`forger.specs`). Both arrive here because the switcher does not distinguish
+/// them — see `plugins::split_address`.
 pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
-    // A first-party app resolves before the stack is consulted, and cannot fail.
+    // A first-party app resolves before anything is consulted, and cannot fail.
     // It ships in this binary rather than in a checkout, so none of the states
-    // below can apply to one: there is nothing to clone, nothing to build, and
+    // below can apply to one: there is nothing to install, nothing to build, and
     // no manifest of its own to be malformed. See `apps::entry_url`.
     if crate::apps::is_app(id) {
         return Ok(ToolFrontend::Mountable {
@@ -56,28 +61,29 @@ pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
         });
     }
 
-    let state = app.state::<AppState>();
-    let Some(snapshot) = state.get() else {
+    let Some((package_id, surface_id)) = plugins::split_address(id) else {
         return Ok(ToolFrontend::Unavailable {
-            reason: "the stack has not been scanned yet".to_string(),
+            reason: format!("`{id}` names neither an app nor a plugin surface"),
         });
     };
 
-    let Some(tool) = snapshot.tools.iter().find(|t| t.spec.id == id) else {
+    let registry = app.state::<plugins::Registry>();
+    let Some(checkout) = registry.path_of(package_id) else {
         return Ok(ToolFrontend::Unavailable {
-            reason: format!("no tool with id `{id}` in helve.toml"),
+            reason: format!("`{package_id}` is not installed"),
         });
     };
 
-    if !tool.checkout_path.is_dir() {
-        // The same condition the switcher renders as "not installed". Worded
-        // for a person, not for a log.
+    if !checkout.is_dir() {
+        // A folder install whose working tree has moved or been deleted. Worded
+        // for a person, and naming the path because the fix is to put it back or
+        // install it again from wherever it went.
         return Ok(ToolFrontend::Unavailable {
-            reason: "not installed".to_string(),
+            reason: format!("nothing at {}", checkout.display()),
         });
     }
 
-    let manifest = match ToolManifest::load(&tool.checkout_path) {
+    let manifest = match ToolManifest::load(&checkout) {
         Ok(m) => m,
         Err(err) => {
             return Ok(ToolFrontend::Unavailable {
@@ -86,50 +92,116 @@ pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
         }
     };
 
+    let Some(surface) = manifest.surface(surface_id) else {
+        // Reachable without anything being broken: a saved layout holds a
+        // surface the plugin has since dropped from its manifest. That is a
+        // state to render, not an error to raise.
+        return Ok(ToolFrontend::Unavailable {
+            reason: format!("`{package_id}` no longer has a `{surface_id}` surface"),
+        });
+    };
+
+    // Every surface in a package is a document in that package's one bundle, so
+    // the surface contributes a path *within* the frontend rather than a
+    // frontend of its own. See `FrontendSection` for why the bundle is declared
+    // once per package.
+    let within = surface
+        .path
+        .as_deref()
+        .and_then(Path::to_str)
+        .unwrap_or_default();
+
     // `cfg!(debug_assertions)` rather than a runtime flag: a release build must
     // not be able to point a tool frame at localhost, no matter what a manifest
     // in a checkout says.
     if cfg!(debug_assertions) {
-        if let Some(url) = manifest.frontend.dev_url.as_ref() {
-            return Ok(ToolFrontend::Mountable { url: url.clone() });
+        if let Some(dev_url) = manifest
+            .frontend
+            .as_ref()
+            .and_then(|f| f.dev_url.as_deref())
+        {
+            return Ok(ToolFrontend::Mountable {
+                url: join_url(dev_url, within),
+            });
         }
     }
 
-    let dist = manifest.resolve_dist(&tool.checkout_path);
-    if !dist.join("index.html").is_file() {
+    let Some(dist) = manifest.resolve_dist(&checkout) else {
         return Ok(ToolFrontend::Unavailable {
-            reason: "the tool's frontend has not been built".to_string(),
+            reason: format!("`{package_id}` declares no frontend to serve"),
+        });
+    };
+
+    if !dist.join(within).join("index.html").is_file() {
+        return Ok(ToolFrontend::Unavailable {
+            reason: "the plugin's frontend has not been built".to_string(),
         });
     }
 
     Ok(ToolFrontend::Mountable {
-        url: format!("{SCHEME}://localhost/{id}/index.html"),
+        url: format!(
+            "{SCHEME}://localhost/{package_id}/{}index.html",
+            trailing_slashed(within)
+        ),
     })
 }
 
-/// Serve a file out of a tool's built `dist` directory.
+/// Append a bundle-relative path to a dev server's base URL.
+///
+/// Kept textual rather than reaching for a URL crate: both halves have already
+/// been validated — `dev-url` by the author writing it and `path` by
+/// `helve-tool-manifest`'s relative-path check — and the only thing that can go
+/// wrong is a doubled or missing slash between them.
+fn join_url(base: &str, within: &str) -> String {
+    if within.is_empty() {
+        return base.to_string();
+    }
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        trailing_slashed(within)
+    )
+}
+
+/// `""` stays empty; anything else gets exactly one trailing slash.
+///
+/// A surface path names a *directory* inside the bundle, and the document served
+/// from it is its `index.html`. Without the slash `specs` + `index.html` would
+/// concatenate into `specsindex.html`.
+fn trailing_slashed(within: &str) -> String {
+    if within.is_empty() {
+        return String::new();
+    }
+    format!("{}/", within.trim_end_matches('/').replace('\\', "/"))
+}
+
+/// Serve a file out of a plugin's built `dist` directory.
 ///
 /// Registered on the builder in `lib.rs`. The path arrives as
-/// `/<tool-id>/<rest>`; the tool id is looked up in the current stack snapshot,
-/// so a request can only ever reach a directory some `[[tool]]` in helve.toml
-/// actually points at.
+/// `/<package-id>/<rest>`; the package id is looked up in the installed
+/// registry, so a request can only ever reach a directory somebody actually
+/// installed.
+///
+/// Note the id here is the **package**, not a surface address. Every surface in
+/// a package is served out of that package's one bundle, and which surface a
+/// request belongs to is already folded into `rest` by `resolve` above — so this
+/// never has to know that surfaces exist.
 pub fn serve(app: &AppHandle, path: &str) -> (u16, &'static str, Vec<u8>) {
     let trimmed = path.trim_start_matches('/');
     let Some((id, rest)) = trimmed.split_once('/') else {
-        return (400, "text/plain", b"malformed tool asset path".to_vec());
+        return (400, "text/plain", b"malformed plugin asset path".to_vec());
     };
 
-    let Some(snapshot) = app.state::<AppState>().get() else {
-        return (503, "text/plain", b"stack not scanned".to_vec());
+    let Some(checkout) = app.state::<plugins::Registry>().path_of(id) else {
+        return (404, "text/plain", b"unknown plugin".to_vec());
     };
-    let Some(tool) = snapshot.tools.iter().find(|t| t.spec.id == id) else {
-        return (404, "text/plain", b"unknown tool".to_vec());
-    };
-    let Ok(manifest) = ToolManifest::load(&tool.checkout_path) else {
-        return (404, "text/plain", b"unreadable tool manifest".to_vec());
+    let Ok(manifest) = ToolManifest::load(&checkout) else {
+        return (404, "text/plain", b"unreadable plugin manifest".to_vec());
     };
 
-    let dist = manifest.resolve_dist(&tool.checkout_path);
+    let Some(dist) = manifest.resolve_dist(&checkout) else {
+        return (404, "text/plain", b"plugin has no frontend".to_vec());
+    };
     let Some(file) = safe_join(&dist, rest) else {
         // A `..` segment, an absolute path, or a symlink pointing out of the
         // checkout. Refusing rather than clamping: a request that tried to

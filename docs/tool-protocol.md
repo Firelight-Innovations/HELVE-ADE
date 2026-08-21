@@ -36,16 +36,28 @@ Lives at the root of a tool's checkout. `helve.toml` (the stack manifest) says
 *which* tools exist and at what version; `helve-tool.toml` says *how to run* the
 one it sits next to.
 
+One file describes a **package**: an identity, at most one core process, and
+zero or more **surfaces** — the things a person can put in a pane.
+
 ```toml
 [tool]
 id      = "echo"          # must equal the [[tool]] id in helve.toml
 version = "0.1.0"         # semver
+name    = "Echo"          # optional; falls back to id
+description = "Says it back."     # optional
 
-[frontend]
+[frontend]                # optional; omit for a package with no UI
 dist    = "ui/dist"       # built bundle, relative to the checkout root
-dev-url = "http://localhost:5174"   # optional; the tool's own Vite server
+dev-url = "http://localhost:5174"   # optional; the package's own Vite server
 
-[core]
+[[surface]]               # optional, repeatable. See "Surfaces" below.
+id          = "specs"     # addressed by the shell as `echo.specs`
+name        = "Spec Editor"       # optional; falls back to the surface id
+description = "Write and edit specs."   # optional
+path        = "specs/"    # optional; where in the bundle, default its root
+present     = "pane"      # optional; "pane" or "cover", default "pane"
+
+[core]                    # optional; omit for a frontend-only package
 bin  = "target/debug/helve-echo-tool"   # relative to the checkout root
 args = ["--helve-rpc"]                  # optional, default ["--helve-rpc"]
 
@@ -59,15 +71,44 @@ Rules:
   anything resolving to the checkout root itself — a `dist` of `""` would
   otherwise serve the tool's whole checkout, `.git` included.
   *Known gap:* a symlink inside the checkout still escapes it, because paths
-  are not canonicalized. That belongs to the later security pass, along with
-  per-tool permissions.
-- `id` matches `^[a-z][a-z0-9-]*$`. Rejecting anything else keeps ids safe to use
-  as URL authorities and directory names later.
+  are not canonicalized at parse time. The asset server canonicalizes before it
+  serves anything (`tool_frontend::safe_join`), so the gap is in what a manifest
+  is allowed to *say* rather than in what a request can reach.
+- `id` matches `^[a-z][a-z0-9-]*$`, and so does every `surface.id`. Rejecting
+  anything else keeps ids safe to use as URL authorities and directory names.
 - `version` parses as semver.
 - Unknown keys are an **error**, not a warning. A typo'd key that is silently
   ignored is a bug that only shows up at runtime.
 - On Windows, `bin` may omit `.exe`; a resolver tries `bin` then `bin.exe`.
 - `dev-url` is only consulted by a development build of the orchestrator.
+
+### Surfaces
+
+A surface is addressed as **`<package id>.<surface id>`** — `echo.specs` — and
+that string goes wherever an app id goes: the switcher, the Apps menu, the saved
+layout. The separator is a character neither id can contain, which is what stops
+a plugin surface colliding with a first-party app.
+
+- **A manifest with a `[frontend]` and no `[[surface]]` gets one synthesised**,
+  with the id `main` and the bundle root as its path. Every manifest written
+  before surfaces existed keeps working unchanged, which is what makes this an
+  additive change under §6's versioning rule.
+- **`dist` and `dev-url` are per package; `path` is per surface.** A `dev-url` on
+  each surface would mean a dev server per surface — four of them for a package
+  with four views. One server with several HTML entry points is what the
+  orchestrator's own `vite.config.ts` does for Home, Files, Viewer and Tutorials,
+  so a plugin repo is laid out the way the shell already is.
+- **`present = "cover"`** takes the surface out of both menus. It stays mountable
+  and stays reachable when another frame calls `helve/open` for it — the
+  behaviour Home and Tutorials have inside the orchestrator.
+- **A package with no `[[surface]]` and no `[frontend]` has no UI at all**, and
+  that is a supported shape rather than a broken one: a package that exists only
+  to run a core. It contributes nothing to the Apps menu, which is the point —
+  there is no row offering to add a backend.
+- A `[[surface]]` without a `[frontend]` is an **error**: it names a document in
+  a bundle the package never declared.
+- Two surfaces sharing an id is an **error**. They would be two menu rows
+  addressing one thing, with whichever the lookup found first silently winning.
 
 ## 2. Transport A — shell ↔ tool core (standard streams)
 
@@ -468,20 +509,43 @@ process dies rejects with `-32000`. Both surface as a `HelveRpcError` carrying
 ## 5. What a tool repository ships
 
 1. `helve-tool.toml` at the checkout root.
-2. A headless binary that speaks transport A when passed `--helve-rpc`.
-3. A frontend bundle whose only host coupling is `@helve/bridge`.
+2. A headless binary that speaks transport A when passed `--helve-rpc` — unless
+   the package declares no `[core]`, in which case it ships no binary at all.
+3. A frontend bundle whose only host coupling is `@helve/bridge`, holding one
+   document per `[[surface]]` — unless the package declares no `[frontend]`.
 
-`examples/echo-tool` in this repo is the reference implementation of all three,
-and is what the protocol's tests run against.
+`examples/echo-tool` in this repo is the reference implementation, and is what
+the protocol's tests run against.
+
+### Installing one
+
+The orchestrator installs a package from a **folder on this machine**: Home's
+*Install App*, which takes the directory holding `helve-tool.toml`. The record
+is kept in `plugins.json` beside the other per-user state; the directory is
+never copied and never deleted, because it is a working tree the person already
+had.
+
+Nothing is required to be *built* at install time. An unbuilt checkout is the
+normal state while writing one, and each half reports its own absence when it
+matters — a surface says the frontend has not been built, a call says the core
+has not.
+
+**Rebuild and it reloads.** A folder install is watched: when `helve-tool.toml`
+or the built `core.bin` stops changing, the core is stopped and every window
+re-reads the manifest, so a new `[[surface]]` appears without a restart. A
+surface pointed at `dev-url` needs nothing at all — its own dev server's hot
+reload runs inside the real shell.
 
 ## 6. Stability
 
-The protocol is at v1 and most of what is above is running code. But the broker
-is not built, so the one path this whole document exists to describe — a tool's
-frontend asking a question its own core answers — has never run end to end. That
-is an unusual place to publish a specification from, and leaving it implied
-would cost somebody a weekend, so this section is the map: what to build
-against, what is still moving, and what happens to your tool when it moves.
+The protocol is at v1 and most of what is above is running code. **The broker is
+built**, so the one path this whole document exists to describe — a tool's
+frontend asking a question its own core answers — now runs end to end:
+`src-tauri/src/plugins/broker.rs` spawns a package's core on the first call from
+any of its surfaces, completes `helve/hello`, and relays every non-`helve/*`
+method to it. This section is still the map, because not all of it is settled:
+what to build against, what is still moving, and what happens to your tool when
+it moves.
 
 ### What is settled
 
@@ -503,22 +567,26 @@ Implemented, covered by tests, and not changing shape under v1.
 - **`@helve/bridge` (§4)** — the exported names, the thirty-second default
   timeout, `HelveRpcError`'s `code`, `message` and `data`, and host detection.
 
-Two caveats on that list, both about the same gap and both worth stating before
-somebody discovers them. Transport B is exercised only by frames the shell
-answers *itself*; no tool frontend has been mounted in this shell yet. And the
-host half of the `helve/hello` check in §2 — reject the tool if `protocol != 1`
-or if `id` disagrees with the manifest — is specified here and enforced nowhere:
-`HANDSHAKE_FAILED` exists in `crates/helve-rpc` and nothing raises it, because
-the code that would is the broker. A tool must still answer `helve/hello`
-correctly. Nothing checks that it did.
+Both caveats that used to sit here are closed, and it is worth saying which,
+because a tool author reading an older copy of this file would plan around them.
+Transport B is exercised by third-party frames now and not only by the shell's
+own. And the host half of the `helve/hello` check in §2 — reject the tool if
+`protocol != 1` or if `id` disagrees with the manifest — is **enforced**;
+`HANDSHAKE_FAILED` is raised by `plugins::broker::handshake`, which is the code
+that used to be missing. A tool must answer `helve/hello` correctly, and is now
+refused if it does not.
 
 ### What may still move
 
-- **The broker.** A tool frontend's non-`helve/*` `invoke` is refused today with
-  `-32603` and a message naming the gap, rather than hanging for thirty seconds.
-  When the broker lands no message shape above changes — specifying both
-  transports around one `method` and one `params` is what buys that — but it
-  will be the first end-to-end run of anything, and first runs find things.
+- **The broker's edges.** The relay itself is settled, and no message shape above
+  changed when it landed — specifying both transports around one `method` and one
+  `params` is what bought that. Two things around it are not settled. A core's
+  **notifications** are collected by `ToolProcess` and read by nobody, so a core
+  pushing an event today is talking to a queue with no reader. And a frame
+  reaches **only its own package's core**: the package id is taken from the
+  frame's identity rather than from anything in the message, so a cross-plugin
+  call is not merely unimplemented but unaddressable. Widening that is where
+  `[permissions]` stops being reserved space.
 - **`[permissions]`.** The table is accepted and its contents are never looked
   at: the manifest crate types it as an opaque `toml::Value` so that reserving
   the space costs nothing today. Anything written in it is a note to yourself.
@@ -597,7 +665,14 @@ one build permanently. It costs a release pipeline in every tool repository.
 the hand-cloned local checkout kept as the development path.** Those two are
 already separate in `helve-tool.toml` — `dist` is a built bundle, `dev-url` is a
 live server — so the cost lands on distribution rather than on a tool author's
-inner loop, which is the half that has to stay fast. **Not decided.**
+inner loop, which is the half that has to stay fast.
+
+**Decided, 2026-08-20, as recommended.** The shell will fetch a **release
+artifact verified against a checksum**, never a clone; the local folder install
+that exists today stays the development path and is the only path that exists so
+far. The consequence for a tool author is a release pipeline in the tool's own
+repository, and it is worth knowing before writing one. Nothing about the
+fetching half is built yet.
 
 #### Open: what is a mounted tool permitted to do?
 
@@ -627,4 +702,19 @@ rather than after** — retrofitting it means breaking tools that already exist 
 frontend needs nothing from Tauri directly and talks to the shell for
 everything, **and say plainly in this document that a core is unsandboxed under
 v1** rather than letting the frontend's isolation imply a guarantee that does
-not extend to it. **Not decided.**
+not extend to it.
+
+**Partly answered, and not in the order recommended.** The third part is done and
+is the paragraph above: a core is unsandboxed under v1, and this document says
+so rather than leaving the frontend's isolation to imply otherwise. The first
+part is not — the broker shipped before `[permissions]` had a schema, which is
+the ordering this section argued against. That was a deliberate trade rather
+than an oversight, and the reason it is affordable is that the population of
+tools written against v1 is currently one, in this repository: retrofitting a
+schema breaks nobody today and will break somebody the moment that stops being
+true. **It is the thing to do before a second person writes a plugin.**
+
+Until then, the honest statement of the security model is one sentence:
+**installing a plugin runs its code with your privileges, and nothing in the
+shell limits what that code can do.** The frontend's origin isolation is real
+and bounds only the frontend.

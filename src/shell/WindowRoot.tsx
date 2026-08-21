@@ -4,6 +4,7 @@ import type { Openable, StackSnapshot } from "../bindings";
 import Frame, { BOTTOM_DEFAULT } from "./frame/Frame";
 import {
   appPresentation,
+  pluginPresentation,
   clusterRoot,
   groupTerminalTabs,
   paneLeaves,
@@ -161,27 +162,40 @@ export default function WindowRoot({
   const apps = useApps();
   const openables = useOpenables();
 
-  // The authoring tools, resolved but **not openable**.
+  // The pinned stack components, resolved but **not openable**.
   //
-  // None of them can mount in this build: a tool's core is a child process and
-  // the broker that would reach it is not written, so a tool surface could only
-  // ever open on a state explaining why there is nothing there. They are held
-  // back until that changes rather than offered as dead entries.
-  //
-  // Still computed, because they are still *reported*: this is what the cluster
-  // bar's warning badge and its health list read, and it is the only place in
-  // the shell that says a tool needs an update or is not installed. Not
-  // offering a tool and not knowing about it are different things, and only the
-  // first is intended here.
+  // Not the same thing as an installed plugin, and the distinction is the whole
+  // reason both exist. These are the `[[tool]]` entries in `helve.toml` — the
+  // stack this build expects, at the versions it pins — and what the shell does
+  // with them is *report* on them: this is what the cluster bar's warning badge
+  // and its health list read, and the only place that says a component needs an
+  // update or is not checked out. A plugin somebody installed is a different
+  // question with no pinned version to disagree with, and arrives through
+  // `openables` below.
   const stackTools = useMemo(
     () => (snapshot?.tools ?? []).filter((t) => t.kind === "dev-tool").map(toolPresentation),
     [snapshot],
   );
 
-  // How to present the app an instance is an instance of. A lookup by *app* id,
-  // because that is what decides which code to load and what to call it — there
-  // is one presentation of Files however many Files are open.
-  const presentations = useMemo(() => new Map(apps.map((a) => [a.id, appPresentation(a)])), [apps]);
+  // How to present the surface an instance is an instance of. A lookup by
+  // *surface* id, because that is what decides which code to load and what to
+  // call it — there is one presentation of Files however many Files are open.
+  //
+  // Two sources, and the order matters: a first-party app wins a collision.
+  // `plugins::install_folder` already refuses a package whose id shadows an app,
+  // so this cannot happen through the installer — it is here because the map is
+  // also built from a *saved layout*, and a build that later added an app with a
+  // plugin's name would otherwise resolve the plugin and route its calls into a
+  // process that no longer owns that id.
+  const presentations = useMemo(() => {
+    const byId = new Map(
+      openables
+        .filter((o) => o.kind === "plugin")
+        .map((surface) => [surface.id, pluginPresentation(surface)] as const),
+    );
+    for (const app of apps) byId.set(app.id, appPresentation(app));
+    return byId;
+  }, [apps, openables]);
   const presentationOf = useCallback((appId: string) => presentations.get(appId), [presentations]);
 
   const shell = useShellState();

@@ -107,6 +107,22 @@ export function GitBranch(props: IconProps) {
   );
 }
 
+/** Install App. A box with a plus, which reads as "add one of these" the way
+ *  `FolderPlus` does — a package rather than a folder, because that is the one
+ *  thing distinguishing this action from the project rows beside it. */
+export function PackagePlus(props: IconProps) {
+  return (
+    <Outline {...props}>
+      <path d="M12 21.5l-8 -4.5v-9l8 -4.5l8 4.5v4.5" />
+      <path d="M12 12l8 -4.5" />
+      <path d="M12 12v9.5" />
+      <path d="M12 12l-8 -4.5" />
+      <path d="M16 19h6" />
+      <path d="M19 16v6" />
+    </Outline>
+  );
+}
+
 /** A tutorial card's mark. */
 export function Book(props: IconProps) {
   return (
