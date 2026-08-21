@@ -127,3 +127,21 @@ The cost is real and worth stating: with the list scrolled and the diff
 scrolled independently, a note and its line can both be visible without being
 beside each other. Clicking the note's line label is what closes that gap, and
 it is why that label is a button rather than text.
+
+## src/shell/diff/reviewComments.ts
+
+### Why `markAtLine` is a named function
+
+Two callers in `DiffView` ask the same question and must not answer it
+differently: the glyph margin's click handler asks whether a line already has a
+marker, to decide between opening what is there and starting something new, and
+the hover affordance asks the same thing to decide whether to draw its `+`.
+
+They were written as two separate `.find` calls and did disagree. Monaco merges
+decorations rather than letting one win, so a noted line drew both classes into
+the same twelve-pixel glyph cell and grew a plus through its own dot on hover.
+One function, five tests, and the two surfaces now cannot drift.
+
+Overlapping ranges are legal — a note on 3-9 and a note on 5 are both about
+line 5 — and the decorations are in file order, so the first match is the one
+starting soonest.
