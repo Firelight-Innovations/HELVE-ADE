@@ -10,6 +10,7 @@
 use helve_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use tauri::AppHandle;
 
@@ -225,6 +226,38 @@ impl Registry {
             .filter(|e| e.reachable(dev_mode))
             .map(|e| e.server.id.to_string())
             .collect()
+    }
+
+    /// Every server whose switch is not where it shipped, for the store.
+    ///
+    /// Sparse, like `settings::Registry::changed`, and for the same reason: a
+    /// later build that changes what a server ships as should reach everybody
+    /// who never disagreed with the old answer. A file listing every server
+    /// would freeze today's defaults onto every machine that ever opened the
+    /// settings screen.
+    pub fn switched(&self) -> BTreeMap<String, bool> {
+        let Ok(entries) = self.entries.lock() else {
+            return BTreeMap::new();
+        };
+
+        entries
+            .iter()
+            .filter(|e| e.enabled != !e.server.dev_only)
+            .map(|e| (e.server.id.to_string(), e.enabled))
+            .collect()
+    }
+
+    /// Put back what the store remembers, dropping ids this build does not have.
+    ///
+    /// Dropped rather than kept: an id nobody registered cannot be drawn,
+    /// advertised or called, so carrying it forward would only mean writing it
+    /// back out again forever.
+    pub fn hydrate(&self, switched: BTreeMap<String, bool>) {
+        for (id, enabled) in switched {
+            if !self.set_enabled(&id, enabled) {
+                crate::helve_log!("no MCP server named {id:?}, dropping its saved switch");
+            }
+        }
     }
 
     /// Switch a server on or off. `false` if no such id is registered.
@@ -500,6 +533,65 @@ mod tests {
 
         assert!(registry.set_enabled("dev", true));
         assert_eq!(registry.enabled_ids(true), vec!["dev".to_string()]);
+    }
+
+    /// The store holds only what somebody moved, so that a later build changing
+    /// what a server ships as reaches everyone who never disagreed.
+    #[test]
+    fn only_a_switch_away_from_its_shipped_position_is_written_down() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.register(&DEV);
+
+        assert!(
+            registry.switched().is_empty(),
+            "a registry nobody has touched writes nothing"
+        );
+
+        registry.set_enabled("dev", true);
+        registry.set_enabled("echo", false);
+
+        let switched = registry.switched();
+        assert_eq!(switched.len(), 2);
+        assert!(switched["dev"], "the developer server was switched on");
+        assert!(!switched["echo"], "and echo was switched off");
+    }
+
+    /// The round trip the store exists for. A switch that does not come back is
+    /// a switch that resets itself overnight.
+    #[test]
+    fn hydrating_puts_every_moved_switch_back() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.register(&DEV);
+        registry.set_enabled("dev", true);
+
+        let saved = registry.switched();
+
+        let restarted = Registry::default();
+        restarted.register(&SERVER);
+        restarted.register(&DEV);
+        restarted.hydrate(saved.clone());
+
+        assert_eq!(restarted.switched(), saved);
+        assert_eq!(restarted.enabled_ids(true), vec!["echo", "dev"]);
+    }
+
+    /// A store written by a build that had a server this one does not must not
+    /// take the servers beside it down with it.
+    #[test]
+    fn a_saved_switch_for_an_unknown_server_is_dropped_not_kept() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.hydrate(BTreeMap::from([
+            ("forger".to_string(), true),
+            ("echo".to_string(), false),
+        ]));
+
+        assert_eq!(
+            registry.switched(),
+            BTreeMap::from([("echo".to_string(), false)])
+        );
     }
 
     /// Switching developer mode back off has to take an *enabled* server away

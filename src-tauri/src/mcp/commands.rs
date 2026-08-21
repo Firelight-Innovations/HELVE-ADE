@@ -42,9 +42,11 @@ pub fn mcp_status(
 
 /// Switch a server on or off.
 ///
-/// Rewrites every open project's `.mcp.json` on the way out, because that file
-/// is what a client reads and a toggle that changed only our own state would
-/// leave the two disagreeing until the next launch.
+/// Two things happen on the way out, and both are the same idea: a toggle that
+/// changed only our own in-memory state would be disagreed with by everything
+/// that outlives this process. `.mcp.json` is what a client reads, so it is
+/// rewritten; `mcp.json` in the config directory is what the next launch reads,
+/// so it is written too.
 ///
 /// The route stays mounted either way — see `listener::router`. What changes is
 /// that the server stops being advertised and starts answering `tools/list`
@@ -59,6 +61,7 @@ pub fn mcp_set_server_enabled(
     let changed = registry.set_enabled(&id, enabled);
     if changed {
         config::sync_all(&app);
+        super::remember(&app);
     }
     changed
 }

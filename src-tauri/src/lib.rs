@@ -184,7 +184,7 @@ pub fn run() {
             // so it is safe this early, and having the list complete before the
             // first window means the settings surface never draws an empty one
             // it then has to correct.
-            mcp::seed(&app.state::<mcp::Registry>());
+            mcp::seed(app.handle());
 
             // Immediately after seeding and **before any terminal is spawned**,
             // because a terminal inherits the port and token as environment

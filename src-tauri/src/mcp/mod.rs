@@ -13,15 +13,32 @@ mod handoff;
 mod listener;
 mod registry;
 mod servers;
+mod store;
 
 pub use config::sync_all;
 pub use listener::{start, Endpoint};
 pub use registry::{
     config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolAnswer, ToolDescriptor,
 };
-pub use servers::seed;
+use tauri::{AppHandle, Manager};
 
-use tauri::AppHandle;
+/// Register every server this build hosts, then put back the switches somebody
+/// moved on a previous run.
+///
+/// One function rather than two calls in `lib.rs`, because doing the first
+/// without the second is a silent bug: everything works, and every switch is
+/// where it shipped rather than where it was left.
+pub fn seed(app: &AppHandle) {
+    let registry = app.state::<Registry>();
+    servers::seed(&registry);
+    registry.hydrate(store::load(app).switched);
+}
+
+/// Write down where the switches are now.
+pub fn remember(app: &AppHandle) {
+    let switched = app.state::<Registry>().switched();
+    store::save(app, &store::Stored { switched });
+}
 
 /// Whether developer-only servers are visible, advertised and dispatchable.
 ///
