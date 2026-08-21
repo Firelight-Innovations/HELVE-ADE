@@ -4,20 +4,26 @@
 
 # HELVE-ADE
 
-**An Agentic Development Environment for building games.**
+<p>
+  <strong>An Agentic Development Environment.</strong><br/>
+  One window. Your tools, your terminals, your repository, and your coding agent,
+  all in the same frame.
+</p>
 
-One window. Your tools, your terminals, your repository, and your coding agent,
-all in the same frame.
+<p>
+  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml"><img src="https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml/badge.svg" alt="verify workflow status" /></a>
+  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/stargazers"><img src="https://img.shields.io/github/stars/Firelight-Innovations/HELVE-ADE?style=flat&label=%E2%98%85&color=08C" alt="GitHub stars" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-08C?style=flat" alt="License: Apache-2.0" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows-4493F8?style=flat" alt="Platform: Windows" />
+  <a href="#what-works-today"><img src="https://img.shields.io/badge/status-pre--alpha-orange?style=flat" alt="Status: pre-alpha" /></a>
+</p>
 
-[![verify](https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml/badge.svg)](https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#install-and-run)
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#what-works-today)
-
-[Tutorials](docs/user/tutorials/README.md) &middot;
-[User docs](docs/user/README.md) &middot;
-[Developer docs](docs/dev/README.md) &middot;
-[Discussions](https://github.com/Firelight-Innovations/HELVE-ADE/discussions)
+<p>
+  <a href="docs/user/tutorials/README.md"><ins>Tutorials</ins></a> &middot;
+  <a href="docs/user/README.md"><ins>User docs</ins></a> &middot;
+  <a href="docs/dev/README.md"><ins>Developer docs</ins></a> &middot;
+  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/discussions"><ins>Discussions</ins></a>
+</p>
 
 </div>
 
@@ -34,7 +40,8 @@ This repository holds the **orchestrator**, which is the window itself. The
 orchestrator loads your tools, holds the shared code they run on, and gets the
 stack running.
 
-HELVE is a development tool. HELVE does not ship with games built on it.
+HELVE is a development tool, not a runtime. It does not ship whatever gets
+built on top of it.
 
 ## The window
 
@@ -50,59 +57,93 @@ Every tutorial uses these names, so they are worth four minutes.
 The window runs. Its own apps run inside it: Home, the File Explorer, the File
 Viewer, and Tutorials. Rust answers all of them.
 
+<table>
+<tr>
+<td width="50%" valign="middle">
+
 ### Panes and clusters
 
 A **cluster** is one workspace, with its own project and its own arrangement of
-panes. Split a pane and the app beside it keeps working.
+panes. Split a pane and the app beside it keeps working. Clusters sit along the
+switcher bar; switching clusters swaps the panes and the terminals under them
+together.
 
-![One pane splitting into two, the second opening in a right-hand column](assets/ui/panes.png)
-
-Clusters sit along the switcher bar. Switching clusters swaps the panes and the
-terminals under them together.
+</td>
+<td width="50%">
+  <img src="assets/ui/panes.png" alt="One pane splitting into two, the second opening in a right-hand column" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
 ### Terminals
 
 The terminal band runs the full width, under your panes. Ctrl and the key under
-Escape opens and closes it.
+Escape opens and closes it. Terminals belong to the cluster, not to the window,
+so switching clusters swaps the band with everything else.
 
-![A terminal band with two tabs, bash and bash 2](assets/ui/terminal.png)
-
-Terminals belong to the cluster, not to the window. Switch clusters and the band
-swaps with everything else.
+</td>
+<td width="50%">
+  <img src="assets/ui/terminal.png" alt="A terminal band with two tabs, bash and bash 2" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
 ### Search
 
 `Ctrl+K` searches the open project. Results, the file they came from, and a
 preview sit on one screen.
 
-![Project search: a query, a result list, the file it matched, and a preview](assets/ui/search.png)
+</td>
+<td width="50%">
+  <img src="assets/ui/search.png" alt="Project search: a query, a result list, the file it matched, and a preview" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
 ### Source control
 
 The panel on the right shows the branch, what is staged, and what is not. A box
 underneath takes the commit message. `Ctrl+B` collapses the panel and brings it
-back.
+back. Worktrees are there too, so a second branch does not cost a second clone.
 
-![Source control: staged changes, unstaged changes, and a commit box](assets/ui/git.png)
-
-Worktrees are there too, so a second branch does not cost a second clone.
+</td>
+<td width="50%">
+  <img src="assets/ui/git.png" alt="Source control: staged changes, unstaged changes, and a commit box" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
 ### MCP servers for your agent
 
 HELVE hosts MCP servers and writes them into `.mcp.json` for you. Turn one on,
 and your coding agent can call it.
 
-![An MCP server toggle, and the .mcp.json entry it writes](assets/ui/mcp.png)
-
 [The MCP server manager](docs/mcp-server-manager.md) says which servers exist
 and what earns a new one.
+
+</td>
+<td width="50%">
+  <img src="assets/ui/mcp.png" alt="An MCP server toggle, and the .mcp.json entry it writes" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
 
 ### Settings
 
 Every setting is generated from one schema, so a row you can see is a value
 something reads.
 
-![The settings screen, with sections down the left and rows on the right](assets/ui/settings.png)
+</td>
+<td width="50%">
+  <img src="assets/ui/settings.png" alt="The settings screen, with sections down the left and rows on the right" width="100%" />
+</td>
+</tr>
+</table>
 
 ## What does not work yet
 
@@ -157,7 +198,7 @@ HELVE is **multi-repo** on purpose. Each tool is its own repository, and
 | Repository | What it is | Status |
 |---|---|---|
 | [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | Technical design software. Specs out the stack and its boundaries. | Placeholder, README only |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Game design software. Design prototyping and rough playable systems. | Placeholder, README only |
+| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | Design prototyping software. Rough, interactive systems built fast. | Placeholder, README only |
 
 ![The stack list, showing each tool and its health](assets/ui/stack.png)
 
