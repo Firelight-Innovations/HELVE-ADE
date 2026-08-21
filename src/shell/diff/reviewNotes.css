@@ -1,0 +1,231 @@
+/*
+ * The notes list under a diff.
+ *
+ * Sized for `--w-panel-default` (380px), which is the width this is actually
+ * mounted at and the reason the list is here rather than inline in the editor
+ * — `ReviewNotes.tsx`'s header has that argument. Everything below follows
+ * from that width: one column, no two-column rows, and the note body allowed
+ * to wrap freely rather than being truncated, because the body is the point.
+ *
+ * Colours are tokens from src/tokens.css. Nothing here introduces a new one:
+ * a note is drawn in --accent, the same as every other thing on this surface a
+ * person put there deliberately.
+ */
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  /* Never more than half the panel, so the diff it is about stays readable
+     however many notes accumulate. The list scrolls inside this. */
+  max-height: 50%;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--sans);
+}
+
+.notes__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notes__count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.notes__spacer {
+  flex: 1 1 auto;
+}
+
+.notes__action {
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.notes__action:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.notes__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.notes__action--primary:not(:disabled) {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.notes__error {
+  padding: 5px 8px;
+  color: var(--err);
+  font-size: 11px;
+}
+
+.notes__empty {
+  margin: 0;
+  padding: 10px 8px;
+  color: var(--text-dim-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.notes__list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* --- the composer, and the edit box inside a card ------------------------ */
+
+.notes__composer {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.notes__where {
+  color: var(--text-dim-2);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* The same label, when clicking it scrolls the diff to that line. */
+.notes__where--button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.notes__where--button:hover {
+  text-decoration: underline;
+}
+
+.notes__box {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 5px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.notes__box:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+
+.notes__composer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.notes__hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* --- one note ------------------------------------------------------------ */
+
+.notes__card {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notes__card--focused {
+  background: var(--accent-wash-faint);
+  box-shadow: inset 2px 0 0 var(--accent-line-strong);
+}
+
+/* Dimmed rather than hidden or moved to the bottom: a resolved note is still
+   part of the review, and a list that reorders itself under the pointer when a
+   checkbox is ticked loses whoever was reading it. */
+.notes__card--resolved .notes__body {
+  color: var(--text-dim-3);
+  text-decoration: line-through;
+}
+
+.notes__card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notes__tag {
+  padding: 0 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  color: var(--text-dim-3);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.notes__check {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.notes__body {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  /* A note is prose somebody typed, including their newlines. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notes__card-foot {
+  display: flex;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.notes__link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim-2);
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.notes__link:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.notes__link--danger:hover:not(:disabled) {
+  color: var(--err);
+}
+
+.notes__link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

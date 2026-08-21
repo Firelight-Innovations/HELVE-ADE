@@ -1,0 +1,28 @@
+/*
+ * The split between a diff and the notes on it.
+ *
+ * A column, with the diff taking whatever is left over and the notes sized by
+ * their own content up to a ceiling. That direction is deliberate: the diff is
+ * the thing being read and should get the space, but a notes list that grew
+ * without limit would push the diff out of the panel entirely once somebody
+ * had written four of them. `max-height` caps it and its own scroll takes the
+ * rest.
+ *
+ * `min-height: 0` on the diff half is load-bearing rather than defensive. A
+ * flex child's default `min-height: auto` refuses to shrink below its content,
+ * and Monaco's container reports the full height of the file — so without it
+ * the editor never shrinks, the notes list is pushed off the bottom of the
+ * panel, and nothing scrolls.
+ */
+
+.annotated {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.annotated__diff {
+  flex: 1 1 auto;
+  min-height: 0;
+}

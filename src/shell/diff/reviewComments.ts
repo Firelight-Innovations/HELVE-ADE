@@ -2,17 +2,14 @@
  * Selecting and describing review notes — everything about a list of them that
  * is a calculation rather than a render.
  *
- * The comment *model* is `src-tauri/src/review/`, and every mutation is a
- * command; nothing here changes anything. What lives here is the handful of
- * questions the surfaces ask of a list they were handed: which notes belong to
- * the file on screen, which lines to decorate, how many are still unsent, and
- * what to call a range in a sentence.
+ * The model is `src-tauri/src/review/` and every mutation is a command; nothing
+ * here changes anything. What lives here is the questions the surfaces ask of a
+ * list they were handed.
  *
- * Separated from the components for the reason STANDARDS.md §8.3 gives — the
- * shell's test runner is `node` with no DOM, so a pure module is the only part
- * of a region that can be covered at all, and these are exactly the parts worth
- * covering: an off-by-one in [`decorations`] draws a marker against the wrong
- * line of somebody's code.
+ * Separated from the components for the reason STANDARDS.md §8.3 gives: the
+ * shell's runner is `node` with no DOM, so a pure module is the only part of a
+ * region that can be covered — and an off-by-one in [`decorations`] draws a
+ * marker against the wrong line of somebody's code.
  */
 import type { ReviewComment, ReviewScope } from "../contract";
 

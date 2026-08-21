@@ -27,6 +27,8 @@ import type {
   Openable,
   PaneNode,
   ResolvedTool,
+  ReviewComment,
+  ReviewDraft,
   SplitDir,
   SurfaceKind,
   TerminalBusy,
