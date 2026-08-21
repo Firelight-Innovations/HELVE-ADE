@@ -179,6 +179,20 @@ exist and when a new one is worth adding.
 </td>
 </tr>
 <tr>
+<td colspan="2">
+
+### Open with HELVE
+
+Right-click a folder in Explorer and open it as a project. Right-click a file
+and it opens in the File Viewer, with its folder as the project.
+
+A second right-click while HELVE is running goes to the window that is already
+open. HELVE runs as one process, so two windows can never disagree about your
+layout.
+
+</td>
+</tr>
+<tr>
 <td width="50%" valign="middle">
 
 ### Settings
@@ -201,21 +215,39 @@ HELVE is pre-alpha. The honest list is short.
   placeholder repositories today. A tool's core runs as a child process. HELVE
   does not yet have the broker that starts and talks to that process. The
   switcher bar shows only the orchestrator's own tools.
+- **Nothing is signed.** Windows SmartScreen warns about the installer. You
+  have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
   design is Windows-only. No machine here runs them yet.
 - **Some menu items do nothing.** The command palette, the Run menu, and the
   four Help items already exist. The shape of the menu is settled. None of
   those items acts yet.
 
-## Install and run
+## Install
 
-### Download the installer
+**[Download HELVE for Windows](https://github.com/Firelight-Innovations/HELVE-ADE/releases/latest/download/HELVE-setup.exe)**
 
-Go to the [releases page](https://github.com/Firelight-Innovations/HELVE-ADE/releases).
-Download the latest `.exe` file. Run it. HELVE installs itself and adds a
-shortcut to your Start menu.
+Run the installer. It does not ask for administrator rights. It installs for
+your account only. HELVE also fetches the WebView2 runtime for you, if your
+machine does not already have it.
 
-### Build from source
+> **Windows will warn you. You can go ahead.** The installer is not signed.
+> SmartScreen shows "Windows protected your PC" and hides the button. Click
+> **More info**, then **Run anyway**. A signing certificate costs money that a
+> pre-alpha does not yet justify. [Releases and
+> updates](docs/dev/releases.md#what-still-does-not-exist) explains what
+> signing would and would not fix.
+
+After installing, right-click any folder in Explorer and choose **Open with
+HELVE**. HELVE opens the folder as a project. The same entry appears on files.
+A file opens in the File Viewer, with its folder as the project.
+
+**One thing will look broken, and is not.** An installed HELVE cannot find a
+stack yet, so every tool reads `not installed`. Run from a source checkout to
+see one resolve. [The stack, end to end](docs/user/tutorials/the-stack.md)
+explains why.
+
+## Build from source
 
 Use this option to build HELVE yourself, or to contribute code to it.
 

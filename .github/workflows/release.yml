@@ -103,6 +103,11 @@ jobs:
             find target/release/bundle -type f | head -50
             exit 1
           fi
+          # A second copy under a name that never changes. Release filenames
+          # carry the version, so no link to one survives the next release,
+          # and "Download for Windows" needs a URL that does:
+          # /releases/latest/download/HELVE-setup.exe resolves forever.
+          cp artifacts/*-setup.exe artifacts/HELVE-setup.exe
           ls -la artifacts
 
       # The dry run stops here. Artifacts hang off the workflow run for a

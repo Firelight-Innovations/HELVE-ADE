@@ -74,6 +74,71 @@ pub fn persist(app: &AppHandle, snapshot: &ShellSnapshot) {
     save(app, &Stored::from_snapshot(snapshot));
 }
 
+/// Drop anything the layout can no longer reach.
+///
+/// A surface lives in two places: an entry in `instances`, and its id in some
+/// pane's tab list. Only the tree is ever searched, so an entry no tree names
+/// is unreachable — nothing can focus it, close it, or draw it, and nothing
+/// will ever put its id back. It is a leak with a serializer attached, and a
+/// real `layout.json` from this machine had three of them beside one live tab.
+///
+/// Done on **load** rather than on save, and that is the whole safety argument.
+/// A save can catch a surface mid-move, between being lifted out of one pane
+/// and landing in another, and pruning then would delete a tab the user is
+/// dragging. At load nothing is in flight: what the file says is the whole
+/// truth, so unreachable is permanent rather than momentary.
+///
+/// Self-healing, therefore. The next mutation writes the pruned set back, so a
+/// file that has been accumulating orphans is cleaned once and stays clean.
+fn prune_unreachable(mut stored: Stored) -> Stored {
+    let live: std::collections::HashSet<&str> = stored
+        .windows
+        .iter()
+        .flat_map(|w| w.clusters.iter())
+        .flat_map(|c| c.tree.tabs())
+        .collect();
+
+    let clusters: std::collections::HashSet<&str> = stored
+        .windows
+        .iter()
+        .flat_map(|w| w.clusters.iter())
+        .map(|c| c.id.as_str())
+        .collect();
+
+    let keep_instances: Vec<SurfaceInstance> = stored
+        .instances
+        .iter()
+        .filter(|i| live.contains(i.id.as_str()))
+        .cloned()
+        .collect();
+
+    // A terminal is normally reached through its cluster's band rather than
+    // through a pane, so it is judged against a different set. Two exceptions,
+    // and both would be silent data loss if this were a plain cluster check:
+    //
+    //   * a terminal **dragged into the layout** is drawn as a surface, so its
+    //     id is in a tree and its band no longer holds it. `Cluster::tree`'s
+    //     doc is explicit that the tree wins when both could claim it.
+    //   * a terminal from a `layout.json` written when terminals named a
+    //     *window* has no cluster id at all. The empty string is a real state
+    //     there, not a placeholder, and `adopt_orphan_terminals` gives it a
+    //     cluster at restore — which is after this runs.
+    let keep_terminals: Vec<TerminalSession> = stored
+        .terminals
+        .iter()
+        .filter(|t| {
+            t.cluster_id.is_empty()
+                || clusters.contains(t.cluster_id.as_str())
+                || live.contains(t.id.as_str())
+        })
+        .cloned()
+        .collect();
+
+    stored.instances = keep_instances;
+    stored.terminals = keep_terminals;
+    stored
+}
+
 /// Read the store, or start empty. Never fails — see the module doc.
 pub fn load(app: &AppHandle) -> Stored {
     let Some(path) = file(app) else {
@@ -90,13 +155,15 @@ pub fn load(app: &AppHandle) -> Stored {
         }
     };
 
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
+    let stored = serde_json::from_str(&raw).unwrap_or_else(|e| {
         eprintln!(
             "helve: {} is not readable, starting fresh: {e}",
             path.display()
         );
         Stored::default()
-    })
+    });
+
+    prune_unreachable(stored)
 }
 
 /// Write the store, atomically.
@@ -257,6 +324,112 @@ mod tests {
     use super::*;
     use crate::layout::{PaneNode, SplitDir};
     use crate::shell_state::{Cluster, SurfaceKind};
+
+    fn instance(id: &str) -> SurfaceInstance {
+        SurfaceInstance {
+            id: id.to_string(),
+            app_id: "home".to_string(),
+            kind: SurfaceKind::App,
+            title: "Home".to_string(),
+        }
+    }
+
+    fn terminal(id: &str, cluster_id: &str) -> TerminalSession {
+        TerminalSession {
+            id: id.to_string(),
+            title: "bash".to_string(),
+            cluster_id: cluster_id.to_string(),
+            agent_finished: false,
+            group_id: None,
+        }
+    }
+
+    /// One window, one cluster, one pane holding exactly `tabs`.
+    fn stored_with(tabs: &[&str], instances: Vec<SurfaceInstance>) -> Stored {
+        Stored {
+            windows: vec![WindowPlacement {
+                label: "main".to_string(),
+                clusters: vec![Cluster {
+                    id: "cluster-1".to_string(),
+                    name: "Cluster 1".to_string(),
+                    tree: PaneNode::Leaf {
+                        id: "pane-1".to_string(),
+                        tabs: tabs.iter().map(|t| t.to_string()).collect(),
+                        active_tab: tabs.first().map(|t| t.to_string()),
+                    },
+                    project: None,
+                    worktree: None,
+                    active_terminal: None,
+                }],
+                active_cluster_id: Some("cluster-1".to_string()),
+                geometry: None,
+            }],
+            instances,
+            terminals: Vec::new(),
+        }
+    }
+
+    /// The bug this was written for. A real `layout.json` from a development
+    /// machine held three `home-*` entries beside one live tab.
+    #[test]
+    fn drops_instances_no_pane_references() {
+        let stored = stored_with(
+            &["home-39"],
+            vec![
+                instance("home-3"),
+                instance("home-38"),
+                instance("viewer-1"),
+                instance("home-39"),
+            ],
+        );
+
+        let pruned = prune_unreachable(stored);
+        let ids: Vec<&str> = pruned.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["home-39"]);
+    }
+
+    #[test]
+    fn keeps_every_instance_a_pane_still_names() {
+        let stored = stored_with(
+            &["home-1", "files-2"],
+            vec![instance("home-1"), instance("files-2")],
+        );
+        assert_eq!(prune_unreachable(stored).instances.len(), 2);
+    }
+
+    /// A terminal whose cluster is gone has a band nothing draws, and
+    /// `respawn_terminals` would start a shell for it.
+    #[test]
+    fn drops_a_terminal_whose_cluster_is_gone() {
+        let mut stored = stored_with(&["home-1"], vec![instance("home-1")]);
+        stored.terminals = vec![
+            terminal("term-1", "cluster-1"),
+            terminal("term-9", "cluster-404"),
+        ];
+
+        let pruned = prune_unreachable(stored);
+        let kept: Vec<&str> = pruned.terminals.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(kept, vec!["term-1"]);
+    }
+
+    /// Dragged into the layout, so it is drawn as a surface and its band no
+    /// longer holds it. Deleting it here would be silent data loss.
+    #[test]
+    fn keeps_a_terminal_that_was_dragged_into_a_pane() {
+        let mut stored = stored_with(&["term-7"], Vec::new());
+        stored.terminals = vec![terminal("term-7", "cluster-404")];
+        assert_eq!(prune_unreachable(stored).terminals.len(), 1);
+    }
+
+    /// Written when terminals named a window. The empty cluster id is a real
+    /// state, and `adopt_orphan_terminals` gives it a cluster at restore, which
+    /// happens after this runs.
+    #[test]
+    fn keeps_a_legacy_terminal_that_names_no_cluster() {
+        let mut stored = stored_with(&["home-1"], vec![instance("home-1")]);
+        stored.terminals = vec![terminal("term-1", "")];
+        assert_eq!(prune_unreachable(stored).terminals.len(), 1);
+    }
 
     fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
         Rect {

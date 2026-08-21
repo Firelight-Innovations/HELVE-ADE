@@ -12,6 +12,7 @@ mod commands;
 mod discovery;
 mod error;
 mod git;
+mod launch;
 mod layout;
 mod manifest;
 mod mcp;
@@ -37,6 +38,15 @@ use tauri::{Manager, WindowEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let launched = tauri::Builder::default()
+        // **First, before every other plugin.** Explorer's "Open with HELVE"
+        // launches this binary again, and everything registered above this
+        // line would also run in the process that is about to be told to exit.
+        // The callback receives the second launch's argv and this process
+        // acts on it; see `launch`'s module doc for why a second *process*
+        // would be a data-loss bug rather than a cosmetic one.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            launch::from_second_instance(app, args);
+        }))
         .plugin(tauri_plugin_opener::init())
         // Tool frontends mount as iframes on their own origin. In a release
         // build that origin is this scheme, backed by each tool's built `dist`
@@ -84,6 +94,11 @@ pub fn run() {
         // newer one has started and abandon itself early. See
         // `search::SearchState` for why one process-wide counter is enough.
         .manage(search::SearchState::default())
+        // A path handed to this launch by Explorer's context menu, parked
+        // until a frontend is mounted to collect it. Empty on almost every
+        // launch, because almost every launch is somebody opening the app
+        // rather than opening something with it.
+        .manage(launch::LaunchState::default())
         // Which MCP servers this build hosts for whatever agent the user is
         // running in a terminal, and which of them are switched on. Empty until
         // something registers into it — see `mcp`'s module doc for why an app
@@ -182,6 +197,15 @@ pub fn run() {
             let handle = app.handle().clone();
             restore_session(&handle);
 
+            // After `restore_session`, because opening a project needs a
+            // cluster to open it into, and before `mcp::sync_all` below so the
+            // servers are written against the project this launch asked for
+            // rather than the one the last session left behind. Before
+            // `boot::start` for the same kind of reason: opening a project
+            // applies a layout preset, and boot waits for whatever that puts
+            // on screen. Does nothing at all on a launch with no path.
+            launch::from_own_args(&handle);
+
             // After `restore_session` too, because this walks the clusters it
             // just brought back to find which projects are open — and it is what
             // writes the `.mcp.json` an agent reads to find HELVE's servers. A
@@ -238,6 +262,7 @@ pub fn run() {
             commands::cached_stack,
             commands::reveal_tool,
             commands::finish_boot,
+            commands::take_launch_target,
             commands::boot_status,
             commands::app_painted,
             commands::shell_state,

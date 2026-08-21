@@ -43,3 +43,6 @@ __pycache__/
 /apps/home/ui/src/branding.generated.ts
 /apps/files/ui/src/branding.generated.ts
 /apps/tutorial/ui/src/branding.generated.ts
+
+# Worktrees an agent works in. A second checkout of this repository, inside it.
+.claude/worktrees/

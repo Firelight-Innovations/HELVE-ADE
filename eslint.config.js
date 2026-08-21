@@ -140,6 +140,10 @@ export default tseslint.config(
       "**/target/**",
       "**/node_modules/**",
       "public/**",
+      // A git worktree an agent is working in, which is a second checkout of
+      // this repository sitting inside it. Left in, every file is linted twice
+      // and someone else's half-finished branch fails the gate on this one.
+      ".claude/worktrees/**",
       // Regenerated from material-icon-theme on every install.
       "packages/file-icons/src/manifest.generated.ts",
       // Regenerated from branding.toml on every typecheck and build, once per

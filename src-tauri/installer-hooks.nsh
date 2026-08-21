@@ -1,0 +1,59 @@
+; Explorer's "Open with HELVE", added on install and taken away on uninstall.
+;
+; Tauri's NSIS template calls these two macros if `bundle > windows > nsis >
+; installerHooks` points at this file. Everything here is registry work: the
+; shell reads these keys to decide what appears on a right-click, and HELVE
+; itself does not have to be running for them to be there.
+;
+; HKCU rather than HKLM, and that is not a preference. `installMode` is
+; `currentUser`, so the installer never asks for Administrator and has no write
+; access to HKLM. Writing per-user also means the uninstall below can actually
+; remove what it added, and that two accounts on one machine do not fight over
+; one entry.
+;
+; Three keys, because Explorer asks three different questions:
+;
+;   Directory\shell              right-click a folder
+;   Directory\Background\shell   right-click the empty space *inside* a folder
+;   *\shell                      right-click any file
+;
+; The command differs in one character between them. `%1` is the item that was
+; clicked; `%V` is the folder being viewed, which is the only thing that makes
+; sense for a background click where nothing was selected. Getting these the
+; wrong way round produces a menu entry that opens the wrong thing, silently.
+;
+; `$INSTDIR\${MAINBINARYNAME}.exe` is the installed binary. Both variables are
+; defined by Tauri's template before it invokes these macros.
+
+!macro NSIS_HOOK_POSTINSTALL
+  ; --- Right-click a folder -------------------------------------------------
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE" "" "Open with HELVE"
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
+
+  ; --- Right-click inside a folder, with nothing selected -------------------
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE" "" "Open with HELVE"
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%V"'
+
+  ; --- Right-click a file ---------------------------------------------------
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE" "" "Open with HELVE"
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
+
+  ; Explorer caches the verbs it has already read. Without this the entries do
+  ; not appear until the next sign-in, which reads exactly like a broken
+  ; installer to the person who just ran it.
+  System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  ; Delete the `command` subkey first: `DeleteRegKey` removes a key and its
+  ; children, but doing the parents in this order leaves nothing behind if one
+  ; of them is missing because a previous version did not write it.
+  DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenWithHELVE"
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE"
+  DeleteRegKey HKCU "Software\Classes\*\shell\OpenWithHELVE"
+
+  System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+!macroend

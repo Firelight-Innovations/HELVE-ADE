@@ -351,9 +351,14 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
     let cluster_id = format!("cluster-{}", counters.clusters);
     let cluster = Cluster {
         id: cluster_id.clone(),
+        // "Cluster 1" rather than "Workspace", because `WindowRoot` names every
+        // cluster after this one `Cluster ${n + 1}`. Called anything else, the
+        // switcher bar reads "Workspace, Cluster 2, Cluster 3" and a first
+        // cluster that is not Cluster 1 is the one a person goes looking for.
+        //
         // Renamed to the project's name once one is open — `lib.rs` does that
         // after `project::restore`, since only then is there a name to use.
-        name: "Workspace".to_string(),
+        name: "Cluster 1".to_string(),
         tree: PaneNode::leaf(format!("pane-{}", counters.panes)),
         // No project. A seeded window is one nobody has pointed anywhere yet,
         // and Home is what points it — see `set_cluster_project`.

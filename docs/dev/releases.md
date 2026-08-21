@@ -75,8 +75,18 @@ The release profile has no cheap incremental rebuild, so expect minutes.
 | Path | What |
 |---|---|
 | `helve-orchestrator.exe` | the app, self-contained |
-| `bundle/msi/HELVE_<ver>_x64_en-US.msi` | MSI installer |
-| `bundle/nsis/HELVE_<ver>_x64-setup.exe` | NSIS installer |
+| `bundle/nsis/HELVE_<ver>_x64-setup.exe` | the installer |
+
+**One installer, not two.** `bundle.targets` is `["nsis"]` rather than `"all"`,
+so no MSI is built. Two downloads on a release page is a choice a first-time
+visitor has to make and has no basis for making, and the wizard is the one that
+suits a person rather than a deployment tool. MSI is worth adding back the day
+somebody wants to push HELVE out over group policy, and not before.
+
+The workflow uploads the installer twice: once under its versioned name, and
+once as `HELVE-setup.exe`. The second is what makes
+`/releases/latest/download/HELVE-setup.exe` a link that never breaks, which is
+what the README's download button points at.
 
 Those filenames come from `productName` in `tauri.conf.json`, which is checked
 against `branding.toml` — renaming the product renames the installers with it.
@@ -89,6 +99,29 @@ artifacts are a separate cache entry from the dev-profile ones that gate every
 pull request, GitHub evicts at 10 GB per repository, and a release runs a
 handful of times a month. Paying a cold build for the thing people download
 beats making the gate everyone waits for miss its cache.
+
+## What the installer does besides copying files
+
+`src-tauri/installer-hooks.nsh` runs on install and on uninstall, and it exists
+for one feature: **Open with HELVE** in Explorer's context menu, on folders, on
+the background of an open folder, and on files.
+
+Those are three registry keys under `HKCU\Software\Classes`. HKCU rather than
+HKLM is forced rather than chosen: `installMode` is `currentUser`, so the
+installer runs without administrator rights and has no write access to HKLM. It
+also means the uninstaller can remove exactly what it wrote.
+
+The command differs by one character between the three, and getting it wrong
+produces a menu entry that opens the wrong thing without erroring. `%1` is the
+item clicked. `%V` is the folder being viewed, which is the only thing a
+background click can mean.
+
+`src-tauri/src/launch.rs` is the other half: it reads the path off the command
+line, decides whether it is a folder or a file, and opens the folder as a
+project. It also registers `tauri-plugin-single-instance`, and that is not
+optional. Without it, "Open with HELVE" on a second folder starts a second
+process, and two processes writing `layout.json` and `projects.json` is data
+loss rather than a glitch.
 
 ## The installed build cannot find a stack
 
