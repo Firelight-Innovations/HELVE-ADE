@@ -39,6 +39,15 @@ pub struct McpServer {
     pub description: &'static str,
     pub tools: &'static [McpTool],
     pub call: Call,
+    /// Hidden, unadvertised and undispatchable unless `developer.mode` is on.
+    ///
+    /// For a server that exists to work *on* HELVE rather than in it. Somebody
+    /// who is not writing the shell has no use for one, and one of them can
+    /// drive this window — so the default has to be that it is not there, and
+    /// the switch that reveals it has to be a deliberate thing to find.
+    ///
+    /// The flag itself is not stored here. See [`Registry`].
+    pub dev_only: bool,
 }
 
 /// A registered server as the settings UI needs to see it.
@@ -57,6 +66,8 @@ pub struct ServerInfo {
     /// The key this server occupies in a project's `.mcp.json`.
     pub config_key: String,
     pub tool_count: usize,
+    /// True for a row only developer mode reveals, so the panel can mark it.
+    pub dev_only: bool,
 }
 
 /// One tool as the listener needs it: owned, and free of any protocol's field
@@ -90,6 +101,19 @@ struct Entry {
     enabled: bool,
 }
 
+impl Entry {
+    /// Whether a client can reach this server, for a given developer mode.
+    ///
+    /// Two conditions, different in kind. `enabled` is the switch on the row.
+    /// `dev_only` against `dev_mode` is whether the row exists to be switched at
+    /// all — a developer-only server with developer mode off is not "off", it is
+    /// absent, and a client has to be told the same thing about it as about a
+    /// server this build was never compiled with.
+    fn reachable(&self, dev_mode: bool) -> bool {
+        self.enabled && (dev_mode || !self.server.dev_only)
+    }
+}
+
 /// Every server this build hosts, and its on/off state.
 ///
 /// The lock is a plain `std::sync::Mutex` even though the callers are async,
@@ -97,18 +121,30 @@ struct Entry {
 /// them copies what it needs and drops the lock before returning, so a guard can
 /// never be alive across an `.await` — the deadlock this choice would otherwise
 /// invite. Keep that property when adding a method.
+///
+/// **Developer mode is a parameter, not a field.** It is a setting, and settings
+/// live in `settings::Registry`; a copy cached here would be a second answer to
+/// one question, wrong for however long it took something to notice a change and
+/// push it across. Every method it can affect takes it instead, so the flag is
+/// read at the moment of use and there is nothing to keep in step.
+/// `mcp::dev_mode` is the one-line reader every caller uses.
 #[derive(Default)]
 pub struct Registry {
     entries: Mutex<Vec<Entry>>,
 }
 
 impl Registry {
-    /// Put a server on the list, switched on.
+    /// Put a server on the list. Switched on, unless it is developer-only.
     ///
     /// Re-registering an id replaces it rather than shadowing it. Two entries
     /// answering to one name would leave `find` silently picking whichever came
     /// first, and the settings UI drawing a row whose toggle changed the other
     /// one.
+    ///
+    /// A developer-only server starts **off**, so that switching developer mode
+    /// on reveals a switch rather than throws one. Revealing and enabling are
+    /// two decisions, and a server that can click things in the user's own
+    /// window is worth charging both.
     pub fn register(&self, server: &'static McpServer) {
         let Ok(mut entries) = self.entries.lock() else {
             return;
@@ -116,7 +152,7 @@ impl Registry {
 
         let entry = Entry {
             server,
-            enabled: true,
+            enabled: !server.dev_only,
         };
 
         match entries.iter().position(|e| e.server.id == server.id) {
@@ -125,14 +161,20 @@ impl Registry {
         }
     }
 
-    /// Every registered server, on or off, for the settings UI.
-    pub fn list(&self) -> Vec<ServerInfo> {
+    /// Every server the user should see, on or off, for the settings UI.
+    ///
+    /// A developer-only row is absent with `dev_mode` false, rather than greyed
+    /// out or marked unavailable. A row whose purpose is to explain that it is
+    /// not for you is still a row, and the point of the flag is that most people
+    /// never learn these servers exist.
+    pub fn list(&self, dev_mode: bool) -> Vec<ServerInfo> {
         let Ok(entries) = self.entries.lock() else {
             return Vec::new();
         };
 
         entries
             .iter()
+            .filter(|e| dev_mode || !e.server.dev_only)
             .map(|e| ServerInfo {
                 id: e.server.id.to_string(),
                 name: e.server.name.to_string(),
@@ -141,20 +183,21 @@ impl Registry {
                 path: route(e.server.id),
                 config_key: config_key(e.server.id),
                 tool_count: e.server.tools.len(),
+                dev_only: e.server.dev_only,
             })
             .collect()
     }
 
     /// The ids a client can currently reach — what routes are mounted and what
     /// goes into `.mcp.json`.
-    pub fn enabled_ids(&self) -> Vec<String> {
+    pub fn enabled_ids(&self, dev_mode: bool) -> Vec<String> {
         let Ok(entries) = self.entries.lock() else {
             return Vec::new();
         };
 
         entries
             .iter()
-            .filter(|e| e.enabled)
+            .filter(|e| e.reachable(dev_mode))
             .map(|e| e.server.id.to_string())
             .collect()
     }
@@ -187,14 +230,14 @@ impl Registry {
     /// still mounted — see the listener for why toggling does not rebuild the
     /// router — so this is the answer a client gets while it is switched off,
     /// and an empty list is the one a client already knows how to handle.
-    pub fn tools(&self, id: &str) -> Vec<ToolDescriptor> {
+    pub fn tools(&self, id: &str, dev_mode: bool) -> Vec<ToolDescriptor> {
         let Ok(entries) = self.entries.lock() else {
             return Vec::new();
         };
 
         entries
             .iter()
-            .find(|e| e.server.id == id && e.enabled)
+            .find(|e| e.server.id == id && e.reachable(dev_mode))
             .map(|e| {
                 e.server
                     .tools
@@ -220,6 +263,7 @@ impl Registry {
         id: &str,
         tool: &str,
         params: Option<Value>,
+        dev_mode: bool,
     ) -> Result<Value, RpcError> {
         let resolved = {
             let entries = self.entries.lock().map_err(|_| {
@@ -231,7 +275,7 @@ impl Registry {
 
             entries
                 .iter()
-                .find(|e| e.server.id == id && e.enabled)
+                .find(|e| e.server.id == id && e.reachable(dev_mode))
                 .map(|e| (e.server.call, e.server.tools.iter().any(|t| t.name == tool)))
         };
 
@@ -291,6 +335,7 @@ mod tests {
         description: "Proves the plumbing.",
         tools: TOOLS,
         call: unreachable_call,
+        dev_only: false,
     };
 
     static OTHER: McpServer = McpServer {
@@ -299,6 +344,16 @@ mod tests {
         description: "A second one.",
         tools: &[],
         call: unreachable_call,
+        dev_only: false,
+    };
+
+    static DEV: McpServer = McpServer {
+        id: "dev",
+        name: "Dev",
+        description: "Only for whoever is working on the shell.",
+        tools: &[],
+        call: unreachable_call,
+        dev_only: true,
     };
 
     #[test]
@@ -306,7 +361,7 @@ mod tests {
         let registry = Registry::default();
         registry.register(&SERVER);
 
-        let listed = registry.list();
+        let listed = registry.list(false);
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, "echo");
         assert!(listed[0].enabled);
@@ -321,7 +376,7 @@ mod tests {
         registry.register(&SERVER);
         registry.register(&SERVER);
 
-        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list(false).len(), 1);
     }
 
     #[test]
@@ -332,13 +387,13 @@ mod tests {
 
         assert!(registry.set_enabled("echo", false));
 
-        assert_eq!(registry.enabled_ids(), vec!["other".to_string()]);
+        assert_eq!(registry.enabled_ids(false), vec!["other".to_string()]);
         assert_eq!(
-            registry.list().len(),
+            registry.list(false).len(),
             2,
             "settings still draws a row for a server that is switched off"
         );
-        assert!(registry.tools("echo").is_empty());
+        assert!(registry.tools("echo", false).is_empty());
     }
 
     #[test]
@@ -354,7 +409,7 @@ mod tests {
         let registry = Registry::default();
         registry.register(&SERVER);
 
-        let tools = registry.tools("echo");
+        let tools = registry.tools("echo", false);
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].name, "ping");
         assert_eq!(tools[0].description, "Answers.");
@@ -370,7 +425,7 @@ mod tests {
         let registry = Registry::default();
         registry.register(&SERVER);
 
-        for tool in registry.tools("echo") {
+        for tool in registry.tools("echo", false) {
             assert!(
                 tool.schema.is_object(),
                 "schema for {:?} must be a JSON object",
@@ -382,7 +437,58 @@ mod tests {
     #[test]
     fn an_unregistered_server_has_no_tools() {
         let registry = Registry::default();
-        assert!(registry.tools("nonesuch").is_empty());
+        assert!(registry.tools("nonesuch", false).is_empty());
+    }
+
+    /// The whole point of the flag: with developer mode off the server is not a
+    /// row the settings screen draws, not a key `.mcp.json` names, and not a
+    /// route that answers. Any one of those leaking is the feature failing.
+    #[test]
+    fn a_developer_only_server_is_absent_until_developer_mode_is_on() {
+        let registry = Registry::default();
+        registry.register(&SERVER);
+        registry.register(&DEV);
+
+        let ids: Vec<String> = registry.list(false).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec!["echo".to_string()]);
+        assert_eq!(registry.enabled_ids(false), vec!["echo".to_string()]);
+        assert!(registry.tools("dev", false).is_empty());
+
+        let revealed: Vec<String> = registry.list(true).into_iter().map(|s| s.id).collect();
+        assert_eq!(revealed, vec!["echo".to_string(), "dev".to_string()]);
+    }
+
+    /// Revealed, but not switched on by it. Turning developer mode on is
+    /// permission to see the switch, not a decision to have pulled it.
+    #[test]
+    fn revealing_a_developer_only_server_does_not_also_enable_it() {
+        let registry = Registry::default();
+        registry.register(&DEV);
+
+        let row = registry.list(true).remove(0);
+        assert!(!row.enabled, "a developer-only server starts off");
+        assert!(row.dev_only, "and says so, so the panel can mark it");
+        assert!(
+            registry.enabled_ids(true).is_empty(),
+            "nothing is advertised until its own switch moves"
+        );
+
+        assert!(registry.set_enabled("dev", true));
+        assert_eq!(registry.enabled_ids(true), vec!["dev".to_string()]);
+    }
+
+    /// Switching developer mode back off has to take an *enabled* server away
+    /// too. Anything less leaves the dangerous case — a server somebody turned
+    /// on, then thought they had put away — reachable.
+    #[test]
+    fn turning_developer_mode_off_hides_a_server_that_was_switched_on() {
+        let registry = Registry::default();
+        registry.register(&DEV);
+        assert!(registry.set_enabled("dev", true));
+
+        assert_eq!(registry.enabled_ids(true), vec!["dev".to_string()]);
+        assert!(registry.enabled_ids(false).is_empty());
+        assert!(registry.tools("dev", false).is_empty());
     }
 
     /// The `.mcp.json` key is prefixed so it cannot collide with a server the
@@ -401,7 +507,7 @@ mod tests {
     /// same rule as app ids and tool ids: `^[a-z][a-z0-9-]*$`.
     #[test]
     fn server_ids_are_url_safe() {
-        for server in [&SERVER, &OTHER] {
+        for server in [&SERVER, &OTHER, &DEV] {
             let mut chars = server.id.chars();
             assert!(
                 matches!(chars.next(), Some(c) if c.is_ascii_lowercase()),

@@ -21,6 +21,7 @@ pub static SERVER: McpServer = McpServer {
     description: "A test server. Proves an agent can reach HELVE, and nothing more.",
     tools: TOOLS,
     call,
+    dev_only: false,
 };
 
 static TOOLS: &[McpTool] = &[

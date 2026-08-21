@@ -408,6 +408,37 @@ fn commit(app: &AppHandle) {
     }
 }
 
+/// Do whatever a changed setting needs done outside the settings store.
+///
+/// Almost nothing belongs here. A setting is read at the point it is used, so
+/// the overwhelming majority of them need no reaction at all — the next pty, the
+/// next editor, the next paint simply picks the new value up.
+///
+/// The exception is a setting whose reader is **a file on disk**. `.mcp.json` is
+/// written, not consulted, so a change that only moved a value in memory would
+/// leave that file describing a HELVE that no longer exists until something else
+/// happened to rewrite it. Both keys below decide what goes in it.
+///
+/// Matching on the key rather than syncing after every write, because that file
+/// belongs to the user's project and rewriting it on an accent-colour change is
+/// a diff they did not ask for.
+fn react(app: &AppHandle, key: &str) {
+    if matches!(key, keys::MCP_WRITE_PROJECT_CONFIG | keys::DEVELOPER_MODE) {
+        crate::mcp::sync_all(app);
+    }
+}
+
+/// The same, for a whole section going back to its defaults.
+///
+/// By group id, because `reset_group` reports how many settings moved and not
+/// which — and the answer only has to be "did anything in this section need a
+/// reaction", which the id already tells us.
+fn react_group(app: &AppHandle, id: &str) {
+    if matches!(id, "mcp" | "developer") {
+        crate::mcp::sync_all(app);
+    }
+}
+
 /// A toggle's current value, for the Rust that acts on it.
 pub fn flag(app: &AppHandle, key: &str) -> bool {
     app.state::<Registry>()

@@ -53,7 +53,7 @@ mod tests {
         let registry = Registry::default();
         seed(&registry);
 
-        let listed = registry.list();
+        let listed = registry.list(true);
         assert_eq!(listed.len(), 2);
         assert!(
             listed.iter().all(|s| s.enabled),
@@ -71,7 +71,7 @@ mod tests {
         let registry = Registry::default();
         seed(&registry);
 
-        for server in registry.list() {
+        for server in registry.list(true) {
             assert_eq!(server.config_key, format!("helve-{}", server.id));
             assert_eq!(server.path, format!("/mcp/{}", server.id));
         }
@@ -85,7 +85,7 @@ mod tests {
         seed(&registry);
         seed(&registry);
 
-        assert_eq!(registry.list().len(), 2);
+        assert_eq!(registry.list(true).len(), 2);
     }
 
     /// Held against the servers this build actually registers, not against a
@@ -99,7 +99,7 @@ mod tests {
         let registry = Registry::default();
         seed(&registry);
 
-        for server in registry.list() {
+        for server in registry.list(true) {
             let mut chars = server.id.chars();
             assert!(
                 matches!(chars.next(), Some(c) if c.is_ascii_lowercase()),

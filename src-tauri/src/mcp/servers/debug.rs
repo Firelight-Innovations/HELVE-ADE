@@ -28,6 +28,9 @@ pub static SERVER: McpServer = McpServer {
     description: "Read the running shell: its layout, its recent failures, and how boot went.",
     tools: TOOLS,
     call,
+    // Read-only, and useful to anybody diagnosing a HELVE that is misbehaving —
+    // which is not only the people who write it. See the module doc.
+    dev_only: false,
 };
 
 /// How many records [`recent_errors`] returns when it is not told.

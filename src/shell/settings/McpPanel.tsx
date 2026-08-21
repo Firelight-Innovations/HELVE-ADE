@@ -20,7 +20,13 @@
  */
 import { useEffect, useState } from "react";
 import ToggleControl from "./controls/ToggleControl";
-import { mcpStatus, setMcpServerEnabled, type McpServerInfo, type McpStatus } from "../../bindings";
+import {
+  mcpStatus,
+  onSettingsChanged,
+  setMcpServerEnabled,
+  type McpServerInfo,
+  type McpStatus,
+} from "../../bindings";
 
 export default function McpPanel() {
   const [status, setStatus] = useState<McpStatus | null>(null);
@@ -32,11 +38,30 @@ export default function McpPanel() {
   // reads, in the one section most windows never open.
   useEffect(() => {
     let live = true;
-    void refresh().then((next) => {
+    const apply = (next: McpStatus | null) => {
       if (live && next !== null) setStatus(next);
+    };
+
+    void refresh().then(apply);
+
+    // Re-read on any settings change, because one of them decides what this
+    // list contains: `developer.mode` reveals servers, and Rust filters them out
+    // of `mcpStatus` rather than sending them down to be hidden here. Without
+    // this the switch would appear to do nothing until the screen was reopened,
+    // which is the exact failure `Applies::Now` promises it will not be.
+    //
+    // Any change rather than that one key: the payload is the whole values map,
+    // a re-fetch is one cheap call, and matching on a key would put the name of
+    // a Rust constant in a second place that has to agree with it.
+    const subscription = onSettingsChanged(() => {
+      void refresh().then(apply);
     });
+
     return () => {
       live = false;
+      void subscription.then((unlisten) => {
+        unlisten();
+      });
     };
   }, []);
 
@@ -121,7 +146,14 @@ function ServerRow({
   return (
     <div className="settings-mcp__row">
       <div className="settings-mcp__text">
-        <span className="settings-mcp__name">{server.name}</span>
+        <span className="settings-mcp__name">
+          {server.name}
+          {/* Marked rather than merely present. Reaching this row took a
+              deliberate switch in another section, and by the time somebody has
+              scrolled to it that is easy to have forgotten — so the row says
+              what it is at the moment the switch beside it is being considered. */}
+          {server.devOnly && <span className="settings-mcp__badge">developer</span>}
+        </span>
         <span className="settings-mcp__description">{server.description}</span>
         {/* The config key and the route, in mono because both are things you
             retype into somewhere else — a project's `.mcp.json` and a browser

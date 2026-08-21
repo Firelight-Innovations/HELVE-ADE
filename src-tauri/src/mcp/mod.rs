@@ -18,3 +18,16 @@ pub use config::sync_all;
 pub use listener::{start, Endpoint};
 pub use registry::{config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolDescriptor};
 pub use servers::seed;
+
+use tauri::AppHandle;
+
+/// Whether developer-only servers are visible, advertised and dispatchable.
+///
+/// Read here rather than cached in [`Registry`], and read again on every call
+/// that depends on it. The cost is a map lookup; what it buys is that switching
+/// the setting off takes a server away from a connected client on its next
+/// request, with nothing to invalidate and no window in which the two
+/// disagree.
+pub fn dev_mode(app: &AppHandle) -> bool {
+    crate::settings::flag(app, crate::settings::keys::DEVELOPER_MODE)
+}

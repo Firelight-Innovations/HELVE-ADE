@@ -47,7 +47,7 @@ pub enum ConfigError {
 pub fn sync(app: &AppHandle, project: &Path) {
     let path = config_path(project);
     let enabled = if settings::flag(app, keys::MCP_WRITE_PROJECT_CONFIG) {
-        app.state::<Registry>().enabled_ids()
+        app.state::<Registry>().enabled_ids(super::dev_mode(app))
     } else {
         Vec::new()
     };

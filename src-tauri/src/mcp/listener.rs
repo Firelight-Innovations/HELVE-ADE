@@ -155,7 +155,12 @@ fn mint_token() -> String {
 fn router(app: &AppHandle, token: String) -> axum::Router {
     let mut router = axum::Router::new();
 
-    for info in app.state::<Registry>().list() {
+    // `list(true)` — every route this build has, developer-only ones included.
+    // The router is built once, at boot, and developer mode can move afterwards;
+    // a route left unmounted because the flag happened to be off at startup
+    // would 404 for the rest of the session. Mounting it costs nothing, because
+    // `list_tools` and `call_tool` below ask the flag again on every request.
+    for info in app.state::<Registry>().list(true) {
         let path = route(&info.id);
         let handle = app.clone();
         let id = info.id.clone();
@@ -248,7 +253,7 @@ impl ServerHandler for Bridge {
         let tools = self
             .app
             .state::<Registry>()
-            .tools(&self.id)
+            .tools(&self.id, super::dev_mode(&self.app))
             .into_iter()
             .map(into_rmcp_tool)
             .collect();
@@ -275,10 +280,13 @@ impl ServerHandler for Bridge {
     ) -> Result<CallToolResponse, ErrorData> {
         let params = request.arguments.map(serde_json::Value::Object);
 
-        let answered =
-            self.app
-                .state::<Registry>()
-                .call(&self.app, &self.id, &request.name, params);
+        let answered = self.app.state::<Registry>().call(
+            &self.app,
+            &self.id,
+            &request.name,
+            params,
+            super::dev_mode(&self.app),
+        );
 
         let result = match answered {
             Ok(value) => match ContentBlock::json(value) {

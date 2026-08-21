@@ -22,12 +22,21 @@ pub struct EndpointStatus {
     pub servers: Vec<ServerInfo>,
 }
 
-/// Every registered server and where they answer.
+/// Every server the user should see, and where they answer.
+///
+/// "Should see" rather than "is registered": developer-only servers are left out
+/// unless `developer.mode` is on, and this is where that happens. The panel
+/// draws what it is given and knows nothing about the flag, which is what stops
+/// a server appearing on screen because a `hidden` prop was forgotten.
 #[tauri::command]
-pub fn mcp_status(registry: State<'_, Registry>, endpoint: State<'_, Endpoint>) -> EndpointStatus {
+pub fn mcp_status(
+    app: AppHandle,
+    registry: State<'_, Registry>,
+    endpoint: State<'_, Endpoint>,
+) -> EndpointStatus {
     EndpointStatus {
         port: endpoint.get().map(|(port, _)| port),
-        servers: registry.list(),
+        servers: registry.list(super::dev_mode(&app)),
     }
 }
 

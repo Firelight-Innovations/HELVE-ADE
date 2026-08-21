@@ -1110,6 +1110,8 @@ export interface McpServerInfo {
   /** The key it takes in a project's `.mcp.json`, `helve-<id>`. */
   configKey: string;
   toolCount: number;
+  /** Only `developer.mode` reveals this one. Rust has already filtered the list; this marks it. */
+  devOnly: boolean;
 }
 
 /**

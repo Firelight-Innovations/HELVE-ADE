@@ -8,7 +8,7 @@
 //! Every write goes through [`super::commit`] on its way out, so persisting and
 //! announcing are not two things a caller can do one of.
 
-use super::{commit, Registry, Snapshot};
+use super::{commit, react, react_group, Registry, Snapshot};
 use crate::error::Result;
 use serde_json::Value;
 use tauri::{AppHandle, State};
@@ -39,6 +39,7 @@ pub fn settings_set(
 ) -> Result<Value> {
     let stored = registry.set(&key, value)?;
     commit(&app);
+    react(&app, &key);
     Ok(stored)
 }
 
@@ -47,6 +48,7 @@ pub fn settings_set(
 pub fn settings_reset(app: AppHandle, registry: State<'_, Registry>, key: String) -> Result<Value> {
     let default = registry.reset(&key)?;
     commit(&app);
+    react(&app, &key);
     Ok(default)
 }
 
@@ -62,6 +64,7 @@ pub fn settings_reset_group(app: AppHandle, registry: State<'_, Registry>, id: S
     let moved = registry.reset_group(&id);
     if moved > 0 {
         commit(&app);
+        react_group(&app, &id);
     }
     moved
 }
