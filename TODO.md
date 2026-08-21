@@ -1,7 +1,7 @@
 # HELVE Roadmap
 
 Rough execution order. Items are mostly sequential; a couple are explicitly
-parallel or vague-on-purpose (noted inline). Updated 2026-08-18.
+parallel or vague-on-purpose (noted inline). Updated 2026-08-21.
 
 ## Done
 
@@ -78,25 +78,117 @@ every release says so in `.github/release-preamble.md`, and a certificate is a
 purchase rather than a configuration. The **updater** waits on releases
 happening at a cadence rather than one at a time.
 
-## 10. App download system
+## 10. App download system (done)
 
-Download full apps from GitHub repos and let the orchestrator execute them.
-Each app needs a defined manifest format. File-structure restructuring happens
-alongside this work.
+Landed as #23 and #27. An app arrives one of three ways — from the curated
+library, from a GitHub repository named by the user, or from a folder on this
+machine — and nothing else. `docs/design-notes/app-library.md` has why there are
+exactly three.
 
-**Two of its questions were pulled forward into #9** and are answered on paper
-in `docs/tool-protocol.md` rather than left until the downloader is built:
-whether a tool arrives as a clone or as a signed artifact, and what a mounted
-tool is permitted to do under Tauri's capability system. Cloning a repository
-into a desktop shell and running it is arbitrary code execution, and that is a
-decision to make before the repository is public rather than after.
+`helve-tool.toml` grew surfaces, so one repository holds several apps and a
+backend-only package declares none. The broker relays a surface's `invoke` to
+its own package's core, which was specified at v1 and had never run. A folder
+install is watched, so a rebuilt core restarts without anyone asking.
 
-The rest waits. The one caveat runs the other way: the first thing an early
-contributor does is write a tool against the manifest format, so if that format
-is expected to move here, `docs/tool-protocol.md` has to keep saying plainly
-what is stable and what is not.
+`catalog.toml` is the library, compiled into the binary. It is **not** a
+permission boundary — any repository or folder still installs — but an entry
+marked `default = true` installs on a first run without being asked, and a
+plugin core is unsandboxed. `scripts/check-catalog.mjs` therefore fails any pull
+request touching it unless the maintainer wrote it.
+
+**Two of its questions were pulled forward into #9** and are answered in
+`docs/tool-protocol.md`: a release artifact rather than a clone, and what a
+mounted tool is permitted to do. The second is answered honestly rather than
+comfortably — a core holds the user's full privileges, `[permissions]` still has
+no schema, and installing an app is running arbitrary code.
+
+Still open from this item:
+
+- **`[permissions]` has no schema.** The broker shipped first on the grounds
+  that the plugin population is one and in-repo. That expires the moment
+  somebody outside Firelight writes an app.
+- **Layout presets cannot hold a plugin surface.** `presets::normalized` filters
+  slots through `is_app`. Not a regression — presets never held a tool either —
+  but it bites the first time a Forger layout is saved.
+- **A backend-only package installs and spawns, but nothing calls it.**
+  `mcp::Registry` holds `&'static` servers, so a plugin-provided MCP server
+  cannot be one. The manifest reserves the space; the plumbing does not exist.
+
+## 10b. Publish `@helve/bridge` to npm — blocks #11 and #12
+
+**Nothing outside this repository can build an app frontend until this is done.**
+
+### Why
+
+`docs/tool-protocol.md` §5 says a tool frontend's *only* host coupling is
+`@helve/bridge`, and `.github/CODEOWNERS` calls it "the npm package a tool
+author actually installs". It is not published — `npm view @helve/bridge` is a
+404 as of 2026-08-21 — so there is nothing to install, and the sentence in the
+protocol document is currently false.
+
+That is what stopped the Forger and Journeyman scaffolds from landing with #27.
+Both repositories are still empty, and neither can get past its first
+`pnpm add`.
+
+A git dependency is not a workaround here. `packages/bridge` publishes `dist`,
+which is built rather than committed, so installing from the repository would
+need a `prepare` script and a build of the whole workspace to get one small
+package. The Rust half has no such problem — `helve-rpc` resolves fine as a git
+dependency against a public repo — which is why only the frontend is blocking:
+
+```toml
+helve-rpc = { git = "https://github.com/Firelight-Innovations/HELVE-ADE.git" }
+```
+
+Publishing `helve-rpc` to crates.io is tidier and optional. This is neither.
+
+### How
+
+1. **Confirm the `@helve` scope is ours.** Unverified — npm was not
+   authenticated on the machine this was written on, so `npm whoami` returned
+   `ENEEDAUTH` and nothing about ownership could be established. `npm login`,
+   then `npm org ls helve`. If the scope is taken by someone else, the package
+   name is the decision to make before anything else, and it reaches
+   `tool-protocol.md`, `CODEOWNERS` and every app repository that ever installs
+   it.
+2. **Add the two missing fields** to `packages/bridge/package.json`:
+   `"publishConfig": { "access": "public" }` and a `"repository"` entry. Without
+   the first, a scoped package publishes as restricted, which needs a paid org
+   and would fail for every outside contributor. The rest of the manifest is
+   already publishable — name, description, license, `types`, `exports` and
+   `files` are all correct.
+3. **Decide what its version tracks.** It is `0.1.0` while the workspace is at
+   `0.1.2`. The bridge implements transport B, which is versioned by the
+   *protocol* rather than by the application, and `scripts/check-version.mjs`
+   deliberately does not police this file. Pinning it to the app version would
+   tie a wire format to a UI release; say which it is in the package and in
+   §6 of the protocol document, and keep the two agreeing.
+4. **Publish.** `pnpm --filter @helve/bridge build`, then
+   `npm publish --access public` from `packages/bridge`. First publish by hand
+   is fine; automate it on a tag afterwards, which needs an `NPM_TOKEN` secret
+   and a job that refuses to publish a version already on the registry.
+5. **Then scaffold Forger and Journeyman.** `docs/dev/app-releases.md` already
+   carries the manifest shape and the exact release workflow both repositories
+   need — zip plus `.sha256`, no installer, published as a draft.
+
+### Also outstanding, and unrelated to npm
+
+**`.github/CODEOWNERS` is inert.** Every rule assigns to
+`@Firelight-Innovations/maintainers`, and that team does not exist — the
+organisation has no teams at all — so no rule in the file matches anybody. On
+top of that, `main`'s protection has `required_pull_request_reviews` set to
+null, so code-owner review is only *requested*, never enforced.
+
+This matters more than it looks. A `pull_request` workflow runs the pull
+request's own code, so `check-catalog.mjs` can ultimately be edited by the
+change it is checking; CODEOWNERS is the only boundary GitHub evaluates
+server-side, out of reach of the branch. Create the team, add the maintainer,
+and turn on "Require review from Code Owners".
 
 ## 11. Forger (vague for now)
+
+**Blocked on #10b** — the repository exists and is empty, and its frontend
+cannot install the bridge until that package is on npm.
 
 **Built by the maintainer, like #10 and #12.** Not because outside help is
 unwelcome — so that nobody spends a weekend on a foundation that is already
@@ -114,7 +206,7 @@ pretty.
 
 ## 12. Journeyman
 
-Tackled after Forger is working.
+Tackled after Forger is working, and blocked on #10b for the same reason.
 
 ---
 
