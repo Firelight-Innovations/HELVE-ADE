@@ -379,7 +379,7 @@ mod tests {
     fn editing_a_body_clears_the_sent_stamp() {
         let mut comments = Vec::new();
         let id = added(&mut comments, "src/a.rs", 1, "first");
-        mark_sent(&mut comments, &[id.clone()], 10);
+        mark_sent(&mut comments, std::slice::from_ref(&id), 10);
         assert_eq!(comments[0].sent_at, Some(10));
 
         let edited = update(&mut comments, &id, "second", 20).expect("a known id");
@@ -394,7 +394,7 @@ mod tests {
     fn re_submitting_the_same_body_still_clears_the_sent_stamp() {
         let mut comments = Vec::new();
         let id = added(&mut comments, "src/a.rs", 1, "same");
-        mark_sent(&mut comments, &[id.clone()], 10);
+        mark_sent(&mut comments, std::slice::from_ref(&id), 10);
 
         update(&mut comments, &id, "same", 20).expect("a known id");
 
@@ -415,7 +415,7 @@ mod tests {
         let mut comments = Vec::new();
         let id = added(&mut comments, "src/a.rs", 1, "note");
 
-        mark_sent(&mut comments, &[id.clone()], 10);
+        mark_sent(&mut comments, std::slice::from_ref(&id), 10);
         assert!(!comments[0].resolved, "sending is not resolving");
 
         set_resolved(&mut comments, &id, true, 20).expect("a known id");
