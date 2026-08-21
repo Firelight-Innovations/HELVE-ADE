@@ -19,8 +19,23 @@ mod store;
 pub use store::{load, save};
 
 use crate::error::{AppError, Result};
+use crate::sync::MutexExt;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::AppHandle;
+
+/// Serializes the read-modify-write in [`edit`].
+///
+/// One lock for the whole process rather than one per checkout. HELVE is single-instance but not
+/// single-*window*, so two windows can have the same project open and two commands can land on the
+/// same file at once — and the loser of that race would silently drop whichever note the winner
+/// had just added. A map keyed by path would be the precise answer; a single lock is the same
+/// answer for the load this sees, which is one file write per sentence a person types.
+///
+/// It guards the file, not a value, so there is nothing inside it.
+static WRITING: Mutex<()> = Mutex::new(());
 
 /// Which of the three diffs a comment was written against.
 ///
@@ -200,6 +215,50 @@ pub fn sort(comments: &mut [ReviewComment]) {
             .then(a.created_at.cmp(&b.created_at))
             .then(a.id.cmp(&b.id))
     });
+}
+
+/// The repository root a cluster's notes belong to.
+///
+/// `None` when the cluster has no project open, or has one that is not a repository. Both are
+/// ordinary states rather than failures — the same two `git_cluster_status` answers `None` for —
+/// so reading notes for such a cluster is an empty list and not an error.
+///
+/// The *repository* root, not the cluster's working root, and the difference is the one
+/// `git::cluster_checkout` documents: `git status` reports repo-relative paths whatever directory
+/// it ran in, and those are the paths that end up inside a note. Resolving anywhere else would
+/// file notes against a base their paths were never measured from.
+pub fn checkout(app: &AppHandle, cluster_id: &str) -> Option<PathBuf> {
+    let working = crate::project::cluster_path(app, cluster_id)?;
+    crate::git::repo_root(&working)
+}
+
+/// Load a cluster's notes, change them, and write them back — the shape of every mutation here.
+///
+/// Read-modify-write under [`WRITING`] rather than an in-memory cache flushed later. The file is
+/// small, a person writes one note at a time, and a cache would need an owner, an invalidation
+/// rule for the other window, and somewhere to flush from on quit. Re-reading costs a few
+/// microseconds and removes all three.
+///
+/// The change runs before the save, so a refused mutation — an unknown id, an empty body — leaves
+/// the file untouched.
+pub fn edit<T>(
+    app: &AppHandle,
+    cluster_id: &str,
+    change: impl FnOnce(&mut Vec<ReviewComment>) -> Result<T>,
+) -> Result<T> {
+    let root = checkout(app, cluster_id).ok_or_else(|| {
+        AppError::Review(
+            "This cluster has no project open, or its project is not a git repository.".to_string(),
+        )
+    })?;
+
+    let _guard = WRITING.lock_or_panic();
+
+    let mut comments = load(&root);
+    let outcome = change(&mut comments)?;
+    sort(&mut comments);
+    save(&root, &comments)?;
+    Ok(outcome)
 }
 
 fn find_mut<'a>(comments: &'a mut [ReviewComment], id: &str) -> Result<&'a mut ReviewComment> {
