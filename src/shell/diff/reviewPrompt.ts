@@ -3,7 +3,8 @@
  *
  * Adapted from `src/shared/diff-comments-format.ts` in `stablyai/orca`, which
  * is MIT-licensed, © Stably AI. The block below and its escaping rule are that
- * file's; the scope line and the multi-note preamble are this one's.
+ * file's; the scope line and the multi-note preamble are this one's. `NOTICE`
+ * carries the attribution in full.
  *
  * **This format is a contract** between a person writing prose in a panel and
  * an agent reading it out of a terminal, with no schema between them but the

@@ -11,6 +11,10 @@
 //! That is the one place this departs from the review-host shape it is modelled on, and it is
 //! deliberate rather than unfinished.
 //!
+//! [`ReviewComment`] is modelled on `src/shared/diff-comment-types.ts` in `stablyai/orca`, which is
+//! MIT-licensed, © Stably AI — the line anchoring and what each timestamp means are that file's.
+//! `NOTICE` carries the attribution in full.
+//!
 //! The argument for anchoring to line numbers, and for what happens when the file moves underneath
 //! one, is in `docs/design-notes/backend-core.md`.
 
