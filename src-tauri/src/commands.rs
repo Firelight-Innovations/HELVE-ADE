@@ -12,6 +12,7 @@ use crate::apps;
 use crate::boot;
 use crate::discovery::{self, StackSnapshot};
 use crate::error::{AppError, Result};
+use crate::launch;
 use crate::layout::SplitDir;
 use crate::manifest::{self, Manifest};
 use crate::presets;
@@ -99,6 +100,22 @@ pub fn boot_status(state: State<'_, AppState>) -> boot::BootStatus {
         total: boot::total_steps(),
         label: "Starting…".to_string(),
     })
+}
+
+/// The path Explorer's "Open with HELVE" was pointed at, if this launch had one.
+///
+/// Polled once by the shell when it mounts, for the reason `launch`'s module doc
+/// gives: Tauri does not replay events, and at the moment a launch target is
+/// resolved there is no window listening for one. The event exists for the
+/// *second* launch, when there is.
+///
+/// Taking clears it, so the two delivery paths cannot open the same file twice.
+///
+/// Only ever answers with a file. A folder was already opened as a project by
+/// `launch::apply` before this could be called.
+#[tauri::command]
+pub fn take_launch_target(state: State<'_, launch::LaunchState>) -> Option<launch::Target> {
+    state.take()
 }
 
 /// A first-party app's UI has drawn its first meaningful frame.

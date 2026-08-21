@@ -38,7 +38,7 @@ import type {
 } from "@helve/bridge/protocol";
 import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve/bridge/protocol";
 import { HelveErrorCode } from "@helve/bridge/errors";
-import { appPainted, onProjectChanged } from "../../bindings";
+import { appPainted, onLaunchTarget, onProjectChanged, takeLaunchTarget } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
 import { windowLabel } from "../state/shellState";
@@ -47,6 +47,13 @@ import EmptyState from "./EmptyState";
 import NoClustersState from "./NoClustersState";
 import { registerToolWindow, unregisterToolWindow } from "../toolWindowRegistry";
 import "./toolwindow.css";
+
+/**
+ * The app a file opens in. Named here rather than passed in: the Explorer names
+ * the same constant for the same reason, and a launch target is not a choice
+ * the person clicking made.
+ */
+const VIEWER_APP = "viewer";
 
 /**
  * The tool window — the container every docked tool mounts into, plus its boot
@@ -497,6 +504,61 @@ const ToolWindow = forwardRef<
     }
     return openInstance(windowLabel(), appId);
   }, []);
+
+  /**
+   * Explorer's "Open with HELVE", pointed at a file.
+   *
+   * Only the file case arrives here. A folder is already open as a project by
+   * the time this runs — `launch::apply` does that in Rust, where
+   * `project::open` lives — and a file is the half that needs the layout: find
+   * or open a viewer, hand it the path. That is `resolveOpenTarget` plus
+   * `sendEventWhenReady`, which is to say exactly what `answerOpen` does for a
+   * `helve/open` from the Explorer. The same route, reached from the launch
+   * rather than from a frame.
+   *
+   * Both delivery paths are taken because the two launches differ. The first
+   * has no listener when the target is resolved and Tauri does not replay, so
+   * it is polled for; the second arrives while this window is up, and is an
+   * event. `takeLaunchTarget` clears, so whichever fires first wins and the
+   * file cannot open twice.
+   */
+  useEffect(() => {
+    // The main window only. A launch opens one thing, and every window running
+    // this component would otherwise race to open its own copy of it.
+    if (windowLabel() !== "main") return;
+
+    let live = true;
+    let unlisten: (() => void) | undefined;
+
+    const openPending = async () => {
+      const target = await takeLaunchTarget();
+      // Narrowed rather than assumed. Rust only ever parks a file, but this is
+      // a wire boundary and the check costs nothing.
+      if (!live || target === null || target.kind !== "file") return;
+      const instanceId = await resolveOpenTarget(VIEWER_APP);
+      if (!live) return;
+      // Queued if the viewer was just opened and has not finished its
+      // handshake, which is the common case here — see `sendEventWhenReady`.
+      sendEventWhenReady(instanceId, OPENED_EVENT, { path: target.path, preview: false });
+    };
+
+    // Same shape as the `onProjectChanged` subscription further down: the
+    // listener is registered in the background because an effect's cleanup must
+    // be returned synchronously, and `live` covers the gap.
+    void (async () => {
+      await openPending();
+      const stop = await onLaunchTarget(() => {
+        void openPending();
+      });
+      if (!live) return stop();
+      unlisten = stop;
+    })();
+
+    return () => {
+      live = false;
+      unlisten?.();
+    };
+  }, [resolveOpenTarget, sendEventWhenReady]);
 
   // Reachable from outside this component tree, by window label — see
   // `toolWindowRegistry.ts`'s header for why this exists instead of a prop.

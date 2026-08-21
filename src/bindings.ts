@@ -523,6 +523,31 @@ export function bootStatus(): Promise<BootStatus> {
   return invoke<BootStatus>("boot_status");
 }
 
+/* --- launched with a path ----------------------------------------------------
+ *
+ * Explorer's "Open with HELVE". Rust has already opened a folder as a project
+ * by the time either of these is called; what reaches the shell is a *file*,
+ * and only `ToolWindow` can decide which viewer shows it. See `launch.rs`.
+ */
+
+/** Mirrors `launch::Target`. Only the `file` variant ever crosses. */
+export type LaunchTarget =
+  { kind: "project"; path: string } | { kind: "file"; path: string; parent: string | null };
+
+/**
+ * The path this launch was asked to open, taken and cleared. Polled on mount
+ * for the reason [`bootStatus`] is, and the clearing is what stops this and
+ * [`onLaunchTarget`] both acting on one target.
+ */
+export function takeLaunchTarget(): Promise<LaunchTarget | null> {
+  return invoke<LaunchTarget | null>("take_launch_target");
+}
+
+/** A *second* "Open with HELVE", routed here by single-instance rather than run. */
+export function onLaunchTarget(cb: () => void): Promise<UnlistenFn> {
+  return listen<unknown>("helve://launch-target", () => cb());
+}
+
 /* --- host window -------------------------------------------------------------
  *
  * Tauri exposes window and webview control as objects with methods rather

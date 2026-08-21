@@ -11,7 +11,7 @@ all in the same frame.
 
 [![verify](https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml/badge.svg)](https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#install-and-run)
+[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](#install)
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange)](#what-works-today)
 
 [Tutorials](docs/user/tutorials/README.md) &middot;
@@ -97,6 +97,15 @@ and your coding agent can call it.
 [The MCP server manager](docs/mcp-server-manager.md) says which servers exist
 and what earns a new one.
 
+### Open with HELVE
+
+Right-click a folder in Explorer and open it as a project. Right-click a file
+and it opens in the File Viewer, with its folder as the project.
+
+A second right-click while HELVE is running goes to the window that is already
+open. HELVE runs as one process, so two windows can never disagree about your
+layout.
+
 ### Settings
 
 Every setting is generated from one schema, so a row you can see is a value
@@ -111,14 +120,39 @@ HELVE is **pre-alpha**, and the honest list is short.
 - **The stack tools are not integrated.** Forger and Journeyman are placeholder
   repositories. A tool's core is a child process, and the broker that reaches
   it is not built. The switcher shows the orchestrator's own apps only.
-- **No installer exists.** Building from source is the only way to run HELVE.
+- **Nothing is signed.** Windows SmartScreen warns about the installer, and
+  you have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
   design is Windows-only in principle. No machine here runs them.
 - **Some menu items do nothing.** The command palette, the **Run** menu and the
   four **Help** items are drawn already. The shape of the menu is settled, but
   none of those items acts yet.
 
-## Install and run
+## Install
+
+**[Download HELVE for Windows](https://github.com/Firelight-Innovations/HELVE-ADE/releases/latest/download/HELVE-setup.exe)**
+
+Run the installer. The wizard never asks for administrator rights and installs
+for your account only. HELVE also fetches the WebView2 runtime for you if your
+machine does not already have it.
+
+> **Windows will warn you, and you can go ahead.** The installer is not signed,
+> so SmartScreen shows "Windows protected your PC" and hides the button. Click
+> **More info**, then **Run anyway**. A signing certificate costs money that a
+> pre-alpha does not yet justify. [Releases and
+> updates](docs/dev/releases.md#what-still-does-not-exist) explains what
+> signing would and would not fix.
+
+After installing, right-click any folder in Explorer and choose **Open with
+HELVE** to open it as a project. The same entry appears on files, which open in
+the File Viewer with their folder as the project.
+
+**One thing will look broken, and is not.** An installed HELVE cannot find a
+stack yet, so every tool reads `not installed`. Run from a source checkout to
+see one resolve. [The stack, end to end](docs/user/tutorials/the-stack.md)
+explains why.
+
+## Build from source
 
 Every prerequisite is a Windows prerequisite, and each one is a one-time step.
 

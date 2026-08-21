@@ -53,3 +53,8 @@ Cargo.lock
 # every table and paragraph in STANDARDS.md and docs/tool-protocol.md for no
 # gain. Prose wrapping stays a human decision.
 *.md
+
+# A git worktree an agent is working in: a second checkout of this repository
+# sitting inside it. Formatting someone else's branch from this one is not this
+# checkout's business.
+.claude/worktrees/

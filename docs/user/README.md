@@ -21,10 +21,14 @@ machine.
 
 ## Getting it running
 
-There is no installer yet. Running HELVE today means building it from
-source, and it only runs on Windows. The root
-[README.md](../../README.md#install-and-run) has the exact prerequisites and
-commands; the short version is `pnpm install` then `pnpm app`.
+[Download the installer](https://github.com/Firelight-Innovations/HELVE-ADE/releases/latest/download/HELVE-setup.exe)
+and run it. It installs for your account only and never asks for administrator
+rights. Windows SmartScreen will warn about it, because it is not signed: click
+**More info**, then **Run anyway**.
+
+HELVE runs on Windows only. To build it from source instead, the root
+[README.md](../../README.md#build-from-source) has the prerequisites; the short
+version is `pnpm install` then `pnpm app`.
 
 ## Learning your way around
 
