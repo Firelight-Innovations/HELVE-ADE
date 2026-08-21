@@ -48,9 +48,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # `package-manager-cache: false` because this job runs no package manager.
+      # Left at its default, setup-node reads `packageManager` from package.json,
+      # goes looking for pnpm to ask where its store is, and fails the job before
+      # the check runs — pnpm is not installed here, deliberately.
       - uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
 
       # `pull_request.user.login` is the author of the pull request. Deliberately
       # not `github.actor`, which is whoever pushed or re-ran — gating on that
