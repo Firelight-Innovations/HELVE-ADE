@@ -1020,4 +1020,37 @@ mod tests {
         assert_eq!(resets_in_minutes(Some("not a number")), None);
         assert_eq!(resets_in_minutes(None), None);
     }
+
+    #[test]
+    fn a_github_item_page_can_be_opened() {
+        assert!(is_item_url("https://github.com/owner/name/issues/42"));
+        assert!(is_item_url("https://github.com/owner/name/pull/17"));
+    }
+
+    /// This is the check standing in for a capability scope, so its refusals
+    /// are the security property rather than a tidiness one. Every entry below
+    /// is a way somebody could try to reach a different host or a different
+    /// scheme through a panel that only ever needs github.com over TLS.
+    #[test]
+    fn nothing_but_a_github_page_over_tls_can_be_opened() {
+        for url in [
+            // A look-alike host that a `contains("github.com")` would pass.
+            "https://github.com.evil.example/owner/name",
+            "https://notgithub.com/owner/name",
+            // Userinfo hiding the real host behind an `@`.
+            "https://github.com@evil.example/owner/name",
+            "https://user:pass@github.com/owner/name",
+            // Wrong scheme. `file:` and `javascript:` are the two that would
+            // actually cost something if handed to the operating system.
+            "http://github.com/owner/name",
+            "file:///C:/Windows/System32/cmd.exe",
+            "javascript:alert(1)",
+            "ms-msdt:/id",
+            // The bare host, which is not an item and not worth opening.
+            "https://github.com/",
+            "",
+        ] {
+            assert!(!is_item_url(url), "{url:?} must not be openable");
+        }
+    }
 }

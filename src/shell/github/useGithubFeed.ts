@@ -78,13 +78,8 @@ export function useGithubFeed(
 
   useEffect(fetchFeed, [fetchFeed]);
 
-  // Invalidate in-flight replies as well as starting a new request. Without the
-  // bump, a slow first fetch could land after a refresh the user asked for
-  // because the first one looked wrong.
-  const refresh = useCallback(() => {
-    generation.current++;
-    fetchFeed();
-  }, [fetchFeed]);
-
-  return { feed, loading, refresh };
+  // `fetchFeed` is already the whole of refreshing: it bumps the generation on
+  // the way in, so a slow earlier reply is invalidated rather than allowed to
+  // land on top of the answer somebody just asked for.
+  return { feed, loading, refresh: fetchFeed };
 }

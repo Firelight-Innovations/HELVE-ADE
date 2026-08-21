@@ -364,14 +364,17 @@ export interface GithubControl {
   openInBrowser(url: string): Promise<void>;
 }
 
-/** Whether a GitHub token is stored, and storing one. Separate from
- *  `GithubControl` because it is not about a cluster and not about a repository:
- *  one token serves every project, and the app library's sign-in writes the same
- *  one. Passing an empty string signs out. The value is never read back — the
- *  interface can ask *whether*, never *what*, which is what keeps a credential
- *  out of the renderer. */
+/** Storing a GitHub token. Separate from `GithubControl` because it is about
+ *  neither a cluster nor a repository: one token serves every project, and the
+ *  app library's own sign-in writes the same one. An empty string signs out.
+ *
+ *  There is deliberately no `isSignedIn` here even though a binding for it
+ *  exists. `GithubFeed.authenticated` already says whether the request that
+ *  produced the list on screen used a token, which is both the same answer and
+ *  a better-sourced one — a separate query could disagree with the list beside
+ *  it. And the token is only ever written: nothing reads it back, because a
+ *  secret in the renderer is a secret in a devtools console. */
 export interface GithubAuthControl {
-  isSignedIn(): Promise<boolean>;
   signIn(token: string): Promise<void>;
 }
 

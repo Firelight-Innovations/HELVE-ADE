@@ -9,7 +9,7 @@
  * from `git.ts`, called with a name Rust put on the item. A wrapper here would
  * read like a second worktree-creation path without being one.
  */
-import { githubFeed, githubOpenInBrowser, hasGithubToken, setGithubToken } from "../../bindings";
+import { githubFeed, githubOpenInBrowser, setGithubToken } from "../../bindings";
 import type { GithubAuthControl, GithubControl } from "../contract";
 
 export const githubControl: GithubControl = {
@@ -27,15 +27,13 @@ export const githubControl: GithubControl = {
  * `plugins::install` reads the same entry to install from a private repository,
  * and two tokens for one host would be two things to keep signed in.
  *
- * `isSignedIn` asks whether, never what. No binding returns the token and none
- * should — a secret in the renderer is a secret in a devtools console, which is
- * the rule `mcp/commands.rs` states for its own.
+ * Write-only, and `hasGithubToken` is deliberately not wrapped: the feed's
+ * `authenticated` already says whether the list on screen was fetched with a
+ * token, and a second source for that could disagree with the list beside it.
+ * Nothing reads the token itself — a secret in the renderer is a secret in a
+ * devtools console, the rule `mcp/commands.rs` states for its own.
  */
 export const githubAuthControl: GithubAuthControl = {
-  isSignedIn() {
-    return hasGithubToken();
-  },
-
   signIn(token) {
     return setGithubToken(token);
   },
