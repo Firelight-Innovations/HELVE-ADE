@@ -3,9 +3,12 @@
 How an agent sees and clicks HELVE's actual interface, and why the obvious
 approaches did not work.
 
-## scripts/helve-ui.mjs
+The answer is an MCP server HELVE hosts, `helve-ui`, whose tools are
+`screenshot`, `snapshot`, `click`, `type_text`, `press_key` and `eval`. It lives
+in `src-tauri/src/mcp/servers/ui.rs`; the protocol layer under it is
+`src-tauri/src/devtools.rs`.
 
-### Why not a browser
+## Why not a browser
 
 The first attempt served the frontend to Chrome. That gives a DOM, and nothing
 else: every `invoke` fails, so there is no stack, no apps, no terminals and no
@@ -16,42 +19,66 @@ of second backend and was deleted for being one.
 This drives the WebView2 that HELVE already runs, so what is on screen is the
 real shell over the real Rust. Nothing is simulated and nothing is served twice.
 
-### Why CDP, and why it needs no debug build
+## Why the DevTools Protocol, and why through COM
 
-WebView2 is Chromium, and `--remote-debugging-port` opens the same DevTools
-Protocol endpoint desktop Edge exposes. The flag arrives through
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, an environment variable the WebView2
-loader reads at process start — **outside Tauri entirely**.
+WebView2 is Chromium, and it speaks the same protocol Chrome exposes over
+`--remote-debugging-port`. The interesting part is that it does not need the
+port: `ICoreWebView2::CallDevToolsProtocolMethod` takes a method name and a JSON
+string, which is the whole protocol, and Tauri already holds the
+`ICoreWebView2Controller` that reaches it.
 
-That is the load-bearing property. The debug channel is not compiled in, not
-feature-gated, and not present in the shipped binary: it exists only for a
-process someone deliberately launched with that variable set. So the usual rule
-about never shipping a debug channel in release is satisfied without a separate
-build, and the binary an agent drives is the same one a user runs.
+That is what makes this a server rather than a script. Nothing is launched
+differently, no socket is opened, and there is no second process to point at
+anything. The tools work against a HELVE somebody is already using, which the
+port approach could not do — the flag is read when the WebView2 environment is
+created, so it cannot be turned on for a webview that already exists.
 
-Two alternatives were rejected. `additionalBrowserArgs` in `tauri.conf.json` is
-compile-time, and per Tauri's own docs it *replaces* wry's default
-`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection` rather than
-appending to it, so using it means re-adding those by hand; two open Tauri issues
-also report it causing blank windows. The HKLM registry policy works but applies
-to every future launch of the named executable, which is a standing debug channel
-on someone's daily driver.
+`Page.captureScreenshot` gives the picture, `Input.dispatchMouseEvent` and
+`Input.dispatchKeyEvent` give real input, and `Runtime.evaluate` runs the DOM
+walking. One transport for all six tools.
 
-### Why a separate identifier
+### What the earlier version did, and why it is gone
 
-`tauri-plugin-single-instance` builds its mutex name as `{identifier}-sim`, so a
-second launch under the same identifier relays its argv to the first process and
-exits. An agent launching HELVE would therefore be swallowed by a HELVE the user
-already had open — and, worse, the surviving process is the user's, so anything
-that then "cleans up its own instance" kills their window.
+`scripts/helve-ui.mjs` used to set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` at
+launch and talk to the resulting debug port over a WebSocket. It worked, and it
+had three costs the COM route does not:
 
-`pnpm ui:build` overrides `identifier` to `com.firelightinnovations.helve.agent`.
-Every store also resolves its path through `app_config_dir()`, which derives from
-the same field, so that single override buys both a second process and a private
-`%APPDATA%` tree. The agent instance cannot collide with the user's and cannot
-corrupt their layout, project list or settings.
+- **A port.** `withGlobalTauri` is on and `csp` is null, so anything holding that
+  port could call every `#[tauri::command]` through `window.__TAURI__.core.invoke`
+  — a standing hole for as long as the process lived, guarded only by the promise
+  never to launch a real build with the variable set.
+- **A separate process.** It could only drive an instance it had started itself.
+- **A second implementation.** Snapshot, click and type existed once in
+  JavaScript out there and would now exist again in Rust in here.
 
-### What CDP turned out to give
+Two alternatives were rejected before that one, and both remain rejected.
+`additionalBrowserArgs` in `tauri.conf.json` is compile-time, and per Tauri's own
+docs it *replaces* wry's default `--disable-features=msWebOOUI,msPdfOOUI,
+msSmartScreenProtection` rather than appending to it; two open Tauri issues also
+report it causing blank windows. The HKLM registry policy works but applies to
+every future launch of the named executable, which is a standing debug channel on
+somebody's daily driver.
+
+## Why it is developer-only
+
+Every other server HELVE hosts is a read, deliberately: the endpoint is reachable
+by anything on the machine holding the token, so a leaked token should cost
+knowledge of a window layout and not control of it. This one clicks, and `eval`
+reaches the whole backend through `window.__TAURI__`.
+
+So `SERVER.dev_only` is true, which means the server is absent — not disabled —
+until `developer.mode` is switched on: no row in settings, no key in `.mcp.json`,
+no tools listed, and a `tools/call` that says there is no such server.
+`docs/mcp-server-manager.md` §11 has the mechanism and the three properties that
+matter more than the flag itself.
+
+The gate is checked on every request rather than cached, so switching developer
+mode off takes the server away from an already-connected client on its next call.
+That is verified by hand as well as by test: with a session open, the toggle in
+settings turned `snapshot` into "no MCP server with id `ui`" while the debug
+server beside it went on answering.
+
+## What the protocol turned out to give
 
 Verified against a running build rather than assumed:
 
@@ -59,16 +86,16 @@ Verified against a running build rather than assumed:
 - **DOM across frames.** Apps mount as iframes on `tauri.localhost`, which is the
   same origin as the shell, so `contentDocument` reads straight through. An agent
   sees app content, not just the shell around it. This was the open question; it
-  could easily have gone the other way.
+  could easily have gone the other way. A live `snapshot` returns rows marked
+  `app` for the File Explorer's own buttons and tree.
 - **Real input.** `Input.dispatchMouseEvent` at an element's centre, rather than
   a synthetic `el.click()`. HELVE's menus and drag handles listen for pointer
   events and for focus moving, and a dispatched DOM click skips both.
-- **The whole backend, incidentally.** `withGlobalTauri` is on and `csp` is null,
-  so `Runtime.evaluate` can call `window.__TAURI__.core.invoke(...)`. Anything
-  holding the debug port has every `#[tauri::command]` available to it. That is
-  the real reason the port must never be open on a build a user is running.
+- **The whole backend, incidentally.** `Runtime.evaluate` can call
+  `window.__TAURI__.core.invoke(...)`, which is why `eval` is described to the
+  model as doing considerably more than click, and why the section above exists.
 
-### Refs, and not stamping the DOM
+## Refs, and not stamping the DOM
 
 `snapshot` numbers elements `e0`, `e1`, … and keeps them in an array on `window`
 rather than writing `data-` attributes onto the app's own elements. A tool that
@@ -77,30 +104,42 @@ attribute surviving into a screenshot or a CSS selector sends someone chasing a
 bug that belongs to the tooling.
 
 Refs are renumbered by every `snapshot`, so a stale ref from two snapshots ago
-points somewhere arbitrary. `click` also accepts a plain CSS selector for cases
-where that matters.
+points somewhere arbitrary. Every answer says so, and `click` also accepts a
+plain CSS selector for cases where that matters.
 
-### The TEMP trap
+## The agent's own instance
 
-`WEBVIEW2_USER_DATA_FOLDER` is anchored to the target directory, not to `TEMP`.
-Run from Git Bash, `TEMP` holds a POSIX path; WebView2 handed `/tmp\...` fails to
-create its environment and takes the whole app down during startup, with nothing
-on stderr to say why — the process simply is not there a second later. That cost
-a debugging pass, and it is the kind of failure that looks like "the app is
-broken" rather than "the path was wrong".
+`scripts/helve-ui.mjs` is what remains of the old driver, and it does one thing
+the server cannot do for itself: start an instance that is not the user's.
 
-A private profile is needed regardless: two instances sharing one user-data
-folder make the second join the first's browser-process group, which silently
-ignores its browser arguments — including the debug port.
+`pnpm ui:build` compiles the binary under the identifier
+`com.firelightinnovations.helve.agent`. `tauri-plugin-single-instance` builds its
+mutex name as `{identifier}-sim`, so a second launch under the same identifier
+relays its argv to the first process and exits — and, worse, the surviving
+process is the user's, so anything that then "cleans up its own instance" kills
+their window. Every store also resolves its path through `app_config_dir()`,
+which derives from the same field, so that one override buys both a second
+process and a private `%APPDATA%` tree.
+
+`pnpm ui launch` writes `developer.mode` and the UI server's switch into that
+private tree before starting the process. The chicken and egg is that the server
+is what an agent would otherwise use to click those switches. Both files are ones
+HELVE writes itself, and both are merged rather than replaced.
+
+`pnpm ui close` kills by pid, read from the endpoint file that instance wrote.
+The earlier `taskkill /IM helve-orchestrator.exe` would have closed a HELVE
+somebody was using, since both run from a binary of that name.
 
 ## Relationship to the MCP debug server
 
-`pnpm probe` (see `agent-debugging.md`) and `pnpm ui` answer different questions
-and neither replaces the other. The probe reads Rust-side truth — the state the
-backend holds and the failures it recorded — and works against any running HELVE
-with no special launch. `pnpm ui` sees pixels and the DOM, and needs an instance
-launched with the debug port.
+`helve-debug` and `helve-ui` answer different questions. The debug server reads
+Rust-side truth — the state the backend holds and the failures it recorded — and
+is on by default in every build, because a shipped HELVE misbehaving on a machine
+none of us have is exactly when that is worth the most. The UI server sees pixels
+and the DOM, and can act on them.
 
-The probe's ring buffer also keeps failures from *before* the tool connected,
-which CDP cannot: `Runtime.consoleAPICalled` only delivers what happens while a
-client is attached.
+The debug server's ring buffer also keeps failures from *before* a tool connected,
+which the DevTools Protocol cannot: `Runtime.consoleAPICalled` only delivers what
+happens while a client is attached. That is why the old `pnpm ui console` has no
+replacement here — `recent_errors` is the thing that remembers, and
+`src/shell/diagnostics.ts` already forwards the webview's failures into it.

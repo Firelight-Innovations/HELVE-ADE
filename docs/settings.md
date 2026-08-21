@@ -141,9 +141,9 @@ The bar for `Restart` is that specific. A setting read on every use is `Now` or
 Everything below is one file, `src-tauri/src/settings/schema.rs`, unless it says
 otherwise.
 
-1. **Pick the group.** `appearance`, `editor`, `terminal`, `search`, `mcp`. If
-   none fits, add a `static Group` and an entry in `GROUPS`, with an `order` in
-   0–99 — the shell's range (§6).
+1. **Pick the group.** `appearance`, `editor`, `terminal`, `search`, `mcp`,
+   `developer`. If none fits, add a `static Group` and an entry in `GROUPS`, with
+   an `order` in 0–99 — the shell's range (§6).
 2. **Add a `Setting`** to that group's `&'static [Setting]`. The key is
    `<group id>.<camelCaseName>`, and the prefix is not optional: a test enforces
    it, and §6 explains what it is for.
@@ -159,6 +159,11 @@ otherwise.
    with the type its reader expects.
 6. **Set `applies` truthfully** (§4). Ask when the value is read, not when you
    would like it to take effect.
+7. **Only if its reader is a file**, add the key to `settings::react`. Almost
+   nothing needs this: a setting read at the point of use needs no reaction at
+   all. The exception is one whose consumer is written rather than consulted —
+   `.mcp.json` is the only case today, and both `mcp.writeProjectConfig` and
+   `developer.mode` decide what goes in it.
 
 **Nothing in the frontend changes, and that is the entire point of the design.**
 The screen is generated from the schema: `src/bindings.ts` mirrors the four

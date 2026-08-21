@@ -233,12 +233,17 @@ order:
   would see until a client asked for `tools/list`. Each returns a JSON Schema
   object with `"additionalProperties": false`.
 - `pub static SERVER: McpServer`, naming `id`, `name`, `description`, `tools:
-  TOOLS`, and `call`.
-- `fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<Value,
+  TOOLS`, `call`, and `dev_only` (section 11 — `false` unless you have read it
+  and decided otherwise).
+- `fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer,
   RpcError>`, matching on the tool name. `Registry::call` checks the name against
   `TOOLS` before dispatching, so the final arm is a genuine impossibility rather
   than a second copy of that error message — say so in a comment, as `echo.rs`
   does, rather than leaving it looking like real error handling.
+- A tool answering with facts returns `Ok(json!({ ... }).into())`; the `From<Value>`
+  impl is what keeps `ToolAnswer` free for the ordinary case. Only a tool that
+  produces a **picture** names the other variant, `ToolAnswer::Image`, and
+  `servers/ui.rs`'s `screenshot` is the one that does.
 
 Two things `echo.rs` demonstrates that are easy to skip. Refuse a missing or
 mistyped parameter with `INVALID_PARAMS` and a sentence naming what was wanted,
@@ -261,7 +266,8 @@ pub fn seed(registry: &Registry) {
 ```
 
 Registering an id twice replaces rather than duplicates, so `seed` is safe to
-call again.
+call again. `mcp::seed` in the parent module calls this and then hydrates from
+`mcp.json`, so a switch somebody moved comes back where they left it.
 
 ### 4. Nothing else
 
@@ -273,8 +279,12 @@ expect an edit and will not find one:
 - **No `.mcp.json` edit.** That file is generated from the registry, and only the
   `helve-*` keys are ours to write or remove (section 6). It is gated on the
   `mcp.writeProjectConfig` setting.
-- **No frontend change.** The settings screen lists whatever the registry holds,
-  including servers that are switched off.
+- **No frontend change.** The settings screen lists whatever the registry hands
+  it, including servers that are switched off — and *excluding* developer-only
+  ones, which Rust filters out before the panel ever sees them.
+- **No persistence to write.** Whichever way the switch is left is written to
+  `mcp.json` beside `settings.json`, sparsely: only a server whose switch is away
+  from the state it ships in appears in the file.
 - **No `crates/` work, and no `rmcp` in your file.** The protocol is implemented
   once, a layer down (section 3).
 
@@ -296,7 +306,35 @@ happen at all:
 > filesystem equivalent — Forger's design model is the first real case, because
 > an agent cannot read a spec's *boundaries* by opening a file.
 
-## 11. The settings section is the only custom panel in the product
+## 11. Developer-only servers
+
+`dev_only: true` on an `McpServer` makes it **absent** until `developer.mode` is
+switched on in settings. Not greyed out, not marked unavailable: no row in the
+panel, no key in `.mcp.json`, nothing from `tools/list`, and a `tools/call` that
+answers "no MCP server with id `<id>`" — the same thing a client is told about a
+server this build was never compiled with.
+
+One predicate on `Entry` in `registry.rs` decides all four, so a fifth surface
+cannot be added and quietly forget one of them.
+
+**What earns the flag.** Every server before `ui` was a *read*, and that was
+deliberate: the endpoint is reachable by anything on the machine that holds the
+token, so a leaked token should cost knowledge of a window layout and not control
+of it. A server that can click cannot make that promise. `dev_only` is what keeps
+it from being on the list at all for somebody who is not working on HELVE.
+
+Three things follow, and they matter more than the flag itself:
+
+- **Revealing is not enabling.** `Registry::register` starts a `dev_only` server
+  off. Turning developer mode on shows a switch; somebody still has to throw it.
+- **Developer mode is read at the point of use**, never cached in the registry.
+  Switching it off takes the server away from an already-connected client on its
+  next request, with no restart and no window in which the two disagree.
+- **It ships in release.** A `cfg` would put the server out of reach of exactly
+  the build somebody needs to diagnose, and would trade a gate the tests can hold
+  to account for one they cannot.
+
+## 12. The settings section is the only custom panel in the product
 
 Every other section of the settings screen is generated from its schema: a
 `Group` of `Setting` descriptors, drawn by four generic controls, with no

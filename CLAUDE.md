@@ -45,51 +45,62 @@ ask Braden to start it.
 
 Two limits worth knowing before you read a result:
 
-- **Every tool is a read.** Nothing here opens, closes or moves anything, deliberately. To *change*
-  the running app, ask Braden.
+- **Every tool on this server is a read.** Nothing in `helve-debug` opens, closes or moves
+  anything, deliberately. The server that *does* act on the window is below, and it is off by
+  default.
 - **Errors inside an app's iframe are not captured**, only the shell's and the backend's. An empty
   `recent_errors` means nothing went wrong *in those two places*. Every answer repeats this in its
   `covers` field; do not report it as "no errors" without the qualifier.
 
 This does not replace looking at the screen. For that, see below.
 
-## Seeing and clicking the UI: `pnpm ui`
+## Seeing and clicking the UI
 
-**`pnpm ui` drives HELVE's real interface** — screenshots, DOM, and real mouse and keyboard input —
-by talking Chrome DevTools Protocol to the WebView2 the app already runs. Not a browser serving the
-frontend: the real shell with the real Rust backend under it.
+**HELVE hosts an MCP server that drives its own window** — screenshots, the DOM,
+and real mouse and keyboard input. It is `helve-ui`, it reaches the WebView2
+through the COM interface Tauri already holds, and it needs no debug port, no
+special launch and no separate build.
+
+It is **off, and invisible, unless developer mode is on.** That is the point: it
+is the one server that writes, so it is absent from settings, from `.mcp.json`
+and from `tools/list` until somebody switches on `developer.mode` and then throws
+its own switch as well.
+
+### If you are an agent, use your own instance
 
 ```sh
-pnpm ui:build                 # once — builds an agent-owned binary (own identifier)
-pnpm ui launch                # start it with the debug port open
-pnpm ui snapshot              # every interactive element, with a ref and a position
-pnpm ui click e12             # click a ref, or any CSS selector
-pnpm ui type "hello"          # type into whatever has focus
-pnpm ui key Enter
-pnpm ui shot out.png          # screenshot — then Read the file to actually look at it
-pnpm ui eval "document.title"
-pnpm ui close
+pnpm ui:build                 # once — a release build under the agent identifier
+pnpm ui launch                # starts it, with developer mode and the server on
+pnpm ui close                 # stops it, by pid, leaving anyone else's alone
 ```
 
-`snapshot` walks into app iframes, so `e19 app button (305,301) New Project` is Home's own content,
-not the shell's. Refs are renumbered by every `snapshot` — take a fresh one before clicking.
+Then drive it:
 
-Three things to know:
+```sh
+pnpm probe --agent --server ui screenshot     # writes helve-shot.png — then Read it
+pnpm probe --agent --server ui snapshot       # every clickable element, with refs
+pnpm probe --agent --server ui click '{"target":"e12"}'
+pnpm probe --agent --server ui type_text '{"text":"hello"}'
+pnpm probe --agent --server ui press_key '{"key":"Enter"}'
+pnpm probe --agent --server ui eval '{"expression":"document.title"}'
+```
 
-- **It launches its own instance**, built by `pnpm ui:build` with the identifier
-  `com.firelightinnovations.helve.agent`. That is what lets it run beside a HELVE Braden started
-  without single-instance swallowing it. It gets a private `%APPDATA%` tree, so it starts empty and
-  cannot corrupt his layout or project list.
-- **Never point this at a build a user is running.** `withGlobalTauri` is on and `csp` is null, so
-  anything holding the debug port can call every `#[tauri::command]` through
-  `window.__TAURI__.core.invoke`. The port only opens for a process deliberately launched with the
-  environment variable, and it must stay that way.
-- **Avoid clicking anything that opens a native dialog** — folder pickers and the like block the
-  webview, and the session stops responding until someone dismisses it by hand. `New Project`,
-  `Open Project` and `Clone Project` on the Home screen are the ones to leave alone.
+`--agent` is what points the probe at the instance `pnpm ui launch` started
+rather than at a HELVE Braden is using. **Do not drop it**, and do not drive his
+window without asking — this server clicks things, and `eval` reaches every
+`#[tauri::command]` through `window.__TAURI__`.
 
-`pnpm ui console` only reports what is logged while it is listening; CDP keeps no backlog. For
-failures that already happened, `pnpm probe recent_errors` is the one that remembers.
+`snapshot` walks into app iframes, so `e19 app button New Project` is Home's own
+content and not the shell's. Refs are renumbered by every `snapshot` — take a
+fresh one before clicking.
+
+**Avoid clicking anything that opens a native dialog.** Folder pickers block the
+webview, and every tool then times out after 20s until someone dismisses it by
+hand. `New Project`, `Open Project` and `Clone Project` on the Home screen are
+the ones to leave alone.
+
+There is no live console tail. `pnpm probe recent_errors` is what remembers
+failures, including the webview's — see above.
 
 ## Verification
 
