@@ -68,9 +68,9 @@ impl Refusal {
         match self {
             Refusal::Empty => "type the address of a page to inspect".to_string(),
             Refusal::Unreadable => "that is not an address a browser could open".to_string(),
-            Refusal::Scheme(scheme) => format!(
-                "Design Mode opens http and https pages; `{scheme}:` is not one of them"
-            ),
+            Refusal::Scheme(scheme) => {
+                format!("Design Mode opens http and https pages; `{scheme}:` is not one of them")
+            }
             Refusal::NoHost => "that address names no host to fetch it from".to_string(),
             Refusal::ReservedHost(host) => format!(
                 "`{host}` is reserved — a name under `.localhost` can be mistaken for this \
@@ -288,7 +288,10 @@ fn capture(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
 /// copy of the probe behind — which would be harmless (the probe is idempotent)
 /// but would accumulate for as long as the window lives.
 fn arm(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
-    if let Some(previous) = params.and_then(|p| p.get("replaces")).and_then(Value::as_str) {
+    if let Some(previous) = params
+        .and_then(|p| p.get("replaces"))
+        .and_then(Value::as_str)
+    {
         // A removal that fails is not worth failing the arm over: the id may be
         // from a window that has since closed, and the outcome either way is
         // that the caller gets a working probe.
@@ -307,7 +310,8 @@ fn disarm(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
         .and_then(Value::as_str)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, "design/disarm needs the scriptId to drop"))?;
 
-    devtools::remove_script(app, None, id).map_err(|e| RpcError::new(INTERNAL_ERROR, e.message()))?;
+    devtools::remove_script(app, None, id)
+        .map_err(|e| RpcError::new(INTERNAL_ERROR, e.message()))?;
     Ok(Value::Null)
 }
 
@@ -352,7 +356,8 @@ mod tests {
 
     #[test]
     fn a_bare_host_and_port_gets_a_scheme() {
-        let target = normalize("localhost:5173", None).expect("a dev server address is ordinary input");
+        let target =
+            normalize("localhost:5173", None).expect("a dev server address is ordinary input");
         assert_eq!(target.url, "http://localhost:5173/");
         assert_eq!(target.origin, "http://localhost:5173");
     }
@@ -482,7 +487,9 @@ mod tests {
 
     #[test]
     fn a_clip_needs_four_finite_numbers() {
-        let ok = read_clip(Some(&json!({"x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0})));
+        let ok = read_clip(Some(
+            &json!({"x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0}),
+        ));
         assert!(ok.is_ok());
 
         for missing in ["x", "y", "width", "height"] {
@@ -502,7 +509,9 @@ mod tests {
     /// is not one this code should be discovering at runtime.
     #[test]
     fn a_clip_with_no_area_is_refused() {
-        let flat = read_clip(Some(&json!({"x": 0.0, "y": 0.0, "width": 0.0, "height": 10.0})));
+        let flat = read_clip(Some(
+            &json!({"x": 0.0, "y": 0.0, "width": 0.0, "height": 10.0}),
+        ));
         assert!(flat.is_err());
     }
 
@@ -510,8 +519,10 @@ mod tests {
     fn a_negative_origin_is_clamped_rather_than_refused() {
         // An element scrolled above the viewport reports a negative `y`, and
         // the useful answer is the part of it that is on screen.
-        let clip = read_clip(Some(&json!({"x": -30.0, "y": -8.0, "width": 20.0, "height": 20.0})))
-            .expect("a partly offscreen element is still worth photographing");
+        let clip = read_clip(Some(
+            &json!({"x": -30.0, "y": -8.0, "width": 20.0, "height": 20.0}),
+        ))
+        .expect("a partly offscreen element is still worth photographing");
         assert_eq!(clip.x, 0.0);
         assert_eq!(clip.y, 0.0);
     }
@@ -559,7 +570,10 @@ mod tests {
     /// nothing in it and report success.
     #[test]
     fn the_probe_is_present_and_guards_its_sender() {
-        assert!(PROBE.len() > 1000, "the probe did not make it into the binary");
+        assert!(
+            PROBE.len() > 1000,
+            "the probe did not make it into the binary"
+        );
         assert!(
             PROBE.contains("event.source !== window.parent"),
             "the probe must only obey the frame that embedded it"

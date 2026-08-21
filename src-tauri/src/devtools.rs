@@ -217,13 +217,12 @@ fn add_script(window: &WebviewWindow, script: String) -> Result<String, Error> {
         let answer = tx.clone();
         let started = (|| -> windows_core::Result<()> {
             let core = unsafe { webview.controller().CoreWebView2() }?;
-            let handler =
-                AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
-                    move |result, id| {
-                        let _ = answer.send(result.map(|()| id));
-                        Ok(())
-                    },
-                ));
+            let handler = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+                move |result, id| {
+                    let _ = answer.send(result.map(|()| id));
+                    Ok(())
+                },
+            ));
 
             unsafe { core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(script), &handler) }
         })();
