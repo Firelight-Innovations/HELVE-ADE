@@ -1,5 +1,5 @@
 /**
- * The seam every region plugs into. Each of the fifteen regions is built against
+ * The seam every region plugs into. Each of the sixteen regions is built against
  * this file and nothing else — a region never imports another region's source,
  * which is what lets them be built in parallel without growing into each other.
  * Anything two regions need lives beside this file (STANDARDS.md §1.2).
