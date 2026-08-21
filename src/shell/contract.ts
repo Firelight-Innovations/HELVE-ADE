@@ -31,6 +31,7 @@ import type {
   SurfaceKind,
   TerminalBusy,
   ToolStatus,
+  UpdateState,
   WorktreeRef,
 } from "../bindings";
 
@@ -411,6 +412,84 @@ export interface MenuPrompt {
 export interface Menu {
   label: string;
   items: MenuItem[];
+}
+
+// --- Updates ----------------------------------------------------------------
+
+/**
+ * What the status bar says about a newer HELVE, or `null` for the far more
+ * common case of nothing worth a pixel.
+ *
+ * Note what is absent: the version being installed *over*, the download's byte
+ * counts, the endpoint, and the plugin's own error type. A status bar shows one
+ * line; everything cut here is either already on screen or was never a sentence.
+ */
+export interface UpdateNotice {
+  /** The line in the bar. Short enough to sit beside a branch name. */
+  label: string;
+  /** The whole sentence, as the row's `title`. Never a repeat of `label`. */
+  detail: string;
+  /** How the row reads. `offer` is the only one that takes the accent — the
+   *  rest are ordinary status, and an error is not an alarm. */
+  tone: "offer" | "status" | "error";
+  /** Present only when pressing the row would do something. A row without one
+   *  renders as text, not as a button that swallows clicks. */
+  onSelect?: () => void;
+}
+
+/**
+ * The one door between `updater::UpdateState` and the bar — `healthOf`'s job,
+ * for the updater.
+ *
+ * **`asked` is what keeps this quiet.** A launch check that finds nothing, or
+ * that fails because the machine is on a train, has nothing to tell anybody:
+ * both return `null`. The same two states after the user chose Check for
+ * Updates are an answer to a question, and are shown. An offer is shown either
+ * way, because that is the one thing worth interrupting a status bar for — and
+ * it still interrupts nothing, being a line of text with a click on it.
+ */
+export function updateNotice(
+  state: UpdateState,
+  asked: boolean,
+  onInstall: () => void,
+): UpdateNotice | null {
+  switch (state.state) {
+    case "idle":
+      return null;
+    case "checking":
+      return asked
+        ? { label: "Checking…", detail: "Asking for a newer version.", tone: "status" }
+        : null;
+    case "up-to-date":
+      return asked
+        ? { label: "Up to date", detail: `${state.version} is the newest release.`, tone: "status" }
+        : null;
+    case "available":
+      return {
+        label: `Update to ${state.version}`,
+        detail: state.notes === "" ? `${state.version} is available.` : state.notes,
+        tone: "offer",
+        onSelect: onInstall,
+      };
+    case "downloading":
+      return {
+        label: state.percent === null ? "Downloading…" : `Downloading ${state.percent}%`,
+        detail: "Fetching the installer. HELVE restarts when it finishes.",
+        tone: "status",
+      };
+    case "installing":
+      return {
+        label: "Installing…",
+        detail: "HELVE closes and reopens on the new version.",
+        tone: "status",
+      };
+    case "failed":
+      return asked ? { label: "Update failed", detail: state.message, tone: "error" } : null;
+    // Shown only when asked, and never as an error: a development build is not
+    // broken for being unable to install a release over itself.
+    case "unsupported":
+      return asked ? { label: "No updates here", detail: state.reason, tone: "status" } : null;
+  }
 }
 
 // --- Instances, panes, clusters — the layout --------------------------------

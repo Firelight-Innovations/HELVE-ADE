@@ -121,6 +121,22 @@ allow = [
     # keeps the GPL family off this list.
     "ISC",
 
+    # CDLA-Permissive-2.0, added 2026-08-21 — the same one-line decision, taken
+    # for the in-app updater.
+    #
+    # It arrives through `webpki-root-certs`, under `rustls-platform-verifier`,
+    # under `reqwest`. `reqwest` was already here through Tauri; what
+    # `tauri-plugin-updater` adds is the TLS stack it needs to fetch
+    # `latest.json` and an installer over HTTPS from a host we do not control.
+    #
+    # It is a **data** license, not a code license, and that is why it is
+    # unfamiliar: the crate is Mozilla's CA root store packaged as a crate, and
+    # the Linux Foundation wrote this family for exactly that shape of thing.
+    # Version 2.0 imposes no obligation of any kind on software that uses the
+    # data — not even attribution, which 1.0 required — so it raises none of
+    # the derivative-work question that keeps the GPL family off this list.
+    "CDLA-Permissive-2.0",
+
     # MPL-2.0 is copyleft and is allowed anyway, which is the one entry in this
     # list that deserves an argument rather than a nod. Its reciprocity is
     # file-scoped: modify an MPL file and that file stays MPL, and nothing

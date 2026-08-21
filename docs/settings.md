@@ -126,12 +126,14 @@ difference between a limitation and a bug.
 `what` is a phrase, not an id: "the next terminal you open", "the next file you
 open". It is rendered as written, so it has to read as the end of a sentence.
 
-`Restart` has exactly one user, and it is worth naming because it shows what the
+`Restart` has two users, and they are worth naming because they show what the
 variant is for rather than what it sounds like. `terminal.openOnLaunch` is read in
 `lib.rs`'s setup, at the only moment a launch terminal could be opened. There is
 no later point at which switching it on could do anything — the launch is over —
 so `Now` would not be a small inaccuracy, it would be a control that appears to
-work and does not.
+work and does not. `updates.checkAutomatically` is the same shape, read by
+`updater::start` on the same line of the same function, and Help ▸ Check for
+Updates is the way to ask without waiting for a restart.
 
 The bar for `Restart` is that specific. A setting read on every use is `Now` or
 `Next`, whatever it feels like; only a setting read *once, at startup* earns it.

@@ -1186,6 +1186,60 @@ export function onSettingsChanged(
   return listen<Record<string, SettingValue>>(SETTINGS_CHANGED_EVENT, (e) => cb(e.payload));
 }
 
+/* --- updates ---------------------------------------------------------------
+ *
+ * Mirrors `src-tauri/src/updater.rs`, which runs the check, the download and
+ * the installer — STANDARDS.md §1, and that module's header says why
+ * `@tauri-apps/plugin-updater` is deliberately not a dependency here.
+ */
+
+/**
+ * Mirrors `updater::UpdateState`. Internally tagged, so narrowing on `state`
+ * gives you the fields that variant carries. `percent` is sent rather than
+ * derived because `total` can be null — a release asset served without a
+ * `Content-Length` leaves nothing to derive it from.
+ */
+export type UpdateState =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "up-to-date"; version: string }
+  | { state: "available"; version: string; notes: string }
+  | { state: "downloading"; received: number; total: number | null; percent: number | null }
+  | { state: "installing" }
+  | { state: "failed"; message: string }
+  | { state: "unsupported"; reason: string };
+
+export const UPDATE_CHANGED_EVENT = "updater:changed";
+
+/**
+ * Where the updater is, without touching the network. Asked once on mount, for
+ * `bootStatus`'s reason: Tauri events have no replay, so a window created after
+ * the launch check would otherwise never learn its result.
+ */
+export function updateState(): Promise<UpdateState> {
+  return invoke<UpdateState>("update_state");
+}
+
+/** Ask the releases endpoint now, resolving with the state it settled in. */
+export function checkForUpdate(): Promise<UpdateState> {
+  return invoke<UpdateState>("check_for_update");
+}
+
+/**
+ * Download the standing offer and run its installer. **This promise does not
+ * resolve on Windows** — the installer ends the process awaiting it, so treat
+ * it as a one-way door. Rejects with a sentence meant to be shown when there is
+ * no offer standing, or when the download or the signature check failed.
+ */
+export function installUpdate(): Promise<void> {
+  return invoke<void>("install_update");
+}
+
+/** Subscribe to every transition, from the launch check or from any window. */
+export function onUpdateChanged(cb: (state: UpdateState) => void): Promise<UnlistenFn> {
+  return listen<UpdateState>(UPDATE_CHANGED_EVENT, (e) => cb(e.payload));
+}
+
 /* --- MCP -------------------------------------------------------------------
  *
  * The servers HELVE hosts for whatever coding agent is running in one of its

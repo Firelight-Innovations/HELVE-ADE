@@ -117,7 +117,19 @@ export interface TerminalMenuHandlers {
   enabled: boolean;
 }
 
-/** Everything the five wired menus act on. */
+/**
+ * The one Help item that acts.
+ *
+ * Its three neighbours are still inert. This one is wired because it is the
+ * only way to check for an update on a machine where `updates.checkAutomatically`
+ * is off, and because the answer — including "you are up to date" — arrives in
+ * the status bar rather than in a dialog. See `UpdateNotice` in `contract.ts`.
+ */
+export interface HelpMenuHandlers {
+  checkForUpdates(): void;
+}
+
+/** Everything the six menus with a live item act on. */
 export interface MenuHandlers {
   /** File items that go to the active app frame as a menu command. */
   app: CommandHandlers;
@@ -127,11 +139,12 @@ export interface MenuHandlers {
   file: FileMenuHandlers;
   view: ViewMenuHandlers;
   terminal: TerminalMenuHandlers;
+  help: HelpMenuHandlers;
 }
 
 /**
- * All six menus. File, Edit, View and Terminal operate the app; Run and Help
- * are still scaffolding.
+ * All seven menus. File, Edit, View and Terminal operate the app; Run is still
+ * scaffolding, and Help is scaffolding with one live item in it.
  *
  * ## Accelerators are bound, and that is a change
  *
@@ -149,7 +162,7 @@ export interface MenuHandlers {
  * app and the Mac forms were never anything but decoration.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
-  const { app, edit, apps, file, view, terminal } = handlers;
+  const { app, edit, apps, file, view, terminal, help } = handlers;
 
   /** One File/Edit row, disabled with an explanation when it cannot act. */
   const command = (
@@ -289,9 +302,9 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         },
       ],
     },
-    // Run and Help keep both their inert items and their Mac glyphs,
-    // deliberately: they are out of this work's scope and were to be left
-    // exactly as they are.
+    // Run keeps both its inert items and its Mac glyphs, deliberately: it is
+    // out of this work's scope and was to be left exactly as it is. Help is no
+    // longer entirely inert — see its own note below.
     {
       label: "Run",
       items: [
@@ -331,6 +344,15 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
       items: [
         { label: "Documentation" },
         { label: "Keyboard Shortcuts" },
+        // The one wired item in this menu. No accelerator, because there is no
+        // keystroke worth spending on something done twice a year — and the
+        // rule above is bind it or drop it, not display it and hope.
+        //
+        // Nothing opens when this is picked. The answer, including "you are
+        // already on the newest", appears in the status bar, because the
+        // question is not urgent enough to take the screen away from whatever
+        // it was showing.
+        { label: "Check for Updates", separatorBefore: true, onSelect: help.checkForUpdates },
         { label: "Report Issue", separatorBefore: true },
         // The one menu item that names the product. It used to append a second
         // word, naming something this shell is not. Taking the name from

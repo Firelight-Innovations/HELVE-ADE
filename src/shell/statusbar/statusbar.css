@@ -44,6 +44,43 @@
   flex: 1;
 }
 
+/* The update notice. Same dot-then-label shape as GitHub beside it, so a bar
+   with both in it reads as one row of statuses rather than two designs. The
+   rule reuses `.statusbar__dot` for the dot itself and only adds the box.
+
+   Rendered as a `<button>` when it can act and a `<span>` when it cannot (see
+   StatusBar.tsx), which is why the button's own chrome is stripped here rather
+   than a separate class being introduced for each. */
+.statusbar__update {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: default;
+}
+
+button.statusbar__update {
+  cursor: pointer;
+}
+
+.statusbar__update-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Only the pressable one lifts on hover. A readout that brightened under the
+   pointer would be claiming an interaction it does not have. */
+button.statusbar__update:hover .statusbar__update-label {
+  color: var(--text);
+}
+
 .statusbar__branch {
   font-family: var(--mono);
   font-size: 11px;
