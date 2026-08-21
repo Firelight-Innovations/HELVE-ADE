@@ -138,14 +138,14 @@ A project is **a folder**. The folder becomes a *HELVE* project when it holds a
 `<name>.helve` manifest. That manifest is small, hand-editable TOML, and is
 meant for version control. A `.helve/` directory sits beside it and holds
 everything HELVE generates about the project: agent traces, designs, docs, and
-the history of how the game got built.
+the history of how the project got built.
 
 The manifest and the directory cannot share one name. The manifest therefore
 takes the project's own name and an extension, the way `.uproject` and `.sln`
 do.
 
 A folder with no manifest still opens. That behaviour is intentional. HELVE can
-open a game that already exists, and the answer to "what happens when the
+open a project that already exists, and the answer to "what happens when the
 `.helve` format changes" must never be "the project stops opening". Home marks
 such a folder *not set up* and offers to write a manifest.
 

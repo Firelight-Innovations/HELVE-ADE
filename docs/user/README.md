@@ -5,13 +5,12 @@ want to contribute code instead, see [the developer docs](../dev/README.md).
 
 ## What HELVE is
 
-HELVE is an **ADE** — an Agentic Development Environment — for building
-games. It is one shell that a stack of separate authoring tools mount into,
-the way VS Code is one shell that extensions mount into. `README.md` at the
-repository root has the full picture of the stack; the short version is that
-this repository — the **orchestrator** — is the shell, and each tool
-(Forger for technical design, Journeyman for game design) is its own project
-that plugs into it.
+HELVE is an **ADE** — an Agentic Development Environment. It is one shell
+that a stack of separate authoring tools mount into, the way VS Code is one
+shell that extensions mount into. `README.md` at the repository root has the
+full picture of the stack; the short version is that this repository — the
+**orchestrator** — is the shell, and each tool (Forger for technical design,
+Journeyman for product design) is its own project that plugs into it.
 
 Today the orchestrator itself is what runs: the window, Home, the File
 Explorer, the File Viewer, and Tutorials. The stack tools are placeholders —
@@ -21,10 +20,11 @@ machine.
 
 ## Getting it running
 
-There is no installer yet. Running HELVE today means building it from
-source, and it only runs on Windows. The root
-[README.md](../../README.md#install-and-run) has the exact prerequisites and
-commands; the short version is `pnpm install` then `pnpm app`.
+HELVE only runs on Windows today. Download the installer from the
+[releases page](https://github.com/Firelight-Innovations/HELVE-ADE/releases),
+or build it from source. The root
+[README.md](../../README.md#install-and-run) has both paths; the short
+version for building from source is `pnpm install` then `pnpm app`.
 
 ## Learning your way around
 

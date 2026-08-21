@@ -40,5 +40,5 @@ name = "Journeyman"
 kind = "dev-tool"
 repo = "https://github.com/Firelight-Innovations/helve-journeyman"
 version = "0.1.0"
-description = "Game design software — design prototyping, rough playable systems."
+description = "Design prototyping software — rough, interactive systems built fast."
 
