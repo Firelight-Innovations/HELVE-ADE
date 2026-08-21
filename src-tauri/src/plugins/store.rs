@@ -66,6 +66,45 @@ pub enum Source {
     /// A checkout somewhere on this machine, named by the person installing it.
     /// The development path: the directory is theirs, we only read it.
     Folder { path: PathBuf },
+    /// A release downloaded and unpacked under this application's own config
+    /// directory. The opposite ownership to `Folder`: nothing else put it
+    /// there, so uninstalling deletes it.
+    ///
+    /// `sha256` is `None` when the release published no checksum sidecar.
+    /// Stored as an absence rather than an empty string, because "installed but
+    /// never verified" is a fact about this install that the management screen
+    /// should be able to show.
+    Release {
+        path: PathBuf,
+        repo: String,
+        tag: String,
+        sha256: Option<String>,
+    },
+}
+
+impl Source {
+    /// Where the checkout is, whichever kind it is.
+    pub fn path(&self) -> &PathBuf {
+        match self {
+            Self::Folder { path } | Self::Release { path, .. } => path,
+        }
+    }
+
+    /// Whether uninstalling should delete the directory as well as the record.
+    /// True only for what this application downloaded itself.
+    pub fn is_owned(&self) -> bool {
+        matches!(self, Self::Release { .. })
+    }
+}
+
+/// Whether this machine has a plugin store yet.
+///
+/// The test for a first run, and it is deliberately "has the file ever been
+/// written" rather than "is the list empty". Somebody who uninstalled every
+/// default on purpose has an empty list, and re-installing them behind their
+/// back on the next launch would be the application overruling them.
+pub fn exists(app: &AppHandle) -> bool {
+    file(app).is_some_and(|path| path.is_file())
 }
 
 /// Read the store, or start empty. Never fails — see the module doc.

@@ -246,6 +246,13 @@ pub fn run() {
             // to sync the set as a side effect.
             app.state::<plugins::Watchers>().sync(app.handle());
 
+            // On a machine that has never had a plugin store, install the
+            // catalog's `default` apps. Returns at once and does the work on
+            // its own thread — a first launch must not wait on the network to
+            // put a window on screen — and every failure inside is quiet, for
+            // the reasons on `seed_defaults`.
+            plugins::install::seed_defaults(app.handle());
+
             let handle = app.handle().clone();
             restore_session(&handle);
 
@@ -362,6 +369,10 @@ pub fn run() {
             commands::list_apps,
             commands::list_openables,
             commands::list_plugins,
+            commands::list_catalog,
+            commands::install_plugin_repo,
+            commands::has_github_token,
+            commands::set_github_token,
             commands::install_plugin_folder,
             commands::choose_and_install_plugin,
             commands::uninstall_plugin,

@@ -932,6 +932,80 @@ pub fn list_plugins(app: tauri::AppHandle) -> Vec<plugins::PluginRow> {
     plugins::rows(&app)
 }
 
+/// Install an app from a GitHub repository — a URL, or `owner/name`.
+///
+/// `expected_id` is set when the install came from the library, where the
+/// catalog already claims which package this is; a release whose manifest
+/// disagrees is refused rather than quietly installed under another name.
+///
+/// `spawn_blocking` for the same reason the folder picker uses it: every call
+/// inside is a blocking request, and running them on the main thread would
+/// freeze the window for the length of a download. Progress arrives separately,
+/// on `plugins:install-progress`.
+#[tauri::command]
+pub async fn install_plugin_repo(
+    app: tauri::AppHandle,
+    input: String,
+    expected_id: Option<String>,
+    private_hint: Option<bool>,
+) -> Result<plugins::PluginRow> {
+    let handle = app.clone();
+    let installed = tauri::async_runtime::spawn_blocking(move || {
+        plugins::install::from_repo(
+            &handle,
+            &input,
+            expected_id.as_deref(),
+            private_hint.unwrap_or(false),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| AppError::Plugin {
+        action: "install",
+        reason: format!("the install could not be started: {e}"),
+    })?
+    .map_err(|reason| AppError::Plugin {
+        action: "install",
+        reason,
+    })?;
+
+    Ok(plugins::PluginRow::installed(installed, &app))
+}
+
+/// Whether a GitHub token is stored. Never returns the token.
+///
+/// The frontend needs to know whether to offer *Sign in* or *Signed in*, and
+/// has no use at all for the value — so this answers the question actually
+/// being asked rather than handing over a credential to be inspected.
+#[tauri::command]
+pub fn has_github_token() -> bool {
+    plugins::install::has_token()
+}
+
+/// Store a GitHub token, or clear it when given an empty string.
+///
+/// Goes to the OS credential store — Windows Credential Manager — rather than
+/// to `plugins.json`, which is a plain file beside the layout and the project
+/// list. A token is the one piece of per-user state here that is a secret.
+#[tauri::command]
+pub fn set_github_token(token: String) -> Result<()> {
+    plugins::install::set_token(&token).map_err(|reason| AppError::Plugin {
+        action: "sign in",
+        reason,
+    })
+}
+
+/// The app library: what this build offers to install, and what is already in.
+///
+/// Compiled in from `catalog.toml`, so this answers offline and answers the same
+/// thing every time within one build. Only `installed` moves, which is why the
+/// library is re-asked on `plugins:changed` rather than cached by the frontend.
+#[tauri::command]
+pub fn list_catalog(app: tauri::AppHandle) -> Vec<plugins::catalog::CatalogRow> {
+    let registry = app.state::<plugins::Registry>();
+    plugins::catalog::rows(|id| registry.contains(id))
+}
+
 /// Install a plugin from a folder already on this machine.
 ///
 /// The development path, and in this build the only one. `path` is a directory

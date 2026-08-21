@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { cachedStack, loadStack, type StackSnapshot } from "./bindings";
+import { cachedStack, loadStack, onLibraryOpen, type StackSnapshot } from "./bindings";
 import WindowRoot from "./shell/WindowRoot";
 import SettingsScreen from "./shell/settings/SettingsScreen";
 import { useSettings } from "./shell/settings/useSettings";
 import { useAppearance } from "./shell/settings/appearance";
 import { useSettingsSurface } from "./shell/settingsSurface";
+import LibraryScreen from "./shell/library/LibraryScreen";
+import { openLibrary, useLibrarySurface } from "./shell/librarySurface";
 
 /**
  * Owns the stack snapshot and hands it to the shell.
@@ -65,6 +67,16 @@ export default function App() {
   const settings = useSettings();
   useAppearance(settings);
   const settingsSurface = useSettingsSurface();
+  const librarySurface = useLibrarySurface();
+
+  // Home's *Install App* button, arriving the only way it can: Home is an
+  // iframe on another origin, so it calls its own Rust half and Rust emits.
+  useEffect(() => {
+    const stop = onLibraryOpen(openLibrary);
+    return () => {
+      void stop.then((off) => off());
+    };
+  }, []);
 
   return (
     <>
@@ -84,6 +96,11 @@ export default function App() {
           <SettingsScreen session={settings} landOn={settingsSurface.section} />
         )}
       </AnimatePresence>
+      {/* Not inside `AnimatePresence`, and not conditional on being open —
+          unlike settings. The first run installs the catalog's default apps
+          before anybody has opened anything, and a closed screen still has to
+          be able to report how that went. See its own comment. */}
+      <LibraryScreen open={librarySurface.open} />
     </>
   );
 }

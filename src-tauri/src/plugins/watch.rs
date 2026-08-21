@@ -9,7 +9,7 @@
 //! `docs/design-notes/backend-plugins.md` has why those two rather than the
 //! checkout, and why a downloaded copy is not worth a handle.
 
-use crate::plugins::{self, Registry, Source};
+use crate::plugins::{self, Registry};
 use crate::sync::MutexExt;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
@@ -59,7 +59,7 @@ impl Watchers {
             .into_iter()
             .filter(|r| r.enabled)
             .map(|r| {
-                let Source::Folder { path } = r.source;
+                let path = r.source.path().clone();
                 (r.id, path)
             })
             .filter(|(_, path)| path.is_dir())
