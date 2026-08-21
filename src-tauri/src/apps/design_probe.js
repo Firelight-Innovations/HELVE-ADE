@@ -415,9 +415,26 @@
     if (found) highlight(found);
   }
 
-  function onClick(event) {
+  /**
+   * Every pointer event the catcher eats, and only the last of them picks.
+   *
+   * Swallowing the whole sequence rather than `click` alone is what makes
+   * picking safe on a page that does something. A button reacts to
+   * `pointerdown` long before a click completes, and a page that navigated,
+   * submitted or deleted something because somebody pointed at it in order to
+   * describe it would make this feature unusable on exactly the pages it is
+   * for.
+   */
+  var SWALLOWED = ["pointerdown", "pointerup", "mousedown", "mouseup", "dblclick", "contextmenu"];
+
+  function swallow(event) {
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+
+  function onClick(event) {
+    swallow(event);
     if (!state || !state.current) return;
     var payload;
     try {
@@ -433,6 +450,10 @@
     if (event.key !== "Escape") return;
     event.preventDefault();
     reply({ kind: "cancelled" });
+    // Torn down here rather than left for the parent to ask for. The overlay is
+    // this frame's, and a cancel that takes the crosshair off screen only once
+    // a round trip has completed is a cancel that looks broken.
+    disarm();
   }
 
   // --- talking to the frame that embedded this one ----------------------------
@@ -444,7 +465,12 @@
   }
 
   function arm() {
-    if (state) return;
+    // A page that replaced its own document takes the overlay with it while
+    // leaving `state` behind, and an early return there would arm nothing and
+    // report success. Checking that the host is still in a document is cheaper
+    // than listening for every way a page can do that.
+    if (state && state.host.isConnected) return;
+    if (state) disarm();
     var overlay = buildOverlay();
     state = {
       host: overlay.host,
@@ -454,6 +480,9 @@
     };
     state.host.addEventListener("mousemove", onMove, true);
     state.host.addEventListener("click", onClick, true);
+    for (var i = 0; i < SWALLOWED.length; i += 1) {
+      state.host.addEventListener(SWALLOWED[i], swallow, true);
+    }
     window.addEventListener("keydown", onKey, true);
     reply({ kind: "armed" });
   }
@@ -462,6 +491,9 @@
     if (!state) return;
     state.host.removeEventListener("mousemove", onMove, true);
     state.host.removeEventListener("click", onClick, true);
+    for (var i = 0; i < SWALLOWED.length; i += 1) {
+      state.host.removeEventListener(SWALLOWED[i], swallow, true);
+    }
     window.removeEventListener("keydown", onKey, true);
     try {
       state.host.remove();
