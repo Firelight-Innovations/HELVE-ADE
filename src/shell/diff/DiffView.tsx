@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import * as monaco from "monaco-editor/editor/editor.api";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import { registerToml } from "@helve/monaco-languages";
-import { anchorFor, countLabel, type LineDecoration } from "./reviewComments";
+import { anchorFor, countLabel, markAtLine, type LineDecoration } from "./reviewComments";
 import "./diff.css";
 
 // One worker, wired here rather than in a global entry file — this module and
@@ -290,9 +290,14 @@ function useMarginInput(
       );
     };
 
+    // A line that already carries a note keeps its own marker and gets no plus.
+    // Monaco merges decorations rather than letting one win, so without this the
+    // two glyph classes paint into the same twelve-pixel cell and a noted line
+    // grows a plus through its dot on hover.
     const moved = editor.onMouseMove((event) => {
       const line = event.target.position?.lineNumber ?? null;
-      showHover(line);
+      const noted = line !== null && markAtLine(handlers.current?.marks ?? [], line) !== undefined;
+      showHover(noted ? null : line);
     });
     const left = editor.onMouseLeave(() => showHover(null));
 

@@ -69,6 +69,27 @@ export function decorations(comments: readonly ReviewComment[]): LineDecoration[
 }
 
 /**
+ * The marker covering a line, if one does.
+ *
+ * Two callers, and they are the reason this is a named function rather than a
+ * `.find` written twice: the margin's click handler asks it to decide between
+ * opening what is there and starting something new, and the hover affordance
+ * asks it to stay out of the way of a marker that is already drawn. Those two
+ * have to agree about what "this line is noted" means, or a line answers one
+ * way to the pointer and the other way to the click.
+ *
+ * The first match, when ranges overlap. Overlapping ranges are legal — a note
+ * on 3-9 and a note on 5 are both about line 5 — and the decorations are in
+ * file order, so the first is the outermost one starting soonest.
+ */
+export function markAtLine(
+  marks: readonly LineDecoration[],
+  line: number,
+): LineDecoration | undefined {
+  return marks.find((mark) => line >= mark.startLine && line <= mark.endLine);
+}
+
+/**
  * Notes the agent has not been given yet.
  *
  * Unsent, not unresolved: those are different questions and the send buttons

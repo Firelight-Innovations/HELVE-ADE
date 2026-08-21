@@ -70,6 +70,12 @@ export default function AnnotatedDiff({
   // screen against this one's line numbers.
   useEffect(() => {
     let live = true;
+    // Cleared before the request, not after it lands. `commentsFor` filters by
+    // path, and two clusters on two worktrees of one repository hold the same
+    // paths — so keeping the previous cluster's list up while the new one is in
+    // flight would draw its notes against this cluster's line numbers for as
+    // long as the round trip takes. An empty list for that moment is honest.
+    setComments([]);
     control.list(clusterId).then(
       (next) => {
         if (live) setComments(next);
@@ -98,21 +104,34 @@ export default function AnnotatedDiff({
   const marks = useMemo(() => decorations(notes), [notes]);
   const sendable = useMemo(() => unsent(notes), [notes]);
 
-  /** Every mutation is this: run it, put the fresh list up, report a failure. */
+  /**
+   * Every mutation is this: run it, put the fresh list up, report a failure.
+   *
+   * The change and the re-read are caught separately, and that separation is
+   * the point. A failed re-read means a stale list, not a failed change — and
+   * reporting it as a failure is what would have somebody write the same note
+   * twice, because `submit` keeps the composer open on a `false` so the text
+   * can be fixed and resubmitted. Only the change itself decides that answer.
+   */
   const run = useCallback(
     async (change: () => Promise<unknown>) => {
       setBusy(true);
       setError(null);
       try {
         await change();
-        setComments(await control.list(clusterId));
-        return true;
       } catch (reason: unknown) {
         setError(reviewMessage(reason));
-        return false;
-      } finally {
         setBusy(false);
+        return false;
       }
+
+      try {
+        setComments(await control.list(clusterId));
+      } catch (reason: unknown) {
+        setError(reviewMessage(reason));
+      }
+      setBusy(false);
+      return true;
     },
     [control, clusterId],
   );
@@ -155,17 +174,20 @@ export default function AnnotatedDiff({
   const sendNotes = useCallback(
     async (target: ReviewSendTarget) => {
       if (sendable.length === 0) return;
+      // Checked before anything is marked busy. The button for it is already
+      // disabled without a terminal, so this is the belt to that brace — but a
+      // guard that returned from inside the busy window below would leave the
+      // whole panel disabled with nothing to re-enable it.
+      if (target === "terminal" && send.terminalId === null) return;
+
       const text = formatComments(sendable);
+      const terminalId = send.terminalId;
 
       setBusy(true);
       setError(null);
       try {
-        if (target === "terminal") {
-          if (send.terminalId === null) return;
-          send.toTerminal(send.terminalId, text);
-        } else {
-          await send.toClipboard(text);
-        }
+        if (target === "terminal" && terminalId !== null) send.toTerminal(terminalId, text);
+        else await send.toClipboard(text);
       } catch (reason: unknown) {
         setError(reviewMessage(reason));
         setBusy(false);

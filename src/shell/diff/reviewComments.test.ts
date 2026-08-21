@@ -6,6 +6,7 @@ import {
   countLabel,
   decorations,
   describeRange,
+  markAtLine,
   unresolved,
   unsent,
 } from "./reviewComments";
@@ -100,6 +101,44 @@ describe("decorations", () => {
 
   it("has nothing to draw for no notes", () => {
     expect(decorations([])).toEqual([]);
+  });
+});
+
+describe("markAtLine", () => {
+  const marks = decorations([
+    note({ id: "span", startLine: 3, endLine: 9 }),
+    note({ id: "single", startLine: 20, endLine: 20 }),
+  ]);
+
+  it("finds the marker on the line itself", () => {
+    expect(markAtLine(marks, 20)?.comments[0].id).toBe("single");
+  });
+
+  it("finds a marker from anywhere inside its range, ends included", () => {
+    for (const line of [3, 6, 9]) {
+      expect(markAtLine(marks, line)?.comments[0].id).toBe("span");
+    }
+  });
+
+  it("finds nothing on a line no marker covers", () => {
+    for (const line of [1, 2, 10, 19, 21]) {
+      expect(markAtLine(marks, line)).toBeUndefined();
+    }
+  });
+
+  /**
+   * The bug this was extracted for: the click handler and the hover affordance
+   * both have to agree that a line is noted. When they disagreed, a noted line
+   * grew an "add" plus through its own marker on hover, because Monaco merges
+   * two glyph classes into one cell rather than letting one win.
+   */
+  it("agrees for every line of a range, so hover and click cannot disagree", () => {
+    const noted = [3, 4, 5, 6, 7, 8, 9].map((line) => markAtLine(marks, line) !== undefined);
+    expect(noted).toEqual([true, true, true, true, true, true, true]);
+  });
+
+  it("has nothing to find among no markers", () => {
+    expect(markAtLine([], 5)).toBeUndefined();
   });
 });
 
