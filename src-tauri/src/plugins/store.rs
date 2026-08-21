@@ -97,6 +97,16 @@ impl Source {
     }
 }
 
+/// Whether this machine has a plugin store yet.
+///
+/// The test for a first run, and it is deliberately "has the file ever been
+/// written" rather than "is the list empty". Somebody who uninstalled every
+/// default on purpose has an empty list, and re-installing them behind their
+/// back on the next launch would be the application overruling them.
+pub fn exists(app: &AppHandle) -> bool {
+    file(app).is_some_and(|path| path.is_file())
+}
+
 /// Read the store, or start empty. Never fails — see the module doc.
 pub fn load(app: &AppHandle) -> Stored {
     let Some(path) = file(app) else {

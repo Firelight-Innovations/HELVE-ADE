@@ -22,7 +22,7 @@ use crate::state::AppState;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Every method here is scoped to the cluster that called it.
 ///
@@ -113,34 +113,27 @@ pub fn call(
         )),
         "home/close-project" => shape(project::close(app, context.require_cluster()?)),
 
+        // Opens the shell's app library rather than a folder picker.
+        //
+        // A `home/*` method rather than a Tauri command, because Home is an
+        // *app*: STANDARDS.md §1.4 has apps reach the shell only through
+        // `@helve/bridge`. It cannot touch the shell's React tree either, so
+        // "show me the library" goes app -> Rust -> event -> shell, which is
+        // the same path `helve/open` takes and for the same reason.
+        //
+        // The folder picker is still reachable, from inside the library, beside
+        // the other two ways in rather than being the only one.
+        "home/install-plugin" => {
+            let _ = app.emit(plugins::LIBRARY_OPEN_EVENT, ());
+            state(app, context)
+        }
+
         // Whether this cluster could work in a worktree, and whether it already
         // is. Home asks after every open so it knows whether to offer one, and
         // the answer is deliberately a separate round trip rather than a field
         // on the snapshot: `git rev-parse` is a process spawn, and every other
         // caller of `home/state` — every redraw of the Recent list — would pay
         // for it to render a heading.
-        // Install a plugin from a checkout already on this machine.
-        //
-        // A `home/*` method rather than a Tauri command the frontend calls
-        // directly, because Home is an *app*: STANDARDS.md §1.4 has apps reach
-        // the shell only through `@helve/bridge`, exactly as a plugin's own UI
-        // would. `commands::choose_and_install_plugin` is the same operation for
-        // the shell's own menus, which have a door to Tauri and no bridge.
-        //
-        // Answers with `home/state` either way, so a cancelled picker redraws
-        // the page it came from rather than looking like a failure — the same
-        // shape `home/open-project` above uses for the same reason.
-        "home/install-plugin" => {
-            if let Some(dir) = pick(app, "Choose a plugin's folder") {
-                // `INVALID_PARAMS` rather than an internal error: every way this
-                // fails is something about the folder the person chose, and the
-                // message is written to be shown to them unchanged.
-                plugins::install_folder(app, &dir)
-                    .map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))?;
-            }
-            state(app, context)
-        }
-
         "home/worktree-state" => worktree_state(app, context),
         "home/worktree-create" => {
             let cluster = context.require_cluster()?;

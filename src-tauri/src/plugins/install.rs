@@ -287,6 +287,53 @@ fn run(
         .ok_or(InstallError::Remote(RemoteError::NotAPlugin))
 }
 
+/// Install the catalog's `default` apps, once, on a machine that has never had
+/// a plugin store.
+///
+/// Runs on its own thread and returns immediately: this is called from setup,
+/// and a first launch must not wait on the network to show a window. Every
+/// window learns what happened the same way it learns about any other install —
+/// `PROGRESS_EVENT` while each one runs, `CHANGED_EVENT` when the set moves.
+///
+/// **Every failure here is quiet.** A first run may have no network at all, or
+/// may be a build whose catalog names a repository that has not published a
+/// release yet, and neither is the user's problem. The app stays listed in the
+/// library as something they can install by hand, which is the same place a
+/// successful skip would leave them. Greeting somebody with two red failures
+/// because they opened HELVE on a plane is a worse first impression than
+/// starting with fewer apps.
+pub fn seed_defaults(app: &AppHandle) {
+    if store::exists(app) {
+        return;
+    }
+    let wanted: Vec<(String, String, bool)> = super::catalog::entries()
+        .iter()
+        .filter(|entry| entry.default)
+        .map(|entry| (entry.id.clone(), entry.repo.clone(), entry.private))
+        .collect();
+    if wanted.is_empty() {
+        return;
+    }
+
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        for (id, repo, private) in wanted {
+            // Sequential rather than concurrent. Two downloads racing would
+            // interleave their progress on one event stream, and the first run
+            // is the moment least worth being clever on.
+            match from_repo(&handle, &repo, Some(&id), private) {
+                Ok(resolved) => {
+                    println!(
+                        "helve: installed {} {} by default",
+                        resolved.id, resolved.version
+                    )
+                }
+                Err(err) => eprintln!("helve: skipped the default app `{id}`: {err}"),
+            }
+        }
+    });
+}
+
 fn key_of(expected_id: Option<&str>, repo: &Repo) -> String {
     expected_id
         .map(str::to_string)

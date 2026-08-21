@@ -48,6 +48,14 @@ pub const CHANGED_EVENT: &str = "plugins:changed";
 /// A character neither id can contain — both match `^[a-z][a-z0-9-]*$` — which
 /// is what makes `split_once` on it exact rather than a guess, and what keeps a
 /// plugin surface from ever colliding with a first-party app id like `home`.
+/// Asked for by Home's *Install App* button, listened for by the shell.
+///
+/// An app cannot reach the shell's React tree — it is an iframe on another
+/// origin — so "show me the library" travels the only way it can: the app calls
+/// its own Rust half, which emits this, and `App.tsx` opens the screen. The
+/// same shape `helve/open` uses, and for the same reason.
+pub const LIBRARY_OPEN_EVENT: &str = "library:open";
+
 pub const ADDRESS_SEPARATOR: char = '.';
 
 /// One installed package, resolved against its checkout right now.

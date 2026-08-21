@@ -272,6 +272,14 @@ export interface InstallProgress {
 /** Mirrors `plugins::install::PROGRESS_EVENT`. */
 export const INSTALL_PROGRESS_EVENT = "plugins:install-progress";
 
+/** Mirrors `plugins::LIBRARY_OPEN_EVENT`. */
+export const LIBRARY_OPEN_EVENT = "library:open";
+
+/** Home asking the shell to show the app library. Carries nothing. */
+export function onLibraryOpen(cb: () => void): Promise<UnlistenFn> {
+  return listen(LIBRARY_OPEN_EVENT, () => cb());
+}
+
 /** Every install's progress, from every window. Filter on `key`. */
 export function onInstallProgress(cb: (p: InstallProgress) => void): Promise<UnlistenFn> {
   return listen<InstallProgress>(INSTALL_PROGRESS_EVENT, (event) => cb(event.payload));
