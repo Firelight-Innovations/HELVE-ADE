@@ -1054,3 +1054,74 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod live {
+    use super::*;
+
+    /// Not part of the suite: it needs the network, and `pnpm verify` must not.
+    /// Run it by hand against the real API with
+    /// `cargo test --manifest-path src-tauri/Cargo.toml live -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn fetches_a_real_repository() {
+        let repo = Repo::parse("https://github.com/Firelight-Innovations/helve").expect("parses");
+        let feed = fetch_feed(&repo, GithubScope::Open, None, 5);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&feed).expect("serializes")
+        );
+    }
+}
+
+#[cfg(test)]
+mod tls {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    /// **The test that would have caught the TLS misconfiguration**, without
+    /// touching the network.
+    ///
+    /// `ureq` does not fall back when the provider a config names is not
+    /// compiled in — it *panics*, and at request time rather than at build time,
+    /// so nothing earlier could notice. `Cargo.toml` asked for
+    /// `native-tls-no-default`, which brings the crate in but not the
+    /// `native-tls` cfg flag ureq's own guard tests by name.
+    ///
+    /// `plugins::remote` had the same bug first and for longer, where it
+    /// surfaced as a join error out of `spawn_blocking` and a generic "could not
+    /// be started" at the call site.
+    ///
+    /// Only that the call *returned* is asserted. Any `Err` is a pass — what is
+    /// being guarded against is a panic, not a status.
+    #[test]
+    fn an_https_request_reaches_tls_and_reports_a_failure_rather_than_panicking() {
+        // A real listener, rather than a port with nothing on it. That was the
+        // first attempt and it passed against the broken build: ureq checks the
+        // provider in a connector wrapping the one below it, so a TCP connect
+        // that fails returns before the check is ever reached.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback is available");
+        let port = listener
+            .local_addr()
+            .expect("the socket has an address")
+            .port();
+
+        // Accept once and hang up. The client is mid-handshake, so it reads EOF
+        // and gives up immediately instead of waiting out the global timeout.
+        let server = std::thread::spawn(move || {
+            if let Ok((mut socket, _)) = listener.accept() {
+                let _ = socket.flush();
+                let _ = socket.shutdown(std::net::Shutdown::Both);
+            }
+        });
+
+        let result = agent().get(&format!("https://127.0.0.1:{port}/")).call();
+
+        assert!(
+            result.is_err(),
+            "a socket that hung up mid-handshake cannot have produced a response"
+        );
+        let _ = server.join();
+    }
+}
