@@ -1232,7 +1232,7 @@ export default function WindowRoot({
   // ask on its own behalf. It takes nothing, because unlike a tab drag there is
   // no destination to resolve: a path means the same thing in every window.
   // The hook commits the drop itself; what comes back is only what to draw.
-  const fileDropTargetId = useFileDrag();
+  const fileDrag = useFileDrag();
 
   useKeyboard({
     // ⌘1…⌘9 now select a *cluster* rather than a tool. There is no longer one
@@ -1440,6 +1440,12 @@ export default function WindowRoot({
               onResize={onResizePane}
               dropTarget={drag.target}
               onCommandsChange={onCommandsChange}
+              // A frame dragging paths out of itself. The tool window only
+              // relays it — see its own prop for why an iframe's gesture has
+              // to be announced rather than observed.
+              onFramePathDrag={(drag) =>
+                drag.phase === "begin" ? fileDrag.begin([...drag.paths]) : fileDrag.end()
+              }
               // The two regions the tool window draws but may not import. It
               // computes every argument; this is only the wiring, and it lives
               // here because `WindowRoot` is not a region and may see both.
@@ -1452,7 +1458,7 @@ export default function WindowRoot({
                   // A terminal in a pane takes a file drop exactly as one in
                   // the band does. Nothing about the gesture depends on where
                   // the emulator is drawn, so nothing here does either.
-                  fileDropActive={instanceId === fileDropTargetId}
+                  fileDropActive={instanceId === fileDrag.targetId}
                 />
               )}
             />
@@ -1491,7 +1497,7 @@ export default function WindowRoot({
               // band is not being asked to tell the two apart — only to say
               // "releasing here does something", which is true either way.
               dropActive={
-                drag.target?.kind === "panel" || sessions.some((s) => s.id === fileDropTargetId)
+                drag.target?.kind === "panel" || sessions.some((s) => s.id === fileDrag.targetId)
               }
               pendingClose={pendingClose}
               onCancelClose={() => setPendingClose(null)}
@@ -1518,7 +1524,7 @@ export default function WindowRoot({
                   // comes back around through `shell:state` and `sessions`
                   // above.
                   onTitle={(id, title) => terminalControl.setTitle(id, title)}
-                  fileDropTargetId={fileDropTargetId}
+                  fileDropTargetId={fileDrag.targetId}
                 />
               }
               // The same handle a pane's tab gets. A terminal and an app surface
@@ -1538,7 +1544,16 @@ export default function WindowRoot({
               }
             />
           ),
-          overlay: drag.overlay,
+          // Both drag layers draw into the one overlay slot. Never both at
+          // once in practice — a pointer carries one gesture — but composed
+          // rather than chosen between, so neither has to know about the
+          // other to be drawn.
+          overlay: (
+            <>
+              {drag.overlay}
+              {fileDrag.overlay}
+            </>
+          ),
           // Mounted only while open, so a window nobody has searched in never
           // pays for the overlay's tree — and so closing search genuinely
           // discards its results rather than hiding them, which is what makes

@@ -96,6 +96,24 @@
   line-height: 1;
 }
 
+/* A file on its way to a terminal: the terminal chip exactly, without the dot.
+   Not a shortcut — the crops draw one chip size per kind of *tab*, and a file
+   is not a third kind of tab. It is the same gesture aimed at the same band, so
+   it is the same chip, and nothing here is invented. The token table has no
+   further surface shade to distinguish it with (`--surface-2` is named "ghost
+   chip" and is what every ghost uses), and adding one would be a design
+   decision rather than a reading of the handoff. */
+.drag-ghost--file {
+  height: 25px;
+  padding: 0 11px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+.drag-ghost--file .drag-ghost-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
 .drag-ghost-dot {
   flex: none;
   width: 5px;
