@@ -15,7 +15,7 @@
 //! `docs/design-notes/agent-debugging.md`.
 
 use crate::diagnostics::diagnostics;
-use crate::mcp::{McpServer, McpTool};
+use crate::mcp::{McpServer, McpTool, ToolAnswer};
 use crate::shell_state::ShellState;
 use crate::state::AppState;
 use helve_rpc::{RpcError, INTERNAL_ERROR};
@@ -98,11 +98,11 @@ fn recent_errors_schema() -> Value {
 /// An unknown tool cannot arrive here — `Registry::call` checks the name against
 /// `TOOLS` first — so the final arm is a genuine impossibility rather than a
 /// second copy of that error message.
-fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<Value, RpcError> {
+fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer, RpcError> {
     match tool {
-        "shell_snapshot" => shell_snapshot(app),
-        "recent_errors" => Ok(recent_errors(params.as_ref())),
-        "boot_status" => boot_status(app),
+        "shell_snapshot" => shell_snapshot(app).map(Into::into),
+        "recent_errors" => Ok(recent_errors(params.as_ref()).into()),
+        "boot_status" => boot_status(app).map(Into::into),
         other => Err(RpcError::new(
             helve_rpc::METHOD_NOT_FOUND,
             format!("the debug server has no tool named `{other}`"),

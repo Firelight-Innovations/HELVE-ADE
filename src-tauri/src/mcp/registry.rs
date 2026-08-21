@@ -25,12 +25,37 @@ pub struct McpTool {
     pub schema: fn() -> Value,
 }
 
+/// What a tool answers with.
+///
+/// JSON covered every tool until one had to answer with a *picture*. A
+/// screenshot base64'd into a JSON string is not a screenshot as far as a client
+/// is concerned: no MCP client will render it, and the model is handed a wall of
+/// characters it has to be told to ignore. MCP has a content type for images, so
+/// the registry needs a way to say which kind a tool produced.
+///
+/// The `From<Value>` below keeps that from being a tax on the tools that answer
+/// with facts — they go on returning `Ok(json!(...).into())`.
+pub enum ToolAnswer {
+    Json(Value),
+    /// Base64, with the MIME type a client needs to decode it.
+    Image {
+        mime: String,
+        data: String,
+    },
+}
+
+impl From<Value> for ToolAnswer {
+    fn from(value: Value) -> Self {
+        ToolAnswer::Json(value)
+    }
+}
+
 /// An MCP server's implementation: the function every `tools/call` lands in.
 ///
 /// The same shape as `apps::Dispatch`, and it fails with the same `RpcError`,
 /// so a server that wants to hand a call through to an app's Rust half can do
 /// it without translating an error vocabulary in between.
-type Call = fn(&AppHandle, &str, Option<Value>) -> Result<Value, RpcError>;
+type Call = fn(&AppHandle, &str, Option<Value>) -> Result<ToolAnswer, RpcError>;
 
 /// One server this build hosts.
 pub struct McpServer {
@@ -264,7 +289,7 @@ impl Registry {
         tool: &str,
         params: Option<Value>,
         dev_mode: bool,
-    ) -> Result<Value, RpcError> {
+    ) -> Result<ToolAnswer, RpcError> {
         let resolved = {
             let entries = self.entries.lock().map_err(|_| {
                 RpcError::new(
@@ -309,7 +334,7 @@ mod tests {
         serde_json::json!({ "type": "object", "properties": {} })
     }
 
-    fn unreachable_call(_: &AppHandle, _: &str, _: Option<Value>) -> Result<Value, RpcError> {
+    fn unreachable_call(_: &AppHandle, _: &str, _: Option<Value>) -> Result<ToolAnswer, RpcError> {
         // Reaching this would mean `call` dispatched without an `AppHandle`,
         // which these tests cannot construct — so the tests below exercise
         // everything up to the handler and stop there.
@@ -535,6 +560,19 @@ mod tests {
                 "tool name {:?} must match ^[A-Za-z0-9_-]+$",
                 tool.name
             );
+        }
+    }
+
+    /// The conversion is what keeps [`ToolAnswer`] from being a tax on the
+    /// tools that answer with facts. If it ever stopped being free, every one of
+    /// them would have to be edited to say so.
+    #[test]
+    fn a_json_value_becomes_a_json_answer_without_ceremony() {
+        let answer: ToolAnswer = serde_json::json!({ "ok": true }).into();
+
+        match answer {
+            ToolAnswer::Json(value) => assert_eq!(value["ok"], true),
+            ToolAnswer::Image { .. } => panic!("a JSON value must not become an image"),
         }
     }
 

@@ -9,6 +9,7 @@ mod apps;
 mod boot;
 mod branding;
 mod commands;
+mod devtools;
 mod diagnostics;
 mod discovery;
 mod error;

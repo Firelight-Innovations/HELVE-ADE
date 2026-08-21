@@ -5,7 +5,7 @@
 //! bearer token, the routing table, and the adapter between `rmcp`'s handler
 //! trait and [`Registry`](super::Registry).
 
-use super::{route, Registry, ToolDescriptor};
+use super::{route, Registry, ToolAnswer, ToolDescriptor};
 use axum::response::IntoResponse;
 use base64::Engine;
 use rand::RngCore;
@@ -289,12 +289,17 @@ impl ServerHandler for Bridge {
         );
 
         let result = match answered {
-            Ok(value) => match ContentBlock::json(value) {
+            Ok(ToolAnswer::Json(value)) => match ContentBlock::json(value) {
                 Ok(content) => CallToolResult::success(vec![content]),
                 Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
                     "the tool answered, but its answer could not be serialised: {e}"
                 ))]),
             },
+            // Straight through: the base64 is already what the wire carries, so
+            // there is nothing here to serialise and nothing that can fail.
+            Ok(ToolAnswer::Image { mime, data }) => {
+                CallToolResult::success(vec![ContentBlock::image(data, mime)])
+            }
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.message)]),
         };
 

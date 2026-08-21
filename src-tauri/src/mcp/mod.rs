@@ -16,7 +16,9 @@ mod servers;
 
 pub use config::sync_all;
 pub use listener::{start, Endpoint};
-pub use registry::{config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolDescriptor};
+pub use registry::{
+    config_key, route, McpServer, McpTool, Registry, ServerInfo, ToolAnswer, ToolDescriptor,
+};
 pub use servers::seed;
 
 use tauri::AppHandle;

@@ -10,7 +10,7 @@
 //! It is a fixture, so keep it boring. If it ever needs application state to
 //! answer, something has gone wrong with what it is for.
 
-use crate::mcp::{McpServer, McpTool};
+use crate::mcp::{McpServer, McpTool, ToolAnswer};
 use helve_rpc::{RpcError, INVALID_PARAMS};
 use serde_json::{json, Value};
 use tauri::AppHandle;
@@ -65,10 +65,10 @@ fn echo_schema() -> Value {
 /// An unknown tool cannot arrive here — `Registry::call` checks the name
 /// against `TOOLS` before dispatching — so the final arm is a genuine
 /// impossibility rather than a second copy of that error message.
-fn call(_app: &AppHandle, tool: &str, params: Option<Value>) -> Result<Value, RpcError> {
+fn call(_app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer, RpcError> {
     match tool {
-        "ping" => Ok(ping()),
-        "echo" => echo(params),
+        "ping" => Ok(ping().into()),
+        "echo" => echo(params).map(Into::into),
         other => Err(RpcError::new(
             helve_rpc::METHOD_NOT_FOUND,
             format!("the echo server has no tool named `{other}`"),
