@@ -44,6 +44,30 @@ export interface Capture {
   shotProblem: string | null;
 }
 
+/** The part of an element this needs, which is all it may ask for. See
+ *  {@link isMeasurable}. */
+interface Measurable {
+  getBoundingClientRect: () => DOMRect;
+  clientLeft: number;
+  clientTop: number;
+}
+
+/**
+ * Whether something is an element this can measure.
+ *
+ * **Not `instanceof HTMLIFrameElement`**, which is what this was and what made
+ * the screenshot fail in a release build with a message about not knowing where
+ * the frame was. `window.frameElement` hands back an element belonging to the
+ * *parent's* realm, and every realm has its own `HTMLIFrameElement`
+ * constructor — so the check is false for a perfectly ordinary same-origin
+ * parent, and false in a way that only shows up once the app is really running
+ * inside another document. Duck-typing is the correct test across a realm
+ * boundary, and it is the only one available.
+ */
+function isMeasurable(value: Element | null): value is Element & Measurable {
+  return value !== null && typeof value.getBoundingClientRect === "function";
+}
+
 /**
  * Where each frame between here and the top-level document sits inside its
  * parent, innermost first — or `null` if that cannot be established.
@@ -57,7 +81,7 @@ export interface Capture {
  * skips the screenshot rather than cropping the wrong rectangle.
  */
 function frameChain(frame: HTMLIFrameElement): Rect[] | null {
-  const box = (element: Element & { clientLeft: number; clientTop: number }): Rect => {
+  const box = (element: Measurable): Rect => {
     const rect = element.getBoundingClientRect();
     // The frame's *viewport* starts inside its border, and the rect is of the
     // border box. Zero today, because `design.css` gives the frame no border,
@@ -79,7 +103,7 @@ function frameChain(frame: HTMLIFrameElement): Rect[] | null {
     } catch {
       return null;
     }
-    if (!(owner instanceof HTMLIFrameElement)) return null;
+    if (!isMeasurable(owner)) return null;
     chain.push(box(owner));
     level = level.parent;
   }
