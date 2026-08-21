@@ -1,8 +1,6 @@
 //! The webview this process is already running, reached through the COM
 //! interface Tauri already holds rather than over a socket.
 //!
-//! Two protocols are spoken here, on one object.
-//!
 //! **The DevTools Protocol.** WebView2 is Chromium, and
 //! `ICoreWebView2::CallDevToolsProtocolMethod` is the same protocol Chrome
 //! exposes over `--remote-debugging-port`. No socket, no debug port and no
@@ -11,12 +9,10 @@
 //!
 //! **Document-created scripts.** [`install_script`] is WebView2's own
 //! `AddScriptToExecuteOnDocumentCreated`, which is not part of that protocol
-//! and lives here because it is the same COM object reached the same way. It is
-//! what puts code inside a frame this shell does not own — see `apps::design`.
+//! and lives here because it is the same COM object reached the same way.
 //!
-//! Everything here is transport. What the calls *mean* — which ones make a
-//! click, what a snapshot is, what a script does once it is in a page —
-//! belongs to `mcp::servers::ui` and `apps::design`.
+//! Everything here is transport. What the calls *mean* belongs to
+//! `mcp::servers::ui` and `apps::design`.
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager, WebviewWindow};
@@ -185,19 +181,12 @@ fn dispatch(_window: &WebviewWindow, _method: &str, _params: String) -> Result<V
 /// **This reaches into child frames, including cross-origin ones**, which is
 /// the entire reason it is here: same-origin policy means no amount of
 /// JavaScript in the shell can put a listener inside an iframe pointed at
-/// somebody else's dev server, and Design Mode's whole feature is a click
-/// inside one of those.
+/// somebody else's dev server.
 ///
-/// The DevTools Protocol has a near-namesake,
-/// `Page.addScriptToEvaluateOnNewDocument`, which [`call`] could reach with no
-/// new plumbing at all. It was tried and rejected: a CDP method is scoped to
-/// one *target*, and Chromium puts a cross-**site** iframe in a target of its
-/// own. In a release build the shell is served from `tauri.localhost` and a
-/// user's dev server is not, so exactly the frame this needs to reach is the
-/// one that method cannot. WebView2 applies this one at the webview, above the
-/// target split, and the proof it does is in the tree already: wry defines
-/// `window.ipc` with it and its own documentation notes that on Windows the
-/// `for_main_frame_only` flag is ignored.
+/// The DevTools Protocol's near-namesake,
+/// `Page.addScriptToEvaluateOnNewDocument`, would need no new plumbing and was
+/// rejected — it is scoped to one *target*, and a cross-site iframe is a target
+/// of its own. `docs/design-notes/design-mode.md` has the whole argument.
 ///
 /// Never call this from the main thread; see [`call`] for why.
 pub fn install_script(

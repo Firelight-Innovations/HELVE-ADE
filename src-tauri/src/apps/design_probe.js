@@ -157,7 +157,7 @@
       url.search = "";
       url.hash = "";
       return url.toString();
-    } catch (e) {
+    } catch {
       // A URL that will not parse could still be a `javascript:` one, so the
       // raw string is dropped rather than passed through.
       return "";
@@ -165,10 +165,10 @@
   }
 
   function textOf(element, max) {
-    var raw = "";
+    var raw;
     try {
       raw = element.textContent || "";
-    } catch (e) {
+    } catch {
       return "";
     }
     return clamp(raw.replace(/\s+/g, " ").trim(), max);
@@ -217,7 +217,7 @@
   function isUnique(selector) {
     try {
       return document.querySelectorAll(selector).length === 1;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -293,7 +293,7 @@
     var clone;
     try {
       clone = element.cloneNode(true);
-    } catch (e) {
+    } catch {
       return "";
     }
     var scripts = clone.querySelectorAll ? clone.querySelectorAll("script") : [];
@@ -422,8 +422,8 @@
     var payload;
     try {
       payload = describe(state.current);
-    } catch (e) {
-      reply({ kind: "failed", reason: String((e && e.message) || e) });
+    } catch (failure) {
+      reply({ kind: "failed", reason: String((failure && failure.message) || failure) });
       return;
     }
     reply({ kind: "picked", element: payload });
@@ -465,7 +465,7 @@
     window.removeEventListener("keydown", onKey, true);
     try {
       state.host.remove();
-    } catch (e) {
+    } catch {
       // The page replaced the document under us. There is nothing to remove and
       // nothing to report — the listeners went with it.
     }

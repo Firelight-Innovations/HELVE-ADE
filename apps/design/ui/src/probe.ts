@@ -1,24 +1,18 @@
 /**
  * The conversation between this app and the probe inside the page it is showing.
  *
- * The two halves cannot import each other. The probe is
- * `src-tauri/src/apps/design_probe.js`, compiled into the binary and injected
- * by WebView2 into a document on somebody else's origin; this is TypeScript in
- * the shell's own build. Nothing links them but `window.postMessage` and the
- * shapes below, so the shapes are restated here for the same reason
- * `apps/files/ui/src/rpc.ts` restates its backend's — a drift is caught by
- * reading two files, and there is no third place claiming to be authoritative.
+ * The probe is `src-tauri/src/apps/design_probe.js`, compiled into the binary;
+ * this is TypeScript in the shell's own build. Nothing links them but
+ * `window.postMessage`, so the shapes are restated here — the same arrangement
+ * `apps/files/ui/src/rpc.ts` has with its backend.
  *
- * Everything arriving here is **untrusted**. It comes from a frame this shell
- * did not write, running a page it did not choose, and a page can post whatever
- * it likes to its parent. So this module's real job is not decoding, it is
- * refusing: {@link readProbeMessage} returns `null` for anything it cannot
- * fully account for, and the app treats `null` as silence.
+ * Everything arriving is **untrusted**, so this module's real job is not
+ * decoding but refusing: {@link readProbeMessage} returns `null` for anything
+ * it cannot fully account for, and the app treats `null` as silence. Deciding
+ * whether the *sender* may be heard is not done here; that is
+ * `event.source === iframe.contentWindow`, at the listener.
  *
- * What it deliberately does **not** do is decide whether the sender is allowed
- * to be heard. That is `event.source === iframe.contentWindow`, checked at the
- * listener against the shell's own reference to the frame it mounted — the same
- * rule `ToolWindow.tsx` uses, and the only one a message body cannot forge.
+ * `docs/design-notes/design-mode.md` has the long form.
  */
 
 /** Present on every message in both directions, so a page's own chatter and
@@ -164,9 +158,7 @@ export function readProbeMessage(data: unknown): ProbeMessage | null {
 
 /** What this app sends the other way. Mirrors `onMessage` in the probe. */
 export type ProbeCommand =
-  | { kind: "arm" }
-  | { kind: "disarm" }
-  | { kind: "veil"; on: boolean; id: string };
+  { kind: "arm" } | { kind: "disarm" } | { kind: "veil"; on: boolean; id: string };
 
 /** Wrap a command in the channel marker. Separate from sending it so the shape
  *  can be asserted without a `window`. */

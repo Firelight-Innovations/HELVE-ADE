@@ -1,41 +1,28 @@
 //! Design Mode's Rust half: which page may be embedded, what may be put inside
 //! it, and how a picture of part of it is taken.
 //!
-//! The app hosts an iframe pointed at a URL somebody types — their own dev
-//! server, usually — and clicking an element in it hands the element's markup,
-//! its computed styles and a cropped screenshot to a coding agent. That is new
-//! ground for this shell. Every other frame it mounts is either its own build
-//! (`apps::entry_url`) or a tool it resolved from a manifest; this is the first
-//! that is neither, and the three methods here are the three things that
-//! required Rust rather than a component.
+//! Three methods, and each is here because it could not be a component.
+//! `design/target` decides what may be loaded at all — a security boundary
+//! rather than a convenience, and the one part of this feature that most needs
+//! a careful read. `design/arm` installs the probe through
+//! `devtools::install_script`, because same-origin policy means nothing in the
+//! shell can reach into a frame showing somebody else's origin.
+//! `design/capture` crops a screenshot out of the window.
 //!
-//! **`design/target` decides what may be loaded at all**, and it is a security
-//! boundary rather than a convenience. See [`normalize`] and the `.localhost`
-//! rule in it — a page reaching HELVE's own commands is one bad hostname away
-//! without that check, and the reason is a detail of Tauri's origin test rather
-//! than anything visible from here.
+//! No state, like `files::call`: a second Design Mode in a second cluster is a
+//! second frame with its own probe, and anything remembered here would be
+//! shared between them by accident.
 //!
-//! **`design/arm` installs the probe** through `devtools::install_script`,
-//! because same-origin policy means no code in the shell can reach into a frame
-//! showing somebody else's origin. `design_probe.js` is what gets installed and
-//! its own header covers what happens next.
-//!
-//! **`design/capture` crops a screenshot** out of the window with the DevTools
-//! Protocol, from coordinates the app resolved. It holds no opinion about which
-//! element those coordinates belong to.
-//!
-//! This module holds **no state**, like `files::call` and for the same reason:
-//! a second Design Mode in a second cluster is a second frame with its own
-//! probe, and anything remembered here would be shared between them by
-//! accident. The script id from `design/arm` is handed to the caller and passed
-//! back to `design/disarm`.
+//! `docs/design-notes/design-mode.md` is the long form — what each rule in
+//! [`normalize`] is defending against, and exactly what a hostile page in that
+//! frame can and cannot reach.
 
 use crate::apps::CallContext;
 use crate::devtools;
 use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Url};
+use tauri::{AppHandle, Manager, Url};
 
 /// The probe, as browser code. See `design_probe.js` for why it is a file.
 const PROBE: &str = include_str!("design_probe.js");
@@ -73,6 +60,7 @@ enum Refusal {
     Scheme(String),
     NoHost,
     ReservedHost(String),
+    OwnOrigin(String),
 }
 
 impl Refusal {
@@ -88,6 +76,11 @@ impl Refusal {
                 "`{host}` is reserved — a name under `.localhost` can be mistaken for this \
                  application's own origin, which would hand the page HELVE's own permissions. \
                  Use `localhost` with a port instead."
+            ),
+            Refusal::OwnOrigin(origin) => format!(
+                "`{origin}` is where this application is served from. A page on that origin is \
+                 same-origin with the shell and could reach everything it can, so Design Mode \
+                 will not embed one."
             ),
         }
     }
@@ -127,27 +120,18 @@ fn states_a_scheme(typed: &str) -> bool {
 /// Turn what somebody typed into a URL that is safe to put in a frame, or say
 /// why it is not.
 ///
-/// Three rules, and the third is the one that is not obvious.
+/// Four rules, none of them cosmetic, and the reasoning for each is in
+/// `docs/design-notes/design-mode.md`:
 ///
-/// **A scheme is added when one is missing**, because nobody types `http://`.
-/// `localhost:5173` parses as a URL with scheme `localhost` otherwise, which is
-/// a refusal for a thing the person got right.
-///
-/// **Only http and https are allowed.** `file:` reads the disk, `data:` and
-/// `javascript:` inherit the embedding document's origin — which here is an
-/// app frame, same-origin with the shell — and a custom scheme is somebody
-/// else's protocol handler.
-///
-/// **A host under `.localhost` is refused.** Tauri decides whether an IPC
-/// message may reach a command by asking whether its origin is the app's own,
-/// and on Windows that test takes the first label of a `*.localhost` host and
-/// looks it up among the registered custom protocols (`tauri::webview`'s
-/// `is_local_url`). The port is not part of the test. So a page served from
-/// `http://helve-tool.localhost:5173` answers that question *yes* and is
-/// treated as local — with the full command surface behind it. Refusing the
-/// whole suffix is broader than the hole and much easier to keep true than a
-/// list of registered scheme names that grows.
-fn normalize(raw: &str) -> Result<Target, Refusal> {
+/// - a missing scheme is filled in, because nobody types `http://`;
+/// - only `http` and `https` are loadable, so that `file:`, `data:` and
+///   `javascript:` cannot run with this app frame's own origin;
+/// - **no host under `.localhost`**, because Tauri reads the first label of one
+///   as a custom protocol name and would treat the page as *local*;
+/// - **not the shell's own origin**, `shell`, which `allow-same-origin` on the
+///   frame would otherwise let a page use to remove its own sandbox. `None`
+///   means it could not be read, and that rule alone is skipped.
+fn normalize(raw: &str, shell: Option<&str>) -> Result<Target, Refusal> {
     let typed = raw.trim();
     if typed.is_empty() {
         return Err(Refusal::Empty);
@@ -170,10 +154,30 @@ fn normalize(raw: &str) -> Result<Target, Refusal> {
         return Err(Refusal::ReservedHost(host));
     }
 
+    let origin = url.origin().ascii_serialization();
+    if shell.is_some_and(|own| own.eq_ignore_ascii_case(&origin)) {
+        return Err(Refusal::OwnOrigin(origin));
+    }
+
     Ok(Target {
-        origin: url.origin().ascii_serialization(),
+        origin,
         url: url.to_string(),
     })
+}
+
+/// Where the shell itself is served from, as an origin.
+///
+/// Read off a live window rather than reconstructed from `tauri.conf.json`,
+/// because the two disagree: the config names a dev URL and a `frontendDist`,
+/// and which of them is in force — and under which scheme Tauri decided to
+/// serve it — is a fact about the running process. The splash is skipped for
+/// the reason `devtools::pick` skips it.
+fn shell_origin(app: &AppHandle) -> Option<String> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, _)| label != "splash")
+        .find_map(|(_, window)| window.url().ok())
+        .map(|url| url.origin().ascii_serialization())
 }
 
 /// A rectangle to cut out of the window, in the top-level document's own CSS
@@ -307,13 +311,14 @@ fn disarm(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
     Ok(Value::Null)
 }
 
-fn target(params: Option<&Value>) -> Result<Value, RpcError> {
+fn target(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
     let raw = params
         .and_then(|p| p.get("url"))
         .and_then(Value::as_str)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, "design/target needs a url"))?;
 
-    let resolved = normalize(raw).map_err(|why| RpcError::new(INVALID_PARAMS, why.message()))?;
+    let resolved = normalize(raw, shell_origin(app).as_deref())
+        .map_err(|why| RpcError::new(INVALID_PARAMS, why.message()))?;
 
     serde_json::to_value(&resolved)
         .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not answer: {e}")))
@@ -330,7 +335,7 @@ pub fn call(
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
     match method {
-        "design/target" => target(params.as_ref()),
+        "design/target" => target(app, params.as_ref()),
         "design/arm" => arm(app, params.as_ref()),
         "design/disarm" => disarm(app, params.as_ref()),
         "design/capture" => capture(app, params.as_ref()),
@@ -347,7 +352,7 @@ mod tests {
 
     #[test]
     fn a_bare_host_and_port_gets_a_scheme() {
-        let target = normalize("localhost:5173").expect("a dev server address is ordinary input");
+        let target = normalize("localhost:5173", None).expect("a dev server address is ordinary input");
         assert_eq!(target.url, "http://localhost:5173/");
         assert_eq!(target.origin, "http://localhost:5173");
     }
@@ -355,14 +360,14 @@ mod tests {
     #[test]
     fn surrounding_whitespace_is_not_the_users_problem() {
         assert_eq!(
-            normalize("  http://127.0.0.1:3000/  ").map(|t| t.url),
+            normalize("  http://127.0.0.1:3000/  ", None).map(|t| t.url),
             Ok("http://127.0.0.1:3000/".to_string())
         );
     }
 
     #[test]
     fn https_is_kept_rather_than_downgraded() {
-        let target = normalize("https://example.com/path").expect("https is allowed");
+        let target = normalize("https://example.com/path", None).expect("https is allowed");
         assert_eq!(target.origin, "https://example.com");
     }
 
@@ -377,7 +382,7 @@ mod tests {
             "helve-tool://home/index.html",
         ] {
             assert!(
-                matches!(normalize(raw), Err(Refusal::Scheme(_))),
+                matches!(normalize(raw, None), Err(Refusal::Scheme(_))),
                 "{raw} should have been refused for its scheme"
             );
         }
@@ -395,7 +400,7 @@ mod tests {
             "http://SOMETHING.LocalHost:1234",
         ] {
             assert!(
-                matches!(normalize(raw), Err(Refusal::ReservedHost(_))),
+                matches!(normalize(raw, None), Err(Refusal::ReservedHost(_))),
                 "{raw} should have been refused as a reserved host"
             );
         }
@@ -405,7 +410,7 @@ mod tests {
     /// the rule above must not have taken it with the rest.
     #[test]
     fn plain_localhost_still_works() {
-        assert!(normalize("http://localhost:1234").is_ok());
+        assert!(normalize("http://localhost:1234", None).is_ok());
     }
 
     /// The bug this function was written for, kept as a test because both
@@ -422,9 +427,38 @@ mod tests {
         assert!(states_a_scheme("file:///c:/x"));
     }
 
+    /// A page on the shell's own origin can take its own sandbox off, because
+    /// `allow-same-origin` means what it says. In a release build the
+    /// `.localhost` rule already covers it; in development nothing else does.
+    #[test]
+    fn the_shell_will_not_embed_itself() {
+        let own = Some("http://localhost:1420");
+        assert!(matches!(
+            normalize("localhost:1420", own),
+            Err(Refusal::OwnOrigin(_))
+        ));
+        assert!(matches!(
+            normalize("http://localhost:1420/apps/home/ui/index.html", own),
+            Err(Refusal::OwnOrigin(_))
+        ));
+        // A neighbouring port is a different origin and an ordinary target.
+        assert!(normalize("localhost:1430", own).is_ok());
+    }
+
+    /// The origin cannot always be read — a window may be mid-navigation. The
+    /// rule is skipped rather than guessed at, and the others still apply.
+    #[test]
+    fn an_unknown_shell_origin_does_not_refuse_everything() {
+        assert!(normalize("localhost:1420", None).is_ok());
+        assert!(matches!(
+            normalize("http://x.localhost", None),
+            Err(Refusal::ReservedHost(_))
+        ));
+    }
+
     #[test]
     fn nothing_typed_says_so_rather_than_failing_to_parse() {
-        assert_eq!(normalize("   "), Err(Refusal::Empty));
+        assert_eq!(normalize("   ", None), Err(Refusal::Empty));
     }
 
     /// Every refusal is read by somebody who has just typed something and been
@@ -437,6 +471,7 @@ mod tests {
             Refusal::Scheme("file".to_string()).message(),
             Refusal::NoHost.message(),
             Refusal::ReservedHost("x.localhost".to_string()).message(),
+            Refusal::OwnOrigin("http://localhost:1420".to_string()).message(),
         ];
         let unique: std::collections::HashSet<&String> = messages.iter().collect();
         assert_eq!(unique.len(), messages.len(), "two refusals read the same");
@@ -479,6 +514,45 @@ mod tests {
             .expect("a partly offscreen element is still worth photographing");
         assert_eq!(clip.x, 0.0);
         assert_eq!(clip.y, 0.0);
+    }
+
+    /// **The one property this whole feature rests on**, checked rather than
+    /// remembered.
+    ///
+    /// An embedded page *does* get `window.ipc.postMessage`: wry installs it
+    /// with the same all-frames call [`devtools::install_script`] uses, and its
+    /// own documentation notes that Windows ignores the main-frame-only flag
+    /// Tauri asks for. What stops that page reaching a command is Tauri's ACL,
+    /// which requires an explicit `remote` grant for any origin that is not the
+    /// app's own — so the defence is exactly "no capability declares one".
+    ///
+    /// That is true today and this feature does not change it. It is also the
+    /// kind of thing a future capability edit would undo silently, hence a test
+    /// that reads the files. See `docs/design-notes/design-mode.md`.
+    #[test]
+    fn no_capability_grants_a_remote_origin_access() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+        let entries = std::fs::read_dir(&dir).expect("the capabilities directory is checked in");
+
+        let mut seen = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("a capability file must be readable");
+            let parsed: Value = serde_json::from_str(&text).expect("a capability file is JSON");
+            assert!(
+                parsed.get("remote").is_none(),
+                "{} declares `remote`, which lets a page Design Mode embedded reach HELVE's \
+                 commands. If this is deliberate, Design Mode needs a different defence and \
+                 docs/design-notes/design-mode.md needs rewriting.",
+                path.display()
+            );
+            seen += 1;
+        }
+
+        assert!(seen >= 2, "expected the default and splash capabilities");
     }
 
     /// The probe is compiled in, and an empty one would arm a frame with
