@@ -76,6 +76,23 @@
   height: 100%;
 }
 
+/* Files are being dragged over this emulator, and releasing here is what puts
+   their paths at its prompt. The same inset accent rule
+   `.bottompanel[data-drop-active]` already draws for a dragged tab, at the same
+   width and off the same token — one shell, one way of saying "this is where it
+   lands", and a second treatment would only give the two something to drift
+   apart over.
+
+   A `box-shadow` rather than a border or an overlay child, and that is a
+   constraint rather than a preference: a border would change the box
+   `FitAddon` measures — see the padding note below for how delicate that
+   arithmetic already is — where a shadow occupies no layout at all. Nothing
+   reflows and no pty is resized merely because something is being dragged
+   over it. */
+.terminal__view[data-file-drop] {
+  box-shadow: inset 0 0 0 1px var(--accent-line-strong);
+}
+
 /* The padding is on `.xterm` rather than on the container, and that is not a
    style preference — it is the only place `FitAddon` will see it.
    `proposeDimensions()` reads the *container's* `getComputedStyle().height`

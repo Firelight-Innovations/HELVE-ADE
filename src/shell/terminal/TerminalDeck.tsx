@@ -36,6 +36,7 @@ function TerminalDeck(
     onFocusPane,
     transport,
     onTitle,
+    fileDropTargetId = null,
   }: {
     /** Mounting and unmounting follows these appearing and disappearing —
      *  nothing else. */
@@ -61,6 +62,14 @@ function TerminalDeck(
      * for.
      */
     onTitle?: (id: string, title: string) => void;
+    /**
+     * Which session files are currently being dragged over, if any. Passed
+     * straight through to the one emulator it names; the deck does nothing
+     * else with it, and in particular does not decide it — a drag can be over
+     * a terminal in a pane instead, which this component never sees. Optional
+     * like `onTitle`, and for the same reason.
+     */
+    fileDropTargetId?: string | null;
   },
   ref: React.ForwardedRef<TerminalDeckHandle>,
 ) {
@@ -128,6 +137,7 @@ function TerminalDeck(
               transport={transport}
               onTitle={onTitle && ((title) => onTitle(session.id, title))}
               onFocus={isSplit ? () => onFocusPane(session.id) : undefined}
+              fileDropActive={session.id === fileDropTargetId}
             />
           </div>
         );

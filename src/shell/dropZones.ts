@@ -30,7 +30,18 @@ export type DropZone =
        */
       at: (x: number) => { paneId: string; tabRects: DOMRect[] };
     }
-  | { kind: "panel" };
+  | { kind: "panel" }
+  /**
+   * One session's emulator, wherever it is drawn — the band or a pane. The
+   * target for **files** dragged in, and deliberately invisible to `hitTest`,
+   * which answers for a dragged *tab*. An emulator sits inside a pane and
+   * inside the panel, both already tab targets, so a zone answering both
+   * questions would make a terminal tab dragged over another terminal's output
+   * resolve to the emulator rather than the pane — silently changing a gesture
+   * that works. Files ask `terminalAt`; the two share this registry and nothing
+   * else.
+   */
+  | { kind: "terminal"; sessionId: string };
 
 /** A registration holds the zone's **ref**, not the zone. A zone read at the
  *  moment it is hit-tested is never older than the render that last set it. This
@@ -89,6 +100,22 @@ export function hitTest(x: number, y: number): DropTarget {
 
   // Over no registered zone. Releasing here makes a window.
   return { kind: "detach" };
+}
+
+/** Which terminal session a point is over, or `null` for none.
+ *
+ *  The whole of the file-drop hit test, separate from `hitTest` rather than a
+ *  fourth pass inside it — see the `terminal` zone for why one function
+ *  answering both questions would change what a tab drag does. An overlap
+ *  cannot arise: the deck hides all but the active emulator with
+ *  `display: none`, and a hidden element measures 0x0. */
+export function terminalAt(x: number, y: number): string | null {
+  for (const { zone: held, el } of zones) {
+    const zone = held.current;
+    if (zone.kind !== "terminal") continue;
+    if (within(el.getBoundingClientRect(), x, y)) return zone.sessionId;
+  }
+  return null;
 }
 
 /** The rectangle a pane is drawn on right now, or `null` if it is not on screen.
