@@ -24,6 +24,7 @@ pub mod keys {
     pub const SEARCH_MAX_MATCHES: &str = "search.maxMatches";
     pub const SEARCH_MAX_FILES: &str = "search.maxFiles";
     pub const SEARCH_MAX_FILE_SIZE_MB: &str = "search.maxFileSizeMb";
+    pub const GITHUB_ITEM_LIMIT: &str = "github.itemLimit";
     pub const MCP_WRITE_PROJECT_CONFIG: &str = "mcp.writeProjectConfig";
     pub const UPDATES_CHECK_AUTOMATICALLY: &str = "updates.checkAutomatically";
     pub const DEVELOPER_MODE: &str = "developer.mode";
@@ -40,6 +41,7 @@ static GROUPS: &[&Group] = &[
     &EDITOR,
     &TERMINAL,
     &SEARCH,
+    &GITHUB,
     &UPDATES,
     &MCP,
     &DEVELOPER,
@@ -401,6 +403,49 @@ static SEARCH: Group = Group {
     settings: SEARCH_SETTINGS,
 };
 
+// --- GitHub -----------------------------------------------------------------
+//
+// One row, and the section is worth reading for what is *not* in it: the token.
+//
+// A personal access token is a bearer credential, and this file's values are
+// written to `settings.json` in plain text and broadcast whole to every app
+// frame and every tool that calls `settings/all` (`docs/settings.md` §7). A
+// `Control::Text` here would put a GitHub credential in both places. It goes to
+// the OS credential store instead, through the `set_github_token` command that
+// already existed for private plugin installs, and the GitHub region offers
+// sign-in where a signed-out state is actually visible.
+
+static GITHUB_SETTINGS: &[Setting] = &[Setting {
+    key: keys::GITHUB_ITEM_LIMIT,
+    title: "Items to fetch",
+    description: "How many open issues and how many open pull requests to ask for — this many of \
+                  each, not in total. A signed-out HELVE gets sixty GitHub requests an hour and \
+                  each refresh spends two of them, so the cost of a larger list is the size of \
+                  the reply rather than the quota.",
+    control: Control::Number {
+        default: 30,
+        min: 5,
+        // GitHub's own per-page ceiling. Above it the API returns 100 anyway,
+        // so a higher maximum would be a control that appears to work and does
+        // not — `github.rs` clamps to the same number for the same reason.
+        max: 100,
+        step: 5,
+        unit: "of each",
+    },
+    applies: Applies::Next {
+        what: "the next time the list is fetched",
+    },
+}];
+
+static GITHUB: Group = Group {
+    id: "github",
+    title: "GitHub",
+    description: "The issues and pull requests panel. Signing in is on the panel itself, not \
+                  here — a token is a secret and this screen's values are stored in the clear.",
+    order: 45,
+    settings: GITHUB_SETTINGS,
+};
+
 // --- updates ----------------------------------------------------------------
 //
 // Read once, in `lib.rs`'s setup, by `updater::start`. The one thing this
@@ -558,6 +603,7 @@ mod tests {
             (keys::SEARCH_MAX_MATCHES, "number"),
             (keys::SEARCH_MAX_FILES, "number"),
             (keys::SEARCH_MAX_FILE_SIZE_MB, "number"),
+            (keys::GITHUB_ITEM_LIMIT, "number"),
             (keys::MCP_WRITE_PROJECT_CONFIG, "bool"),
             (keys::UPDATES_CHECK_AUTOMATICALLY, "bool"),
             (keys::DEVELOPER_MODE, "bool"),
