@@ -13,6 +13,7 @@
 //! here, reached over transport B and dispatched by [`call`] below — no child
 //! process, no broker in between.
 
+mod design;
 mod files;
 mod home;
 mod trash;
@@ -188,6 +189,16 @@ const REGISTRY: &[Registered] = &[
         // `two_apps_in_one_cluster_resolve_the_same_context` below, which is
         // there to keep that true.
         call: files::call,
+    },
+    Registered {
+        id: "design",
+        name: "Design Mode",
+        description: "Point at a running page, click an element, and send it to an agent.",
+        // The first app whose frontend mounts something this build did not
+        // write. What it may mount, and what may be put inside it, is
+        // `design::normalize` and `design::arm` — neither of which is a
+        // decision the frontend is allowed to make.
+        call: design::call,
     },
     Registered {
         id: "tutorial",

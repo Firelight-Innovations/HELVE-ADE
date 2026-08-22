@@ -46,3 +46,9 @@ __pycache__/
 
 # Worktrees an agent works in. A second checkout of this repository, inside it.
 .claude/worktrees/
+
+# What `pnpm probe --server ui screenshot` writes, into whatever directory it
+# was run from. It is a picture of somebody's session taken while they were
+# debugging, and it has been swept into a commit by `git add -A` more than once
+# already.
+helve-shot.png

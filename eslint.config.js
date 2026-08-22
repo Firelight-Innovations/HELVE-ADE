@@ -236,6 +236,20 @@ export default tseslint.config(
     },
   },
 
+  // Design Mode's probe is browser code that lives under `src-tauri/` because
+  // `include_str!` is what ships it — see the file's own header. It is the one
+  // `.js` file in the tree that is neither a script nor a config, so it needs
+  // the browser globals the `**/*.{ts,tsx}` block above gives everything else,
+  // and `sourceType: "script"` because WebView2 injects it as a classic script
+  // rather than as a module.
+  {
+    files: ["src-tauri/src/apps/design_probe.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: { ...globals.browser },
+    },
+  },
+
   // Node scripts and config files run outside the browser.
   {
     files: ["scripts/**/*.mjs", "*.config.{ts,js}", "*.config.mjs"],
