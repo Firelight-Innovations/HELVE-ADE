@@ -36,6 +36,7 @@ apps/
   files/ui/             File Explorer's frontend
   viewer/ui/            File Viewer's frontend
   tutorial/ui/          Tutorials' frontend
+  design/ui/            Design Mode's frontend
 ```
 
 Each app's Rust half lives in `src-tauri/src/apps/<id>.rs`, and
@@ -106,7 +107,7 @@ therefore only ever reach its own cluster, and can only name a **kind** of app
 rather than a particular surface — which surface answers is a fact about the
 layout that only the shell can see.
 
-## The four apps
+## The five apps
 
 **Home** (`home/state`, plus the project verbs) — where a session starts: New,
 Open and Clone on the left over a Recent list, tutorials on the right. It is the
@@ -146,6 +147,25 @@ state: every method takes its root from the `CallContext` the caller resolved,
 which is a fact about where the *frame* is placed rather than which app is in
 it. So an Explorer and a Viewer in one cluster resolve the same project, and a
 pair in the next cluster resolve theirs.
+
+**Design Mode** (`design/target`, `design/arm`, `design/disarm`, `design/capture`) —
+a page you are building, in a frame, with a click on any element in it becoming
+that element's markup, computed styles and a cropped screenshot on the
+clipboard, ready for an agent.
+
+It is the only app that mounts something this repository did not write, and the
+only one whose Rust half is a security boundary rather than a data source: what
+may be embedded is decided by `design::normalize`, not by the frontend, because
+a page classified as *local* by Tauri's origin test would reach every command
+the shell has. `docs/design-notes/design-mode.md` is the whole account,
+including what a hostile page in that frame can and cannot do — it is the page
+to read before changing anything under `capabilities/`.
+
+Getting into that frame at all needs Rust too. Same-origin policy means no code
+in the shell can put a listener inside it, so `design/arm` installs a probe
+through WebView2's `AddScriptToExecuteOnDocumentCreated`, which reaches child
+frames the DevTools Protocol's equivalent cannot. The probe answers over
+`postMessage` and is inert in every frame but the one this app armed.
 
 **Tutorials** (`tutorial/catalog`, `tutorial/complete`, `tutorial/reset`) — short
 walkthroughs of what HELVE does today, with a tick against the ones you have

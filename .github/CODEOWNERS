@@ -5,26 +5,50 @@
 # anyway for the day it stops being one. The point is not the blanket rule at
 # the top; it is the four paths below it, which are the ones where an accepted
 # change is difficult to take back.
+#
+# ## Why a username and not a team
+#
+# This file named `@Firelight-Innovations/maintainers` until 2026-08-21, and
+# that team does not exist — the organisation has no teams at all. **A
+# CODEOWNERS rule naming an unresolvable owner matches nobody**, and GitHub does
+# not fail the file or warn in the pull request, so every rule below was silently
+# doing nothing for as long as it had been there.
+#
+# A username cannot be wrong in that way. Swap it back to a team when one exists
+# and has members; until then a real owner beats a tidier-looking one.
+#
+# ## This only bites once review is required
+#
+# CODEOWNERS on its own *requests* a review. It blocks nothing until
+# "Require review from Code Owners" is on in `main`'s branch protection, which
+# it is not as of 2026-08-21 — `required_pull_request_reviews` is null.
+#
+# That setting is what makes this file a boundary rather than a convention, and
+# it is the only boundary GitHub evaluates server-side. It matters most for
+# `/.github/`: a `pull_request` workflow runs the pull request's own code, so a
+# check living in this tree — `scripts/check-catalog.mjs`, say — can be edited
+# by the very change it is checking. Nothing inside a branch can reach this
+# rule, which is the whole point of it.
 
-* @Firelight-Innovations/maintainers
+* @braden-seaborn
 
 # The tool protocol is the contract the whole open-core model rests on. Every
 # tool repository — first-party, commercial, and third-party alike — is written
 # against this document, so a change here is a change to somebody else's
 # software. It is called out separately from the rest of `docs/` for that
 # reason, not because documentation is otherwise unowned.
-/docs/tool-protocol.md @Firelight-Innovations/maintainers
+/docs/tool-protocol.md @braden-seaborn
 
 # The published surfaces the protocol document describes: the crates other
 # repositories depend on, and the npm package a tool author actually installs.
 # STANDARDS.md §10 already treats these differently from the application code —
 # `missing_docs` and `unreachable_pub` are set here and nowhere else — for the
 # same reason they are listed here.
-/crates/ @Firelight-Innovations/maintainers
-/packages/bridge/ @Firelight-Innovations/maintainers
+/crates/ @braden-seaborn
+/packages/bridge/ @braden-seaborn
 
 # The rule book, and the machinery that enforces it. A pull request that relaxes
 # a lint, widens a baseline, or edits the gate is a policy change wearing a
 # configuration change's clothes.
-/STANDARDS.md @Firelight-Innovations/maintainers
-/.github/ @Firelight-Innovations/maintainers
+/STANDARDS.md @braden-seaborn
+/.github/ @braden-seaborn

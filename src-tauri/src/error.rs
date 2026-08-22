@@ -73,6 +73,18 @@ pub enum AppError {
         reason: String,
     },
 
+    /// A web address the shell was asked to hand to the browser and either
+    /// would not or could not. Flattened for `Git`'s reason: the cause is
+    /// either a refusal written in this crate or a `tauri_plugin_opener::Error`
+    /// whose whole value is its message, and the only consumer prints it.
+    ///
+    /// Distinct from [`Self::Reveal`], which is about a checkout on this
+    /// machine. The two read as one thing and are not: one hands a path to the
+    /// file manager, the other hands a URL to the browser, and only the second
+    /// can be refused for *where it points*.
+    #[error("could not open {url}: {reason}")]
+    OpenUrl { url: String, reason: String },
+
     #[error("could not create window `{label}`: {source}")]
     Window {
         label: String,
@@ -126,11 +138,9 @@ pub enum AppError {
     #[error("could not {op} an update: {reason}")]
     Update { op: &'static str, reason: String },
 
-    /// A review comment that cannot be written, or one that names nothing. Carries
-    /// the whole sentence rather than the offending value, for `PresetName`'s
-    /// reason: the two cases have nothing in common but the panel they are shown
-    /// in, and a caller that had to assemble the sentence would be a second author
-    /// of it.
+    /// A review comment that cannot be written, or one that names nothing. Carries the
+    /// whole sentence for `PresetName`'s reason: the two cases share only the panel they
+    /// are shown in, so a caller assembling the sentence would be a second author of it.
     #[error("{0}")]
     Review(String),
 

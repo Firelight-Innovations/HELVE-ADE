@@ -1,11 +1,25 @@
 {
   "mcpServers": {
+    "helve-debug": {
+      "headers": {
+        "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
+      },
+      "type": "http",
+      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/debug"
+    },
     "helve-echo": {
       "headers": {
         "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
       },
       "type": "http",
       "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/echo"
+    },
+    "helve-ui": {
+      "headers": {
+        "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
+      },
+      "type": "http",
+      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/ui"
     }
   }
 }

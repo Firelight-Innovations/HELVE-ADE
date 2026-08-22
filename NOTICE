@@ -19,47 +19,62 @@ stay that way. Being able to build and run those tools does not put them under
 this license, and a repository that is not this one is not covered by it.
 
 
-INCORPORATED THIRD-PARTY CODE
+THIRD-PARTY CODE INCORPORATED HERE
 
-This product incorporates code adapted from `stablyai/orca`
-(https://github.com/stablyai/orca), which is licensed under the MIT License,
-Copyright (c) Stably AI.
+Some of the source in this repository was not written for it. Where that is so,
+the file says so at the top, and the whole of it is listed here.
 
-What was adapted, and where it is:
+  stablyai/orca — https://github.com/stablyai/orca
+  Copyright (c) Stably AI
+  MIT License
 
-  * src/shell/diff/reviewPrompt.ts -- the format review notes are serialized
-    into for an agent to read, and the escaping rule that makes that format
-    survive being pasted at a shell prompt. Adapted from
-    `src/shared/diff-comments-format.ts`.
+  HELVE's GitHub panel is adapted from Orca's, which does the same job in an
+  Electron application. What was taken is design rather than text: the data
+  model for one list holding issues and pull requests together, the `is:` and
+  `label:` filter vocabulary, and the arrangement of a row. Orca's own client
+  shells out to the `gh` command line from Node, which has no counterpart in a
+  Rust backend, so none of it was translated line for line.
 
-  * The review-comment data model in src-tauri/src/review/mod.rs -- how a note
-    anchors to a line range, and which of its timestamps mean what. Modelled on
-    `src/shared/diff-comment-types.ts`.
+  HELVE's diff annotations are adapted from Orca's diff comments. Two pieces:
+  the format review notes are serialized into for an agent to read, together
+  with the escaping rule that makes that format survive being pasted at a shell
+  prompt, from `src/shared/diff-comments-format.ts`; and the review-comment data
+  model — how a note anchors to a line range, and which of its timestamps mean
+  what — from `src/shared/diff-comment-types.ts`.
 
-Each of those files carries the same attribution in its own header. The MIT
-License requires its copyright notice and permission notice to travel with the
-code, and this section together with those headers is how they do. Nothing of
-Orca's branding is used, and none of it appears in any user-facing string.
+  The files carrying a note that names the Orca file they came from:
 
-The MIT License text, as it applies to that code:
+    src-tauri/src/github.rs
+    src/shell/github/query.ts
+    src/shell/github/GithubPanel.tsx
+    src-tauri/src/review/mod.rs
+    src/shell/diff/reviewPrompt.ts
 
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
-  in the Software without restriction, including without limitation the rights
-  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
+  Nothing of Orca's branding is used, and none of it appears in any user-facing
+  string.
 
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
+  MIT and Apache-2.0 are compatible in this direction: MIT-licensed code may be
+  incorporated into an Apache-2.0 work so long as the copyright notice and the
+  permission notice travel with it, which is what this section is for. The MIT
+  license's full text, as it applies to that code:
 
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  SOFTWARE.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
 
 
 TRADEMARKS

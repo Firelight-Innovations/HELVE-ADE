@@ -1,0 +1,245 @@
+/*
+ * Design Mode's own stylesheet, beside the component that uses it (§6.4).
+ *
+ * `apps/shared/app.css` covers what a HELVE app looks like generally, and this
+ * covers the one thing no other app does: a viewport inside a pane. Colours are
+ * `src/tokens.css` throughout — an app inventing a hex value is an app that is
+ * visibly not part of the same product the moment the two sit side by side.
+ */
+
+.design {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* --- the bar --------------------------------------------------------------- */
+
+.design__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.design__address {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 12px/1.4 var(--mono);
+}
+
+.design__address:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent-line-strong);
+}
+
+.design__go,
+.design__pick,
+.design__copy,
+.design__plain {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.design__go:hover,
+.design__pick:hover,
+.design__copy:hover,
+.design__plain:hover {
+  border-color: var(--accent-line);
+}
+
+.design__go:disabled,
+.design__pick:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+  border-color: var(--line);
+}
+
+.design__go:disabled:hover,
+.design__pick:disabled:hover {
+  border-color: var(--line);
+}
+
+/* Armed. The crosshair is in the page, where the pointer is; this is the only
+   thing telling somebody who has looked away that it is still armed. */
+.design__pick[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.design__plain {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 2px 6px;
+}
+
+.design__copy {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--text);
+}
+
+.design__origin {
+  flex: 0 0 auto;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim-2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.design__notice {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--warn);
+  font-size: 12px;
+}
+
+/* --- the two columns ------------------------------------------------------- */
+
+.design__split {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.design__stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  background: var(--surface-gap);
+}
+
+/* No border, and `useProbeFrame`'s `frameChain` depends on knowing that: the
+   offset it measures is of the border box, and a border would put the page's
+   own viewport that many pixels inside it. It compensates anyway, so this is
+   the belt to that braces. */
+.design__frame {
+  flex: 1 1 auto;
+  border: 0;
+  background: #fff;
+}
+
+.design__empty {
+  margin: auto;
+  max-width: 42ch;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.design__hint {
+  color: var(--text-dim-3);
+  font-size: 12px;
+}
+
+/* --- what was picked ------------------------------------------------------- */
+
+.design__panel {
+  flex: 0 0 clamp(280px, 34%, 460px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+  padding: 10px 12px 14px;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.design__panelhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.design__panelname {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.design__shot {
+  display: block;
+  max-width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  /* A large element crops to a tall image, and the panel is not a viewer. */
+  max-height: 220px;
+  object-fit: contain;
+  object-position: left top;
+  background: var(--bg);
+}
+
+.design__shotmiss {
+  margin: 0 0 10px;
+  color: var(--text-dim-3);
+  font-size: 11px;
+}
+
+.design__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.design__said {
+  color: var(--text-dim-2);
+  font-size: 11px;
+}
+
+.design__prompt {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 9px 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: 400 11px/1.5 var(--mono);
+  /* The prompt is what gets pasted; showing it wrapped is showing what it is,
+     not what it will be, but a horizontal scrollbar on a panel this narrow
+     would hide most of it. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.design__idle {
+  margin: auto 0;
+  color: var(--text-dim-3);
+  font-size: 12px;
+  text-align: center;
+}

@@ -1,5 +1,5 @@
 /**
- * The seam every region plugs into. Each of the fifteen regions is built against
+ * The seam every region plugs into. Each of the sixteen regions is built against
  * this file and nothing else — a region never imports another region's source,
  * which is what lets them be built in parallel without growing into each other.
  * Anything two regions need lives beside this file (STANDARDS.md §1.2).
@@ -24,6 +24,9 @@ import type {
   GitDivergence,
   GitStatus,
   GitWorktree,
+  GithubFeed,
+  GithubItemState,
+  GithubScope,
   Openable,
   PaneNode,
   ResolvedTool,
@@ -401,6 +404,60 @@ export function clusterRoot(cluster: Cluster): string | null {
   return cluster.worktree?.path ?? cluster.project;
 }
 
+// --- GitHub — what is open on the repository this cluster is a checkout of ---
+//
+// Read-only for 0.2.0: browse, and open a worktree from an item. Nothing here
+// writes to GitHub, which is why this interface has one fetch and no verbs — the
+// one action a person can take is `WorktreeControl.create` above, called with a
+// name the backend put on the item.
+
+/** Fetching the feed. One method, request/reply, for `GitControl`'s reason:
+ *  there is nothing to watch, and a refresh follows a cluster switch or a
+ *  button. */
+export interface GithubControl {
+  /** Every outcome is a `GithubFeed` variant rather than a rejection — a spent
+   *  quota and a project that is not on GitHub are both states to draw. The
+   *  promise rejecting at all means the IPC call itself failed. */
+  feed(clusterId: string, scope: GithubScope): Promise<GithubFeed>;
+  /** Show one item on github.com. Rejects for any other address — the check is
+   *  Rust's, so the interface cannot be talked into opening something else. */
+  openInBrowser(url: string): Promise<void>;
+}
+
+/** Storing a GitHub token. Separate from `GithubControl` because it is about
+ *  neither a cluster nor a repository: one token serves every project, and the
+ *  app library's own sign-in writes the same one. An empty string signs out.
+ *
+ *  There is deliberately no `isSignedIn` here even though a binding for it
+ *  exists. `GithubFeed.authenticated` already says whether the request that
+ *  produced the list on screen used a token, which is both the same answer and
+ *  a better-sourced one — a separate query could disagree with the list beside
+ *  it. And the token is only ever written: nothing reads it back, because a
+ *  secret in the renderer is a secret in a devtools console. */
+export interface GithubAuthControl {
+  signIn(token: string): Promise<void>;
+}
+
+/** How a GitHub item's state is drawn. Backend vocabulary reaches the interface
+ *  here unchanged, which is the exception §2 warns about — and it is deliberate:
+ *  "open", "closed", "merged" and "draft" are GitHub's words on GitHub's own
+ *  screen, and translating them would be inventing a second vocabulary for
+ *  something the user already reads elsewhere in the same words. */
+export const GITHUB_STATE_TOKEN: Record<GithubItemState, string> = {
+  open: "var(--ok)",
+  closed: "var(--err)",
+  merged: "var(--accent)",
+  draft: "var(--text-dim-2)",
+};
+
+/** The label under each state's dot. */
+export const GITHUB_STATE_LABEL: Record<GithubItemState, string> = {
+  open: "Open",
+  closed: "Closed",
+  merged: "Merged",
+  draft: "Draft",
+};
+
 // --- Search — stubbed index, real interaction -------------------------------
 
 export type SearchType = "content" | "scripts" | "assets" | "terminal" | "settings";
@@ -598,6 +655,12 @@ export type {
   GitFileChange,
   GitStatus,
   GitWorktree,
+  GithubFeed,
+  GithubItem,
+  GithubItemKind,
+  GithubItemState,
+  GithubScope,
+  GithubTrouble,
   ReviewComment,
   ReviewDraft,
   ReviewScope,

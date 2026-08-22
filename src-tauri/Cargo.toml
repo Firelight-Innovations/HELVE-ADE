@@ -178,12 +178,32 @@ notify = "8"
 # private root — the exact network a new developer at a company is most likely
 # to be on, and not a case a bundled CA list can ever be taught about.
 #
-# It also avoids a second copy of Mozilla's roots. `tauri-plugin-updater`
-# already brings `webpki-root-certs` in through reqwest, which is why
-# CDLA-Permissive-2.0 is in `deny.toml`; this needing it too would have been
-# the same data vendored twice for two different fetchers.
+# `native-tls`, not `native-tls-no-default`, and the difference is the whole
+# feature working rather than not.
+#
+# The narrower flag brings the `native-tls` *crate* in and sets `_tls`, but
+# ureq's own guard tests `cfg!(feature = "native-tls")` by name, and on a miss it
+# **panics** rather than falling back: "uri scheme is https, provider is NativeTls
+# but feature is not enabled". Every HTTPS request through an agent configured
+# for this provider hit that, which is why `plugins::remote` — same builder,
+# written first — could not install anything either. Nothing caught it because a
+# panic inside `spawn_blocking` surfaces as a join error, and the only sign at
+# the call site is the generic message its caller falls back to.
+#
+# The wider flag adds no crate. It turns on `native-tls-webpki-roots`, whose
+# `webpki-root-certs` is already in the tree through `tauri-plugin-updater`'s
+# reqwest — which is why CDLA-Permissive-2.0 is already in `deny.toml`. The note
+# that used to be here worried about vendoring Mozilla's roots twice; that data
+# arrives either way, and this only makes a second consumer of it.
+#
+# What it does not change is the trust store, which is the reason the provider
+# was chosen: on Windows `native-tls` is schannel, verifying against the
+# *machine's* store. That is what makes a request work behind a corporate proxy
+# terminating TLS with a private root — the exact network a new developer at a
+# company is most likely to be on, and not a case a bundled CA list can ever be
+# taught about. `rustls` would fix the trust store at compile time instead.
 ureq = { version = "3", default-features = false, features = [
-    "native-tls-no-default",
+    "native-tls",
     "json",
     "gzip",
 ] }

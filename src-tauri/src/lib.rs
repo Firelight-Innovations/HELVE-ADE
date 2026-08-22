@@ -14,6 +14,7 @@ mod diagnostics;
 mod discovery;
 mod error;
 mod git;
+mod github;
 mod launch;
 mod layout;
 mod manifest;
@@ -410,6 +411,8 @@ pub fn run() {
             commands::review_comment_resolve,
             commands::review_comment_remove,
             commands::review_comments_mark_sent,
+            github::github_feed,
+            github::github_open_in_browser,
             search::search_content,
             updater::update_state,
             updater::check_for_update,

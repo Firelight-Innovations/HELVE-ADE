@@ -56,6 +56,59 @@
   white-space: nowrap;
 }
 
+/* --- the view list --------------------------------------------------------
+   What the header draws in place of a title once there is more than one view.
+   The names keep `panel__headtitle`'s size and letter-spacing, so the header's
+   line does not shift when the second view appears; the selected one takes
+   `--text` and an accent rule, which is how every other selected tab in the
+   shell is marked. Nothing here scrolls — there are two and there will be few,
+   which is the whole reason this is a list rather than the segmented row that
+   used to live here. */
+
+.panel__views {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  gap: 2px;
+}
+
+.panel__view {
+  position: relative;
+  flex: none;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel__view:hover {
+  color: var(--text-dim);
+}
+
+.panel__view--on {
+  color: var(--text);
+}
+
+/* On the header's own bottom border rather than above it, so the rule and the
+   border read as one line instead of two a pixel apart. */
+.panel__view--on::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent);
+}
+
 .panel__collapsebtn {
   flex: none;
   width: 26px;
