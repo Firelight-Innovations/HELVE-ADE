@@ -19,20 +19,26 @@
  */
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { isTomlPath, TOML_LANGUAGE_ID } from "@helve/monaco-languages";
-import type { GitControl, GitDiff, GitFileChange } from "../contract";
+import type { GitControl, GitDiff, GitFileChange, ReviewControl, ReviewSend } from "../contract";
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch } from "../../ui/Icon";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktree.css";
 
 /**
- * Lazy because `DiffView` pulls in Monaco and its worker chunk the moment the
- * module is evaluated, and `SecondaryPanel` keeps this view mounted for the
- * life of the window — a static import would make every window pay for Monaco
- * at startup to render a pane most sessions never open. The import starts on
- * the first click of a file, which is also when the diff request goes out.
+ * Lazy because this reaches `DiffView`, which pulls in Monaco and its worker
+ * chunk the moment the module is evaluated, and `SecondaryPanel` keeps this
+ * view mounted for the life of the window — a static import would make every
+ * window pay for Monaco at startup to render a pane most sessions never open.
+ * The import starts on the first click of a file, which is also when the diff
+ * request goes out.
+ *
+ * The annotating wrapper rather than the bare editor, because these are the two
+ * diffs a person reviews an agent's work in. The bare `DiffView` is still what
+ * `CommitGraph` shows history in — a note on a commit that is already made
+ * would be a note about work that is finished.
  */
-const DiffView = lazy(() => import("../diff/DiffView"));
+const AnnotatedDiff = lazy(() => import("../diff/AnnotatedDiff"));
 
 export interface SourceControlViewProps {
   control: GitControl;
@@ -52,6 +58,14 @@ export interface SourceControlViewProps {
    */
   clusterId: string | null;
   git: GitStatusHandle;
+  /** The notes on this cluster's diffs. Passed down rather than reached for
+   *  because this region may not import `diff/`'s state, and `WindowRoot` is
+   *  where every other cluster-scoped control is assembled. */
+  review: ReviewControl;
+  /** Where a batch of notes goes when the user sends it. `WindowRoot` builds
+   *  this: half of it is which terminal the cluster is showing, which is shell
+   *  state rather than anything this view knows. */
+  reviewSend: ReviewSend;
 }
 
 /** Which row is open in the diff pane. The pair, not just the path: a path can
@@ -61,7 +75,13 @@ interface Selection {
   staged: boolean;
 }
 
-export default function SourceControlView({ control, clusterId, git }: SourceControlViewProps) {
+export default function SourceControlView({
+  control,
+  clusterId,
+  git,
+  review,
+  reviewSend,
+}: SourceControlViewProps) {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [diff, setDiff] = useState<GitDiff | null>(null);
   const [message, setMessage] = useState("");
@@ -203,16 +223,26 @@ export default function SourceControlView({ control, clusterId, git }: SourceCon
 
                   `language` is TOML or nothing, because that is the entire set
                   `DiffView` can tokenize — its header explains why. Decided
-                  here from the path rather than inside `DiffView` because a
-                  path is what this view has; asked of `@helve/monaco-languages`
-                  rather than answered inline because that package owns which
+                  here from the path rather than inside it because a path is
+                  what this view has; asked of `@helve/monaco-languages` rather
+                  than answered inline because that package owns which
                   extensions its grammar claims, and it is Monaco-free, so
-                  importing it does not undo the `lazy` boundary above. */}
-              <DiffView
+                  importing it does not undo the `lazy` boundary above.
+
+                  `scope` is the pair `selected` already carries. It is part of
+                  a note's identity rather than a filter — the same line of the
+                  same file is different code staged and unstaged — so the two
+                  lists' notes never mix. */}
+              <AnnotatedDiff
                 original={diff.original}
                 modified={diff.modified}
                 language={isTomlPath(selected.path) ? TOML_LANGUAGE_ID : undefined}
                 renderSideBySide={false}
+                path={selected.path}
+                scope={selected.staged ? "staged" : "unstaged"}
+                clusterId={clusterId}
+                control={review}
+                send={reviewSend}
               />
             </Suspense>
           )}

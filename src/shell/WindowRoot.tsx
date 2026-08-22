@@ -14,6 +14,7 @@ import {
   updateNotice,
   type ClusterMember,
   type PaneNode,
+  type ReviewSend,
   type TerminalBusy,
   type TerminalSession,
   type TerminalTabGroup,
@@ -68,6 +69,7 @@ import {
 import { terminalControl, terminalTransport } from "./state/terminals";
 import { gitControl, worktreeControl } from "./state/git";
 import { githubAuthControl, githubControl } from "./state/github";
+import { copyToClipboard, reviewControl } from "./state/review";
 import { isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
 
 /**
@@ -1209,6 +1211,24 @@ export default function WindowRoot({
   // to mark, it just is not one this cluster has to itself.
   const activeBranch = activeCluster?.worktree?.branch ?? git.status?.branch ?? null;
 
+  // The two ways a batch of review notes leaves the source-control panel.
+  //
+  // Assembled here rather than reached for by the diff region, because half of
+  // it is not a fact about a diff: which terminal is showing is `Cluster`'s,
+  // which lives in shell state, and a region may not import another region's
+  // source to go and find it (STANDARDS.md §1.2). `terminalTransport.write` is
+  // the existing door onto a pty and nothing new was added beside it — an
+  // agent reading its own review notes is the same bytes as a person typing
+  // them.
+  const reviewSend = useMemo<ReviewSend>(
+    () => ({
+      terminalId: activeCluster?.activeTerminal ?? null,
+      toTerminal: (id, text) => terminalTransport.write(id, text),
+      toClipboard: copyToClipboard,
+    }),
+    [activeCluster?.activeTerminal],
+  );
+
   // What the title bar names, and it is the active *cluster's* project rather
   // than a process-wide one. That is the whole of what lets two windows on two
   // monitors say two different things: each asks about the cluster it is
@@ -1489,6 +1509,8 @@ export default function WindowRoot({
                   clusterId={activeClusterId}
                   worktreeControl={worktreeControl}
                   gitControl={gitControl}
+                  reviewControl={reviewControl}
+                  reviewSend={reviewSend}
                   git={git}
                   activeBranch={activeBranch}
                 />

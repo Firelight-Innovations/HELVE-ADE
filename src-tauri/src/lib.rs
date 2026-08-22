@@ -24,6 +24,7 @@ mod presets;
 mod project;
 mod pty;
 mod quoting;
+mod review;
 mod search;
 mod settings;
 mod shell_state;
@@ -406,6 +407,12 @@ pub fn run() {
             git::git_cluster_status,
             git::git_hunks,
             git::git_head_text,
+            commands::review_comments,
+            commands::review_comment_add,
+            commands::review_comment_update,
+            commands::review_comment_resolve,
+            commands::review_comment_remove,
+            commands::review_comments_mark_sent,
             github::github_feed,
             github::github_open_in_browser,
             search::search_content,

@@ -30,6 +30,8 @@ import type {
   Openable,
   PaneNode,
   ResolvedTool,
+  ReviewComment,
+  ReviewDraft,
   SplitDir,
   SurfaceKind,
   TerminalBusy,
@@ -243,13 +245,11 @@ export interface TerminalTransport {
   attach(id: string, onData: (chunk: string) => void): () => void;
   write(id: string, data: string): void;
   /** Files were dropped on this session: put their paths at its prompt, and run
-   *  nothing. Separate from `write`, which would be enough to *send* the text,
-   *  because the quoting is not this side's to decide — whether
-   *  `C:\Program Files\x` needs quotes, and which kind, depends on the shell the
-   *  session spawned, and only Rust knows which that is (a tab's title is the
-   *  running program's to overwrite at will). So paths go over unquoted and are
-   *  quoted there; see `src-tauri/src/quoting.rs`. Fire-and-forget like `write`
-   *  and for the same reason: what happened is visible in the terminal. */
+   *  nothing. Separate from `write` because the quoting is not this side's to
+   *  decide — whether `C:\Program Files\x` needs quotes, and which kind, depends on
+   *  the shell the session spawned, and only Rust knows which that is (a tab's title
+   *  is the running program's to overwrite at will). Paths go over unquoted and are
+   *  quoted in `src-tauri/src/quoting.rs`. Fire-and-forget, like `write`. */
   insertPaths(id: string, paths: string[]): void;
   /** Tell the PTY how big its viewport is, in character cells. Not optional and
    *  not cosmetic: a TUI asks the pty for its size and draws to exactly that, so
@@ -300,6 +300,58 @@ export interface GitControl {
   stage(clusterId: string, paths: string[]): Promise<void>;
   unstage(clusterId: string, paths: string[]): Promise<void>;
   commit(clusterId: string, message: string): Promise<void>;
+}
+
+// --- Review notes — what a person wrote on a line of a diff -----------------
+//
+// Request/reply like `GitControl`, and for a stronger version of the same reason:
+// these change only when somebody types, so there is nothing to watch. The backend
+// re-reads the file on every `list`, which lets another window's writes turn up on the
+// next cluster switch without an event.
+
+/** Notes on one cluster's diffs, and the five things that can happen to one. Every
+ *  method takes a **cluster** id, so the frontend never names a directory for the
+ *  backend to write in — `GitControl`'s rule. Mirrors `src-tauri/src/review/`. */
+export interface ReviewControl {
+  /** Every note for this cluster's checkout, in file-then-line order. An empty array
+   *  — never a failure — for a cluster with no project or one that is not a
+   *  repository, the same two states `GitControl.status` answers `null` for. */
+  list(clusterId: string): Promise<ReviewComment[]>;
+  /** Write a note, and hand back the stored version with the id to address it
+   *  by. Rejects on an empty body or a range that is not one. */
+  add(clusterId: string, draft: ReviewDraft): Promise<ReviewComment>;
+  /** Rewrite a note's body. Clears its `sentAt`: the agent was given different
+   *  words, so it has not seen these. */
+  update(clusterId: string, id: string, body: string): Promise<ReviewComment>;
+  /** The person's own mark that a note is dealt with. Nothing sets it for them
+   *  — handing a note to an agent is not evidence the agent acted on it. */
+  resolve(clusterId: string, id: string, resolved: boolean): Promise<ReviewComment>;
+  remove(clusterId: string, id: string): Promise<void>;
+  /** Stamp notes as handed to an agent, and answer how many were. Called *after* the
+   *  text has reached the clipboard or a terminal, so it forgives an id that names
+   *  nothing rather than reporting a send that happened as one that did not. */
+  markSent(clusterId: string, ids: string[]): Promise<number>;
+}
+
+/** How a note leaves the panel. No agent pane exists in this shell, so these two are the
+ *  whole set: the clipboard, and the cluster's active terminal when one is open with an
+ *  agent at it. Deliberately *not* a new transport — `docs/design-notes/shell-worktree.md`. */
+export type ReviewSendTarget = "clipboard" | "terminal";
+
+/** Writing the notes out. Built by `WindowRoot` from the terminal transport it already
+ *  owns, rather than reached for by the diff region itself: a region may not import
+ *  another region's source (§1.2), and "which terminal is this cluster showing" is a
+ *  fact about the shell's state rather than about a diff. */
+export interface ReviewSend {
+  /** The terminal a send would type into, or `null` when the cluster's band has none.
+   *  The surface disables that target rather than hiding it — the action is real, and
+   *  why it is unavailable is worth showing. */
+  terminalId: string | null;
+  /** Type `text` at that terminal. No trailing newline is added: this only ever types,
+   *  and whether the agent is handed a message or has one submitted stays the person's. */
+  toTerminal(id: string, text: string): void;
+  /** Put `text` on the system clipboard. Rejects if the platform refuses. */
+  toClipboard(text: string): Promise<void>;
 }
 
 // --- Worktrees — one cluster, one checkout of its own -----------------------
@@ -610,6 +662,9 @@ export type {
   GithubItemState,
   GithubScope,
   GithubTrouble,
+  ReviewComment,
+  ReviewDraft,
+  ReviewScope,
   TerminalBusy,
   WorktreeRef,
 } from "../bindings";

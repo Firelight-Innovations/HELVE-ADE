@@ -233,7 +233,11 @@
   display: flex;
   flex-direction: column;
   height: 45%;
-  min-height: 140px;
+  /* Raised from 140px when the diff gained a notes list under it. The list is
+     capped at half of what it is given (`reviewNotes.css`), so at 140 the diff
+     itself came out around 70 pixels — three or four lines of code, which is
+     not enough of a diff to write a note about. */
+  min-height: 220px;
   border-top: 1px solid var(--line);
 }
 
