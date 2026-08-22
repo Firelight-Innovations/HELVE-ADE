@@ -239,6 +239,40 @@ function Control({ size = 10, className, children }: IconProps & { children: Rea
   );
 }
 
+/**
+ * An issue, in the GitHub list. Tabler outline at 2px, per the header's rule
+ * for a glyph the handoff does not draw — the shell spec predates this panel.
+ *
+ * A ring around a dot rather than GitHub's own filled issue mark, so it reads
+ * at the same weight as everything else in the panel. Colour comes from the
+ * state token on the parent, which is what lets one glyph serve open, closed
+ * and every other state without a variant for each.
+ */
+export function IssueDot({ size = 13, className }: IconProps) {
+  return (
+    <Outline size={size} className={className}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="2.5" />
+    </Outline>
+  );
+}
+
+/** A pull request: `GitBranch` with the arm coming back rather than leaving,
+ *  which is the distinction GitHub's own two icons draw. Deliberately not
+ *  reused from `GitBranch` — the two sit in one list, and telling a pull
+ *  request from an issue at a glance is the whole job of the column. */
+export function PullRequest({ size = 13, className }: IconProps) {
+  return (
+    <Outline size={size} className={className}>
+      <circle cx="7" cy="6" r="2" />
+      <circle cx="7" cy="18" r="2" />
+      <circle cx="17" cy="18" r="2" />
+      <path d="M7 8v8M17 16V9a3 3 0 0 0-3-3h-3" />
+      <path d="M13 3l-2 3 2 3" />
+    </Outline>
+  );
+}
+
 export function WindowMinimise(props: IconProps) {
   return (
     <Control {...props}>

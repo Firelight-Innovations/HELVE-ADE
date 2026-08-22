@@ -654,6 +654,26 @@ pub fn main_repo_root(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// The push URL of a remote, as configured — `None` when no such remote exists.
+///
+/// `remote get-url` rather than reading `.git/config`, so that `insteadOf`
+/// rewrites and a worktree's shared config are applied by the thing that owns
+/// those rules. The string comes back in whatever form the user cloned with,
+/// SSH or HTTPS, and interpreting it is the caller's job: this module knows
+/// about git and deliberately nothing about any particular host.
+///
+/// Whitespace-trimmed but otherwise verbatim, and **not** stripped of a
+/// userinfo component. A remote can be spelled
+/// `https://<token>@github.com/owner/name`, so a caller that puts this in an
+/// error message or a log is quoting a credential — `github.rs` parses it to
+/// an owner and a name and never carries the URL any further.
+pub fn remote_url(cwd: &Path, remote: &str) -> Option<String> {
+    run_git(cwd, "remote get-url", &["remote", "get-url", remote])
+        .ok()
+        .map(|out| out.trim().to_string())
+        .filter(|url| !url.is_empty())
+}
+
 // --- worktrees, per cluster ---------------------------------------------------
 //
 // The commands above take a tool id, because source control follows whichever tool's checkout is
@@ -705,7 +725,13 @@ fn worktree_home(project: &Path) -> Result<PathBuf> {
 /// a message about `refs/heads/`, which tells a user who typed "my branch" that
 /// something is wrong with a ref they never mentioned. This says what they can
 /// type instead.
-fn validate_worktree_name(name: &str) -> Result<()> {
+///
+/// Visible to the crate rather than private so `github.rs` can check the names
+/// it generates against the real rule instead of against a copy of it. A name
+/// assembled from an issue title has no human to correct it, so a test that the
+/// generator agrees with this function is the only thing standing between a
+/// colon in somebody's issue title and a `worktree add` that fails.
+pub(crate) fn validate_worktree_name(name: &str) -> Result<()> {
     let bad = |reason: &str| AppError::Git {
         op: "worktree add".to_string(),
         reason: reason.to_string(),

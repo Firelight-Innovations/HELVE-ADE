@@ -1,13 +1,18 @@
-//! The DevTools Protocol, spoken to the webview this process is already running.
+//! The webview this process is already running, reached through the COM
+//! interface Tauri already holds rather than over a socket.
 //!
-//! WebView2 is Chromium, and `ICoreWebView2::CallDevToolsProtocolMethod` is the
-//! same protocol Chrome exposes over `--remote-debugging-port` — reached through
-//! the COM interface Tauri already holds, rather than over a socket. That
-//! difference is the whole reason this module exists; the argument for it is in
-//! `docs/design-notes/agent-ui-driving.md`.
+//! **The DevTools Protocol.** WebView2 is Chromium, and
+//! `ICoreWebView2::CallDevToolsProtocolMethod` is the same protocol Chrome
+//! exposes over `--remote-debugging-port`. No socket, no debug port and no
+//! second process is the whole reason this module exists; the argument for it
+//! is in `docs/design-notes/agent-ui-driving.md`.
 //!
-//! Everything here is transport. What the calls *mean* — which ones make a
-//! click, what a snapshot is — belongs to `mcp::servers::ui`.
+//! **Document-created scripts.** [`install_script`] is WebView2's own
+//! `AddScriptToExecuteOnDocumentCreated`, which is not part of that protocol
+//! and lives here because it is the same COM object reached the same way.
+//!
+//! Everything here is transport. What the calls *mean* belongs to
+//! `mcp::servers::ui` and `apps::design`.
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager, WebviewWindow};
@@ -169,6 +174,128 @@ fn dispatch(_window: &WebviewWindow, _method: &str, _params: String) -> Result<V
         "driving the UI needs WebView2, which only the Windows build has".to_string(),
     ))
 }
+
+/// Have every document this window's webview loads from now on run `script`
+/// before any of the page's own code, and hand back the id that undoes it.
+///
+/// **This reaches into child frames, including cross-origin ones**, which is
+/// the entire reason it is here: same-origin policy means no amount of
+/// JavaScript in the shell can put a listener inside an iframe pointed at
+/// somebody else's dev server.
+///
+/// The DevTools Protocol's near-namesake,
+/// `Page.addScriptToEvaluateOnNewDocument`, would need no new plumbing and was
+/// rejected — it is scoped to one *target*, and a cross-site iframe is a target
+/// of its own. `docs/design-notes/design-mode.md` has the whole argument.
+///
+/// Never call this from the main thread; see [`call`] for why.
+pub fn install_script(
+    app: &AppHandle,
+    window: Option<&str>,
+    script: &str,
+) -> Result<String, Error> {
+    add_script(&pick(app, window)?, script.to_string())
+}
+
+/// Undo one [`install_script`]. Documents already loaded keep the script they
+/// were given — this stops the next one getting it, and nothing more, which is
+/// why Design Mode reloads the frame it is finished with rather than trusting
+/// this to clean a live page.
+pub fn remove_script(app: &AppHandle, window: Option<&str>, id: &str) -> Result<(), Error> {
+    drop_script(&pick(app, window)?, id.to_string())
+}
+
+#[cfg(windows)]
+fn add_script(window: &WebviewWindow, script: String) -> Result<String, Error> {
+    use std::sync::mpsc::{self, RecvTimeoutError};
+    use webview2_com::AddScriptToExecuteOnDocumentCreatedCompletedHandler;
+    use windows_core::HSTRING;
+
+    let (tx, rx) = mpsc::channel();
+
+    let posted = window.with_webview(move |webview| {
+        let answer = tx.clone();
+        let started = (|| -> windows_core::Result<()> {
+            let core = unsafe { webview.controller().CoreWebView2() }?;
+            let handler = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+                move |result, id| {
+                    let _ = answer.send(result.map(|()| id));
+                    Ok(())
+                },
+            ));
+
+            unsafe { core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(script), &handler) }
+        })();
+
+        if let Err(e) = started {
+            let _ = tx.send(Err(e));
+        }
+    });
+
+    if let Err(e) = posted {
+        return Err(Error::Refused(format!(
+            "the window would not take the script: {e}"
+        )));
+    }
+
+    match rx.recv_timeout(TIMEOUT) {
+        Ok(Ok(id)) => Ok(id),
+        Ok(Err(e)) => Err(Error::Refused(format!("the script was refused: {e}"))),
+        Err(RecvTimeoutError::Timeout) => Err(Error::TimedOut),
+        Err(RecvTimeoutError::Disconnected) => Err(Error::Refused(
+            "the window went away while the script was being installed".to_string(),
+        )),
+    }
+}
+
+#[cfg(windows)]
+fn drop_script(window: &WebviewWindow, id: String) -> Result<(), Error> {
+    use std::sync::mpsc::{self, RecvTimeoutError};
+    use windows_core::HSTRING;
+
+    // Synchronous on the COM side, unlike its counterpart above, so what comes
+    // back down the channel is the call's own result rather than a callback's.
+    let (tx, rx) = mpsc::channel();
+    let posted = window.with_webview(move |webview| {
+        let outcome = (|| -> windows_core::Result<()> {
+            let core = unsafe { webview.controller().CoreWebView2() }?;
+            unsafe { core.RemoveScriptToExecuteOnDocumentCreated(&HSTRING::from(id)) }
+        })();
+        let _ = tx.send(outcome);
+    });
+
+    if let Err(e) = posted {
+        return Err(Error::Refused(format!(
+            "the window would not take the removal: {e}"
+        )));
+    }
+
+    match rx.recv_timeout(TIMEOUT) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(Error::Refused(format!("the removal was refused: {e}"))),
+        Err(RecvTimeoutError::Timeout) => Err(Error::TimedOut),
+        Err(RecvTimeoutError::Disconnected) => Err(Error::Refused(
+            "the window went away while the script was being removed".to_string(),
+        )),
+    }
+}
+
+/// See the note on the non-Windows [`dispatch`]: absent everywhere else, and
+/// answering rather than being compiled out, so the failure is a sentence
+/// instead of a missing feature.
+#[cfg(not(windows))]
+fn add_script(_window: &WebviewWindow, _script: String) -> Result<String, Error> {
+    Err(Error::Refused(UNSUPPORTED.to_string()))
+}
+
+#[cfg(not(windows))]
+fn drop_script(_window: &WebviewWindow, _id: String) -> Result<(), Error> {
+    Err(Error::Refused(UNSUPPORTED.to_string()))
+}
+
+#[cfg(not(windows))]
+const UNSUPPORTED: &str = "reaching into the webview needs WebView2, which only the Windows build \
+                           has";
 
 #[cfg(test)]
 mod tests {

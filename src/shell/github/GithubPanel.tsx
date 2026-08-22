@@ -1,0 +1,484 @@
+/**
+ * The GitHub view: what is open on the repository this cluster is a checkout
+ * of, and a way to start work on any of it.
+ *
+ * Row layout and interaction adapted from `stablyai/orca`'s Tasks page
+ * (`src/renderer/src/components/TaskPage.tsx` and its work-item row) —
+ * MIT-licensed, © Stably AI. One list holding both kinds, a kind glyph tinted
+ * by state, the number and title on one line, and the item's own metadata
+ * under it. Orca's row also carries checks, review state and an assignee stack;
+ * those need a request per row and this release does not make them.
+ *
+ * **Every empty list here says why it is empty.** That is the one rule the whole
+ * component is arranged around: a panel that draws nothing teaches the person
+ * that GitHub is broken, and four of the six states below exist only so that
+ * never happens.
+ */
+import { useCallback, useMemo, useState } from "react";
+import { IssueDot, PullRequest, Search } from "../../ui/Icon";
+import type {
+  GithubAuthControl,
+  GithubControl,
+  GithubItem,
+  GithubTrouble,
+  WorktreeControl,
+} from "../contract";
+import { GITHUB_STATE_LABEL, GITHUB_STATE_TOKEN } from "../contract";
+import { applyQuery, fetchScopeOf, parseQuery } from "./query";
+import { useGithubFeed } from "./useGithubFeed";
+import "./github.css";
+
+export interface GithubPanelProps {
+  /** `null` for "no cluster is active" — nothing is fetched, matching every
+   *  other region's rule for an unset cluster. */
+  clusterId: string | null;
+  /** Whether this view is the one on screen. The panel stays mounted when it is
+   *  not — see `SecondaryPanel` — and must not spend GitHub requests while
+   *  hidden, which at sixty an hour signed out is a real budget. */
+  active: boolean;
+  githubControl: GithubControl;
+  authControl: GithubAuthControl;
+  /**
+   * The existing worktree path, passed in rather than imported.
+   *
+   * This is the whole of "open an item": `create(clusterId, suggestedBranch)`,
+   * where the name came off the item. There is no GitHub-specific worktree code
+   * anywhere in this feature, and taking the interface as a prop is what makes
+   * that visible at the call site instead of buried in a helper.
+   */
+  worktreeControl: WorktreeControl;
+  /** Called after a worktree is made, so the shell can refetch what changed.
+   *  The panel does not know what else moved and deliberately does not try. */
+  onWorktreeCreated?: () => void;
+}
+
+export default function GithubPanel({
+  clusterId,
+  active,
+  githubControl,
+  authControl,
+  worktreeControl,
+  onWorktreeCreated,
+}: GithubPanelProps) {
+  const [filter, setFilter] = useState("");
+
+  // Parsed once per keystroke and used twice — for the fetch scope and for the
+  // predicate — so that the request and the list can never disagree about what
+  // was asked for.
+  const query = useMemo(() => parseQuery(filter), [filter]);
+  const scope = fetchScopeOf(query);
+
+  const { feed, loading, refresh } = useGithubFeed(githubControl, clusterId, scope, active);
+
+  /** The item currently being opened, so its row can say so. `null` when idle;
+   *  one at a time, because two worktrees from two clicks is never the intent. */
+  const [opening, setOpening] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const open = useCallback(
+    (item: GithubItem) => {
+      if (clusterId === null || opening !== null) return;
+      setOpening(item.id);
+      setFailure(null);
+      void worktreeControl
+        .create(clusterId, item.suggestedBranch)
+        .then(() => {
+          setOpening(null);
+          onWorktreeCreated?.();
+        })
+        .catch((err: unknown) => {
+          setOpening(null);
+          // Shown verbatim. `git.rs` writes these to be read by whoever caused
+          // them — "`issue-42-…` already exists — pick another name" is the
+          // common one, and rewording it here would lose the name it quotes.
+          setFailure(String(err));
+        });
+    },
+    [clusterId, opening, worktreeControl, onWorktreeCreated],
+  );
+
+  // Failures are swallowed on purpose. Rust refuses a non-GitHub address and
+  // the browser may simply not open; neither is worth taking over the panel for
+  // when the row is still there to click again.
+  const openInBrowser = useCallback(
+    (url: string) => void githubControl.openInBrowser(url).catch(() => {}),
+    [githubControl],
+  );
+
+  const visible = useMemo(
+    () => (feed?.state === "ready" ? applyQuery(feed.items, query) : []),
+    [feed, query],
+  );
+
+  if (clusterId === null) {
+    return <Empty title="No cluster is open." />;
+  }
+
+  return (
+    <div className="github">
+      <Head
+        repo={feed?.state === "ready" ? feed.repo : null}
+        loading={loading}
+        onRefresh={refresh}
+      />
+
+      {feed?.state === "ready" && (
+        <div className="github__filter">
+          <Search size={12} />
+          <input
+            className="github__filterinput"
+            value={filter}
+            spellCheck={false}
+            placeholder="is:pr  label:bug  author:me"
+            aria-label="Filter issues and pull requests"
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        </div>
+      )}
+
+      {failure && (
+        <p className="github__failure" role="alert">
+          {failure}
+        </p>
+      )}
+
+      <Body
+        feed={feed}
+        loading={loading}
+        visible={visible}
+        filtered={filter.trim().length > 0}
+        opening={opening}
+        onOpen={open}
+        onOpenInBrowser={openInBrowser}
+        onSignIn={authControl.signIn}
+        onSignedIn={refresh}
+      />
+    </div>
+  );
+}
+
+function Head({
+  repo,
+  loading,
+  onRefresh,
+}: {
+  repo: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="github__head">
+      <span className="github__repo" title={repo ?? undefined}>
+        {repo ?? "GitHub"}
+      </span>
+      <button
+        type="button"
+        className="github__refresh"
+        onClick={onRefresh}
+        disabled={loading}
+        aria-label="Refresh"
+      >
+        {loading ? "Loading…" : "Refresh"}
+      </button>
+    </div>
+  );
+}
+
+/** Everything below the filter box: one of six states, and exactly one. */
+function Body({
+  feed,
+  loading,
+  visible,
+  filtered,
+  opening,
+  onOpen,
+  onOpenInBrowser,
+  onSignIn,
+  onSignedIn,
+}: {
+  feed: ReturnType<typeof useGithubFeed>["feed"];
+  loading: boolean;
+  visible: GithubItem[];
+  filtered: boolean;
+  opening: string | null;
+  onOpen: (item: GithubItem) => void;
+  onOpenInBrowser: (url: string) => void;
+  onSignIn: (token: string) => Promise<void>;
+  onSignedIn: () => void;
+}) {
+  // Only before the first reply. A refresh over a list already on screen dims
+  // it instead, which is what the `loading` class on the list is for — replacing
+  // a list with a spinner on every refresh loses the reader's place.
+  if (feed === null) {
+    return <Empty title={loading ? "Asking GitHub…" : ""} />;
+  }
+
+  if (feed.state === "notGithub") {
+    return (
+      <Empty
+        title="This project has no GitHub remote."
+        detail="Issues and pull requests come from the repository `origin` points at. A checkout with no remote, or one hosted somewhere else, has none to show."
+      />
+    );
+  }
+
+  if (feed.state === "unavailable") {
+    return (
+      <Trouble
+        trouble={feed.trouble}
+        repo={feed.repo}
+        onSignIn={onSignIn}
+        onSignedIn={onSignedIn}
+      />
+    );
+  }
+
+  if (visible.length === 0) {
+    return filtered ? (
+      <Empty title="Nothing matches that filter." detail="Clearing the box brings the list back." />
+    ) : (
+      <Empty
+        title="Nothing open."
+        detail={`${feed.repo} has no open issues and no open pull requests.`}
+      />
+    );
+  }
+
+  return (
+    <>
+      <ul className={`github__list${loading ? " github__list--stale" : ""}`}>
+        {visible.map((item) => (
+          <Row
+            key={item.id}
+            item={item}
+            opening={opening === item.id}
+            disabled={opening !== null}
+            onOpen={onOpen}
+            onOpenInBrowser={onOpenInBrowser}
+          />
+        ))}
+      </ul>
+      {!feed.authenticated && <SignedOutHint />}
+    </>
+  );
+}
+
+function Row({
+  item,
+  opening,
+  disabled,
+  onOpen,
+  onOpenInBrowser,
+}: {
+  item: GithubItem;
+  opening: boolean;
+  disabled: boolean;
+  onOpen: (item: GithubItem) => void;
+  onOpenInBrowser: (url: string) => void;
+}) {
+  const Glyph = item.kind === "pull" ? PullRequest : IssueDot;
+
+  return (
+    <li className="github__row">
+      <span
+        className="github__kind"
+        style={{ color: GITHUB_STATE_TOKEN[item.state] }}
+        title={`${item.kind === "pull" ? "Pull request" : "Issue"} — ${GITHUB_STATE_LABEL[item.state]}`}
+      >
+        <Glyph />
+      </span>
+
+      <div className="github__main">
+        <button
+          type="button"
+          className="github__title"
+          onClick={() => onOpenInBrowser(item.url)}
+          title={`${item.title}\nOpen #${item.number} on github.com`}
+        >
+          <span className="github__number">#{item.number}</span> {item.title}
+        </button>
+
+        <div className="github__meta">
+          {item.author && <span className="github__author">{item.author}</span>}
+          {item.headBranch && (
+            <span className="github__branch" title="The pull request's own branch">
+              {item.headBranch}
+            </span>
+          )}
+          {item.labels.slice(0, 3).map((label) => (
+            <span key={label} className="github__label">
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="github__open"
+        onClick={() => onOpen(item)}
+        disabled={disabled}
+        // The title says what will actually happen, including the part that
+        // surprises people: a pull request gets a *new* branch named after it
+        // rather than a checkout of the author's. `github.rs` explains why.
+        title={`Create the worktree ${item.suggestedBranch} and move this cluster onto it`}
+      >
+        {opening ? "Opening…" : "Open"}
+      </button>
+    </li>
+  );
+}
+
+/** Why the list could not be fetched, and the one thing to do about it. */
+function Trouble({
+  trouble,
+  repo,
+  onSignIn,
+  onSignedIn,
+}: {
+  trouble: GithubTrouble;
+  repo: string | null;
+  onSignIn: (token: string) => Promise<void>;
+  onSignedIn: () => void;
+}) {
+  const where = repo ?? "this repository";
+
+  switch (trouble.kind) {
+    case "auth":
+      return (
+        <SignIn
+          title="GitHub would not accept that."
+          detail={`Reading ${where} needs a personal access token with repo access.`}
+          onSignIn={onSignIn}
+          onSignedIn={onSignedIn}
+        />
+      );
+
+    case "missingOrPrivate":
+      return (
+        <SignIn
+          title={`${where} could not be read.`}
+          // The two causes are deliberately not separated, because GitHub does
+          // not separate them either — it answers 404 for a private repository
+          // precisely so that its existence is not leaked, and guessing here
+          // would undo that.
+          detail="It does not exist, or the account signed in cannot see it. Signing in with an account that can will tell you which."
+          onSignIn={onSignIn}
+          onSignedIn={onSignedIn}
+        />
+      );
+
+    case "rateLimited":
+      return (
+        <SignIn
+          title="GitHub's hourly limit is used up."
+          detail={
+            (trouble.resetsInMinutes === null
+              ? "It resets within the hour."
+              : `It resets in about ${trouble.resetsInMinutes} minute${trouble.resetsInMinutes === 1 ? "" : "s"}.`) +
+            " Signing in raises the limit from 60 requests an hour to 5000."
+          }
+          onSignIn={onSignIn}
+          onSignedIn={onSignedIn}
+        />
+      );
+
+    case "unreachable":
+      return <Empty title="Could not reach GitHub." detail={trouble.reason} />;
+  }
+}
+
+/**
+ * The token field.
+ *
+ * A password input, and the value is handed straight to Rust and dropped — this
+ * component never stores it beyond the keystroke and nothing reads it back. The
+ * same token the app library's own sign-in writes; one host, one credential.
+ */
+function SignIn({
+  title,
+  detail,
+  onSignIn,
+  onSignedIn,
+}: {
+  title: string;
+  detail: string;
+  onSignIn: (token: string) => Promise<void>;
+  onSignedIn: () => void;
+}) {
+  const [token, setToken] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = () => {
+    const trimmed = token.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    setError(null);
+    void onSignIn(trimmed)
+      .then(() => {
+        setToken("");
+        setSaving(false);
+        onSignedIn();
+      })
+      .catch((err: unknown) => {
+        setSaving(false);
+        setError(String(err));
+      });
+  };
+
+  return (
+    <div className="github__empty">
+      <p className="github__emptytitle">{title}</p>
+      <p className="github__emptydetail">{detail}</p>
+      <div className="github__signin">
+        <input
+          className="github__token"
+          type="password"
+          value={token}
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="ghp_…"
+          aria-label="GitHub personal access token"
+          onChange={(event) => setToken(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+          }}
+        />
+        <button
+          type="button"
+          className="github__signinbtn"
+          onClick={submit}
+          disabled={saving || token.trim().length === 0}
+        >
+          {saving ? "Saving…" : "Sign in"}
+        </button>
+      </div>
+      <p className="github__emptydetail">
+        Stored in Windows Credential Manager, not in HELVE&apos;s settings file.
+      </p>
+      {error && (
+        <p className="github__failure" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Quiet, and under a list that is working: an anonymous list is real, it is
+ *  just capped and cannot see anything private. Nothing to do about it now. */
+function SignedOutHint() {
+  return (
+    <p className="github__hint">Signed out — public repositories only, and 60 requests an hour.</p>
+  );
+}
+
+function Empty({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <div className="github__empty">
+      {title && <p className="github__emptytitle">{title}</p>}
+      {detail && <p className="github__emptydetail">{detail}</p>}
+    </div>
+  );
+}

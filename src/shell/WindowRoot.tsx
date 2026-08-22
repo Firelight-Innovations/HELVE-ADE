@@ -30,7 +30,7 @@ import ToolWindow, { type ToolWindowHandle } from "./toolwindow/ToolWindow";
 import PaneTree from "./panes/PaneTree";
 import XTermView from "./terminal/XTermView";
 import { splitDirOnOpen } from "./panes/splitOnOpen";
-import SecondaryPanel from "./panel/SecondaryPanel";
+import SecondaryPanel, { type PanelView } from "./panel/SecondaryPanel";
 import BottomPanel from "./panel/BottomPanel";
 import StatusBar from "./statusbar/StatusBar";
 import SearchSlot from "./search/SearchSlot";
@@ -42,6 +42,7 @@ import { useDrag } from "./drag/useDrag";
 import { useFileDrag } from "./drag/useFileDrag";
 import { useDropZone } from "./dropZones";
 import { useKeyboard } from "./keys/useKeyboard";
+import GithubPanel from "./github/GithubPanel";
 import WorktreePanel from "./worktree/WorktreePanel";
 import { useGitStatus } from "./worktree/useGitStatus";
 import TerminalDeck, { type TerminalDeckHandle } from "./terminal/TerminalDeck";
@@ -66,6 +67,7 @@ import {
 } from "./state/shellState";
 import { terminalControl, terminalTransport } from "./state/terminals";
 import { gitControl, worktreeControl } from "./state/git";
+import { githubAuthControl, githubControl } from "./state/github";
 import { isFullscreen, isTauri, nextZoom, setFullscreen, setZoom } from "./hostWindow";
 
 /**
@@ -129,6 +131,13 @@ export default function WindowRoot({
   const [panelWidth, setPanelWidth] = useState(380);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [panelMaximized, setPanelMaximized] = useState(false);
+
+  // Which of the secondary panel's views is showing, view-local for the same
+  // reason its width is: two windows on two monitors can honestly be looking at
+  // two different things, and one of them switching to GitHub is not a fact
+  // about the project. Source control first, because it is the one that answers
+  // without a network.
+  const [panelView, setPanelView] = useState<PanelView>("worktree");
 
   // The terminal band's geometry, view-local for the same reason the panel's
   // width is. Shut to begin with: a window that opened with an empty band every
@@ -1463,14 +1472,18 @@ export default function WindowRoot({
               )}
             />
           ),
-          // Source control, and only that. The terminals that used to share
-          // this panel's tab row are in the band below the tool window now, so
-          // there is nothing here to switch between and no row to switch with.
+          // Source control and GitHub. The terminals that used to share this
+          // panel's tab row are in the band below the tool window now; what
+          // brought a switcher back is a second *view* rather than a second
+          // kind of thing, which is the shape `SecondaryPanel` said it was
+          // waiting for.
           secondaryPanel: (
             <SecondaryPanel
               collapsed={panelCollapsed}
               onToggleCollapse={() => setPanelCollapsed((c) => !c)}
               branch={activeBranch}
+              view={panelView}
+              onSelectView={setPanelView}
               worktreeView={
                 <WorktreePanel
                   clusterId={activeClusterId}
@@ -1478,6 +1491,25 @@ export default function WindowRoot({
                   gitControl={gitControl}
                   git={git}
                   activeBranch={activeBranch}
+                />
+              }
+              githubView={
+                <GithubPanel
+                  clusterId={activeClusterId}
+                  // Mounted always, fetching only when shown. A collapsed panel
+                  // counts as not shown: nothing is on screen to read.
+                  active={panelView === "github" && !panelCollapsed}
+                  githubControl={githubControl}
+                  authControl={githubAuthControl}
+                  // The same interface source control uses. Opening an item is
+                  // `create` with a name the backend put on it, and passing the
+                  // control down rather than wrapping it is what keeps that
+                  // visible instead of hidden behind a GitHub-shaped helper.
+                  worktreeControl={worktreeControl}
+                  // A new worktree repoints the cluster, which arrives on
+                  // `shell:state` on its own. What does not is the change list,
+                  // which is now a different checkout's — so ask again.
+                  onWorktreeCreated={git.refresh}
                 />
               }
             />

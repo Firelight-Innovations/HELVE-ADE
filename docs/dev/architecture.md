@@ -74,6 +74,7 @@ apps/                 first-party surfaces, see apps/README.md
   files/ui/             Files: browse the checkout
   viewer/ui/            Viewer: read a file, whatever its format
   tutorial/ui/          Tutorials: the guided tour, drawn from a catalog
+  design/ui/            Design Mode: a running page, and elements picked out of it
 index.html            Vite entry point (main window)
 splash.html           Vite entry point (splash window)
 src/                  React frontend
@@ -93,6 +94,8 @@ src/                  React frontend
     terminal/             the terminal band
     search/               project search and the locator
     diff/ worktree/       git surfaces
+    github/               issues and pull requests, and opening a worktree
+                          from one
     settings/             the settings screen
     state/                the shell's own state, mirrored from Rust
     drag/ keys/ statusbar/
@@ -110,6 +113,7 @@ src-tauri/            Rust backend
     layout.rs           the pane tree, and how an open splits it
     windows.rs          creating and tracking operating system windows
     git.rs              status, diffs and worktrees
+    github.rs           what is open on the repository a cluster checks out
     search.rs           the project search the overlay calls
     pty.rs              terminals
     sync.rs             the lock-poisoning answer, given once (STANDARDS.md 5)
@@ -119,6 +123,8 @@ src-tauri/            Rust backend
       files.rs            files/list, files/read
       trash.rs            deleting, and getting it back
       tutorial.rs         tutorial progress
+      design.rs           what Design Mode may embed, and what goes inside it
+      design_probe.js     the browser code that goes inside it
     project/            what a project is, and which one is open
       mod.rs              open / create / initialize / close / forget
       marker.rs           the <name>.helve manifest
@@ -206,8 +212,8 @@ come back when the broker does.
 ## Apps
 
 `apps/` holds the surfaces the orchestrator ships itself: Home, Files, the file
-viewer and Tutorials. They mount in the same tool window a tool would. They
-speak the same transport to the shell, and they import the same
+viewer, Tutorials and Design Mode. They mount in the same tool window a tool
+would. They speak the same transport to the shell, and they import the same
 `@helve/bridge`.
 
 Their frontends are entry points of *this* repository's Vite build, and their

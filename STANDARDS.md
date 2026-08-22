@@ -43,7 +43,7 @@ Rules that follow from it:
    only file that calls `invoke` or `listen`. A component that needs backend data
    calls a typed wrapper there, and if the wrapper does not exist yet, the fix is
    to add one — not to reach past it.
-2. **No region imports another region's source.** The fifteen shell regions are
+2. **No region imports another region's source.** The sixteen shell regions are
    built against `src/shell/contract.ts` and nothing else. They receive what they need
    as props typed there and hand back what they produce the same way. This is
    what lets them be worked on in parallel without growing into each other.
