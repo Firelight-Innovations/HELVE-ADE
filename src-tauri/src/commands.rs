@@ -1112,7 +1112,7 @@ pub fn set_plugin_enabled(app: tauri::AppHandle, id: String, enabled: bool) -> b
 ///
 /// This is the shell end of transport B for apps. The iframe posts a `request` message,
 /// `ToolWindow` forwards it here, and the reply goes back as a `response` — so an app's UI calls
-/// `invoke("files/list")` through `@helve/bridge` exactly as a tool's UI would, and never learns
+/// `invoke("files/list")` through `@helve-ade/bridge` exactly as a tool's UI would, and never learns
 /// that its host answered in-process rather than over a pipe. The error type is `RpcError`, not
 /// this crate's `AppError`: it carries the JSON-RPC `code` the bridge turns back into a
 /// `HelveRpcError`, which is what lets a frontend tell "no such method" from "that file isn't text"

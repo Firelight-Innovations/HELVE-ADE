@@ -2,7 +2,7 @@
 
 The RPC surface a frontend — or an **agent** — uses to browse, edit and delete
 files in the open project. Every method here is reached the same way any app
-method is, through `invoke` from `@helve/bridge`; `docs/tool-protocol.md`
+method is, through `invoke` from `@helve-ade/bridge`; `docs/tool-protocol.md`
 describes that transport and does not describe these, because they are one app's
 methods rather than part of the protocol.
 

@@ -3,7 +3,7 @@
 The surfaces the orchestrator ships itself.
 
 An app and a tool look identical in the shell — a tab in the switcher bar, an
-iframe in the tool window, `@helve/bridge` in the frontend. The difference is
+iframe in the tool window, `@helve-ade/bridge` in the frontend. The difference is
 where the two halves come from, and it decides everything else:
 
 | | Tool | App |
@@ -65,7 +65,7 @@ live in `src/shell/state/fakeBackend.ts` and has been removed.
 ## Reporting in at startup
 
 Every app owes the shell one thing beyond drawing itself: a call to
-`reportPainted()` from `@helve/bridge` once its first meaningful content is
+`reportPainted()` from `@helve-ade/bridge` once its first meaningful content is
 committed to the DOM.
 
 The orchestrator's splash window stays up until every app in the registry has

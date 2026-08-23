@@ -114,15 +114,15 @@ Still open from this item:
   `mcp::Registry` holds `&'static` servers, so a plugin-provided MCP server
   cannot be one. The manifest reserves the space; the plumbing does not exist.
 
-## 10b. Publish `@helve/bridge` to npm — blocks #11 and #12
+## 10b. Publish `@helve-ade/bridge` to npm — blocks #11 and #12
 
 **Nothing outside this repository can build an app frontend until this is done.**
 
 ### Why
 
 `docs/tool-protocol.md` §5 says a tool frontend's *only* host coupling is
-`@helve/bridge`, and `.github/CODEOWNERS` calls it "the npm package a tool
-author actually installs". It is not published — `npm view @helve/bridge` is a
+`@helve-ade/bridge`, and `.github/CODEOWNERS` calls it "the npm package a tool
+author actually installs". It is not published — `npm view @helve-ade/bridge` is a
 404 as of 2026-08-21 — so there is nothing to install, and the sentence in the
 protocol document is currently false.
 
@@ -163,7 +163,7 @@ Publishing `helve-rpc` to crates.io is tidier and optional. This is neither.
    deliberately does not police this file. Pinning it to the app version would
    tie a wire format to a UI release; say which it is in the package and in
    §6 of the protocol document, and keep the two agreeing.
-4. **Publish.** `pnpm --filter @helve/bridge build`, then
+4. **Publish.** `pnpm --filter @helve-ade/bridge build`, then
    `npm publish --access public` from `packages/bridge`. First publish by hand
    is fine; automate it on a tag afterwards, which needs an `NPM_TOKEN` secret
    and a job that refuses to publish a version already on the registry.

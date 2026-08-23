@@ -8,7 +8,7 @@
  * the method-name strings appear exactly once — nothing outside this module
  * spells `"files/read-bytes"`.
  */
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke } from "@helve-ade/bridge";
 
 // --- what the backend returns -------------------------------------------------
 

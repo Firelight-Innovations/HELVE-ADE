@@ -154,9 +154,9 @@ the intended safety on a pipeline that ships code onto other people's machines.
 An app repository cannot currently depend on the two things the protocol says it
 should, and this has to be settled before either scaffold can build.
 
-**`@helve/bridge` is not on npm.** `npm view @helve/bridge` is a 404, as of
+**`@helve-ade/bridge` is not on npm.** `npm view @helve-ade/bridge` is a 404, as of
 2026-08-21. It is the only host coupling a plugin frontend is supposed to have —
-`tool-protocol.md` §5 says a frontend's "only host coupling is `@helve/bridge`",
+`tool-protocol.md` §5 says a frontend's "only host coupling is `@helve-ade/bridge`",
 and `.github/CODEOWNERS` calls it "the npm package a tool author actually
 installs". Nothing installs it today, because it is not there.
 
@@ -173,7 +173,7 @@ repository would fetch source, and `packages/bridge` publishes `dist` — which 
 built, not committed — so it would need a `prepare` script and a build of the
 whole workspace to install one small package.
 
-**Recommendation: publish `@helve/bridge` to npm before scaffolding either app.**
+**Recommendation: publish `@helve-ade/bridge` to npm before scaffolding either app.**
 It is small, the repository is already public, and the protocol document already
 describes it as published. Publishing `helve-rpc` alongside it is optional and
 tidier; the git dependency is a real answer for the Rust half either way.

@@ -9,11 +9,11 @@
  *
  * Declared here rather than imported from the orchestrator's `src/bindings.ts`,
  * for the reason every app declares its own: an app's only coupling to its host
- * is `@helve/bridge` and the shape of what crosses it. Mirrors
+ * is `@helve-ade/bridge` and the shape of what crosses it. Mirrors
  * `src-tauri/src/apps/tutorial.rs`.
  */
 import { useCallback, useEffect, useState } from "react";
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke } from "@helve-ade/bridge";
 
 export interface Section {
   id: string;

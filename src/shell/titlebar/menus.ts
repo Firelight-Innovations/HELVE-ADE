@@ -25,7 +25,7 @@ import type { AppsMenuHandlers } from "../appsMenu";
  *
  * The Files app restates these ids in `apps/files/ui/src/commands.ts` rather
  * than importing them, for the reason that file's header gives about an app's
- * only coupling to its host being `@helve/bridge`. Two copies of a small table
+ * only coupling to its host being `@helve-ade/bridge`. Two copies of a small table
  * is the price; the alternative is `apps/` reaching into `src/`.
  */
 export const APP_COMMAND = {

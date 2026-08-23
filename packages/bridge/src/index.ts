@@ -1,5 +1,5 @@
 /**
- * `@helve/bridge` — what a tool's `ui/` imports instead of `@tauri-apps/api`.
+ * `@helve-ade/bridge` — what a tool's `ui/` imports instead of `@tauri-apps/api`.
  * Same tool code, either host: an iframe under the orchestrator shell, or a
  * top-level window in its own standalone Tauri app. Wires `createClient` (the
  * testable core, see `client.ts`) to the real `window`. A singleton, not a

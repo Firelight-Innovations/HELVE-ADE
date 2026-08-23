@@ -19,7 +19,7 @@
  * most likely to be in.
  */
 import { useCallback, useEffect, useState } from "react";
-import { on, reportPainted, OPENED_EVENT } from "@helve/bridge";
+import { on, reportPainted, OPENED_EVENT } from "@helve-ade/bridge";
 import { BODIES } from "./content";
 import Reader from "./Reader";
 import Contents from "./Contents";

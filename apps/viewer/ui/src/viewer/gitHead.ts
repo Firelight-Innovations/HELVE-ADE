@@ -5,7 +5,7 @@
  * that file's header gives for staying out of `../rpc.ts`, and this is a
  * second, separate call with its own shape, not a variant of the first.
  */
-import { invoke } from "@helve/bridge";
+import { invoke } from "@helve-ade/bridge";
 
 export interface GitHeadText {
   /**

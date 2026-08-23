@@ -3,7 +3,7 @@
  *
  * App-local rather than imported from the shell's `src/ui/Icon.tsx`, and that is
  * the same rule the types in `App.tsx` follow: an app reaches its host through
- * `@helve/bridge` and nothing else. Reaching into the shell's source for a
+ * `@helve-ade/bridge` and nothing else. Reaching into the shell's source for a
  * component would make this pane a piece of the shell that happens to live in a
  * folder, and the point of `apps/` is that it isn't.
  *

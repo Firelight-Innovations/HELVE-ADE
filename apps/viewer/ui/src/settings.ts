@@ -3,16 +3,16 @@
  *
  * **Restated in `apps/files/ui/src/settings.ts`, deliberately.** The argument
  * is the one `apps/files/ui/src/topics.ts` already makes for itself: an app's
- * only coupling to anything outside itself is `@helve/bridge` and the shape of
+ * only coupling to anything outside itself is `@helve-ade/bridge` and the shape of
  * what crosses it, and a module the two apps shared would let one app's
  * refactor break the other's build.
  *
  * The types below mirror `src-tauri/src/settings/mod.rs` and carry only the
  * fields a reader needs. `src/bindings.ts` holds the shell's own mirror of the
  * same shapes and is not importable from here — it is shell code and calls
- * Tauri directly, which is the thing `@helve/bridge` exists to replace.
+ * Tauri directly, which is the thing `@helve-ade/bridge` exists to replace.
  */
-import { invoke } from "@helve/bridge";
+import { invoke } from "@helve-ade/bridge";
 
 /** What a setting can hold. The three shapes the four controls produce. */
 export type SettingValue = boolean | number | string;

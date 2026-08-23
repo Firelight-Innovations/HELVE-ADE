@@ -5,7 +5,7 @@
  * iframe and the shell must not import its hooks or poke its DOM. So a menu
  * item is a *message*: the shell posts a transport-B `command` to the active
  * frame and this module answers it. `docs/tool-protocol.md` §3 has the wire
- * shape; `@helve/bridge`'s `onCommand` is the receiving end.
+ * shape; `@helve-ade/bridge`'s `onCommand` is the receiving end.
  *
  * There is a second copy of this file in `apps/files/ui/src/`, answering the
  * commands that act on the tree. Neither knows about the other: each declares
@@ -18,7 +18,7 @@
  * rather than imported from the shell.
  */
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { declareCommands, onCommand } from "@helve/bridge";
+import { declareCommands, onCommand } from "@helve-ade/bridge";
 import { activeEditor, subscribeActiveEditor } from "./viewer/activeEditor";
 import { documents, type OpenFiles } from "./tabs/useOpenFiles";
 import type { DeleteTarget } from "./useDelete";

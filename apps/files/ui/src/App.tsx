@@ -18,7 +18,7 @@
  * the tree left of the file, in one window.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { on, openIn, publish, reportPainted, subscribe } from "@helve/bridge";
+import { on, openIn, publish, reportPainted, subscribe } from "@helve-ade/bridge";
 import Explorer, { type ExplorerHandle } from "./explorer/Explorer";
 import NoticeBar from "./NoticeBar";
 import { useMenuCommands } from "./commands";

@@ -429,7 +429,7 @@ pub fn entry_url(id: &str) -> String {
 /// caller has already resolved.
 ///
 /// This is the half an app does *not* share with a tool; the *frontend* contract
-/// it does. An app's UI imports `@helve/bridge` and calls `invoke("home/stack")`
+/// it does. An app's UI imports `@helve-ade/bridge` and calls `invoke("home/stack")`
 /// exactly as a tool's UI calls `invoke("echo")`, and neither one knows which
 /// kind of host answered. So an app can become a tool later — or a tool be
 /// absorbed into the shell — without its interface code changing.

@@ -221,7 +221,7 @@ by a build that dropped a tutorial cannot make Home count to eleven out of ten.
 
 ## 7. How Home opens one
 
-Home calls `openIn("tutorial", { tutorialId })` from `@helve/bridge` — the same
+Home calls `openIn("tutorial", { tutorialId })` from `@helve-ade/bridge` — the same
 `helve/open` path the File Explorer uses to put a file in the File Viewer.
 
 Home names a **kind** of app, never a particular surface. Which Tutorials pane
