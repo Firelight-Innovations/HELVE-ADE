@@ -11,6 +11,7 @@
 import type { Menu } from "../contract";
 import { githubOpenInBrowser } from "../../bindings";
 import { PRODUCT_NAME } from "../../branding.generated";
+import { openShortcuts } from "../shortcutsSurface";
 import { appsMenu } from "../appsMenu";
 import type { AppsMenuHandlers } from "../appsMenu";
 
@@ -378,7 +379,11 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
       label: "Help",
       items: [
         { label: "Documentation" },
-        { label: "Keyboard Shortcuts" },
+        // No accelerator, and that is the "bind it or drop it" rule rather than
+        // an oversight: a shortcut for the list of shortcuts is one more chord
+        // to find room for, and the person looking for it is by definition
+        // reaching for the menu.
+        { label: "Keyboard Shortcuts", onSelect: openShortcuts },
         // The one wired item in this menu. No accelerator, because there is no
         // keystroke worth spending on something done twice a year — and the
         // rule above is bind it or drop it, not display it and hope.
