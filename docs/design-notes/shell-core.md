@@ -539,3 +539,23 @@ would put "open one more Files" and "rearrange this entire cluster" in one undif
 where a mis-click between neighbours does something very different from what was meant. Open Recent
 went the other way for a reason that does not apply here — what it had to show was a path, a date,
 and whether the folder still exists, which is a surface rather than a list.
+
+### App Library sits last, and is the one row `blocked` does not reach
+
+The list above it is what this build ships. `App Library…` is how that list gets longer, so it sits
+under the rows themselves and under Presets, behind its own separator — last, because it is the only
+row that opens nothing into this cluster.
+
+It was, until it was added, reachable from exactly one place: the `Install App` card on Home. That
+card is passed on the way *into* a project, which left the library unreachable from inside one
+without going back — so an app you discover you need mid-session could not be installed from where
+you noticed. Home's card stays; the two raise the same screen through the same
+`librarySurface.openLibrary`, and neither owns it.
+
+**It is deliberately not covered by `AppsMenuHandlers.blocked`.** Everything above it opens into a
+pane and is refused by a window with no cluster; the library is a screen drawn over the band and
+needs none. A window with nowhere to put an app is, if anything, the one most likely to be looking
+for one to install.
+
+It rides in `appsMenu()` rather than the title bar, so — like Presets, and for the reason that
+section gives — the switcher row's `+` gained it at the same time, with nothing to keep in sync.
