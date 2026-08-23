@@ -245,6 +245,7 @@ the shell answers these itself and never forwards them to a core.
 | `helve/title` | `{"title":string}` | `null` | Call this surface's tab something other than its app's name. |
 | `helve/open` | `{"appId":string,"payload"?:any}` | `{"instanceId":string}` | Put something on screen in another app, in my cluster. |
 | `helve/publish` | `{"topic":string,"value":any}` | `null` | State a fact about myself for my cluster-mates to read. |
+| `helve/drag` | `{"phase":"begin"\|"end","paths"?:string[]}` | `null` | I have picked up these file paths, or put them down. |
 
 `helve/painted` is a report, not a request. The orchestrator holds its splash
 window up until every first-party app has sent one, so that the window it hands
@@ -394,16 +395,51 @@ a real thing to say, and narrowing it to a refusal would leave the last real
 value retained and make an empty editor indistinguishable from one nobody had
 heard from.
 
+#### `helve/drag` — I have picked up some paths
+
+```jsonc
+{"helve":1,"kind":"request","id":9,"method":"helve/drag",
+ "params":{"phase":"begin","paths":["C:\repo\src\main.rs"]}}
+```
+
+A frame cannot see a drag leave it. An iframe's pointer events stop at its own
+edge, so a gesture that starts in a file tree and ends on a terminal in the
+shell's chrome is two halves that never meet — the frame never hears the
+release, and the shell never heard the press.
+
+This is the frame's half, and it is the whole of it. `begin` says a press has
+travelled far enough to be a drag and hands over what it is carrying; `end` says
+that press was released **inside the frame**, which is the one release the shell
+cannot observe and therefore the only one worth reporting. A release anywhere
+else is the shell's own `pointerup`, and it commits before an `end` could
+arrive.
+
+Nothing comes back but the acknowledgement, and that is the design rather than
+an omission. The frame is not told where the cursor went, what it passed over,
+whether anything received the paths, or that terminals exist at all — a frame
+that could ask those questions could survey the window it is drawn in.
+
+What the shell does with the paths is not the protocol's business. Today it
+inserts them at the prompt of whichever terminal the release landed on, quoted
+for that terminal's shell and followed by no newline; see
+`docs/design-notes/drag-files-to-terminal.md`.
+
+`paths` is validated, unlike `helve/open`'s opaque `payload`. These strings end
+up in a running program's input rather than in another app's hands, so "the
+receiver knows what it means" does not apply: every entry that is not a string
+is dropped, and quoting happens in Rust.
+
 #### Under the Tauri host
 
-Both are **refused** with `-32601`, not accepted and dropped the way
+All three are **refused** with `-32601`, not accepted and dropped the way
 `helve/commands` is. A tool's own standalone app is one window with one frontend
-in it: there is no cluster, no second app, and nobody to deliver to. Answering
-"done" to an open while nothing happened would leave a frontend believing it had
-put a file on screen that nothing anywhere is showing.
+in it: there is no cluster, no second app, no shell chrome to drag into, and
+nobody to deliver to. Answering "done" to an open while nothing happened would
+leave a frontend believing it had put a file on screen that nothing anywhere is
+showing, and answering it to a drag would say the same about paths in flight.
 
-`publish` is fire-and-forget in the bridge, so that rejection is swallowed at
-the call site rather than surfacing as an unhandled promise.
+`publish` and `drag` are both fire-and-forget in the bridge, so those rejections
+are swallowed at the call site rather than surfacing as unhandled promises.
 
 ### Origins
 

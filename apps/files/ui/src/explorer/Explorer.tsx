@@ -29,6 +29,7 @@ import {
 import ContextMenu, { type DraftKind, type MenuTarget } from "../ContextMenu";
 import DraftRow from "./DraftRow";
 import TreeRow, { GUTTER, INDENT } from "./TreeRow";
+import { useRowDrag } from "./useRowDrag";
 import { useGitStatus } from "./gitStatus";
 import { useTree, type Row } from "./useTree";
 import { ROW_HEIGHT, scrollRowIntoView, useVirtualRows } from "./useVirtualRows";
@@ -279,6 +280,11 @@ const Explorer = forwardRef<
   }, [rows, draft, root]);
 
   const port = useVirtualRows(scrollRef, lines.length);
+
+  // Picking a row up and carrying it to a terminal. One gesture for the tree,
+  // handed to each row as props — `useRowDrag.ts` has why this app can start a
+  // drag it cannot see the end of.
+  const rowDrag = useRowDrag();
 
   /** The `Row` at a line index, or `null` when that line is the draft. */
   const rowAt = useCallback(
@@ -736,6 +742,7 @@ const Explorer = forwardRef<
                   git={git}
                   onActivate={activate}
                   onKeep={keep}
+                  drag={rowDrag(row)}
                   onContextMenu={(target, event) => {
                     event.preventDefault();
                     // Or the scrollport's own handler runs too and replaces this

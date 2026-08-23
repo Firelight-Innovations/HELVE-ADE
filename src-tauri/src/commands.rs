@@ -19,6 +19,7 @@ use crate::plugins;
 use crate::presets;
 use crate::project;
 use crate::pty::{self, PtySessions};
+use crate::review::{self, ReviewComment, ReviewDraft};
 use crate::shell_state::{OpenRequest, ShellSnapshot, ShellState, SurfaceKind, WindowGeometry};
 use crate::state::AppState;
 use crate::tool_frontend;
@@ -795,6 +796,33 @@ pub fn terminal_write(ptys: State<'_, PtySessions>, id: String, data: String) {
     ptys.write(&id, &data);
 }
 
+/// Files were dropped onto this terminal. Insert their paths at its prompt.
+///
+/// Returns the text that was inserted, so the caller can report what happened
+/// without re-deriving it — and it could not re-derive it: quoting depends on
+/// which shell this session is talking to, which is a fact only this side has.
+/// See `quoting`'s module doc.
+///
+/// Unlike [`terminal_write`] this one answers, and can fail. A drop is a
+/// deliberate, low-frequency gesture aimed at a terminal the user can see, so
+/// "that session is gone" is worth a round trip to say, where the same news
+/// about a keystroke would be noise. `Ok("")` is the honest answer to a drop
+/// carrying no paths.
+///
+/// It executes nothing. That is a property of how the insertion is made rather
+/// than a promise kept here — `PtySessions::insert_paths` has it.
+#[tauri::command]
+pub fn terminal_insert_paths(
+    ptys: State<'_, PtySessions>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<String> {
+    ptys.insert_paths(&id, &paths).ok_or(AppError::Pty {
+        id,
+        reason: "no such terminal session to insert into".to_string(),
+    })
+}
+
 /// An emulator has mounted and is listening. Answers with everything the shell
 /// has said so far and where the live stream picks up.
 ///
@@ -1344,6 +1372,95 @@ fn fill_preset_gaps(
             }
         }
     }
+}
+
+// --- review comments ---------------------------------------------------------
+//
+// Six commands over `crate::review`, all cluster-scoped for `git`'s reason: the frontend never
+// names a directory for the backend to write in. Each is a call into `review` and nothing else —
+// the read-modify-write, the lock and the file are all that module's, and none of it is testable
+// from here.
+
+/// Every note stored for this cluster's checkout, in file-then-line order.
+///
+/// An **empty list**, not an error, for a cluster with no project or one that is not a repository.
+/// The panel calls this on every cluster switch, and both of those are ordinary states rather than
+/// something to put a message on screen about — `git_cluster_status` answers its own `None` to the
+/// same two.
+///
+/// Re-read from disk on every call, so it doubles as the refresh after another window has written.
+#[tauri::command]
+pub fn review_comments(app: tauri::AppHandle, cluster_id: String) -> Vec<ReviewComment> {
+    review::checkout(&app, &cluster_id)
+        .map(|root| review::load(&root))
+        .unwrap_or_default()
+}
+
+/// Write a new note, and hand back the stored version of it — with the id the caller needs to
+/// address it by afterwards.
+#[tauri::command]
+pub fn review_comment_add(
+    app: tauri::AppHandle,
+    cluster_id: String,
+    draft: ReviewDraft,
+) -> Result<ReviewComment> {
+    let now = review::now_ms();
+    review::edit(&app, &cluster_id, |comments| {
+        review::add(comments, draft, now)
+    })
+}
+
+/// Rewrite a note's body. Clears its sent stamp — see `review::ReviewComment::sent_at`.
+#[tauri::command]
+pub fn review_comment_update(
+    app: tauri::AppHandle,
+    cluster_id: String,
+    id: String,
+    body: String,
+) -> Result<ReviewComment> {
+    let now = review::now_ms();
+    review::edit(&app, &cluster_id, |comments| {
+        review::update(comments, &id, &body, now)
+    })
+}
+
+/// Mark a note dealt with, or put it back.
+#[tauri::command]
+pub fn review_comment_resolve(
+    app: tauri::AppHandle,
+    cluster_id: String,
+    id: String,
+    resolved: bool,
+) -> Result<ReviewComment> {
+    let now = review::now_ms();
+    review::edit(&app, &cluster_id, |comments| {
+        review::set_resolved(comments, &id, resolved, now)
+    })
+}
+
+/// Delete a note. No undo, and none is offered: the body is one sentence a person just wrote, and
+/// an undo stack for it would be more machinery than the thing it protects.
+#[tauri::command]
+pub fn review_comment_remove(app: tauri::AppHandle, cluster_id: String, id: String) -> Result<()> {
+    review::edit(&app, &cluster_id, |comments| review::remove(comments, &id))
+}
+
+/// Stamp notes as handed to an agent, and say how many were.
+///
+/// Called *after* the frontend has put the text in the clipboard or the terminal, which is why
+/// unknown ids are skipped rather than fatal — see `review::mark_sent`. The count is what the
+/// caller confirms with; it can be lower than the ids asked for if another window deleted one in
+/// between.
+#[tauri::command]
+pub fn review_comments_mark_sent(
+    app: tauri::AppHandle,
+    cluster_id: String,
+    ids: Vec<String>,
+) -> Result<usize> {
+    let now = review::now_ms();
+    review::edit(&app, &cluster_id, |comments| {
+        Ok(review::mark_sent(comments, &ids, now))
+    })
 }
 
 /// Arrange a freshly opened project onto [`presets::PROJECT_OPEN_PRESET_ID`]

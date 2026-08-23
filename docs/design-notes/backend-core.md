@@ -151,3 +151,87 @@ module may guess at it. The frontend measures the rendered pane at the
 moment of the gesture and passes the answer in; `None` means it had
 nothing to measure and asks for the old tab behaviour.
 
+
+## src-tauri/src/review/mod.rs
+
+### Anchored to line numbers, not to content
+
+A note records the line range it was written against and nothing about the text
+there. Edit the file and the anchor is stale: the note still lists, still
+sends, and still names its original line.
+
+The alternative is re-anchoring — keeping a snippet of the commented text and
+re-finding it after each change, which is what a code-review host does because
+its comments have to outlive dozens of pushes. These are meant to be written,
+sent, and cleared inside one review pass, usually within a minute of the diff
+being read. Over that span the anchor is almost always still right, and when it
+is not, a line number the person can see is wrong is a better failure than a
+note that silently moved somewhere plausible.
+
+The cost is worth stating plainly rather than hiding: if an agent rewrites a
+file while notes are open against it, those notes now point at whatever is on
+those lines instead. Nothing detects that. What limits the damage is that the
+note carries its own prose, so a reader can tell.
+
+### Why the scope is part of a note's identity
+
+`ReviewScope` is not a filter applied to a flat list. The same path at the same
+line is different code in the staged view than in the unstaged one, and
+different again in a worktree's divergence from its fork point. A note written
+against one must not surface against another, because the line number it
+carries was measured against text the other two do not have.
+
+### Why there is no author and no thread
+
+There are exactly two parties: the person at the keyboard, and whatever agent
+they hand the note to. A name on every note would say the same thing every
+time. A reply from the agent arrives as a new diff rather than as a message, so
+there is nothing for a thread to hold — the second round of the conversation is
+the code changing, and it shows up in the same panel.
+
+This is the one place the model departs from the review host it is adapted
+from, and it is a decision rather than an unfinished port. If HELVE ever grows
+an agent surface that can talk back, a thread becomes worth having and the
+model gains a parent id; nothing here forecloses that.
+
+### Why `.helve/` inside the checkout, and not the config directory
+
+`project::store` puts the Recent list in the OS config directory because it is
+a fact about *this machine's* history with projects. A note on a line of a diff
+is the opposite: it is about that code, it travels with the branch, and a
+person reviewing an agent's worktree wants the notes to be there when they open
+that worktree somewhere else.
+
+The root is resolved to the **repository** root, through the same
+`git::repo_root` every other source-control command uses, and that has a second
+consequence worth knowing. A cluster working in a git worktree resolves to the
+worktree, so its notes stay with the branch under review rather than leaking
+into the main checkout — which is exactly the per-worktree scoping the feature
+wants, obtained for free from a rule that was there for a different reason.
+
+The paths inside the file are repo-relative, so the file and the paths it holds
+share one base. Resolving anywhere else would file notes against a base their
+paths were never measured from.
+
+### Why writing reports its failure when reading does not
+
+`load` degrades to an empty list, the way `project::store::load` does: the
+worst honest outcome of an unreadable file is no notes, and that is far better
+than a source-control panel that refuses to draw.
+
+`save` returns a `Result` instead, and that asymmetry is deliberate. The
+Recent list losing an entry costs somebody one click. This file holds prose
+somebody just typed, and a save that failed silently would leave a note on
+screen that is not on disk — so every caller is a command that can put the
+failure in front of them.
+
+### One lock for the process
+
+HELVE is single-instance but not single-*window*. Two windows can have the same
+project open, so two commands can land on the same file at once, and the loser
+of that read-modify-write would silently drop whichever note the winner had
+just added.
+
+A map keyed by checkout path would be the precise answer. A single lock is the
+same answer for the load this actually sees, which is one file write per
+sentence a person types, and it is a great deal less machinery to get wrong.

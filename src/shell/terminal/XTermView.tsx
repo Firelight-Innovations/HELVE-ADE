@@ -1,8 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { TerminalTransport } from "../contract";
+import { useDropZone } from "../dropZones";
 // Imported here, not from a global entry, so nothing pays for xterm's CSS
 // until a terminal actually mounts — the tool window and every other region
 // stay ignorant of this parcel's existence.
@@ -43,6 +44,7 @@ function XTermView(
     transport,
     onTitle,
     onFocus,
+    fileDropActive = false,
   }: {
     id: string;
     transport: TerminalTransport;
@@ -54,6 +56,15 @@ function XTermView(
      *  Tab landing on it. Optional; only a split pane's caller needs to
      *  track which one is focused. */
     onFocus?: () => void;
+    /** Files are being dragged over *this* emulator right now. Drawn as an
+     *  inset outline; see `.terminal__view[data-file-drop]`.
+     *
+     *  Handed in rather than read from the drag layer here, matching how
+     *  `BottomPanel` takes its own `dropActive` and for the same reason: this
+     *  component registers where it is (below) but has no business knowing what
+     *  is in the air. Which emulator the drag is over is one answer for the
+     *  whole window, and `WindowRoot` is where it is held. */
+    fileDropActive?: boolean;
   },
   ref: React.ForwardedRef<XTermHandle>,
 ) {
@@ -74,6 +85,29 @@ function XTermView(
   onFocusRef.current = onFocus;
 
   useImperativeHandle(ref, () => ({ clear: () => termRef.current?.clear() }), []);
+
+  // Every emulator is a file-drop target, wherever it is drawn — the band or a
+  // pane. Registered here rather than by the two callers because there is one
+  // rule ("files land in the terminal you point at") and this is the one
+  // component both routes go through; the alternative was the same
+  // registration written twice in `WindowRoot`, which is how the two would come
+  // to disagree. Ordinary drags do not see this zone at all — `dropZones.ts`
+  // has why.
+  const dropZoneRef = useDropZone({ kind: "terminal", sessionId: id });
+
+  // One element, two refs. The effect below measures and mounts xterm into it;
+  // the registry needs the same node to hit-test against. `useCallback` with
+  // both refs as deps rather than an inline arrow, because an unstable ref
+  // callback makes React detach and reattach every render — which for the
+  // registry means deregistering the zone continuously, and a drag sampling it
+  // mid-render would find nothing there.
+  const setContainer = useCallback(
+    (el: HTMLDivElement | null) => {
+      containerRef.current = el;
+      dropZoneRef(el);
+    },
+    [dropZoneRef],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -190,7 +224,13 @@ function XTermView(
     };
   }, [id, transport]);
 
-  return <div ref={containerRef} className="terminal__view" />;
+  return (
+    <div
+      ref={setContainer}
+      className="terminal__view"
+      data-file-drop={fileDropActive || undefined}
+    />
+  );
 }
 
 export default forwardRef(XTermView);

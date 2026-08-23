@@ -35,16 +35,46 @@ the file says so at the top, and the whole of it is listed here.
   shells out to the `gh` command line from Node, which has no counterpart in a
   Rust backend, so none of it was translated line for line.
 
+  HELVE's diff annotations are adapted from Orca's diff comments. Two pieces:
+  the format review notes are serialized into for an agent to read, together
+  with the escaping rule that makes that format survive being pasted at a shell
+  prompt, from `src/shared/diff-comments-format.ts`; and the review-comment data
+  model — how a note anchors to a line range, and which of its timestamps mean
+  what — from `src/shared/diff-comment-types.ts`.
+
   The files carrying a note that names the Orca file they came from:
 
     src-tauri/src/github.rs
     src/shell/github/query.ts
     src/shell/github/GithubPanel.tsx
+    src-tauri/src/review/mod.rs
+    src/shell/diff/reviewPrompt.ts
+
+  Nothing of Orca's branding is used, and none of it appears in any user-facing
+  string.
 
   MIT and Apache-2.0 are compatible in this direction: MIT-licensed code may be
   incorporated into an Apache-2.0 work so long as the copyright notice and the
   permission notice travel with it, which is what this section is for. The MIT
-  license's full text is at https://opensource.org/license/mit.
+  license's full text, as it applies to that code:
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
 
 
 TRADEMARKS

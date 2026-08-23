@@ -21,6 +21,7 @@
 import type { Row } from "./useTree";
 import { fileIconUrl, folderIconUrl } from "@helve/file-icons";
 import { decorate, GIT_KIND_LETTER, GIT_KIND_TOKEN, type GitDecoration } from "./gitStatus";
+import type { RowDragProps } from "./useRowDrag";
 
 /** Pixels of indent per level. Small: the chevron and icon already read as
  *  structure, and VS Code's tree earns its density by not over-stepping.
@@ -42,6 +43,7 @@ export default function TreeRow({
   onActivate,
   onKeep,
   onContextMenu,
+  drag,
 }: {
   row: Row;
   /** Referenced by the tree's `aria-activedescendant`; see `Explorer`. */
@@ -61,6 +63,16 @@ export default function TreeRow({
    */
   onKeep: (row: Row) => void;
   onContextMenu: (row: Row, event: React.MouseEvent) => void;
+  /**
+   * Makes the row draggable onto a terminal. Spread, not called — the whole
+   * gesture is one `onPointerDown` and this row neither starts it nor knows
+   * where it ends; see `useRowDrag.ts`.
+   *
+   * Optional, so a row still renders in a host that has no terminals to drop
+   * into. Nothing here degrades when it is absent: the row keeps its click, its
+   * double-click and its context menu, and simply cannot be picked up.
+   */
+  drag?: RowDragProps;
 }) {
   const isDir = row.entry.kind === "dir";
 
@@ -85,6 +97,11 @@ export default function TreeRow({
       // grey `node_modules` would read as half-decorated.
       data-ignored={decoration.ignored || undefined}
       style={{ paddingLeft: GUTTER + row.depth * INDENT }}
+      // Spread before the row's own handlers so nothing here can quietly
+      // replace one. `onPointerDown` is the only key it carries and no handler
+      // below shares the name, but the ordering is the guarantee rather than
+      // the current shape of the object.
+      {...drag}
       onClick={() => onActivate(row)}
       onDoubleClick={() => {
         if (row.entry.kind === "file") onKeep(row);

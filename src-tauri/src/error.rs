@@ -138,6 +138,12 @@ pub enum AppError {
     #[error("could not {op} an update: {reason}")]
     Update { op: &'static str, reason: String },
 
+    /// A review comment that cannot be written, or one that names nothing. Carries the
+    /// whole sentence for `PresetName`'s reason: the two cases share only the panel they
+    /// are shown in, so a caller assembling the sentence would be a second author of it.
+    #[error("{0}")]
+    Review(String),
+
     /// A settings write the schema refused: an unknown key, a value of the
     /// wrong type, or a choice that is not one of the options. Wrapped rather
     /// than flattened, because unlike everything else here the message is

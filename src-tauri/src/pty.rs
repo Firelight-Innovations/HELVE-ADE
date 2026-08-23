@@ -163,6 +163,12 @@ struct Session {
     /// is writing a keystroke, and making both wait on one lock would let a
     /// chatty build block typing.
     backlog: Arc<Mutex<Backlog>>,
+    /// Which shell actually spawned, as [`candidate`] names it — `pwsh`,
+    /// `bash`. Kept because it is the only durable record of it: the same name
+    /// starts life as the tab's title, and a title is the running program's to
+    /// overwrite at any moment (see `ShellState::set_terminal_title`). Read by
+    /// [`PtySessions::insert_paths`], which has to know how this shell quotes.
+    shell: String,
 }
 
 /// Every live pty, keyed by the session id `ShellState` handed out.
@@ -243,6 +249,7 @@ impl PtySessions {
                 writer,
                 child,
                 backlog,
+                shell: name.clone(),
             },
         );
 
@@ -283,6 +290,46 @@ impl PtySessions {
             let _ = s.writer.write_all(data.as_bytes());
             let _ = s.writer.flush();
         }
+    }
+
+    /// Files were dropped on this session. Put their paths at its prompt,
+    /// quoted the way this particular shell needs, and run nothing.
+    ///
+    /// Returns the text that was inserted, or `None` for a session that no
+    /// longer exists — a terminal closed between the drag starting and the
+    /// release, which is not an error.
+    ///
+    /// What is appended is one space, so the next thing typed is a new word.
+    /// What is never appended is a newline: a newline is the character that
+    /// would turn an insertion into an execution. See `quoting::quote_all`,
+    /// which is where both of those are decided and tested.
+    pub fn insert_paths(&self, id: &str, paths: &[String]) -> Option<String> {
+        // The map lock is taken and released before `write` takes it again,
+        // rather than held across the quoting. Quoting is pure and cheap, but
+        // holding this lock through it would put a keystroke from another
+        // session behind it for no reason at all.
+        let family = {
+            let map = self.inner.lock_or_panic();
+            crate::quoting::ShellFamily::of(&map.get(id)?.shell)
+        };
+
+        let text = crate::quoting::quote_all(family, paths);
+        if text.is_empty() {
+            return Some(text);
+        }
+
+        // **Insertion is [`write`], which is to say it is indistinguishable
+        // from typing.** There is no second path into a pty and this is
+        // deliberately not one: the bytes go through [`tap_input`] like every
+        // keystroke, so whatever eventually wraps a coding harness sees a
+        // dropped path exactly as it sees a typed one. It also means the text
+        // lands wherever the cursor already is — an empty prompt, halfway
+        // through a half-typed command, or the input box of a full-screen
+        // program — which is what "at the current input position" can honestly
+        // mean when the orchestrator deliberately does not know what is running
+        // in there.
+        self.write(id, &text);
+        Some(text)
     }
 
     /// Tell the pty its viewport changed. Load-bearing for TUIs: a program
@@ -577,6 +624,18 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    /// A drop aimed at a terminal that has since closed answers `None` rather
+    /// than panicking or silently succeeding. It is the case a slow drag makes
+    /// reachable — the tab can be shut between the press and the release — and
+    /// the one branch of `insert_paths` that needs no pty to exercise.
+    #[test]
+    fn inserting_into_a_session_that_is_gone_is_not_an_error() {
+        let sessions = PtySessions::default();
+        assert!(sessions
+            .insert_paths("no-such-session", &["a.rs".to_string()])
+            .is_none());
+    }
 
     /// Nothing goes out before someone is listening, and nothing is lost
     /// waiting. This is the invariant the blank-terminal bug came down to.

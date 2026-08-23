@@ -643,6 +643,104 @@ export function gitDivergenceDiff(
   return invoke<GitDiff>("git_divergence_diff", { clusterId, path, mergeBase });
 }
 
+/* --- review comments ---------------------------------------------------------
+ *
+ * Notes a person left on lines of a diff, so an agent can be handed them.
+ * Mirrors `src-tauri/src/review/`, which keeps them in `.helve/` inside the
+ * checkout — cluster-scoped for the same reason every git command is, so the
+ * frontend never names a directory for the backend to write in.
+ */
+
+/** Mirrors `review::ReviewScope` — which of the three diffs a note was written against. */
+export type ReviewScope = "unstaged" | "staged" | "branch";
+
+/**
+ * Mirrors `review::ReviewComment`.
+ *
+ * `startLine`/`endLine` are 1-based and inclusive at both ends, and both name
+ * the **modified** side of the diff. A single-line note has them equal rather
+ * than omitting the end, so no caller has to special-case the common shape.
+ *
+ * There is no `side` and no author: `review`'s module doc has why. `sentAt` is
+ * absent until the note has been handed to an agent, and editing the body
+ * clears it again.
+ */
+export interface ReviewComment {
+  id: string;
+  /** Repo-relative, forward slashes — the same string `GitFileChange.path` carries. */
+  path: string;
+  scope: ReviewScope;
+  startLine: number;
+  endLine: number;
+  body: string;
+  /** Milliseconds since the Unix epoch, like every other timestamp crossing this boundary. */
+  createdAt: number;
+  updatedAt?: number;
+  sentAt?: number;
+  resolved: boolean;
+}
+
+/** Mirrors `review::ReviewDraft` — a note before the backend gives it an id and a clock reading. */
+export interface ReviewDraft {
+  path: string;
+  scope: ReviewScope;
+  startLine: number;
+  endLine: number;
+  body: string;
+}
+
+/**
+ * Every note stored for this cluster's checkout, in file-then-line order.
+ *
+ * An **empty array**, never an error, for a cluster with no project or one that
+ * is not a repository — the same two states `gitClusterStatus` answers `null`
+ * for. Re-read from disk on every call, so it doubles as the refresh after
+ * another window has written.
+ */
+export function reviewComments(clusterId: string): Promise<ReviewComment[]> {
+  return invoke<ReviewComment[]>("review_comments", { clusterId });
+}
+
+/** Write a note. Rejects on an empty body or a line range that is not one. */
+export function reviewCommentAdd(clusterId: string, draft: ReviewDraft): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_add", { clusterId, draft });
+}
+
+/** Rewrite a note's body. Clears its `sentAt` — the agent was given different words. */
+export function reviewCommentUpdate(
+  clusterId: string,
+  id: string,
+  body: string,
+): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_update", { clusterId, id, body });
+}
+
+/** Mark a note dealt with, or put it back. Nothing sets this automatically. */
+export function reviewCommentResolve(
+  clusterId: string,
+  id: string,
+  resolved: boolean,
+): Promise<ReviewComment> {
+  return invoke<ReviewComment>("review_comment_resolve", { clusterId, id, resolved });
+}
+
+/** Delete a note. No undo. */
+export function reviewCommentRemove(clusterId: string, id: string): Promise<void> {
+  return invoke("review_comment_remove", { clusterId, id });
+}
+
+/**
+ * Stamp notes as handed to an agent, and answer how many were.
+ *
+ * Called *after* the text has reached the clipboard or a terminal, so an id
+ * that names nothing is skipped rather than fatal — the send already happened,
+ * and failing here would report it as though it had not. The count can be lower
+ * than the ids asked for if another window deleted one in between.
+ */
+export function reviewCommentsMarkSent(clusterId: string, ids: string[]): Promise<number> {
+  return invoke<number>("review_comments_mark_sent", { clusterId, ids });
+}
+
 /** Mirrors `github::GithubItemKind`. */
 export type GithubItemKind = "issue" | "pull";
 
@@ -1178,6 +1276,61 @@ export function terminalWrite(id: string, data: string): Promise<void> {
 
 export function terminalResize(id: string, cols: number, rows: number): Promise<void> {
   return invoke("terminal_resize", { id, cols, rows });
+}
+
+/**
+ * Files were dropped onto a terminal. Resolves with the text that was inserted.
+ * The quoting is Rust's, not this side's, and that is the whole reason this is
+ * not `terminalWrite` with a string built here: only the backend knows which
+ * shell the session spawned. See `src-tauri/src/quoting.rs`.
+ */
+export function terminalInsertPaths(id: string, paths: string[]): Promise<string> {
+  return invoke<string>("terminal_insert_paths", { id, paths });
+}
+
+/* --- files dragged in from outside HELVE ------------------------------------
+ *
+ * Not a command and not one of our own events: the operating system's own drag,
+ * reported by the webview through Tauri. It is the one drag in the shell that
+ * does not begin with a `pointerdown` we saw.
+ */
+
+/** Where an outside drag is, and what it is carrying once it lets go. */
+export type FileDrag =
+  | { kind: "over"; x: number; y: number }
+  /** Absolute paths, as the operating system spells them. */
+  | { kind: "drop"; x: number; y: number; paths: string[] }
+  | { kind: "leave" };
+
+/**
+ * Subscribe to files being dragged over this window from outside it. Two things
+ * are absorbed here so no caller has to know them.
+ *
+ * **`enter` and `over` are one event.** Tauri distinguishes them, and only
+ * `enter` carries the paths; a drop target needs a position on both and the
+ * paths on neither, so they arrive here as one `over`.
+ *
+ * **The position is converted to CSS pixels.** Tauri reports *physical* device
+ * pixels; every rectangle the shell hit-tests against comes from
+ * `getBoundingClientRect`, which is CSS pixels. The divisor is
+ * `devicePixelRatio` rather than the window's `scaleFactor`, deliberately: this
+ * window can be zoomed (`setWebviewZoom`), zoom moves CSS pixels without moving
+ * the scale factor, and only `devicePixelRatio` accounts for both. The window
+ * is undecorated, so window-relative and client-relative share an origin — a
+ * titlebar would offset every y by its height.
+ */
+export function onFileDrag(cb: (drag: FileDrag) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => {
+    const e = event.payload;
+    if (e.type === "leave") return cb({ kind: "leave" });
+
+    const ratio = window.devicePixelRatio || 1;
+    const x = e.position.x / ratio;
+    const y = e.position.y / ratio;
+
+    if (e.type === "drop") return cb({ kind: "drop", x, y, paths: e.paths });
+    return cb({ kind: "over", x, y });
+  });
 }
 
 /* --- layout presets ----------------------------------------------------------
