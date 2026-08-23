@@ -1,0 +1,94 @@
+# Publish @helve/bridge to npm.
+#
+# Separate from release.yml on purpose: that file ships the orchestrator's own
+# installer off a `v*` tag, this one ships a library out of packages/bridge off
+# its own tag, and the two must never race over what `v*` means in this repo.
+#
+# push a bridge-v* tag   the real thing, publishes to the npm registry
+# workflow_dispatch      a dry run: build + test only, nothing published
+#
+# docs/dev/architecture.md and docs/dev/app-releases.md both currently say
+# @helve/bridge is not on npm (`npm view @helve/bridge` is a 404). This is the
+# thing that stops being true.
+
+name: publish-bridge
+
+on:
+  push:
+    tags: ["bridge-v*"]
+  workflow_dispatch:
+
+# id-token: write is what lets `npm publish --provenance` mint a Sigstore
+# attestation tying the published tarball back to this exact workflow run,
+# without a signing key kept anywhere. contents stays read-only — this
+# workflow's only elevated permission is registry publish, gated by NPM_TOKEN.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-bridge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      # registry-url is what makes NODE_AUTH_TOKEN below actually apply — without
+      # it `npm publish` ignores the env var and tries the logged-out flow.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - run: pnpm install --frozen-lockfile
+
+      # Before anything is built. A tag that disagrees with package.json would
+      # publish a version number that doesn't match what the tag claims, and
+      # that's not detectable afterwards by looking at the published tarball.
+      - name: Check the tag against the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          WANT="${TAG#bridge-v}"
+          GOT="$(node -p "require('./packages/bridge/package.json').version")"
+          if [ "$WANT" != "$GOT" ]; then
+            echo "::error::tag $TAG wants version $WANT, but packages/bridge/package.json says $GOT"
+            exit 1
+          fi
+
+      - name: Build
+        run: pnpm --filter @helve/bridge build
+
+      - name: Test
+        run: pnpm --filter @helve/bridge test
+
+      # Refuses to publish over an existing version rather than letting npm's
+      # own rejection be the first anyone hears of it. `npm view ... version`
+      # exits 0 with output when the version exists, and non-zero (404) when
+      # it's free — pnpm's exec swallows the failure, so call npm directly.
+      - name: Check the version isn't already published
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        working-directory: packages/bridge
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@helve/bridge@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::@helve/bridge@$VERSION is already on the registry"
+            exit 1
+          fi
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        working-directory: packages/bridge
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
