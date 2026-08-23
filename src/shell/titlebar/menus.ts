@@ -9,6 +9,7 @@
  * hard to find and gave a 400-line module two reasons to change.
  */
 import type { Menu } from "../contract";
+import { githubOpenInBrowser } from "../../bindings";
 import { PRODUCT_NAME } from "../../branding.generated";
 import { appsMenu } from "../appsMenu";
 import type { AppsMenuHandlers } from "../appsMenu";
@@ -118,15 +119,49 @@ export interface TerminalMenuHandlers {
 }
 
 /**
- * The one Help item that acts.
+ * The one Help item that needs the window to act.
  *
- * Its three neighbours are still inert. This one is wired because it is the
- * only way to check for an update on a machine where `updates.checkAutomatically`
- * is off, and because the answer — including "you are up to date" — arrives in
- * the status bar rather than in a dialog. See `UpdateNotice` in `contract.ts`.
+ * Wired because it is the only way to check for an update on a machine where
+ * `updates.checkAutomatically` is off, and because the answer — including "you
+ * are up to date" — arrives in the status bar rather than in a dialog. See
+ * `UpdateNotice` in `contract.ts`.
+ *
+ * Its neighbours act too now, and are deliberately *not* here: two open a fixed
+ * address in the browser and one raises a screen, none of which any window
+ * decides. See `HELP_LINKS` and the menu itself.
  */
 export interface HelpMenuHandlers {
   checkForUpdates(): void;
+}
+
+/**
+ * Where the two Help items that leave the app go.
+ *
+ * Constants rather than handlers threaded down from `WindowRoot`: neither
+ * address depends on anything a window knows, and a callback per fixed URL is
+ * two more props for every caller of `defaultMenus` to forward unchanged.
+ *
+ * Both are github.com pages, which is what lets them ride `githubOpenInBrowser`
+ * instead of needing a command — and a widened `opener` capability — of their
+ * own. Rust re-checks the host and refuses anything else; see `github.rs`.
+ */
+const HELP_LINKS = {
+  issues: "https://github.com/Firelight-Innovations/HELVE-ADE/issues",
+  readme: "https://github.com/Firelight-Innovations/HELVE-ADE/blob/main/README.md",
+} as const;
+
+/**
+ * Hand one of them to the browser.
+ *
+ * The rejection is logged and swallowed. There is nowhere to show it: the menu
+ * has closed by the time the promise settles, and a failure here means the
+ * address was refused or the OS has no browser — neither of which the person
+ * who clicked can do anything about from inside a menu.
+ */
+function openHelpLink(url: string): void {
+  void githubOpenInBrowser(url).catch((err: unknown) =>
+    console.error("helve: could not open", url, err),
+  );
 }
 
 /** Everything the six menus with a live item act on. */
@@ -144,7 +179,8 @@ export interface MenuHandlers {
 
 /**
  * All seven menus. File, Edit, View and Terminal operate the app; Run is still
- * scaffolding, and Help is scaffolding with one live item in it.
+ * scaffolding. Help has one inert item left — Documentation, which has nothing
+ * published to point at yet.
  *
  * ## Accelerators are bound, and that is a change
  *
@@ -303,8 +339,7 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
       ],
     },
     // Run keeps both its inert items and its Mac glyphs, deliberately: it is
-    // out of this work's scope and was to be left exactly as it is. Help is no
-    // longer entirely inert — see its own note below.
+    // out of this work's scope and was to be left exactly as it is.
     {
       label: "Run",
       items: [
@@ -353,11 +388,27 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         // question is not urgent enough to take the screen away from whatever
         // it was showing.
         { label: "Check for Updates", separatorBefore: true, onSelect: help.checkForUpdates },
-        { label: "Report Issue", separatorBefore: true },
+        // Both of these leave the app, and the ellipsis is what says so — the
+        // same promise it makes on `App Library…`, which raises a screen this
+        // window owns. These hand the address to whatever browser the machine
+        // has and this window keeps whatever it was showing.
+        {
+          label: "Report Issue…",
+          separatorBefore: true,
+          onSelect: () => openHelpLink(HELP_LINKS.issues),
+        },
         // The one menu item that names the product. It used to append a second
         // word, naming something this shell is not. Taking the name from
         // branding.toml leaves one place that can be wrong instead of nine.
-        { label: `About ${PRODUCT_NAME}`, separatorBefore: true },
+        //
+        // The README rather than a dialog: a version, a licence and a line of
+        // prose is what an About box holds, and all three are already written
+        // down in one place that is current with the release.
+        {
+          label: `About ${PRODUCT_NAME}…`,
+          separatorBefore: true,
+          onSelect: () => openHelpLink(HELP_LINKS.readme),
+        },
       ],
     },
   ];
