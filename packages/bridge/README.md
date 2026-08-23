@@ -1,4 +1,4 @@
-# @helve/bridge
+# @helve-ade/bridge
 
 The transport bridge between a HELVE app's frontend and its host.
 
@@ -9,13 +9,13 @@ if you find yourself reaching for `window.parent` or `@tauri-apps/api` directly,
 something is wrong.
 
 ```sh
-pnpm add @helve/bridge
+pnpm add @helve-ade/bridge
 ```
 
 ## Using it
 
 ```ts
-import { invoke, on, session, reportPainted } from "@helve/bridge";
+import { invoke, on, session, reportPainted } from "@helve-ade/bridge";
 
 // Call your app's Rust half. The method name is yours; the shell routes it to
 // your package's core by which frame the call came from, never by the string.
@@ -35,9 +35,9 @@ the JSON-RPC error object your core returned, unchanged.
 
 | Import | What it is |
 |---|---|
-| `@helve/bridge` | `invoke`, `on`, `onCommand`, `declareCommands`, `openIn`, `publish`, `subscribe`, `session`, `host`, `reportPainted` |
-| `@helve/bridge/protocol` | The wire types of transport B, for anyone implementing the other end |
-| `@helve/bridge/errors` | `HelveRpcError` and the standard codes |
+| `@helve-ade/bridge` | `invoke`, `on`, `onCommand`, `declareCommands`, `openIn`, `publish`, `subscribe`, `session`, `host`, `reportPainted` |
+| `@helve-ade/bridge/protocol` | The wire types of transport B, for anyone implementing the other end |
+| `@helve-ade/bridge/errors` | `HelveRpcError` and the standard codes |
 
 `@tauri-apps/api` is an **optional** peer dependency. It is needed only when an
 app runs as a standalone Tauri window rather than inside the orchestrator; inside

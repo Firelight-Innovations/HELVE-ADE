@@ -3,7 +3,7 @@
  * `src-tauri/src/apps/design.rs` and are restated rather than imported, for the
  * reason `apps/files/ui/src/rpc.ts` gives.
  */
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke } from "@helve-ade/bridge";
 
 /** A URL the backend has cleared for embedding. */
 export interface Target {

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke } from "@helve-ade/bridge";
 import "./home.css";
 
 /**
  * `home/worktree-create`'s reply, mirroring `home/worktree-state`'s shape —
  * see the comment on `Project` in `App.tsx` for why this is declared here
- * rather than shared: an app's only coupling to its host is `@helve/bridge`
+ * rather than shared: an app's only coupling to its host is `@helve-ade/bridge`
  * and the shape of what crosses it. Nothing here reads the fields back; the
  * type exists so a change to the contract shows up as a type error rather
  * than a silently ignored field.

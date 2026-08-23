@@ -117,7 +117,7 @@ pub fn call(
         //
         // A `home/*` method rather than a Tauri command, because Home is an
         // *app*: STANDARDS.md §1.4 has apps reach the shell only through
-        // `@helve/bridge`. It cannot touch the shell's React tree either, so
+        // `@helve-ade/bridge`. It cannot touch the shell's React tree either, so
         // "show me the library" goes app -> Rust -> event -> shell, which is
         // the same path `helve/open` takes and for the same reason.
         //

@@ -65,7 +65,7 @@ crates/               Rust libraries shared with the tool repositories
   helve-tool-manifest/  parses and validates helve-tool.toml
   helve-rpc/            JSON-RPC over the standard streams, both halves
 packages/             npm packages shipped to the tool repositories
-  bridge/               @helve/bridge: one tool frontend, either host
+  bridge/               @helve-ade/bridge: one tool frontend, either host
 examples/
   echo-tool/            reference tool: manifest + core + frontend
 apps/                 first-party surfaces, see apps/README.md
@@ -214,7 +214,7 @@ come back when the broker does.
 `apps/` holds the surfaces the orchestrator ships itself: Home, Files, the file
 viewer, Tutorials and Design Mode. They mount in the same tool window a tool
 would. They speak the same transport to the shell, and they import the same
-`@helve/bridge`.
+`@helve-ade/bridge`.
 
 Their frontends are entry points of *this* repository's Vite build, and their
 Rust halves are modules in `src-tauri/src/apps/`. The shell reaches them
@@ -227,7 +227,7 @@ the reasoning.
 The protocol is built ahead of the first real tool. `examples/echo-tool` is what
 it is tested against: a complete tool in miniature, with a `helve-tool.toml`, a
 core that speaks JSON-RPC over its standard streams, and a frontend whose only
-host coupling is `@helve/bridge`. Copying it is the intended way to start a tool
+host coupling is `@helve-ade/bridge`. Copying it is the intended way to start a tool
 repository.
 
 Two transports meet in the shell. The frontend talks to the shell over window

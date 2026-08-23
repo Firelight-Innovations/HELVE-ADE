@@ -309,7 +309,7 @@ Command ids are the host's vocabulary, not the protocol's — this document does
 not enumerate them, the same way it does not enumerate an app's methods. The
 orchestrator's are in `src/shell/titlebar/TitleBar.tsx` (`APP_COMMAND`).
 
-`@helve/bridge` exposes both halves as `onCommand` and `declareCommands`. The
+`@helve-ade/bridge` exposes both halves as `onCommand` and `declareCommands`. The
 declaration is de-duplicated against the last one actually sent, because the
 natural place to call it is an effect that runs on every render.
 
@@ -469,14 +469,14 @@ field is null today, and stays null until projects reach tools.
 
 ## 4. The bridge package
 
-`@helve/bridge` is what a tool's `ui/` imports instead of `@tauri-apps/api`. Same
+`@helve-ade/bridge` is what a tool's `ui/` imports instead of `@tauri-apps/api`. Same
 tool code, either host.
 
 ```ts
 import {
   invoke, on, onCommand, declareCommands, session, host, reportPainted,
   openIn, publish, subscribe, OPENED_EVENT,
-} from "@helve/bridge";
+} from "@helve-ade/bridge";
 
 const reply = await invoke<{ text: string }>("echo", { text: "hi" });
 const off   = on("file/changed", (p) => console.log(p));
@@ -547,7 +547,7 @@ process dies rejects with `-32000`. Both surface as a `HelveRpcError` carrying
 1. `helve-tool.toml` at the checkout root.
 2. A headless binary that speaks transport A when passed `--helve-rpc` — unless
    the package declares no `[core]`, in which case it ships no binary at all.
-3. A frontend bundle whose only host coupling is `@helve/bridge`, holding one
+3. A frontend bundle whose only host coupling is `@helve-ade/bridge`, holding one
    document per `[[surface]]` — unless the package declares no `[frontend]`.
 
 `examples/echo-tool` in this repo is the reference implementation, and is what
@@ -600,7 +600,7 @@ Implemented, covered by tests, and not changing shape under v1.
   origin rules. All of it runs on every launch: the orchestrator's own Home and
   Files are not special-cased anywhere, they are frames speaking this transport
   through this bridge.
-- **`@helve/bridge` (§4)** — the exported names, the thirty-second default
+- **`@helve-ade/bridge` (§4)** — the exported names, the thirty-second default
   timeout, `HelveRpcError`'s `code`, `message` and `data`, and host detection.
 
 Both caveats that used to sit here are closed, and it is worth saying which,
@@ -666,8 +666,8 @@ so somewhere its users will read.
 A shell and a tool from two majors half-working is a worse day than either of
 them stopping at the handshake.
 
-The crates and `@helve/bridge` carry ordinary semver, independent of this
-number. `@helve/bridge` 0.2.0 still speaks protocol 1. A package version is not
+The crates and `@helve-ade/bridge` carry ordinary semver, independent of this
+number. `@helve-ade/bridge` 0.2.0 still speaks protocol 1. A package version is not
 a protocol version.
 
 And the rule this file lives under: a change to §1 through §4 lands in the same

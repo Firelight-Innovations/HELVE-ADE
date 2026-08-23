@@ -328,7 +328,7 @@ export function onPluginsChanged(cb: () => void): Promise<UnlistenFn> {
  *
  * Called by `ToolWindow`, which is the only thing that knows which mounted
  * frame a message came from, and never by an app itself — an app calls
- * `invoke` from `@helve/bridge` and the shell relays it here. A rejection
+ * `invoke` from `@helve-ade/bridge` and the shell relays it here. A rejection
  * carries `{ code, message, data? }`, the JSON-RPC error object the bridge
  * turns back into a `HelveRpcError`.
  */

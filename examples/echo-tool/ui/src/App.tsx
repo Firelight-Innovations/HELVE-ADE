@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HelveRpcError, host, invoke, on, session, type Session } from "@helve/bridge";
+import { HelveRpcError, host, invoke, on, session, type Session } from "@helve-ade/bridge";
 
 interface CallLogEntry {
   method: string;

@@ -3,7 +3,7 @@
 The reference implementation of the Helve tool protocol (see
 `docs/tool-protocol.md`): a `helve-tool.toml`, a headless core that speaks
 transport A when passed `--helve-rpc`, and (once the frontend half lands) a
-bundle whose only host coupling is `@helve/bridge`. `helve-rpc`'s tests run
+bundle whose only host coupling is `@helve-ade/bridge`. `helve-rpc`'s tests run
 against this binary.
 
 ## A note on `bin`

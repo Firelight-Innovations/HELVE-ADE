@@ -16,7 +16,7 @@
  * and never this file.
  */
 import { useCallback, useEffect, useState } from "react";
-import { on, publish, reportPainted, subscribe, OPENED_EVENT } from "@helve/bridge";
+import { on, publish, reportPainted, subscribe, OPENED_EVENT } from "@helve-ade/bridge";
 import NoticeBar from "./NoticeBar";
 import { useMenuCommands } from "./commands";
 import { useDelete } from "./useDelete";

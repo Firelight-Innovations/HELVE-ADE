@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { HelveRpcError, invoke, openIn, reportPainted } from "@helve/bridge";
+import { HelveRpcError, invoke, openIn, reportPainted } from "@helve-ade/bridge";
 import { PRODUCT_NAME, TAGLINE, WORDMARK } from "./branding.generated";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark, PackagePlus } from "./icons";
 import WorktreeDialog from "./WorktreeDialog";
@@ -10,7 +10,7 @@ import "./home.css";
  *
  * Declared here rather than imported from the orchestrator's `src/bindings.ts`,
  * for the same reason `icons.tsx` draws its own glyphs: an app's only coupling to
- * its host is `@helve/bridge` and the shape of what crosses it. Only what this
+ * its host is `@helve-ade/bridge` and the shape of what crosses it. Only what this
  * pane actually draws is described — there is no `format` below, because Home
  * does not yet have anything to say about a project written by a newer HELVE.
  */
@@ -37,7 +37,7 @@ type State = Projects & { version?: string | null };
 
 /**
  * `home/worktree-state`'s reply. Declared here for the same reason `Project`
- * is: this pane's only coupling to its host is `@helve/bridge` and the shape
+ * is: this pane's only coupling to its host is `@helve-ade/bridge` and the shape
  * of what crosses it.
  */
 interface WorktreeState {
@@ -233,7 +233,7 @@ export default function App() {
 
   /**
    * Home is the app HELVE opens on, so the splash window is held up until this
-   * pane has something on it — see `reportPainted` in `@helve/bridge`, and
+   * pane has something on it — see `reportPainted` in `@helve-ade/bridge`, and
    * `boot::await_apps` for what is waiting.
    *
    * The condition is "the first answer landed", either way it went. A Home that

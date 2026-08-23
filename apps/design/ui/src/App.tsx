@@ -10,7 +10,7 @@
  * the panel that reads out a capture.
  */
 import { useEffect, useRef, useState } from "react";
-import { reportPainted } from "@helve/bridge";
+import { reportPainted } from "@helve-ade/bridge";
 import { copyForAgent, type Handoff } from "./handoff";
 import { toLabel, toPrompt } from "./prompt";
 import { useProbeFrame } from "./useProbeFrame";

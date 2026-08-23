@@ -217,11 +217,11 @@ obliged to be one or the other.
 
 ## 7. How an app's frontend reads settings
 
-An app's frontend has no door to Tauri. `@helve/bridge` is its whole interface,
+An app's frontend has no door to Tauri. `@helve-ade/bridge` is its whole interface,
 so it reads settings the same way it reads anything else:
 
 ```ts
-import { invoke } from "@helve/bridge";
+import { invoke } from "@helve-ade/bridge";
 
 const settings = await invoke("settings/all");
 ```

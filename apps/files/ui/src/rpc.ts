@@ -2,13 +2,13 @@
  * Every call this app makes to its host, in one file.
  *
  * The shapes below mirror `src-tauri/src/apps/files.rs` and are *restated*
- * rather than imported: an app knows its host only through `@helve/bridge`, and
+ * rather than imported: an app knows its host only through `@helve-ade/bridge`, and
  * the day this one is extracted into a tool repository of its own, nothing in
  * `apps/files/` may be reaching into `src/`. A Rust test catches a drift, not
  * `pnpm build`. Wrapping `invoke` also puts the method-name strings in exactly
  * one place — nothing outside this module spells `"files/read-bytes"`.
  */
-import { HelveRpcError, invoke } from "@helve/bridge";
+import { HelveRpcError, invoke } from "@helve-ade/bridge";
 
 // --- what the backend returns -------------------------------------------------
 

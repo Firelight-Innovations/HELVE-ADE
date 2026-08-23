@@ -7,7 +7,7 @@ under the caps in STANDARDS.md §10. The source files point back here.
 
 **Restated from `apps/viewer/ui/src/topics.ts`, deliberately.** See that
 file's header for the argument; the short version is that an app's only
-coupling to anything outside itself is `@helve/bridge` and the shape of what
+coupling to anything outside itself is `@helve-ade/bridge` and the shape of what
 crosses it, and a module the two apps shared would let one app's refactor
 break the other's build.
 

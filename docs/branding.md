@@ -135,7 +135,7 @@ the same moment, and cargo rebuilds when the file changes. It also means
 `branding.toml` needs no entry in `bundle.resources`, unlike `helve.toml`.
 
 **One generated module per frontend bundle, not one shared module.**
-STANDARDS.md §1.4 says an app reaches its host through `@helve/bridge` and
+STANDARDS.md §1.4 says an app reaches its host through `@helve-ade/bridge` and
 nothing else, and `apps/home/ui/src/icons.tsx` already refuses to import the
 shell's `Icon.tsx` for that reason. A generated file inside the app's own source
 tree is the only form that survives the app being extracted to its own

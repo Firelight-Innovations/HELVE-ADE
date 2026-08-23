@@ -4,7 +4,7 @@
  * **Restated from `apps/viewer/ui/src/settings.ts`, deliberately.** See that
  * file's header for the argument, which is the one `./topics.ts` already makes
  * for itself: an app's only coupling to anything outside itself is
- * `@helve/bridge` and the shape of what crosses it, and a module the two apps
+ * `@helve-ade/bridge` and the shape of what crosses it, and a module the two apps
  * shared would let one app's refactor break the other's build.
  *
  * Unlike `./topics.ts`, this copy is not shorter than the Viewer's. What
@@ -12,7 +12,7 @@
  * `files.confirmDelete` and nothing else — and the reader below is the generic
  * mechanism underneath that, which has no per-app half to trim.
  */
-import { invoke } from "@helve/bridge";
+import { invoke } from "@helve-ade/bridge";
 
 /** What a setting can hold. The three shapes the four controls produce. */
 export type SettingValue = boolean | number | string;

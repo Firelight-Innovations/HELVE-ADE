@@ -73,7 +73,7 @@ Rules that follow from it:
    repository. They must not learn about the orchestrator. If a change to one of
    them would only make sense to the orchestrator, it belongs in `src-tauri/`.
 4. **Apps reach the shell only through the bridge.** An app's frontend calls
-   `invoke` from `@helve/bridge` exactly as a tool's does, and neither knows
+   `invoke` from `@helve-ade/bridge` exactly as a tool's does, and neither knows
    which kind of host answered. That symmetry is deliberate: it is what would let
    an app be extracted into its own tool repo later, or a tool absorbed into
    this one, without its interface code changing.
@@ -92,9 +92,9 @@ Two files exist purely to be chokepoints. Their value is entirely in being the
 *only* way through, so adding a bypass — even a small, obviously-fine one —
 costs more than the bypass saves.
 
-Both are chokepoints in the same sense, and `@helve/bridge` is the third. The
-shell reaches its wire types through the `@helve/bridge/protocol` and
-`@helve/bridge/errors` subpaths rather than the package root, because the root
+Both are chokepoints in the same sense, and `@helve-ade/bridge` is the third. The
+shell reaches its wire types through the `@helve-ade/bridge/protocol` and
+`@helve-ade/bridge/errors` subpaths rather than the package root, because the root
 builds a client that reaches for `window.parent` at module load — the tool half
 of the transport, which the *host* must not instantiate. The subpaths are types,
 two constants and an error table, and have no such side effect.
@@ -163,7 +163,7 @@ Adding an app means three edits and no more: a registry entry in
 `vite.config.ts`. The Vite entry is the one piece that cannot be inferred — miss
 it and the app silently does not build.
 
-Every app owes the shell one call: `reportPainted()` from `@helve/bridge`, once
+Every app owes the shell one call: `reportPainted()` from `@helve-ade/bridge`, once
 its first meaningful content is committed to the DOM. The right moment is the
 *content*, not the fetch that produced it. An error state counts.
 
@@ -387,7 +387,7 @@ all run, and `pnpm lint` is the single command that runs the three checks.
 |---|---|
 | §1.1 only `bindings.ts` may call Tauri | ESLint `no-restricted-imports` |
 | §1.2 region isolation | ESLint, one config block per region |
-| §1.4 apps reach the bridge via `@helve/bridge` | ESLint `no-restricted-imports` |
+| §1.4 apps reach the bridge via `@helve-ade/bridge` | ESLint `no-restricted-imports` |
 | §4.1 module doc comments | `missing_docs`, in `crates/*` only |
 | §5 no `unwrap`/`expect` | `clippy::unwrap_used`, `expect_used` |
 | §5 flat public re-exports | `unreachable_pub`, in `crates/*` only |

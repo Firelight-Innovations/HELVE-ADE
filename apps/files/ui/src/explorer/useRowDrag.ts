@@ -9,7 +9,7 @@
  * pointer capture was the wrong answer: `docs/design-notes/drag-files-to-terminal.md`.
  */
 import { useCallback } from "react";
-import { invoke } from "@helve/bridge";
+import { invoke } from "@helve-ade/bridge";
 import type { Row } from "./useTree";
 
 /**

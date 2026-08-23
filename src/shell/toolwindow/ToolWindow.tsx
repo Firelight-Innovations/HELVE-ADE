@@ -19,8 +19,8 @@ import type {
 } from "../contract";
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
 import { activateInstance, openInstance, setInstanceTitle } from "../state/shellState";
-// The wire types come from `@helve/bridge`'s `protocol`/`errors` subpaths
-// rather than its root entry. The root package does depend on `@helve/bridge`
+// The wire types come from `@helve-ade/bridge`'s `protocol`/`errors` subpaths
+// rather than its root entry. The root package does depend on `@helve-ade/bridge`
 // now — the first-party apps under `apps/` import it, and they are built by
 // this same Vite config — but the shell must not import the client that entry
 // builds, which is the tool half of transport B and reaches for
@@ -35,9 +35,9 @@ import type {
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
-} from "@helve/bridge/protocol";
-import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve/bridge/protocol";
-import { HelveErrorCode } from "@helve/bridge/errors";
+} from "@helve-ade/bridge/protocol";
+import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve-ade/bridge/protocol";
+import { HelveErrorCode } from "@helve-ade/bridge/errors";
 import { appPainted, onLaunchTarget, onProjectChanged, takeLaunchTarget } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
