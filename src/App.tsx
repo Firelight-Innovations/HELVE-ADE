@@ -8,6 +8,8 @@ import { useAppearance } from "./shell/settings/appearance";
 import { useSettingsSurface } from "./shell/settingsSurface";
 import LibraryScreen from "./shell/library/LibraryScreen";
 import { openLibrary, useLibrarySurface } from "./shell/librarySurface";
+import ShortcutsScreen from "./shell/keys/ShortcutsScreen";
+import { useShortcutsSurface } from "./shell/shortcutsSurface";
 
 /**
  * Owns the stack snapshot and hands it to the shell.
@@ -68,6 +70,7 @@ export default function App() {
   useAppearance(settings);
   const settingsSurface = useSettingsSurface();
   const librarySurface = useLibrarySurface();
+  const shortcutsSurface = useShortcutsSurface();
 
   // Home's *Install App* button, arriving the only way it can: Home is an
   // iframe on another origin, so it calls its own Rust half and Rust emits.
@@ -96,6 +99,9 @@ export default function App() {
           <SettingsScreen session={settings} landOn={settingsSurface.section} />
         )}
       </AnimatePresence>
+      {/* Mounted only while open, like settings and unlike the library: this one
+          has nothing to report while closed. */}
+      <AnimatePresence>{shortcutsSurface.open && <ShortcutsScreen />}</AnimatePresence>
       {/* Not inside `AnimatePresence`, and not conditional on being open —
           unlike settings. The first run installs the catalog's default apps
           before anybody has opened anything, and a closed screen still has to

@@ -91,7 +91,8 @@ interface Chord {
  * browser's own for a key that already works. That is exactly the collision the
  * file header opens by describing.
  */
-const CHORDS: Record<string, Chord> = {
+// Exported for `shortcuts.test.ts`, which holds the shortcuts screen to it.
+export const CHORDS: Record<string, Chord> = {
   // Shift+Ctrl+N is New Window, which this build cannot do — see the item's
   // own note in `TitleBar.tsx`. Unbound rather than bound to nothing, so the
   // browser's "new incognito window" is at least honest about being the

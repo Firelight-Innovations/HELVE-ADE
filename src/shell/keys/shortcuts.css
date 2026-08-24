@@ -1,0 +1,143 @@
+/*
+ * The keyboard shortcuts screen.
+ *
+ * Geometry, backdrop and scrim are settings.css's and library.css's, deliberately
+ * — the band between the two bars rather than the window, because these are the
+ * same kind of surface. That file's header carries the argument for why the
+ * title bar and the status bar stay uncovered.
+ *
+ * Nothing here is a control: the whole screen is a list to read. So there are no
+ * hover states below except the close button's, and no transitions at all.
+ */
+
+.shortcuts__backdrop {
+  position: fixed;
+  top: var(--h-titlebar);
+  bottom: var(--h-statusbar);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.shortcuts__screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.shortcuts__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shortcuts__title {
+  margin: 0;
+  font: 600 15px/1.2 var(--sans);
+  color: var(--text);
+}
+
+.shortcuts__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.shortcuts__close:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.shortcuts__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.shortcuts__hint {
+  margin: 0;
+  max-width: 62ch;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--text-dim);
+}
+
+.shortcuts__group h2 {
+  margin: 0 0 8px;
+  font: 600 11px/1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
+}
+
+.shortcuts__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.shortcuts__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.shortcuts__row + .shortcuts__row {
+  border-top: 1px solid var(--line);
+}
+
+.shortcuts__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shortcuts__label {
+  font: 400 13px/1.3 var(--sans);
+  color: var(--text);
+}
+
+.shortcuts__note {
+  max-width: 58ch;
+  font: 400 11px/1.45 var(--sans);
+  color: var(--text-dim-3);
+}
+
+/* Never wraps: a chord split across two lines reads as two chords. */
+.shortcuts__keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.shortcuts__key {
+  min-width: 20px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface-2);
+  font: 400 11px/1.4 var(--mono);
+  text-align: center;
+  color: var(--text-dim);
+}

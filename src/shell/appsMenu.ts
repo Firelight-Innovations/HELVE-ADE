@@ -7,6 +7,10 @@
  */
 import type { Openable } from "../bindings";
 import type { LayoutPreset, Menu, MenuItem } from "./contract";
+// Called, not passed in as a handler like everything else here: the library is
+// a module-scope surface so that anything may raise it without a prop threaded
+// down. `statusbar/SettingsPopover.tsx` reaches its twin the same way.
+import { openLibrary } from "./librarySurface";
 
 /**
  * The Apps menu: what this build ships, as things you can open another of.
@@ -87,6 +91,16 @@ export function appsMenu(apps: AppsMenuHandlers): Menu {
         hint:
           apps.blocked ??
           "Arrangements you can drop onto this cluster: which panes, and what goes in each.",
+      },
+      // The way to get *more* rows in this list, so it sits under them. No
+      // `disabled: apps.blocked` — that is deliberate, not an omission: this
+      // one opens nothing into a cluster. Both points in
+      // `docs/design-notes/shell-core.md`.
+      {
+        label: "App Library…",
+        separatorBefore: true,
+        onSelect: openLibrary,
+        hint: "Install apps from the library, from a GitHub repository, or from a folder.",
       },
     ],
   };
