@@ -145,10 +145,14 @@ export default function App() {
    * Monaco binds its own Ctrl+S inside the editor and that one wins there; this
    * catches the case where focus is in the tab strip. Both end up at the same
    * `save` the viewer registered.
+   *
+   * `ctrlKey` only. `metaKey` is the Windows key here, and HELVE ships on
+   * Windows alone — the shell makes the same call in `keys/accelerators.ts`,
+   * which an app may not import (see `commands.ts` on that boundary).
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key !== "s") return;
+      if (!event.ctrlKey || event.key !== "s") return;
       event.preventDefault();
       void files.saveActive().catch((err: unknown) => setError(describe("files/write", err)));
     };
