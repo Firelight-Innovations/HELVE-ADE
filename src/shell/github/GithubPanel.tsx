@@ -12,7 +12,7 @@
  * **Every empty list here says why it is empty.** That is the one rule the whole
  * component is arranged around: a panel that draws nothing teaches the person
  * that GitHub is broken, and four of the six states below exist only so that
- * never happens.
+ * never happens. Reaching both kinds and every state without typing is [`Axes`].
  */
 import { useCallback, useMemo, useState } from "react";
 import { IssueDot, PullRequest, Search } from "../../ui/Icon";
@@ -24,9 +24,46 @@ import type {
   WorktreeControl,
 } from "../contract";
 import { GITHUB_STATE_LABEL, GITHUB_STATE_TOKEN } from "../contract";
-import { applyQuery, fetchScopeOf, parseQuery } from "./query";
+import type { ParsedQuery, QueryScope, QueryState } from "./query";
+import {
+  applyQuery,
+  describeQuery,
+  fetchScopeOf,
+  narrowsByText,
+  parseQuery,
+  withScope,
+  withState,
+} from "./query";
 import { useGithubFeed } from "./useGithubFeed";
 import "./github.css";
+
+/** The kind axis, in the order GitHub's own tabs use. */
+const KIND_CHOICES: { value: QueryScope; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "issue", label: "Issues" },
+  { value: "pull", label: "Pull requests" },
+];
+
+/**
+ * The state axis.
+ *
+ * `Any` rather than a second `All`, which would put the same word in both rows
+ * for two different meanings. `Merged` is here because it is the state a person
+ * reviewing pull requests actually looks for, and because the query language
+ * already had it with nothing on screen to reach it — pressing it narrows to
+ * pull requests on its own, which is `parseQuery`'s rule and not a special case
+ * of this row.
+ *
+ * `Draft` is deliberately absent. It is reachable by typing `is:draft`, it is a
+ * kind of open rather than a fourth state, and a fifth button would wrap this
+ * row on a panel that is 380px wide by default.
+ */
+const STATE_CHOICES: { value: QueryState; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed" },
+  { value: "merged", label: "Merged" },
+  { value: "all", label: "Any" },
+];
 
 export interface GithubPanelProps {
   /** `null` for "no cluster is active" — nothing is fetched, matching every
@@ -123,17 +160,20 @@ export default function GithubPanel({
       />
 
       {feed?.state === "ready" && (
-        <div className="github__filter">
-          <Search size={12} />
-          <input
-            className="github__filterinput"
-            value={filter}
-            spellCheck={false}
-            placeholder="is:pr  label:bug  author:me"
-            aria-label="Filter issues and pull requests"
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </div>
+        <>
+          <Axes query={query} filter={filter} onFilter={setFilter} />
+          <div className="github__filter">
+            <Search size={12} />
+            <input
+              className="github__filterinput"
+              value={filter}
+              spellCheck={false}
+              placeholder="is:draft  label:bug  author:me"
+              aria-label="Filter issues and pull requests"
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
+        </>
       )}
 
       {failure && (
@@ -146,7 +186,7 @@ export default function GithubPanel({
         feed={feed}
         loading={loading}
         visible={visible}
-        filtered={filter.trim().length > 0}
+        query={query}
         opening={opening}
         onOpen={open}
         onOpenInBrowser={openInBrowser}
@@ -184,12 +224,74 @@ function Head({
   );
 }
 
+/**
+ * Kind and state, as two rows of buttons over the box they write into.
+ *
+ * The list has always held pull requests and the filter language has always had
+ * `is:pr` and `is:closed`; what was missing was anything on screen saying so,
+ * which made a panel that could already do it read as an issues-only one.
+ *
+ * These buttons hold no state. The highlight is read out of the parsed query,
+ * so typing `is:pr` lights the same button pressing it would have, and pressing
+ * one edits the text rather than shadowing it — see the note in `query.ts` on
+ * why the box stays the only source of truth.
+ */
+function Axes({
+  query,
+  filter,
+  onFilter,
+}: {
+  query: ParsedQuery;
+  filter: string;
+  onFilter: (next: string) => void;
+}) {
+  return (
+    <div className="github__axes">
+      <div className="github__axis" role="group" aria-label="Kind">
+        {KIND_CHOICES.map(({ value, label }) => (
+          <Chip
+            key={value}
+            label={label}
+            on={query.scope === value}
+            onPress={() => onFilter(withScope(filter, value))}
+          />
+        ))}
+      </div>
+      <div className="github__axis" role="group" aria-label="State">
+        {STATE_CHOICES.map(({ value, label }) => (
+          <Chip
+            key={value}
+            label={label}
+            on={query.state === value}
+            onPress={() => onFilter(withState(filter, value))}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** `aria-pressed` rather than a tab or a radio: these are two independent
+ *  narrowings of one list, not a choice of what the panel is showing. */
+function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`github__chip${on ? " github__chip--on" : ""}`}
+      aria-pressed={on}
+      onClick={onPress}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** Everything below the filter box: one of six states, and exactly one. */
 function Body({
   feed,
   loading,
   visible,
-  filtered,
+  query,
   opening,
   onOpen,
   onOpenInBrowser,
@@ -199,7 +301,7 @@ function Body({
   feed: ReturnType<typeof useGithubFeed>["feed"];
   loading: boolean;
   visible: GithubItem[];
-  filtered: boolean;
+  query: ParsedQuery;
   opening: string | null;
   onOpen: (item: GithubItem) => void;
   onOpenInBrowser: (url: string) => void;
@@ -234,12 +336,16 @@ function Body({
   }
 
   if (visible.length === 0) {
-    return filtered ? (
+    // Two different emptinesses, and they need two different sentences. The
+    // buttons are on screen and their effect can be seen, so an empty list
+    // under them is a fact about the repository; a word typed into the box is
+    // not, and only then is "nothing matches" the honest answer.
+    return narrowsByText(query) ? (
       <Empty title="Nothing matches that filter." detail="Clearing the box brings the list back." />
     ) : (
       <Empty
-        title="Nothing open."
-        detail={`${feed.repo} has no open issues and no open pull requests.`}
+        title={`No ${describeQuery(query)}.`}
+        detail={`${feed.repo} has none. The buttons above switch between issues, pull requests, and closed or merged work.`}
       />
     );
   }
@@ -299,6 +405,13 @@ function Row({
         </button>
 
         <div className="github__meta">
+          {/* Spelled out as well as tinted. The glyph already carries the state
+              as a colour, and colour alone is not a label — a merged pull
+              request and a closed one differ by hue and nothing else, which is
+              the distinction somebody scanning a closed list most needs. */}
+          <span className="github__state" style={{ color: GITHUB_STATE_TOKEN[item.state] }}>
+            {GITHUB_STATE_LABEL[item.state]}
+          </span>
           {item.author && <span className="github__author">{item.author}</span>}
           {item.headBranch && (
             <span className="github__branch" title="The pull request's own branch">
