@@ -121,15 +121,18 @@ impl std::fmt::Display for RemoteError {
             }
             Self::NotFoundOrNoAccess { slug, private_hint } => {
                 if *private_hint {
-                    write!(f, "{slug} could not be reached — sign in to GitHub if it is private")
+                    write!(
+                        f,
+                        "{slug} could not be reached — sign in to GitHub if it is private"
+                    )
                 } else {
-                    write!(f, "no repository found at {slug}, or you do not have access to it")
+                    write!(
+                        f,
+                        "no repository found at {slug}, or you do not have access to it"
+                    )
                 }
             }
-            Self::NoRelease { slug } => write!(
-                f,
-                "{slug} has no published release. "
-            ),
+            Self::NoRelease { slug } => write!(f, "{slug} has no published release. "),
             Self::NoZipAsset { slug, tag } => {
                 write!(f, "{slug} {tag} has no .zip asset attached")
             }
