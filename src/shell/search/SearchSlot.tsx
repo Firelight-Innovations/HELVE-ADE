@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Search, Sliders } from "../../ui/Icon";
 import TypeFilterPopover from "./TypeFilterPopover";
 import type { SearchSession } from "./useSearchSession";
-import { accelerator, hasPrimaryModifier } from "../keys/accelerators";
+import { accelerator, hasPrimaryModifier } from "../accelerators";
 import "./search.css";
 
 export interface SearchSlotProps {
@@ -44,7 +44,7 @@ export interface SearchSlotProps {
  *
  * Open: Ctrl+K from anywhere, or a click on the collapsed slot. Close: Escape or
  * the close glyph. Both drawn from the handoff's caption; the handoff writes the
- * chord in Mac notation, which this does not — see `keys/accelerators.ts`. It
+ * chord in Mac notation, which this does not — see `shell/accelerators.ts`. It
  * does not describe closing on an outside click, so this doesn't add one.
  *
  * It used to draw its own result list in a dropdown below the field, from a

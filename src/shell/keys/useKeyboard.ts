@@ -13,7 +13,7 @@
  * so a keystroke and a click can never disagree.
  */
 import { useEffect, useRef } from "react";
-import { hasPrimaryModifier } from "./accelerators";
+import { hasPrimaryModifier } from "../accelerators";
 
 /**
  * Everything the shell can be asked for by keystroke.

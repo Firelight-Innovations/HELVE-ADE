@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { BootArc } from "../../ui/Icon";
 import { snap, spinArc } from "../motion";
-import { accelerator } from "../keys/accelerators";
+import { accelerator } from "../accelerators";
 
 /** Optional step signal. No backend reports this yet — see the indeterminate
  * branch below — but the shape is ready for when one does. */

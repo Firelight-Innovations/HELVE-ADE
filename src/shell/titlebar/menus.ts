@@ -195,11 +195,8 @@ export interface MenuHandlers {
  * because it has no action; Kill Terminal and Clear lost theirs because Ctrl+K
  * belongs to `SearchSlot`, and the rule is bind it or drop it.
  *
- * They are also Windows text now — `Ctrl+N`, not the Mac Command form. This is
- * a Windows-only app and those were never anything but decoration; the last of
- * them left the Run menu with issue #42. `keys/accelerators.ts` is where the
- * spelling is decided, and `keys/accelerators.test.ts` walks these menus to
- * keep a Mac glyph from creeping back into one.
+ * They are also Windows text — `Ctrl+N`, not a Mac Command glyph. The last of
+ * those left Run with #42, and `shell/accelerators.test.ts` keeps them out.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
   const { app, edit, apps, file, view, terminal, help } = handlers;

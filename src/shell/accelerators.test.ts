@@ -8,12 +8,16 @@
  * accelerators as literals (`titlebar/menus.ts`, `keys/shortcuts.ts`) are both
  * walked here rather than made to call `accelerator()`, which is the trade
  * `accelerators.ts` describes.
+ *
+ * Directly under `src/shell/` rather than beside either table, because it reads
+ * both and §1.2 forbids one region reaching into another. `accelerators.ts` is
+ * here for the same reason: four regions import it.
  */
 import { describe, expect, it } from "vitest";
 import { accelerator, macGlyphsIn, PRIMARY_MODIFIER } from "./accelerators";
-import { SHORTCUT_GROUPS } from "./shortcuts";
-import { defaultMenus } from "../titlebar/menus";
-import type { MenuHandlers } from "../titlebar/menus";
+import { SHORTCUT_GROUPS } from "./keys/shortcuts";
+import { defaultMenus } from "./titlebar/menus";
+import type { MenuHandlers } from "./titlebar/menus";
 
 const noop = () => {};
 

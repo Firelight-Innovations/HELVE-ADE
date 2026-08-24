@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReviewComment, ReviewSendTarget } from "../contract";
 import { countLabel, describeRange } from "./reviewComments";
-import { hasPrimaryModifier } from "../keys/accelerators";
+import { hasPrimaryModifier } from "../accelerators";
 import "./reviewNotes.css";
 
 export interface ReviewNotesProps {

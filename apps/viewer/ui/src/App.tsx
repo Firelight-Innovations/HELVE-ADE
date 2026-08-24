@@ -142,13 +142,9 @@ export default function App() {
 
   /**
    * Ctrl+S at the document level, so it works with focus anywhere in the app.
-   * Monaco binds its own Ctrl+S inside the editor and that one wins there; this
-   * catches the case where focus is in the tab strip. Both end up at the same
-   * `save` the viewer registered.
-   *
-   * `ctrlKey` only. `metaKey` is the Windows key here, and HELVE ships on
-   * Windows alone — the shell makes the same call in `keys/accelerators.ts`,
-   * which an app may not import (see `commands.ts` on that boundary).
+   * Monaco binds its own inside the editor and wins there; this catches focus in
+   * the tab strip, and both reach the same `save`. `ctrlKey` alone: `metaKey` is
+   * the Windows key, and `shell/accelerators.ts` says why the shell refuses it.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
