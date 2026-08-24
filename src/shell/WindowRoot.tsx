@@ -119,7 +119,7 @@ export default function WindowRoot({
   /** Set when the last scan failed. Surfaces in the health list, not a banner. */
   error: string | null;
   rescanning: boolean;
-  /** "Re-scan tools", from the health popover, the empty state, and ⌘R. */
+  /** "Re-scan tools", from the health popover, the empty state, and Ctrl+R. */
   onRescan: () => void;
 }) {
   const label = useMemo(() => windowLabel(), []);
@@ -1264,13 +1264,13 @@ export default function WindowRoot({
   const fileDrag = useFileDrag();
 
   useKeyboard({
-    // ⌘1…⌘9 now select a *cluster* rather than a tool. There is no longer one
+    // Ctrl+1…Ctrl+9 now select a *cluster* rather than a tool. There is no one
     // list of surfaces to index into — a window holds several panes, each with
     // its own tabs — and the thing a number key can still name unambiguously is
     // which cluster you are looking at.
     // Deliberately not `onSelectCluster`: that opens Home when handed the
     // cluster already active, and a number key is navigation rather than a
-    // gesture aimed at a chip. ⌘3 means "be in cluster 3", so pressing it while
+    // gesture aimed at a chip. Ctrl+3 means "be in cluster 3", so pressing it while
     // already there should do nothing — not pull the view off whatever is on
     // screen onto Home, which is easy to trigger by repeat and hard to undo.
     selectToolByIndex: (index) => {
@@ -1278,7 +1278,7 @@ export default function WindowRoot({
       if (cluster && cluster.id !== activeClusterId) void setActiveCluster(label, cluster.id);
     },
     rescan: onRescan,
-    // ⌘. is drawn under the boot spinner, but nothing can act on it yet:
+    // Ctrl+. is drawn under the boot spinner, but nothing can act on it yet:
     // booting a tool is the iframe loading and running its own handshake, and
     // there is no cancel path through that. Wired as a deliberate no-op rather
     // than left unbound, so the day a cancel exists this is where it goes and

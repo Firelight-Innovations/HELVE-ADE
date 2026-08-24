@@ -122,7 +122,8 @@
   /* Fixed rather than `max-content`, so expanding a different group does not
      resize the popover under the pointer. Raised from 224px when the
      accelerators became Windows text: `Ctrl+Shift+P` is three times the width
-     of `⇧⌘P`, and a row is `label ... accelerator` with a 24px gap and no
+     of the three-glyph Mac form it replaced, and a row is
+     `label ... accelerator` with a 24px gap and no
      shrinking (both ends are `white-space: nowrap`). At 224px the widest row —
      Command Palette… — had nothing left to sit in. */
   width: 260px;

@@ -43,7 +43,7 @@
 
   --text-dim-2: #6d747f; /* popover section headers, terminal prompt */
   --text-dim-3: #5b616c; /* secondary captions, an uninstalled tool's tab */
-  --text-faint: #4a505b; /* keyboard hints (⌘K) */
+  --text-faint: #4a505b; /* keyboard hints (Ctrl+K) */
   --line-2: #3a404b; /* checkbox borders, detached window edge */
   --line-3: #343a45; /* the big empty-state glyph */
   --surface-gap: #191c21; /* the hole a dragged tab leaves behind */
