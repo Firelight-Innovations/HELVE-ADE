@@ -128,7 +128,7 @@ impl std::fmt::Display for RemoteError {
             }
             Self::NoRelease { slug } => write!(
                 f,
-                "{slug} has no published release. An app is installed from a release, not from source."
+                "{slug} has no published release. "
             ),
             Self::NoZipAsset { slug, tag } => {
                 write!(f, "{slug} {tag} has no .zip asset attached")
