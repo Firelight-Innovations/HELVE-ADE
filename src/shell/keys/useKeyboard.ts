@@ -13,15 +13,17 @@
  * so a keystroke and a click can never disagree.
  */
 import { useEffect, useRef } from "react";
+import { hasPrimaryModifier } from "./accelerators";
 
 /**
  * Everything the shell can be asked for by keystroke.
  *
  * The first three come from `docs/handoffs/shell-spec.html` — the only
- * accelerators that document states anywhere (search the file for `⌘`): the
- * "Open Forger" chip on the empty tool window, the "Re-scan tools" chip in that
- * same empty state, and "cancel ⌘." under the booting-tool spinner. Everything
- * after them is here because the menu bar displays it.
+ * accelerators that document states anywhere (it draws them in Mac notation,
+ * which is how to find them in it): the "Open Forger" chip on the empty tool
+ * window, the "Re-scan tools" chip in that same empty state, and "cancel Ctrl+."
+ * under the booting-tool spinner. Everything after them is here because the menu
+ * bar displays it.
  */
 export interface KeyboardActions {
   /** Ctrl+1…Ctrl+9 — select the nth tool in this window's bar. */
@@ -161,7 +163,7 @@ export const CHORDS: Record<string, Chord> = {
  * two things that *are* decisions — whether a field has focus, and which
  * bindings that suppresses.
  *
- * `preventDefault` on all of them, unconditionally, for the reason the ⌘1…9
+ * `preventDefault` on all of them, unconditionally, for the reason the Ctrl+1…9
  * case below already gives: the shell reaches an ordinary browser tab in
  * development, and several of these are bound there (Ctrl+N opens a window,
  * Ctrl+O a file picker, Ctrl+S saves the page, Ctrl+D bookmarks it, Ctrl+- and
@@ -227,13 +229,11 @@ export function useKeyboard(actions: KeyboardActions): void {
         return;
       }
 
-      // One predicate for both platforms rather than sniffing navigator.
-      // platform: the shell already treats "the primary modifier key" as
-      // metaKey on macOS and ctrlKey elsewhere everywhere else it binds a
-      // shortcut (see SearchSlot's own ⌘K handler), so this matches that
-      // convention instead of introducing a second way to test for it.
-      const primary = e.metaKey || e.ctrlKey;
-      if (!primary) return;
+      // `hasPrimaryModifier` rather than a test written out here, so this and
+      // SearchSlot's own Ctrl+K handler cannot drift apart about what the
+      // primary modifier is. It is Ctrl, and only Ctrl — `accelerators.ts` has
+      // the note on why the Windows key is not a second spelling of it.
+      if (!hasPrimaryModifier(e)) return;
 
       // The menu-bar accelerators, before the text-entry guard below.
       //
@@ -250,7 +250,7 @@ export function useKeyboard(actions: KeyboardActions): void {
       if (isTextEntryTarget(e.target)) return;
 
       if (e.key >= "1" && e.key <= "9") {
-        // preventDefault: Ctrl/Cmd+1…9 is bound by every major browser to
+        // preventDefault: Ctrl+1…9 is bound by every major browser to
         // jump to a tab by position. The shell only runs inside a Tauri
         // webview in production, but in dev it's also reachable in an
         // ordinary browser tab (see the project's own warning against
@@ -263,7 +263,7 @@ export function useKeyboard(actions: KeyboardActions): void {
       }
 
       if (e.key.toLowerCase() === "r") {
-        // preventDefault: required — Ctrl/Cmd+R reloads the page, which
+        // preventDefault: required — Ctrl+R reloads the page, which
         // would restart the whole shell out from under itself.
         e.preventDefault();
         actionsRef.current.rescan();
@@ -271,7 +271,7 @@ export function useKeyboard(actions: KeyboardActions): void {
       }
 
       if (e.key === ".") {
-        // preventDefault: no browser binds Ctrl/Cmd+. to anything, but the shell
+        // preventDefault: no browser binds Ctrl+. to anything, but the shell
         // is consuming the keystroke as a real command, so it is prevented for
         // the same reason the other two are — "once matched, the shell owns it",
         // not because anything else is competing for it.

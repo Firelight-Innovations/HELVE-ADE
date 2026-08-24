@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Search, Sliders } from "../../ui/Icon";
 import TypeFilterPopover from "./TypeFilterPopover";
 import type { SearchSession } from "./useSearchSession";
+import { accelerator, hasPrimaryModifier } from "../keys/accelerators";
 import "./search.css";
 
 export interface SearchSlotProps {
@@ -41,10 +42,10 @@ export interface SearchSlotProps {
  * Neither state ever touches the switcher bar's own height; everything here
  * lives inside the 36px `.frame__switcher` box the bar already owns.
  *
- * Open: ⌘K (Ctrl+K on non-mac) from anywhere, or a click on the collapsed
- * slot. Close: Escape or the close glyph. Both drawn from the handoff's
- * caption verbatim; the handoff does not describe closing on an outside
- * click, so this deliberately doesn't add one.
+ * Open: Ctrl+K from anywhere, or a click on the collapsed slot. Close: Escape or
+ * the close glyph. Both drawn from the handoff's caption; the handoff writes the
+ * chord in Mac notation, which this does not — see `keys/accelerators.ts`. It
+ * does not describe closing on an outside click, so this doesn't add one.
  *
  * It used to draw its own result list in a dropdown below the field, from a
  * three-row fixture. Results now live in `SearchOverlay`, which covers the
@@ -73,11 +74,11 @@ export default function SearchSlot({
   const filterWrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ⌘K / Ctrl+K opens from anywhere, matching every other global shortcut in
-  // the shell.
+  // Ctrl+K opens from anywhere, matching every other global shortcut in the
+  // shell — `hasPrimaryModifier` is the one place that decides what "Ctrl" is.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if (hasPrimaryModifier(e) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setExpanded(true);
       }
@@ -159,7 +160,7 @@ export default function SearchSlot({
       >
         <Search size={14} className="search-slot__glyph search-slot__glyph--dim" />
         <span className="search-slot__label">Search</span>
-        <span className="search-slot__hint">⌘K</span>
+        <span className="search-slot__hint">{accelerator({ key: "K" })}</span>
       </motion.div>
     );
   }
