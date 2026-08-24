@@ -1264,15 +1264,15 @@ export default function WindowRoot({
   const fileDrag = useFileDrag();
 
   useKeyboard({
-    // Ctrl+1…Ctrl+9 now select a *cluster* rather than a tool. There is no one
-    // list of surfaces to index into — a window holds several panes, each with
-    // its own tabs — and the thing a number key can still name unambiguously is
-    // which cluster you are looking at.
+    // Ctrl+1…Ctrl+9 now select a *cluster* rather than a tool. There is no
+    // longer one list of surfaces to index into — a window holds several panes,
+    // each with its own tabs — and the thing a number key can still name
+    // unambiguously is which cluster you are looking at.
     // Deliberately not `onSelectCluster`: that opens Home when handed the
     // cluster already active, and a number key is navigation rather than a
-    // gesture aimed at a chip. Ctrl+3 means "be in cluster 3", so pressing it while
-    // already there should do nothing — not pull the view off whatever is on
-    // screen onto Home, which is easy to trigger by repeat and hard to undo.
+    // gesture aimed at a chip. Ctrl+3 means "be in cluster 3", so pressing it
+    // while already there should do nothing — not pull the view off whatever is
+    // on screen onto Home, which is easy to trigger by repeat and hard to undo.
     selectToolByIndex: (index) => {
       const cluster = clusters[index];
       if (cluster && cluster.id !== activeClusterId) void setActiveCluster(label, cluster.id);
