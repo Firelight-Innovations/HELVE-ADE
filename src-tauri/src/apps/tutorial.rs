@@ -169,7 +169,7 @@ static TUTORIALS: &[Tutorial] = &[
         id: "the-stack",
         section: "stack",
         title: "The stack, end to end",
-        blurb: "What Engine, Forger, Journeyman and the rest are each for.",
+        blurb: "How the switcher bar's health badge reads a pinned stack of tools.",
         minutes: 6,
         after: None,
     },

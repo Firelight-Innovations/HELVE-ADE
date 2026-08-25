@@ -8,14 +8,20 @@
  *  off the screen on purpose.
  *
  *  Tones follow `HEALTH_TOKEN`: both "needs update" and "not tracked" warn,
- *  "not installed" errs. Red here is the expected reading on a fresh machine,
- *  which is the point `theStack.ts` spends its middle section on. */
+ *  "not installed" errs, which is the point `theStack.ts` spends its middle
+ *  section on. Nothing is actually pinned in `helve.toml` today, so an empty
+ *  popover — not this one — is what a fresh machine shows; see the note below. */
 import { Chip, Col, Row } from "./chrome";
 
-/** One row per unwell tool, in the order `helve.toml` pins them. */
+/** One row per unwell tool, in the order `helve.toml` pins them.
+ *
+ *  Illustrative names, not real ones. Forger and Journeyman were the two
+ *  entries that used to make this screen real; both are apps now (see
+ *  `apps/README.md`) and `helve.toml`'s `[[tool]]` array is empty, so this
+ *  mocks a hypothetical third-party tool pair rather than a live state. */
 const UNWELL: { name: string; tone: "warn" | "err"; label: string }[] = [
-  { name: "Forger", tone: "err", label: "not installed" },
-  { name: "Journeyman", tone: "warn", label: "needs update" },
+  { name: "Example Tool", tone: "err", label: "not installed" },
+  { name: "Another Tool", tone: "warn", label: "needs update" },
 ];
 
 export default function StackList() {

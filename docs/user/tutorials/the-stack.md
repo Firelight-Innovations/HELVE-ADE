@@ -2,18 +2,20 @@
 
 *The stack · 6 min*
 
-What Forger and Journeyman are each for.
+How the switcher bar's health badge reads a pinned stack of tools — and why,
+today, with none pinned, it has nothing to say.
 
 ---
 
-HELVE is not one program: an orchestrator plus a small stack of separate
-authoring tools that mount into it. The orchestrator — the thing you are
-reading this in — is the one that ties them together at runtime, and it
-holds none of their code.
+HELVE is not one program: an orchestrator that a stack of separate authoring
+tools can mount into, plus whatever ships compiled into the orchestrator
+itself. The orchestrator — the thing you are reading this in — is the one
+that ties a tool together with the rest at runtime, and it holds none of a
+tool's code.
 
-Their health is reported in the **switcher bar**, behind a warning triangle
-carrying a count. Clicking it lists the tools that are not well — and only
-those. A tool that is where it should be says nothing at all.
+A tool's health is reported in the **switcher bar**, behind a warning
+triangle carrying a count. Clicking it lists the tools that are not well —
+and only those. A tool that is where it should be says nothing at all.
 
 > So a stack with nothing wrong raises no badge. An empty result here is the
 > healthy answer, not a screen that failed to load.
@@ -23,14 +25,17 @@ Each entry pins an exact version, so a given checkout of the orchestrator
 always describes one reproducible stack rather than whatever each
 repository's branch tip happens to be today.
 
-## The two tools
+## Nothing is pinned today
 
-| Tool       | What                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| Forger     | Technical design — specs out the stack and its boundaries.             |
-| Journeyman | Product design — design prototyping and rough, interactive systems.    |
+`helve.toml`'s `[[tool]]` array is empty right now. Forger and Journeyman
+used to be its two entries; both have been reclassified as apps built into
+the orchestrator itself rather than separate tool repositories — see
+`apps/README.md` at the repository root for what they are now and why. The
+mechanism below still runs, with nothing to say about: an empty list reads
+exactly like a stack where every pinned tool matches its version, because
+that is what it is — a stack with nothing unwell in it.
 
-## Why the badge says things are missing
+## Why the badge would say things are missing
 
 Reads `helve.toml` → looks for each tool's checkout → resolves one of four states
 
@@ -43,27 +48,25 @@ One with nothing at the checkout path shows **not installed**.
 <!-- SCREENSHOT: the stack health list with all three unwell states shown at once, 480x400 -->
 
 _All three unwell states at once, with the count the badge carries. A healthy
-tool has no row here at all._
+tool has no row here at all. Illustrative rather than live: nothing is pinned
+in `helve.toml` today, so this exact screen has no current example to show —
+see "Nothing is pinned today" above._
 
 **Missing** and **broken** read differently once you know the words.
 `not installed` means nothing is at the checkout path; `needs update` means
 the checkout disagrees with the pin. `not tracked` means it is there, but
 carries no version to check at all.
 
-On a fresh machine the badge shows both tools at **not installed**, and that
-is the correct answer rather than a fault. The orchestrator is usable on its
-own — Home, the File Explorer, the File Viewer, terminals and search are all
-in the binary and need no checkout at all.
+The orchestrator is usable entirely on its own regardless of what is pinned —
+Home, the File Explorer, the File Viewer, Tutorials, Forger and Journeyman are
+all in the binary and need no checkout at all. A pinned tool's checkout is a
+separate, additional thing to have on the machine, not a requirement for the
+window to open.
 
-> **Not yet:** Neither tool is docked in the switcher yet. A tool's core is
-> a child process, and the broker that would reach it is not written. So a
-> tool tab today could only open on a screen explaining why it is empty. They
-> arrive when the broker does.
-
-`checkout-root` in `helve.toml` says where they are looked for, and defaults
-to `..` — every Helve repository sitting as a sibling of the orchestrator's
-own folder. Cloning the pinned version there is what clears a tool from the
-badge; cloning the wrong one only changes which word it shows.
+`checkout-root` in `helve.toml` says where a pinned tool's checkout is looked
+for, and defaults to `..` — every Helve repository sitting as a sibling of the
+orchestrator's own folder. Cloning the pinned version there is what clears a
+tool from the badge; cloning the wrong one only changes which word it shows.
 
 ## Apps and tools are different things
 
@@ -76,9 +79,9 @@ running as a separate process. It can be missing, unbuilt, or the wrong
 version — which is the whole reason a tool has states at all.
 
 An **app** is code the orchestrator _is_. Home, the File Explorer, the File
-Viewer and the Tutorials app are apps: they are compiled into the binary.
-That leaves no version to disagree with and no way for one to be missing —
-which is why none of them can ever raise the badge.
+Viewer, Tutorials, Forger and Journeyman are all apps: they are compiled into
+the binary. That leaves no version to disagree with and no way for one to be
+missing — which is why none of them can ever raise the badge.
 
 ---
 
