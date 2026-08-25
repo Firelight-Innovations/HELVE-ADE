@@ -142,13 +142,13 @@ export default function App() {
 
   /**
    * Ctrl+S at the document level, so it works with focus anywhere in the app.
-   * Monaco binds its own Ctrl+S inside the editor and that one wins there; this
-   * catches the case where focus is in the tab strip. Both end up at the same
-   * `save` the viewer registered.
+   * Monaco binds its own inside the editor and wins there; this catches focus in
+   * the tab strip, and both reach the same `save`. `ctrlKey` alone: `metaKey` is
+   * the Windows key, and `shell/accelerators.ts` says why the shell refuses it.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key !== "s") return;
+      if (!event.ctrlKey || event.key !== "s") return;
       event.preventDefault();
       void files.saveActive().catch((err: unknown) => setError(describe("files/write", err)));
     };

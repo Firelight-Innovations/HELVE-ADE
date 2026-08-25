@@ -13,7 +13,7 @@ block of `contract.ts` and `SearchIndex` is rewritten around them; until then th
 local to this directory.
 
 The existing `SearchType`/`SearchResult`/`SearchIndex` trio in `contract.ts` still backs the
-collapsed slot's stub list. It is untouched here on purpose: the collapsed field and its ⌘K
+collapsed slot's stub list. It is untouched here on purpose: the collapsed field and its Ctrl+K
 entry point are unchanged, and only what happens after it expands is new.
 
 ### `SearchKind`

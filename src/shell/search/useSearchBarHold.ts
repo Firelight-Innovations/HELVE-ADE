@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 /**
  * Follows `open` immediately when it becomes `true`, and after `holdMs` when
  * it becomes `false`. Reopening during the hold cancels it rather than
- * queueing behind it — the cleanup clears the pending timer, so a ⌘K landing
+ * queueing behind it — the cleanup clears the pending timer, so a Ctrl+K landing
  * 40ms after an Escape leaves the bar expanded throughout instead of
  * collapsing and immediately re-crossing.
  */

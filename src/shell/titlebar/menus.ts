@@ -195,8 +195,8 @@ export interface MenuHandlers {
  * because it has no action; Kill Terminal and Clear lost theirs because Ctrl+K
  * belongs to `SearchSlot`, and the rule is bind it or drop it.
  *
- * They are also Windows glyphs now — `Ctrl+N`, not `⌘N`. This is a Windows-only
- * app and the Mac forms were never anything but decoration.
+ * They are also Windows text — `Ctrl+N`, not a Mac Command glyph. The last of
+ * those left Run with #42, and `shell/accelerators.test.ts` keeps them out.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
   const { app, edit, apps, file, view, terminal, help } = handlers;
@@ -339,14 +339,18 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         },
       ],
     },
-    // Run keeps both its inert items and its Mac glyphs, deliberately: it is
-    // out of this work's scope and was to be left exactly as it is.
+    // Run keeps its three inert items and has lost their accelerators, which
+    // were the last Mac glyphs left in the app. Translating them was the wrong
+    // repair: nothing binds them, and the Windows spellings would have been
+    // Ctrl+R and Ctrl+C — already Re-scan tools and Copy — so the menu would
+    // have advertised two keystrokes that do something else instead. The rule
+    // above is bind it or drop it, and these three cannot be bound.
     {
       label: "Run",
       items: [
-        { label: "Run Active Tool", accelerator: "⌘R" },
-        { label: "Stop", accelerator: "⌃C", separatorBefore: true },
-        { label: "Re-run Last", accelerator: "⇧⌘R", separatorBefore: true },
+        { label: "Run Active Tool" },
+        { label: "Stop", separatorBefore: true },
+        { label: "Re-run Last", separatorBefore: true },
       ],
     },
     {
@@ -368,7 +372,7 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
           onSelect: terminal.onKill,
           disabled: !terminal.enabled,
         },
-        // No accelerator: this used to claim ⌘K, which `SearchSlot` binds to
+        // No accelerator: this used to claim Ctrl+K, which `SearchSlot` binds to
         // open the search field. Two handlers for one key is the failure
         // `useKeyboard.ts`'s header exists to prevent, and search was there
         // first — so the display goes rather than the binding.

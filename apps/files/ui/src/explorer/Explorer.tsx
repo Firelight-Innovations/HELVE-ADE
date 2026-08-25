@@ -559,6 +559,9 @@ const Explorer = forwardRef<
   );
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // `metaKey` stays in this one, unlike the shell's activation checks: here it
+    // only rules a keystroke *out*, and Win+Arrow is a window-manager gesture
+    // that must not also move the cursor in the tree.
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const handler: NavHandler | undefined = NAV_KEYS[event.key];
     // Anything else is not ours — leave the browser's default alone.
