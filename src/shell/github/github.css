@@ -70,6 +70,51 @@
   color: var(--text-faint);
 }
 
+/* --- kind and state ------------------------------------------------------ */
+
+/* Two rows rather than one. Seven chips on one line overflow a 380px panel,
+   and wrapping them into an uneven two would put the split in a different
+   place at every width — the axes are the stable place to break. */
+.github__axes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.github__axis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+/* Borderless until it is on: seven outlined pills is more furniture than a
+   380px column can carry, and the pressed one is the only one that has to be
+   found at a glance. */
+.github__chip {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.github__chip:hover {
+  color: var(--text);
+}
+
+.github__chip--on {
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
 /* --- filter -------------------------------------------------------------- */
 
 .github__filter {
@@ -175,6 +220,16 @@
   margin-top: 3px;
   font-size: 10px;
   color: var(--text-dim-3);
+}
+
+/* Tinted by the state token the glyph uses, so the word and the dot agree.
+   Uppercased small rather than a bordered chip: it sits beside the labels,
+   which are bordered, and two chip shapes in one row read as one list of
+   labels with a stray member. */
+.github__state {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .github__branch {

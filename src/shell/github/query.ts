@@ -185,6 +185,120 @@ export function parseQuery(input: string): ParsedQuery {
   return query;
 }
 
+// --- writing a query back, for the buttons above the box ---------------------
+//
+// The panel's kind and state buttons do not hold state of their own. They read
+// their highlight out of the parsed query and, when pressed, rewrite the text
+// in the box — so the box stays the single source of truth and there is no way
+// for a button and a typed `is:pr` to disagree. The cost is that pressing a
+// button visibly edits what somebody typed, which is the behaviour GitHub's own
+// filter buttons have and the one that makes the syntax discoverable.
+
+/** Every spelling that sets the kind, so a rewrite can drop them all. */
+const KIND_TOKENS = new Set(["is:issue", "is:pr", "is:pull", "is:pull-request"]);
+
+/** Every spelling that sets the state, `is:draft` included — it is a state
+ *  qualifier that also happens to imply a kind. */
+const STATE_TOKENS = new Set([
+  "is:open",
+  "is:closed",
+  "is:merged",
+  "is:draft",
+  "state:open",
+  "state:closed",
+  "state:merged",
+  "state:all",
+]);
+
+/** States only a pull request can be in. Changing the kind to anything else has
+ *  to drop these, or the qualifier left behind would overrule the press. */
+const PULL_ONLY_TOKENS = new Set(["is:draft", "is:merged", "state:merged"]);
+
+/** What to write for each kind. `all` writes nothing: it is the default, and a
+ *  box that fills up with qualifiers meaning "no filter" is worse than empty. */
+const KIND_QUALIFIER: Record<QueryScope, string | null> = {
+  all: null,
+  issue: "is:issue",
+  pull: "is:pr",
+};
+
+/** What to write for each state. `open` is the default and so writes nothing. */
+const STATE_QUALIFIER: Record<QueryState, string | null> = {
+  open: null,
+  closed: "is:closed",
+  merged: "is:merged",
+  all: "state:all",
+};
+
+/** Qualifiers first, then whatever was already typed, as typed. */
+function rebuild(qualifiers: (string | null)[], kept: Token[]): string {
+  return [...qualifiers.filter((q) => q !== null), ...kept.map((token) => token.raw)]
+    .join(" ")
+    .trim();
+}
+
+/**
+ * The same filter box, narrowed to one kind.
+ *
+ * Free text, labels and the author survive untouched — pressing "Issues" while
+ * `label:bug crash` is typed should narrow what is already on screen rather
+ * than throw it away.
+ */
+export function withScope(input: string, scope: QueryScope): string {
+  const kept = tokenize(input.trim()).filter(({ value }) => {
+    const lowered = value.toLowerCase();
+    if (KIND_TOKENS.has(lowered)) return false;
+    return scope === "pull" || !PULL_ONLY_TOKENS.has(lowered);
+  });
+  return rebuild([KIND_QUALIFIER[scope]], kept);
+}
+
+/**
+ * The same filter box, moved to one lifecycle state.
+ *
+ * A pull-request-only view stays one. `is:draft` is the reason this is not just
+ * a token swap: it is the only qualifier that sets both axes, so dropping it to
+ * change the state would silently widen the list back to issues as well, and
+ * the kind is put back explicitly when that is about to happen.
+ */
+export function withState(input: string, state: QueryState): string {
+  const wasPull = parseQuery(input).scope === "pull";
+  const kept = tokenize(input.trim()).filter(({ value }) => !STATE_TOKENS.has(value.toLowerCase()));
+  const carriesKind = kept.some(({ value }) => KIND_TOKENS.has(value.toLowerCase()));
+  const kind = wasPull && !carriesKind ? KIND_QUALIFIER.pull : null;
+  return rebuild([STATE_QUALIFIER[state], kind], kept);
+}
+
+/**
+ * What the query asks for, as a noun phrase — "open pull requests".
+ *
+ * For the empty list. "Nothing matches that filter" is the wrong sentence when
+ * the only thing narrowing the list is a button somebody pressed: the honest
+ * answer is that the repository has no closed pull requests, and saying so is
+ * what stops an empty panel reading as a broken one.
+ */
+export function describeQuery(query: ParsedQuery): string {
+  const kind =
+    query.scope === "issue"
+      ? "issues"
+      : query.scope === "pull"
+        ? "pull requests"
+        : "issues or pull requests";
+  if (query.draft) return `draft ${kind}`;
+  return query.state === "all" ? kind : `${query.state} ${kind}`;
+}
+
+/**
+ * Whether anything the buttons cannot express is narrowing the list.
+ *
+ * The kind and state axes are drawn above the list and can be seen; a label, an
+ * author or a word typed into the box cannot, so only those make "nothing
+ * matches that filter" the right thing to say.
+ */
+export function narrowsByText(query: ParsedQuery): boolean {
+  return query.freeText !== "" || query.author !== null || query.labels.length > 0;
+}
+
 /**
  * What to actually ask GitHub for, given a query.
  *
