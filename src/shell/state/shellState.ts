@@ -39,6 +39,7 @@ export {
   renameCluster,
   setActiveCluster,
   setActiveTerminal,
+  setBandHeight,
   setInstanceTitle,
   setPaneSizes,
   setWindowGeometry,
