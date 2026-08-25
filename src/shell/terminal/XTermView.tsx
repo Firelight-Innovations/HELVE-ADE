@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { TerminalTransport } from "../contract";
 import { useDropZone } from "../dropZones";
+import { attachClipboard } from "./clipboard";
 // Imported here, not from a global entry, so nothing pays for xterm's CSS
 // until a terminal actually mounts — the tool window and every other region
 // stay ignorant of this parcel's existence.
@@ -165,6 +166,11 @@ function XTermView(
     const onTextareaFocus = () => onFocusRef.current?.();
     term.textarea?.addEventListener("focus", onTextareaFocus);
 
+    // Ctrl+V, and what a right-click may and may not do. Wired after `open()`
+    // because both halves need the textarea that call creates, and kept in
+    // `clipboard.ts` because the policy is testable and this file is not.
+    const detachClipboard = attachClipboard(term, container);
+
     // Fits are driven by a `ResizeObserver` on the container, not `window`'s
     // resize event — the panel is resized by a drag handle and by collapse,
     // neither of which touches the window. Coalesced to one fit per repaint
@@ -217,6 +223,7 @@ function XTermView(
       if (rafHandle !== null) cancelAnimationFrame(rafHandle);
       onData.dispose();
       onTitleChange.dispose();
+      detachClipboard();
       term.textarea?.removeEventListener("focus", onTextareaFocus);
       detach();
       termRef.current = null;
