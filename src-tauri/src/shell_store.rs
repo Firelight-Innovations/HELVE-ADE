@@ -357,6 +357,7 @@ mod tests {
                     project: None,
                     worktree: None,
                     active_terminal: None,
+                    band_height: None,
                 }],
                 active_cluster_id: Some("cluster-1".to_string()),
                 geometry: None,
@@ -537,6 +538,7 @@ mod tests {
                     project: Some(r"C:\code\auth".to_string()),
                     worktree: None,
                     active_terminal: Some("term-1".to_string()),
+                    band_height: Some(320.0),
                 }],
                 active_cluster_id: Some("cluster-1".to_string()),
                 geometry: Some(WindowGeometry {
@@ -592,6 +594,11 @@ mod tests {
             back.windows[0].clusters[0].active_terminal.as_deref(),
             Some("term-1"),
             "which terminal the band had open is the cluster's, and comes back with it"
+        );
+        assert_eq!(
+            back.windows[0].clusters[0].band_height,
+            Some(320.0),
+            "and so is how tall it was left, or reopening lands on the default every launch"
         );
     }
 
@@ -655,6 +662,10 @@ mod tests {
         assert_eq!(
             stored.windows[0].clusters[0].active_terminal, None,
             "the window's old selection is not read back; `restore` re-seats it"
+        );
+        assert_eq!(
+            stored.windows[0].clusters[0].band_height, None,
+            "a layout from before the band had a height here opens at the default"
         );
     }
 
