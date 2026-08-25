@@ -34,12 +34,14 @@ mod sync;
 mod tool;
 mod tool_frontend;
 mod updater;
+mod webview;
 mod windows;
 
 use project::ProjectState;
 use pty::PtySessions;
 use shell_state::ShellState;
 use state::AppState;
+use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -155,6 +157,18 @@ pub fn run() {
         // no correct resolution, and the event that keeps them level carries
         // this exact state.
         .manage(updater::UpdateStatus::default())
+        // Every window, every navigation, one call site. The main window and
+        // the splash are declared in `tauri.conf.json`, a detached one is built
+        // by `windows::create` long after setup has run, and a page-load hook is
+        // the only place that sees all three without each of them remembering
+        // to ask. Setting it twice costs nothing — it is a property, not a
+        // subscription — so `Started` is chosen only because it is the earlier
+        // of the two events, not because `Finished` would be wrong.
+        .on_page_load(|webview, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                webview::suppress_default_context_menu(webview);
+            }
+        })
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {

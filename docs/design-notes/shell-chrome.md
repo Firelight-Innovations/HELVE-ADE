@@ -76,3 +76,50 @@ and the hint names Ctrl+V, which works, because it is the *browser's* paste
 and never goes through this code at all. Clipboard **write** is not affected:
 Cut and Copy go through `navigator.clipboard.writeText` on the app side,
 which this repo already relies on in the Files context menu's "Copy path".
+
+The shell's right-click menu takes the same decision for the same reasons, and
+states it once — `contextMenu.ts`'s `PASTE_HINT` is the sentence this section
+is about, and it points back here.
+
+## src-tauri/src/webview.rs
+
+### Why the default context menu is turned off in Rust
+
+Right-clicking anywhere in HELVE used to raise Chromium's own menu: Back,
+Forward, Refresh, Print, Save as, View source. None of the six is an operation
+this application has. There is nothing to go back to, "Save as" offers to save
+the shell's own HTML, and printing a workspace is not a thing anybody wants.
+
+It cannot be turned off from `tauri.conf.json`. Tauri v2 has no configuration
+key for it and no builder method either — WebView2 exposes it only as
+`ICoreWebView2Settings::AreDefaultContextMenusEnabled`, a property on the
+settings object, so reaching it means reaching the COM object. `devtools.rs`
+already holds that interface for the UI-driving server, and this borrows the
+same route. It is applied from a page-load hook, which is the one place that
+sees the main window, the splash, and a window `windows::create` builds long
+after setup has run, without any of them remembering to ask.
+
+The alternative considered and rejected was a global `contextmenu` handler in
+the shell calling `preventDefault` unconditionally. It would not have reached
+inside an app's iframe — the shell's JavaScript cannot install a listener in a
+document it does not own, which is the same same-origin wall
+`devtools::install_script` exists to get around — so every app and plugin
+surface would have kept the browser's menu. The setting belongs to the whole
+WebView2 environment and so covers child frames as well.
+
+### It suppresses the menu, not the event
+
+`contextmenu` still fires on every element exactly as before. That is what
+lets `ContextMenuHost` open at all, and it is why the Files and Viewer apps'
+own right-click menus are unaffected. What changes is that a surface which
+ignores the event now shows nothing rather than the browser's menu.
+
+### A failure is logged, not fatal
+
+A webview that will not hand over its settings object is not a reason to
+refuse to start. The cost is one window where a right-click shows the
+browser's menu — and `ContextMenuHost` calls `preventDefault` itself when it
+opens, which covers that case for everything the shell draws. On a non-Windows
+build the whole function is a no-op, for the reason `devtools.rs` keeps its
+non-Windows half: a function that is absent on one platform is harder to
+account for than one that does nothing there.

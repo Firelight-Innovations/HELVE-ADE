@@ -22,6 +22,7 @@ import {
   type WindowKind,
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
+import ContextMenuHost from "./ContextMenuHost";
 import TitleBar from "./titlebar/TitleBar";
 import { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/menus";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
@@ -1364,6 +1365,12 @@ export default function WindowRoot({
 
   return (
     <MotionConfig transition={snap} reducedMotion="user">
+      {/* Not a slot: it draws nothing until somebody right-clicks, and when it
+          does it portals to `document.body` from wherever it is mounted. One
+          per window, beside the frame rather than inside it, because the
+          gesture it answers can land on any part of the window including the
+          bits `Frame` does not own. */}
+      <ContextMenuHost />
       <Frame
         kind={kind}
         panelCollapsed={panelCollapsed}
