@@ -16,6 +16,7 @@
 mod design;
 mod files;
 mod home;
+mod journeyman;
 mod trash;
 pub mod tutorial;
 
@@ -209,6 +210,17 @@ const REGISTRY: &[Registered] = &[
         // cluster rather than taking a pane. This row is still what makes
         // `helve/open` resolve a frontend. See `docs/tutorials.md` §8.
         call: tutorial::call,
+    },
+    Registered {
+        id: "journeyman",
+        name: "Journeyman",
+        description: "The build side of the stack, downstream of what Forger specifies.",
+        // Last in the switcher order, and last here to match: unlike Tutorials
+        // and Home above it, Journeyman is an ordinary pane app — it takes a
+        // tab and a spot in the Apps menu like Files or the Viewer, so there is
+        // nothing here for `openables`' filtering to do. It is a skeleton
+        // today; see the module doc for what that means and does not mean.
+        call: journeyman::call,
     },
 ];
 
