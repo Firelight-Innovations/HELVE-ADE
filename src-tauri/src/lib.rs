@@ -370,6 +370,7 @@ pub fn run() {
             commands::terminal_busy,
             commands::move_terminal,
             commands::set_active_terminal,
+            commands::set_band_height,
             commands::set_terminal_title,
             commands::tool_frontend,
             commands::list_apps,

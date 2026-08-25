@@ -174,6 +174,27 @@ pub struct Cluster {
     /// picks a valid one per cluster on the first load anyway.
     #[serde(default)]
     pub active_terminal: Option<String>,
+    /// How tall this cluster's terminal band was last left, in CSS pixels, or `None` for a cluster
+    /// nobody has dragged the band in yet — which draws at the frontend's `BOTTOM_DEFAULT`.
+    ///
+    /// A fact about the cluster for the same reason [`Cluster::active_terminal`] is, and it has to
+    /// be one: the band is drawn inside the cluster's half of the window, so a single height held
+    /// by the window means the last cluster resized dictates the height of every other one. Pull
+    /// the band up in `auth`, switch to `billing`, and `billing`'s band is `auth`'s height.
+    ///
+    /// Only the *normal* height is kept. Shut and maximized are the same drag's other two
+    /// outcomes, and they stay in the window that draws them: whether a band is open is a fact
+    /// about this session, and a layout that restored a maximized band would open HELVE with the
+    /// apps hidden behind a terminal. See `frame/Frame.tsx`'s `bottomHeight` for the same split
+    /// spelled from the view's side.
+    ///
+    /// `f32` and not `f64` because it is a CSS pixel count that came from a pointer position;
+    /// `PaneNode`'s `sizes` cross the same boundary as `f32` for the same reason.
+    ///
+    /// `default` because a `layout.json` written before the band had a home here has no such key,
+    /// and a layout that failed to load is a session lost.
+    #[serde(default)]
+    pub band_height: Option<f32>,
 }
 
 /// A window's outer rectangle, in physical pixels.
@@ -365,6 +386,7 @@ fn seed_window(counters: &mut Counters, label: &str) -> WindowPlacement {
         project: None,
         worktree: None,
         active_terminal: None,
+        band_height: None,
     };
 
     WindowPlacement {
@@ -576,6 +598,7 @@ impl ShellState {
                 project: None,
                 worktree: None,
                 active_terminal: None,
+                band_height: None,
             });
             w.active_cluster_id = Some(cluster_id.clone());
             created = Some(cluster_id.clone());
@@ -1355,6 +1378,7 @@ impl ShellState {
                 project,
                 worktree: None,
                 active_terminal: None,
+                band_height: None,
             };
 
             // A terminal dragged out has to bring its band home with it. It is
@@ -1615,6 +1639,21 @@ impl ShellState {
                 }
             }
         });
+    }
+
+    /// How tall a cluster's terminal band was left, at the end of a drag on its handle.
+    ///
+    /// Named by cluster rather than by window, which is the whole point: the window draws one band
+    /// at a time and the height it draws belongs to whichever cluster is in front of it. Searching
+    /// every window for the id — rather than taking a label as well — means a cluster that has
+    /// since been dragged into another window is still found, the same way
+    /// [`ShellState::set_active_terminal`] finds it.
+    ///
+    /// Written once per drag, on pointer-up, not once per frame: the view animates against a
+    /// motion value while the pointer is down and reports only where it was let go. See
+    /// `frame/Frame.tsx`'s `onBottomHandleDown`.
+    pub fn set_band_height(&self, app: &AppHandle, cluster_id: &str, height: f32) {
+        self.mutate(app, |s| set_cluster_band_height(s, cluster_id, height));
     }
 
     /// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
@@ -1978,6 +2017,25 @@ fn adopt_orphan_terminals(snapshot: &mut ShellSnapshot) {
     }
 }
 
+/// Record how tall one cluster's terminal band was left, wherever that cluster is.
+///
+/// Written as a free function so it can be unit-tested: every `ShellState` mutator takes an
+/// `AppHandle` to broadcast through, and there is none to hand it in a `#[cfg(test)]` module. The
+/// property worth pinning — a height lands on the named cluster and on no other — is a property of
+/// this walk rather than of the broadcast around it, so this is the half that gets the test.
+///
+/// A cluster id that names nothing is a no-op rather than an error: the only way to ask is to have
+/// a cluster on screen, and one closed between the pointer going down and coming up has no band
+/// left to size.
+fn set_cluster_band_height(snapshot: &mut ShellSnapshot, cluster_id: &str, height: f32) {
+    for w in snapshot.windows.iter_mut() {
+        if let Some(c) = w.cluster_mut(cluster_id) {
+            c.band_height = Some(height);
+            return;
+        }
+    }
+}
+
 /// Make every cluster's band selection name something that band is drawing.
 ///
 /// Run after every mutation, from `mutate`. The rule it enforces is the one the
@@ -2332,6 +2390,7 @@ mod tests {
                     project: None,
                     worktree: None,
                     active_terminal: None,
+                    band_height: None,
                 }],
                 active_cluster_id: Some("cluster-3".to_string()),
                 geometry: None,
@@ -2439,6 +2498,7 @@ mod tests {
                 project: None,
                 worktree: None,
                 active_terminal: None,
+                band_height: None,
             }],
             active_cluster_id: Some(cluster.to_string()),
             geometry: None,
@@ -2481,6 +2541,7 @@ mod tests {
             project: None,
             worktree: None,
             active_terminal: None,
+            band_height: None,
         });
 
         reseat_active_terminals(&mut s);
@@ -2492,6 +2553,60 @@ mod tests {
         assert_eq!(
             s.windows[0].clusters[1].active_terminal, None,
             "and the one beside it has an empty band, not a borrowed terminal"
+        );
+    }
+
+    /// The band's height is the cluster's, and the reported bug is what a single
+    /// window-wide height looked like: pull the band up in one cluster, pull it
+    /// halfway in the next, and going back showed the second cluster's height.
+    ///
+    /// Walked in the order the report describes, because the order is the bug —
+    /// each write has to land on the cluster that was in front when it happened,
+    /// and neither may be readable through the other afterwards.
+    #[test]
+    fn each_cluster_keeps_its_own_band_height() {
+        let mut s = state(vec![window("main", "cluster-1", &[])], Vec::new());
+        s.windows[0].clusters.push(Cluster {
+            id: "cluster-2".to_string(),
+            name: "cluster-2".to_string(),
+            tree: PaneNode::leaf("pane-2"),
+            project: None,
+            worktree: None,
+            active_terminal: None,
+            band_height: None,
+        });
+
+        // Cluster 1, dragged nearly to the top of the window.
+        set_cluster_band_height(&mut s, "cluster-1", 720.0);
+        // Then cluster 2 is opened and its band pulled only halfway up.
+        set_cluster_band_height(&mut s, "cluster-2", 300.0);
+
+        assert_eq!(
+            cluster_mut(&mut s, "cluster-1").band_height,
+            Some(720.0),
+            "switching back shows the height cluster 1 was left at"
+        );
+        assert_eq!(
+            cluster_mut(&mut s, "cluster-2").band_height,
+            Some(300.0),
+            "and cluster 2 keeps its own rather than inheriting the taller one"
+        );
+    }
+
+    /// A cluster nobody has dragged the band in has no opinion, which is what
+    /// lets the view fall back to `BOTTOM_DEFAULT` instead of to a neighbour's
+    /// height. Resizing one must not invent a height for the others.
+    #[test]
+    fn an_unresized_cluster_has_no_band_height() {
+        let mut s = state(vec![window("main", "cluster-1", &[])], Vec::new());
+        s.windows.push(window("win-2", "cluster-2", &[]));
+
+        set_cluster_band_height(&mut s, "cluster-1", 480.0);
+
+        assert_eq!(
+            cluster_mut(&mut s, "cluster-2").band_height,
+            None,
+            "a cluster in another window is not sized by this one's drag"
         );
     }
 
@@ -2687,6 +2802,7 @@ mod tests {
             project: None,
             worktree: None,
             active_terminal: None,
+            band_height: None,
         });
         state(vec![placement], Vec::new())
     }
