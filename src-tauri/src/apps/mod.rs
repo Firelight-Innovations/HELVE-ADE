@@ -15,6 +15,7 @@
 
 mod design;
 mod files;
+mod forger;
 mod home;
 mod journeyman;
 mod trash;
@@ -200,6 +201,18 @@ const REGISTRY: &[Registered] = &[
         // `design::normalize` and `design::arm` — neither of which is a
         // decision the frontend is allowed to make.
         call: design::call,
+    },
+    Registered {
+        id: "forger",
+        name: "Forger",
+        description: "Technical design software — specs out the stack and its boundaries.",
+        // Was going to ship as its own repository, installed as a tool. That
+        // plan is reversed: see `apps/forger.rs` for why what it will show
+        // belongs to the orchestrator rather than to a checkout beside it. This
+        // row is a skeleton — `forger::call` answers one placeholder method —
+        // registered now so the switcher, the Apps menu and boot all already
+        // know its shape before anything is built behind it.
+        call: forger::call,
     },
     Registered {
         id: "tutorial",

@@ -5,9 +5,15 @@ What a repository outside this one has to publish for HELVE to install it.
 app repository needs, and the two differ in what they produce: HELVE ships an
 `.exe` installer, an app ships a `.zip`.
 
-Forger and Journeyman each own their own copy of this. They are separate parts
-of the stack, will be maintained by separate teams, and a shared pipeline would
-make either one's release cadence the other's problem.
+Nothing uses this pipeline today. Forger and Journeyman used to be the concrete
+case it was written for — each was to own its own copy of this, being separate
+parts of the stack maintained by separate teams, where a shared pipeline would
+make one's release cadence the other's problem. Both have since been
+reclassified as in-repo apps (`apps/README.md`) and release through the
+orchestrator's own pipeline (`docs/dev/releases.md`) instead. This document is
+what the first genuinely third-party tool repository will need — kept for that
+case rather than deleted, the same way `catalog.toml` and `helve.toml` keep
+their machinery with zero rows.
 
 ## What HELVE downloads
 
@@ -152,7 +158,7 @@ the intended safety on a pipeline that ships code onto other people's machines.
 ## Blocked: neither shared package is published yet
 
 An app repository cannot currently depend on the two things the protocol says it
-should, and this has to be settled before either scaffold can build.
+should, and this has to be settled before any such repository can build.
 
 **`@helve-ade/bridge` is not on npm.** `npm view @helve-ade/bridge` is a 404, as of
 2026-08-21. It is the only host coupling a plugin frontend is supposed to have —
@@ -173,7 +179,8 @@ repository would fetch source, and `packages/bridge` publishes `dist` — which 
 built, not committed — so it would need a `prepare` script and a build of the
 whole workspace to install one small package.
 
-**Recommendation: publish `@helve-ade/bridge` to npm before scaffolding either app.**
-It is small, the repository is already public, and the protocol document already
-describes it as published. Publishing `helve-rpc` alongside it is optional and
-tidier; the git dependency is a real answer for the Rust half either way.
+**Recommendation: publish `@helve-ade/bridge` to npm before scaffolding the first
+of these.** It is small, the repository is already public, and the protocol
+document already describes it as published. Publishing `helve-rpc` alongside it
+is optional and tidier; the git dependency is a real answer for the Rust half
+either way.

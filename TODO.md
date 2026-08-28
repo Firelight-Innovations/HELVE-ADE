@@ -109,12 +109,14 @@ Still open from this item:
   somebody outside Firelight writes an app.
 - **Layout presets cannot hold a plugin surface.** `presets::normalized` filters
   slots through `is_app`. Not a regression — presets never held a tool either —
-  but it bites the first time a Forger layout is saved.
+  but it bites the first time somebody saves a preset with an installed plugin
+  in it. Forger and Journeyman no longer trigger this: both moved to `apps/`
+  (see #11, #12), and `is_app` already covers them.
 - **A backend-only package installs and spawns, but nothing calls it.**
   `mcp::Registry` holds `&'static` servers, so a plugin-provided MCP server
   cannot be one. The manifest reserves the space; the plumbing does not exist.
 
-## 10b. Publish `@helve-ade/bridge` to npm — blocks #11 and #12
+## 10b. Publish `@helve-ade/bridge` to npm
 
 **Nothing outside this repository can build an app frontend until this is done.**
 
@@ -126,9 +128,13 @@ author actually installs". It is not published — `npm view @helve-ade/bridge` 
 404 as of 2026-08-21 — so there is nothing to install, and the sentence in the
 protocol document is currently false.
 
-That is what stopped the Forger and Journeyman scaffolds from landing with #27.
-Both repositories are still empty, and neither can get past its first
-`pnpm add`.
+That is what stopped the Forger and Journeyman scaffolds from landing with #27,
+back when both were planned as separate repositories that would install like
+any other tool. That is no longer why they wait: both have since been
+reclassified as in-repo apps under `apps/` (see #11, #12), which pull
+`@helve-ade/bridge` from the pnpm workspace rather than from npm, so neither is
+blocked on this item any more. This still blocks the first genuinely
+third-party tool repository, which is the case it was written for.
 
 A git dependency is not a workaround here. `packages/bridge` publishes `dist`,
 which is built rather than committed, so installing from the repository would
@@ -167,9 +173,11 @@ Publishing `helve-rpc` to crates.io is tidier and optional. This is neither.
    `npm publish --access public` from `packages/bridge`. First publish by hand
    is fine; automate it on a tag afterwards, which needs an `NPM_TOKEN` secret
    and a job that refuses to publish a version already on the registry.
-5. **Then scaffold Forger and Journeyman.** `docs/dev/app-releases.md` already
-   carries the manifest shape and the exact release workflow both repositories
-   need — zip plus `.sha256`, no installer, published as a draft.
+5. **Then scaffold the first genuinely third-party tool**, whenever one shows
+   up. `docs/dev/app-releases.md` carries the manifest shape and the exact
+   release workflow a separate repository needs — zip plus `.sha256`, no
+   installer, published as a draft. Forger and Journeyman no longer go through
+   this path; see #11 and #12.
 
 ### Also outstanding, and unrelated to npm
 
@@ -187,8 +195,12 @@ and turn on "Require review from Code Owners".
 
 ## 11. Forger (vague for now)
 
-**Blocked on #10b** — the repository exists and is empty, and its frontend
-cannot install the bridge until that package is on npm.
+**No longer blocked on #10b.** Forger was originally planned as its own
+repository, installed like any other tool. It has since been reclassified as
+an in-repo app under `apps/forger/`, alongside Home, Files and the rest, whose
+frontend pulls `@helve-ade/bridge` straight from the pnpm workspace rather than
+from npm — see `apps/README.md`. #10b still stands, and still blocks the first
+genuinely third-party tool repository; it just no longer blocks this one.
 
 **Built by the maintainer, like #10 and #12.** Not because outside help is
 unwelcome — so that nobody spends a weekend on a foundation that is already
@@ -206,7 +218,8 @@ pretty.
 
 ## 12. Journeyman
 
-Tackled after Forger is working, and blocked on #10b for the same reason.
+Tackled after Forger is working. Reclassified the same way and for the same
+reason — see #11 — so it is not blocked on #10b either.
 
 ---
 
