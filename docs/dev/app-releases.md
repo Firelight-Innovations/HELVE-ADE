@@ -46,7 +46,7 @@ name = "Spec Editor"
 path = "specs/"
 
 [core]
-bin = "core/target/release/helve-forger.exe"
+bin = "core/target/release/kaava-forger.exe"
 ```
 
 `[tool] id` **must** equal the `id` in `catalog.toml` for a library entry. A

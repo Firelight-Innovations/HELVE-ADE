@@ -50,12 +50,12 @@
 id = "forger"
 name = "Forger"
 description = "Technical design software — specs out the stack and its boundaries."
-repo = "Firelight-Innovations/HELVE-Forger"
+repo = "Firelight-Innovations/OpenKaava-Forger"
 default = true
 
 [[app]]
 id = "journeyman"
 name = "Journeyman"
 description = "The build side of the stack, downstream of what Forger specifies."
-repo = "Firelight-Innovations/HELVE-Journeyman"
+repo = "Firelight-Innovations/OpenKaava-Journeyman"
 default = true

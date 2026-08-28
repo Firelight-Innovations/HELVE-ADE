@@ -958,7 +958,7 @@ mod tests {
         present = "cover"
 
         [core]
-        bin = "target/release/helve-forger"
+        bin = "target/release/kaava-forger"
     "#;
 
     #[test]

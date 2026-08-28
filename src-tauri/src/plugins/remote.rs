@@ -409,25 +409,25 @@ mod tests {
 
     #[test]
     fn a_bare_slug_parses() {
-        let repo = Repo::parse("Firelight-Innovations/HELVE-Forger").expect("parses");
+        let repo = Repo::parse("Firelight-Innovations/OpenKaava-Forger").expect("parses");
         assert_eq!(repo.owner, "Firelight-Innovations");
-        assert_eq!(repo.name, "HELVE-Forger");
+        assert_eq!(repo.name, "OpenKaava-Forger");
     }
 
     #[test]
     fn every_url_form_reaches_the_same_repo() {
         let expected = Repo {
             owner: "Firelight-Innovations".to_string(),
-            name: "HELVE-Forger".to_string(),
+            name: "OpenKaava-Forger".to_string(),
         };
         for input in [
-            "https://github.com/Firelight-Innovations/HELVE-Forger",
-            "https://github.com/Firelight-Innovations/HELVE-Forger/",
-            "https://github.com/Firelight-Innovations/HELVE-Forger.git",
-            "http://github.com/Firelight-Innovations/HELVE-Forger",
-            "github.com/Firelight-Innovations/HELVE-Forger",
-            "git@github.com:Firelight-Innovations/HELVE-Forger.git",
-            "  Firelight-Innovations/HELVE-Forger  ",
+            "https://github.com/Firelight-Innovations/OpenKaava-Forger",
+            "https://github.com/Firelight-Innovations/OpenKaava-Forger/",
+            "https://github.com/Firelight-Innovations/OpenKaava-Forger.git",
+            "http://github.com/Firelight-Innovations/OpenKaava-Forger",
+            "github.com/Firelight-Innovations/OpenKaava-Forger",
+            "git@github.com:Firelight-Innovations/OpenKaava-Forger.git",
+            "  Firelight-Innovations/OpenKaava-Forger  ",
         ] {
             assert_eq!(Repo::parse(input).as_ref(), Some(&expected), "for {input}");
         }
@@ -465,7 +465,7 @@ mod tests {
     fn a_repo_word_rejects_a_path_separator_or_a_space() {
         assert!(!is_repo_word("a b"));
         assert!(!is_repo_word("a\\b"));
-        assert!(is_repo_word("HELVE-Forger"));
+        assert!(is_repo_word("OpenKaava-Forger"));
         assert!(is_repo_word("some_tool.rs"));
     }
 

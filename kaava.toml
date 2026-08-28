@@ -30,7 +30,7 @@ checkout-root = ".."
 id = "forger"
 name = "Forger"
 kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-forger"
+repo = "https://github.com/Firelight-Innovations/kaava-forger"
 version = "0.1.0"
 description = "Technical design software — specs out the stack and its boundaries."
 
@@ -38,7 +38,7 @@ description = "Technical design software — specs out the stack and its boundar
 id = "journeyman"
 name = "Journeyman"
 kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/helve-journeyman"
+repo = "https://github.com/Firelight-Innovations/kaava-journeyman"
 version = "0.1.0"
 description = "Design prototyping software — rough, interactive systems built fast."
 

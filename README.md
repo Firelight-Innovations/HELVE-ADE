@@ -74,8 +74,8 @@ of code back to the decision that produced it.
 This traceability is the idea that sets OpenKaava apart from other development
 environments.
 
-[Forger](https://github.com/Firelight-Innovations/helve-forger) builds the
-technical design tool. [Journeyman](https://github.com/Firelight-Innovations/helve-journeyman)
+[Forger](https://github.com/Firelight-Innovations/kaava-forger) builds the
+technical design tool. [Journeyman](https://github.com/Firelight-Innovations/kaava-journeyman)
 builds the product design tool. Neither tool is built yet.
 [What does not work yet](#what-does-not-work-yet) has the full list.
 
@@ -289,8 +289,8 @@ pins the exact version of each tool that this orchestrator expects.
 
 | Repository | What it is | Status |
 |---|---|---|
-| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | The technical design tool. Turns a PRD into an architecture and a set of system specs. | Placeholder, README only |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | The product design tool. Writes the PRD and prototypes rough, interactive systems. | Placeholder, README only |
+| [kaava-forger](https://github.com/Firelight-Innovations/kaava-forger) | The technical design tool. Turns a PRD into an architecture and a set of system specs. | Placeholder, README only |
+| [kaava-journeyman](https://github.com/Firelight-Innovations/kaava-journeyman) | The product design tool. Writes the PRD and prototypes rough, interactive systems. | Placeholder, README only |
 
 ![The stack list, showing each tool and its health](assets/ui/stack.png)
 

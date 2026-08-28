@@ -85,7 +85,7 @@ fanning out cost real machinery; with every server in-process, a second endpoint
 costs a route. What separate endpoints buy is worth more than that route:
 
 - **Namespacing we do not have to invent.** The client derives tool names from
-  the server name it connected to — `mcp__helve-forger__validate` — instead of us
+  the server name it connected to — `mcp__kaava-forger__validate` — instead of us
   hand-prefixing every tool inside one flat namespace and hoping nobody collides.
 - **A 1:1 map to the settings UI.** "Registered server" is exactly the row the
   user toggles, which is what the roadmap asked for.

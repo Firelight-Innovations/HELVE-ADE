@@ -364,14 +364,14 @@ mod tests {
     #[test]
     fn sanitize_leaves_a_valid_package_id_alone() {
         assert_eq!(sanitize("forger"), "forger");
-        assert_eq!(sanitize("helve-forger"), "helve-forger");
+        assert_eq!(sanitize("kaava-forger"), "kaava-forger");
     }
 
     #[test]
     fn sanitize_flattens_a_slug_into_one_segment() {
         assert_eq!(
-            sanitize("Firelight-Innovations/HELVE-Forger"),
-            "Firelight-Innovations-HELVE-Forger"
+            sanitize("Firelight-Innovations/OpenKaava-Forger"),
+            "Firelight-Innovations-OpenKaava-Forger"
         );
         assert!(!sanitize("../../etc").contains('.'));
         assert!(!sanitize("a/b").contains('/'));
