@@ -3,7 +3,7 @@
  * `src-tauri/src/apps/design.rs` and are restated rather than imported, for the
  * reason `apps/files/ui/src/rpc.ts` gives.
  */
-import { HelveRpcError, invoke } from "@helve-ade/bridge";
+import { KaavaRpcError, invoke } from "@openkaava/bridge";
 
 /** A URL the backend has cleared for embedding. */
 export interface Target {
@@ -45,6 +45,6 @@ export const capture = (rect: { x: number; y: number; width: number; height: num
 /** The host's own words for why a call failed. Every refusal in `design.rs` is
  *  written as a sentence for a person, so none is mapped to a category here. */
 export function reasonFor(err: unknown): string {
-  if (err instanceof HelveRpcError) return err.message;
+  if (err instanceof KaavaRpcError) return err.message;
   return String(err);
 }

@@ -208,11 +208,11 @@ impl PtySessions {
                 reason: e.to_string(),
             })?;
 
-        // How an agent in this shell finds HELVE's MCP servers. Read here, at
+        // How an agent in this shell finds OpenKaava's MCP servers. Read here, at
         // spawn, rather than baked into a config file: the port and token are
         // per-launch, and handing them to the process instead of writing them
         // down is what lets the project's `.mcp.json` be committable and keeps a
-        // shell the user opened outside HELVE unable to connect. Empty if the
+        // shell the user opened outside OpenKaava unable to connect. Empty if the
         // listener never bound, which spawns an ordinary shell.
         let mcp_env = app.state::<crate::mcp::Endpoint>().env();
 
@@ -497,7 +497,7 @@ fn pump(
 
 /// The shells to try, best first.
 ///
-/// `HELVE_SHELL` wins when it is set, which is how this machine switches to Git
+/// `KAAVA_SHELL` wins when it is set, which is how this machine switches to Git
 /// Bash (`C:\Program Files\Git\bin\bash.exe`) without a rebuild. Otherwise
 /// Windows gets PowerShell — cross-platform PowerShell first, then the one that
 /// ships with the OS — and everything else gets the login shell, falling back to
@@ -552,7 +552,7 @@ fn preferred_candidate(preference: &str) -> Option<(String, CommandBuilder)> {
 /// succeed against a stub, and a file existing says nothing about whether this
 /// user may execute it.
 fn shell_candidates() -> Vec<(String, CommandBuilder)> {
-    if let Ok(explicit) = std::env::var("HELVE_SHELL") {
+    if let Ok(explicit) = std::env::var("KAAVA_SHELL") {
         if !explicit.trim().is_empty() {
             return vec![candidate(explicit.trim())];
         }
@@ -715,7 +715,7 @@ mod tests {
         // not. A shell that spawned bare here and not in the app would leave the
         // one difference between them untested.
         let injected = [(
-            "HELVE_MCP_TOKEN".to_string(),
+            "KAAVA_MCP_TOKEN".to_string(),
             "test-token-not-a-real-one".to_string(),
         )];
         let (name, mut child) = spawn_shell(&*pty.slave, "test", &cwd, &injected, "auto")
@@ -788,7 +788,7 @@ mod tests {
         );
     }
 
-    /// `HELVE_SHELL` is the documented one-line override, and a typo'd path in
+    /// `KAAVA_SHELL` is the documented one-line override, and a typo'd path in
     /// it must not fall back to PowerShell and pretend it worked.
     #[test]
     fn an_explicit_shell_is_the_only_candidate() {

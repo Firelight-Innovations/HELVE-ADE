@@ -2,10 +2,10 @@
  * Every call this app makes to its host, in one file. The shape mirrors
  * `src-tauri/src/apps/forger.rs` and is restated rather than imported, for the
  * reason `apps/files/ui/src/rpc.ts` gives: an app's only coupling to its host is
- * `@helve-ade/bridge`, not a shared type crossing the process boundary that
+ * `@openkaava/bridge`, not a shared type crossing the process boundary that
  * separates the frontend build from the Rust one.
  */
-import { HelveRpcError, invoke } from "@helve-ade/bridge";
+import { KaavaRpcError, invoke } from "@openkaava/bridge";
 
 /** What `forger/state` reports. `project` is `null` when this cluster has none
  *  open yet; `ready` is `false` in every build until there is a real design
@@ -22,6 +22,6 @@ export const fetchState = () => invoke<State>("forger/state");
  *  every refusal on the Rust side is written as a sentence for a person, so
  *  none is mapped to a category here. */
 export function reasonFor(err: unknown): string {
-  if (err instanceof HelveRpcError) return err.message;
+  if (err instanceof KaavaRpcError) return err.message;
   return String(err);
 }

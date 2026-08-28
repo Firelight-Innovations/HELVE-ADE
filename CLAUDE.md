@@ -1,4 +1,4 @@
-# HELVE orchestrator — working agreements
+# OpenKaava orchestrator — working agreements
 
 ## Dev servers: 1420 is the human's, agents use their own
 
@@ -25,10 +25,10 @@ seen repeatedly:
 Do not kill a process on 1420 to make room for yourself. It is either Braden's running app or
 another agent's; ask instead.
 
-## Asking a running HELVE what it is doing
+## Asking a running OpenKaava what it is doing
 
-**`pnpm probe` reads the live app.** It talks to the `helve-debug` MCP server the orchestrator
-hosts, and works from any terminal — you do not have to be inside HELVE, and nothing has to be
+**`pnpm probe` reads the live app.** It talks to the `kaava-debug` MCP server the orchestrator
+hosts, and works from any terminal — you do not have to be inside OpenKaava, and nothing has to be
 launched or restarted:
 
 ```sh
@@ -38,14 +38,14 @@ pnpm probe recent_errors      # what has failed since launch, backend and webvie
 pnpm probe boot_status        # how far startup got, and whether it gave up
 ```
 
-It finds the port and token in `%APPDATA%\com.firelightinnovations.helve\mcp-endpoint.json`, which
+It finds the port and token in `%APPDATA%\com.firelightinnovations.openkaava\mcp-endpoint.json`, which
 `mcp::handoff` writes at every launch, and it refuses a file whose pid is no longer running rather
-than talking to whatever took the port afterwards. If it says HELVE has exited, HELVE has exited —
+than talking to whatever took the port afterwards. If it says OpenKaava has exited, OpenKaava has exited —
 ask Braden to start it.
 
 Two limits worth knowing before you read a result:
 
-- **Every tool on this server is a read.** Nothing in `helve-debug` opens, closes or moves
+- **Every tool on this server is a read.** Nothing in `kaava-debug` opens, closes or moves
   anything, deliberately. The server that *does* act on the window is below, and it is off by
   default.
 - **Errors inside an app's iframe are not captured**, only the shell's and the backend's. An empty
@@ -56,8 +56,8 @@ This does not replace looking at the screen. For that, see below.
 
 ## Seeing and clicking the UI
 
-**HELVE hosts an MCP server that drives its own window** — screenshots, the DOM,
-and real mouse and keyboard input. It is `helve-ui`, it reaches the WebView2
+**OpenKaava hosts an MCP server that drives its own window** — screenshots, the DOM,
+and real mouse and keyboard input. It is `kaava-ui`, it reaches the WebView2
 through the COM interface Tauri already holds, and it needs no debug port, no
 special launch and no separate build.
 
@@ -77,7 +77,7 @@ pnpm ui close                 # stops it, by pid, leaving anyone else's alone
 Then drive it:
 
 ```sh
-pnpm probe --agent --server ui screenshot     # writes helve-shot.png — then Read it
+pnpm probe --agent --server ui screenshot     # writes kaava-shot.png — then Read it
 pnpm probe --agent --server ui snapshot       # every clickable element, with refs
 pnpm probe --agent --server ui click '{"target":"e12"}'
 pnpm probe --agent --server ui type_text '{"text":"hello"}'
@@ -86,7 +86,7 @@ pnpm probe --agent --server ui eval '{"expression":"document.title"}'
 ```
 
 `--agent` is what points the probe at the instance `pnpm ui launch` started
-rather than at a HELVE Braden is using. **Do not drop it**, and do not drive his
+rather than at an OpenKaava Braden is using. **Do not drop it**, and do not drive his
 window without asking — this server clicks things, and `eval` reaches every
 `#[tauri::command]` through `window.__TAURI__`.
 

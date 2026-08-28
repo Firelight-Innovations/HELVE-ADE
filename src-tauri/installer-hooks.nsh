@@ -1,8 +1,8 @@
-; Explorer's "Open with HELVE", added on install and taken away on uninstall.
+; Explorer's "Open with OpenKaava", added on install and taken away on uninstall.
 ;
 ; Tauri's NSIS template calls these two macros if `bundle > windows > nsis >
 ; installerHooks` points at this file. Everything here is registry work: the
-; shell reads these keys to decide what appears on a right-click, and HELVE
+; shell reads these keys to decide what appears on a right-click, and OpenKaava
 ; itself does not have to be running for them to be there.
 ;
 ; HKCU rather than HKLM, and that is not a preference. `installMode` is
@@ -27,19 +27,19 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   ; --- Right-click a folder -------------------------------------------------
-  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE" "" "Open with HELVE"
-  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
-  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithOpenKaava" "" "Open with OpenKaava"
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithOpenKaava" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\Directory\shell\OpenWithOpenKaava\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
 
   ; --- Right-click inside a folder, with nothing selected -------------------
-  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE" "" "Open with HELVE"
-  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
-  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%V"'
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithOpenKaava" "" "Open with OpenKaava"
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithOpenKaava" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\Directory\Background\shell\OpenWithOpenKaava\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%V"'
 
   ; --- Right-click a file ---------------------------------------------------
-  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE" "" "Open with HELVE"
-  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
-  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithHELVE\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithOpenKaava" "" "Open with OpenKaava"
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithOpenKaava" "Icon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "Software\Classes\*\shell\OpenWithOpenKaava\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" "%1"'
 
   ; Explorer caches the verbs it has already read. Without this the entries do
   ; not appear until the next sign-in, which reads exactly like a broken
@@ -51,9 +51,9 @@
   ; Delete the `command` subkey first: `DeleteRegKey` removes a key and its
   ; children, but doing the parents in this order leaves nothing behind if one
   ; of them is missing because a previous version did not write it.
-  DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenWithHELVE"
-  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE"
-  DeleteRegKey HKCU "Software\Classes\*\shell\OpenWithHELVE"
+  DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenWithOpenKaava"
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenWithOpenKaava"
+  DeleteRegKey HKCU "Software\Classes\*\shell\OpenWithOpenKaava"
 
   System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
 !macroend

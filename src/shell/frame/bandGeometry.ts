@@ -4,7 +4,7 @@
  * up in `auth` resize `billing`'s too.
  *
  * Its *height* is not here: that one is `Cluster::band_height`, saved with the
- * layout. These two are not, because a restored maximized band would open HELVE
+ * layout. These two are not, because a restored maximized band would open OpenKaava
  * with the apps hidden behind a terminal. See `Frame`'s `bottomCollapsed`.
  */
 

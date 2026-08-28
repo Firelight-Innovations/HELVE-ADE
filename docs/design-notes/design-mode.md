@@ -6,7 +6,7 @@ pages exist and what is guaranteed about them.
 
 Design Mode hosts a page the shell did not write, lets somebody click an element
 in it, and hands that element's markup, computed styles and a cropped screenshot
-to a coding agent. It is the first surface in HELVE to embed arbitrary external
+to a coding agent. It is the first surface in OpenKaava to embed arbitrary external
 content, so most of what follows is about the two questions that raises: what
 may be loaded, and how anything gets *into* a frame the shell cannot script.
 
@@ -31,7 +31,7 @@ component.
 
 **`design/target` decides what may be loaded at all**, and it is a security
 boundary rather than a convenience. See `normalize` and the `.localhost` rule in
-it — a page reaching HELVE's own commands is one bad hostname away without that
+it — a page reaching OpenKaava's own commands is one bad hostname away without that
 check, and the reason is a detail of Tauri's origin test rather than anything
 visible from here.
 
@@ -66,7 +66,7 @@ may reach a command by asking whether its origin is the app's own, and on
 Windows that test takes the first label of a `*.localhost` host and looks it up
 among the registered custom protocols (`tauri::webview`'s `is_local_url`). The
 port is not part of the test. So a page served from
-`http://helve-tool.localhost:5173` answers that question *yes* and is treated as
+`http://kaava-tool.localhost:5173` answers that question *yes* and is treated as
 local — with the full command surface behind it. Refusing the whole suffix is
 broader than the hole and much easier to keep true than a list of registered
 scheme names that grows.
@@ -117,7 +117,7 @@ carries the cluster a call came from, but nothing maps a cluster to an operating
 system window, and inventing that mapping is a change to the shell's own model
 rather than to this app. The frontend closes the gap from its side instead: it
 refuses to ask while `document.hasFocus()` is false, so the window being
-photographed is the window the click happened in. A second HELVE window holding
+photographed is the window the click happened in. A second OpenKaava window holding
 a second Design Mode while this one has focus is the case that would otherwise
 be answered with a picture of the wrong screen.
 

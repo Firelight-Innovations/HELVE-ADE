@@ -7,7 +7,7 @@
  * `reportPainted()` once it has, whether `forger/state` answered or failed.
  */
 import { useEffect, useState } from "react";
-import { reportPainted } from "@helve-ade/bridge";
+import { reportPainted } from "@openkaava/bridge";
 import { fetchState, reasonFor, type State } from "./rpc";
 
 export default function App() {

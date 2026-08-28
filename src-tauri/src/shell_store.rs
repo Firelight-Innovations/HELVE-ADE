@@ -2,7 +2,7 @@
 //!
 //! Restarting a machine should not cost you your workspace. This writes the shell's layout — every
 //! window, where it sits, the clusters it holds, the pane trees inside them, the tab order, what
-//! was focused — and reads it back at launch, so HELVE opens in the state it closed in.
+//! was focused — and reads it back at launch, so OpenKaava opens in the state it closed in.
 //!
 //! Second thing here to touch the disk, after `project::store`, and built to its same four rules:
 //!   * **Never fatal.** Every read degrades to `Stored::default()`. An unparseable layout costs
@@ -16,7 +16,7 @@
 //! Written on every mutation, from inside `ShellState::mutate`, and never on exit — not a
 //! preference but the only correct place. `WindowEvent::Destroyed` fires for *every* window when
 //! the app quits, so saving on the way out would save a state `reclaim` had already collapsed into
-//! one window: close HELVE with three windows, open with one, every time, and the bug looks like a
+//! one window: close OpenKaava with three windows, open with one, every time, and the bug looks like a
 //! serialization fault, not a lifecycle one. `project::store` writes inside every mutator too.
 
 use crate::shell_state::{
@@ -149,14 +149,14 @@ pub fn load(app: &AppHandle) -> Stored {
         Ok(raw) => raw,
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
     };
 
     let stored = serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::helve_log!("{} is not readable, starting fresh: {e}", path.display());
+        crate::kaava_log!("{} is not readable, starting fresh: {e}", path.display());
         Stored::default()
     });
 
@@ -169,7 +169,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -177,18 +177,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            crate::helve_log!("could not serialize the layout: {e}");
+            crate::kaava_log!("could not serialize the layout: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }
@@ -257,7 +257,7 @@ impl From<Rect> for WindowGeometry {
 /// The case that matters is the laptop: you arrange three windows across two
 /// monitors, undock, and launch. The second monitor's coordinates are still in
 /// the file and are now nowhere — restoring to them puts a window off-screen,
-/// with no title bar to drag it back by, which reads as HELVE simply failing to
+/// with no title bar to drag it back by, which reads as OpenKaava simply failing to
 /// start.
 ///
 /// The test is the window's *centre*, not its whole rectangle. A window

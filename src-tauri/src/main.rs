@@ -4,5 +4,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    helve_orchestrator_lib::run()
+    openkaava_orchestrator_lib::run()
 }

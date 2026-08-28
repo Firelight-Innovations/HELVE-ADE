@@ -1,18 +1,32 @@
 {
   "mcpServers": {
-    "helve-debug": {
+    "kaava-debug": {
       "headers": {
-        "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
+        "Authorization": "Bearer ${KAAVA_MCP_TOKEN}"
       },
       "type": "http",
-      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/debug"
+      "url": "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/debug"
     },
-    "helve-echo": {
+    "kaava-echo": {
       "headers": {
-        "Authorization": "Bearer ${HELVE_MCP_TOKEN}"
+        "Authorization": "Bearer ${KAAVA_MCP_TOKEN}"
       },
       "type": "http",
-      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/echo"
+      "url": "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/echo"
+    },
+    "kaava-debug": {
+      "headers": {
+        "Authorization": "Bearer ${KAAVA_MCP_TOKEN}"
+      },
+      "type": "http",
+      "url": "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/debug"
+    },
+    "kaava-echo": {
+      "headers": {
+        "Authorization": "Bearer ${KAAVA_MCP_TOKEN}"
+      },
+      "type": "http",
+      "url": "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/echo"
     }
   }
 }

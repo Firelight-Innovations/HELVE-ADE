@@ -1,6 +1,6 @@
 //! What a launch was asked to open, and how a second launch reaches the first.
 //!
-//! Explorer's context menu is the only caller that matters: "Open with HELVE"
+//! Explorer's context menu is the only caller that matters: "Open with OpenKaava"
 //! runs this binary with one path as its argument. `installer-hooks.nsh` writes
 //! the registry entries that put it there.
 //!
@@ -25,7 +25,7 @@ use crate::shell_state::ShellState;
 use crate::sync::MutexExt;
 
 /// The event a target is delivered on when a window is already listening.
-pub const LAUNCH_TARGET_EVENT: &str = "helve://launch-target";
+pub const LAUNCH_TARGET_EVENT: &str = "kaava://launch-target";
 
 /// What the shell should do about a path it was handed.
 ///
@@ -143,13 +143,13 @@ pub fn apply(app: &AppHandle, target: Target) {
         match app.state::<ShellState>().active_cluster_of("main") {
             Some(cluster_id) => {
                 if let Err(e) = crate::project::open(app, Path::new(&folder), &cluster_id) {
-                    crate::helve_log!("could not open `{folder}` as a project: {e}");
+                    crate::kaava_log!("could not open `{folder}` as a project: {e}");
                 }
             }
             // No cluster yet means no window is showing work, which is not a
             // state a launch can create. Reported rather than ignored, because
             // reaching it means something above this changed.
-            None => crate::helve_log!("no cluster to open `{folder}` into"),
+            None => crate::kaava_log!("no cluster to open `{folder}` into"),
         }
     }
 
@@ -193,35 +193,39 @@ mod tests {
 
     #[test]
     fn takes_the_first_non_flag_argument() {
-        let args = ["helve.exe", "C:\\code\\game"];
+        let args = ["openkaava-orchestrator.exe", "C:\\code\\game"];
         assert_eq!(first_path_arg(args), Some(PathBuf::from("C:\\code\\game")));
     }
 
     #[test]
     fn ignores_argv_zero_even_when_it_is_the_only_thing_there() {
-        assert_eq!(first_path_arg(["helve.exe"]), None);
+        assert_eq!(first_path_arg(["openkaava-orchestrator.exe"]), None);
     }
 
     /// The webview adds switches of its own on some launches, and one arriving
     /// where a path was expected must not open a project named after a flag.
     #[test]
     fn skips_switches() {
-        let args = ["helve.exe", "--disable-gpu", "C:\\code\\game"];
+        let args = [
+            "openkaava-orchestrator.exe",
+            "--disable-gpu",
+            "C:\\code\\game",
+        ];
         assert_eq!(first_path_arg(args), Some(PathBuf::from("C:\\code\\game")));
     }
 
     #[test]
     fn skips_empty_arguments() {
-        let args = ["helve.exe", "", "C:\\x"];
+        let args = ["openkaava-orchestrator.exe", "", "C:\\x"];
         assert_eq!(first_path_arg(args), Some(PathBuf::from("C:\\x")));
     }
 
     #[test]
     fn a_directory_becomes_a_project() {
-        let dir = std::env::temp_dir().join("helve-launch-dir-test");
+        let dir = std::env::temp_dir().join("kaava-launch-dir-test");
         let _ = std::fs::create_dir_all(&dir);
         match classify(&dir) {
-            Some(Target::Project { path }) => assert!(path.ends_with("helve-launch-dir-test")),
+            Some(Target::Project { path }) => assert!(path.ends_with("kaava-launch-dir-test")),
             other => panic!("expected a project target, got {other:?}"),
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -229,14 +233,14 @@ mod tests {
 
     #[test]
     fn a_file_becomes_a_file_target_carrying_its_folder() {
-        let dir = std::env::temp_dir().join("helve-launch-file-test");
+        let dir = std::env::temp_dir().join("kaava-launch-file-test");
         let _ = std::fs::create_dir_all(&dir);
         let file = dir.join("notes.md");
         let _ = std::fs::write(&file, b"x");
         match classify(&file) {
             Some(Target::File { path, parent }) => {
                 assert!(path.ends_with("notes.md"));
-                assert!(parent.is_some_and(|p| p.ends_with("helve-launch-file-test")));
+                assert!(parent.is_some_and(|p| p.ends_with("kaava-launch-file-test")));
             }
             other => panic!("expected a file target, got {other:?}"),
         }
@@ -247,7 +251,7 @@ mod tests {
     /// frontend has to know to throw away.
     #[test]
     fn a_path_that_is_neither_produces_nothing() {
-        let missing = std::env::temp_dir().join("helve-launch-does-not-exist-9f3a");
+        let missing = std::env::temp_dir().join("kaava-launch-does-not-exist-9f3a");
         assert_eq!(classify(&missing), None);
     }
 

@@ -259,7 +259,7 @@ function formatSize(bytes: number): string {
 }
 
 /** A plain `{ code, message, data? }` rejection — what `callApp` throws. Not a
- *  `HelveRpcError`: that class belongs to `@helve-ade/bridge`'s `invoke`, used by
+ *  `KaavaRpcError`: that class belongs to `@openkaava/bridge`'s `invoke`, used by
  *  an app's own iframe-side RPC channel. `callApp` forwards Tauri's raw
  *  `app_call` rejection straight through instead (see `ToolWindow.tsx`'s note
  *  by its own `callApp` call), which arrives as plain deserialized JSON. */

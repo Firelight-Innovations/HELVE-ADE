@@ -1,4 +1,4 @@
-/** The whole HELVE window, five bands stacked and each one named — the picture
+/** The whole OpenKaava window, five bands stacked and each one named — the picture
  *  `theWindow.ts` is a transcript of. Its own six-menu list is repeated here
  *  rather than imported from `titleBar.tsx`, the same way that file states its
  *  own — two small arrays are cheaper than a cross-mock import for a picture. */

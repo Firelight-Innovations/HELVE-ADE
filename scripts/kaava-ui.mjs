@@ -1,5 +1,5 @@
 /**
- * An agent-owned HELVE, started and ready to be driven.
+ * An agent-owned OpenKaava, started and ready to be driven.
  *
  * Usage:
  *   pnpm ui:build     build it, once (a release build, several minutes)
@@ -13,7 +13,7 @@
  *
  * This used to open a WebView2 debug port and implement snapshot, click and type
  * out here. All of that is `src-tauri/src/mcp/servers/ui.rs` now. What is left is
- * the one thing a server inside HELVE cannot do for itself: exist.
+ * the one thing a server inside OpenKaava cannot do for itself: exist.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -30,14 +30,14 @@ import { spawn } from "node:child_process";
  * from the same field, so this one override buys both a second process and a
  * private `%APPDATA%` tree.
  */
-const IDENTIFIER = "com.firelightinnovations.helve.agent";
+const IDENTIFIER = "com.firelightinnovations.openkaava.agent";
 
 /** The built binary, honouring `CARGO_TARGET_DIR` if the worktree shares one. */
 const TARGET_DIR = process.env.CARGO_TARGET_DIR ?? join(process.cwd(), "target");
-const EXE = join(TARGET_DIR, "release", "helve-orchestrator.exe");
+const EXE = join(TARGET_DIR, "release", "openkaava-orchestrator.exe");
 
 function note(message) {
-  process.stderr.write(`helve-ui: ${message}\n`);
+  process.stderr.write(`kaava-ui: ${message}\n`);
 }
 
 function die(message) {
@@ -52,7 +52,7 @@ function configDir() {
   return join(roaming, IDENTIFIER);
 }
 
-/** One of HELVE's config files, or `{}` if it has not written one yet. */
+/** One of OpenKaava's config files, or `{}` if it has not written one yet. */
 function read(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -66,11 +66,11 @@ function read(path) {
  *
  * Written rather than clicked, because of a chicken and egg: the server is what
  * an agent would use to click the switch, and the switch is what turns the
- * server on. Both files are HELVE's own, in the format it writes them, and both
- * are merged rather than replaced so a second `launch` keeps whatever the
+ * server on. Both files are OpenKaava's own, in the format it writes them, and
+ * both are merged rather than replaced so a second `launch` keeps whatever the
  * instance has learned since the first.
  *
- * This touches the agent identifier's directory and nothing else. A HELVE
+ * This touches the agent identifier's directory and nothing else. An OpenKaava
  * somebody started keeps its settings in a different folder under a different
  * identifier, and nothing here can reach them.
  */
@@ -96,7 +96,7 @@ function launch() {
     return die(
       `no binary at ${EXE}.\n` +
         "           Build one with `pnpm ui:build`, which sets the agent identifier so this\n" +
-        "           instance can run beside a HELVE you started yourself.",
+        "           instance can run beside an OpenKaava you started yourself.",
     );
   }
 
@@ -112,8 +112,8 @@ function launch() {
 /**
  * Stop the agent instance, by pid.
  *
- * By pid and not by image name, which is what this used to do: the user's HELVE
- * runs from a binary with the same name, and `taskkill /IM` would have taken it
+ * By pid and not by image name, which is what this used to do: the user's
+ * OpenKaava runs from a binary with the same name, and `taskkill /IM` would have taken it
  * down alongside. The pid comes from the endpoint file the instance itself
  * wrote, which is per-identifier and therefore already the right process.
  */
@@ -130,14 +130,14 @@ async function close() {
   }
 }
 
-const HELP = `helve-ui — an agent-owned HELVE to drive
+const HELP = `kaava-ui — an agent-owned OpenKaava to drive
 
   launch    start one, with developer mode and the UI server switched on
-  close     stop it, by pid, leaving anyone else's HELVE alone
+  close     stop it, by pid, leaving anyone else's OpenKaava alone
 
 Driving it is \`pnpm probe --agent --server ui <tool>\`:
 
-  screenshot                          a PNG, written to helve-shot.png
+  screenshot                          a PNG, written to kaava-shot.png
   snapshot                            what can be clicked, with refs
   click '{"target":"e12"}'
   type_text '{"text":"hello"}'

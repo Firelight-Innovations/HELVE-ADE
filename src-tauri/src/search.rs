@@ -135,7 +135,7 @@ fn mb_to_bytes(mb: i64) -> u64 {
 /// already started and this one has nothing left to contribute, so it stops rather than spending
 /// more of the blocking thread pool on a result nobody will read.
 ///
-/// This is coarser than per-search cancellation would be — a search anywhere in HELVE invalidates
+/// This is coarser than per-search cancellation would be — a search anywhere in OpenKaava invalidates
 /// a search anywhere else — but the search overlay is a single session shared by one window
 /// (`useSearchSession.ts`), so "newest search wins" is already the exact rule the frontend enforces
 /// with its own `AbortController`. One counter mirrors it without inventing a second cancellation
@@ -170,7 +170,7 @@ impl SearchState {
 /// Why this is `async` and hops to a worker: a `#[tauri::command]` that is a plain synchronous
 /// function runs on the **main thread** — the same one driving every window's UI.
 /// `commands::app_call`'s doc comment lays out the failure mode this avoids: a filesystem walk of
-/// any real size would freeze every HELVE window for as long as it took.
+/// any real size would freeze every OpenKaava window for as long as it took.
 /// `tauri::async_runtime::spawn_blocking` moves the walk to a worker thread and this command
 /// `.await`s it, the same shape `app_call` already uses for exactly this reason.
 ///
@@ -277,7 +277,7 @@ fn walk(
         .build();
 
     let walker = WalkBuilder::new(root)
-        // Dotfiles are ordinary search targets here — `.env`, `.github/`, HELVE's own `.helve/` —
+        // Dotfiles are ordinary search targets here — `.env`, `.github/`, OpenKaava's own `.kaava/` —
         // unlike ripgrep's default, which is tuned for a terminal user who types `--hidden` when
         // they want them. A GUI search box has no equivalent flag, so this always includes them.
         .hidden(false)

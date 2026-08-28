@@ -259,7 +259,7 @@ function resolve(payload: DragPayload, x: number, y: number): DropTarget {
  */
 function attempt(what: string, work: Promise<unknown>): void {
   void work.catch((e: unknown) => {
-    console.error(`helve: ${what} failed`, e);
+    console.error(`kaava: ${what} failed`, e);
   });
 }
 
@@ -337,7 +337,7 @@ function commit(
       // returns window-local coordinates; that is the follow-up.
       //
       // The call is still made, because it is the only way to distinguish "over
-      // no HELVE window" from "over one, outside its targets" in the log when
+      // no OpenKaava window" from "over one, outside its targets" in the log when
       // this behaviour is revisited.
       attempt(
         `detaching ${payload.instanceId} into a window of its own`,
@@ -375,11 +375,11 @@ function commitCluster(payload: ClusterDrag, target: DropTarget, label: string):
     // find out from the outside which of them had declined. `debug` rather than
     // `warn`: declining is correct here, and it should not read as a fault in a
     // console someone is using for something else.
-    console.debug(`helve: cluster ${payload.clusterId} released over ${target.kind}, staying put`);
+    console.debug(`kaava: cluster ${payload.clusterId} released over ${target.kind}, staying put`);
     return;
   }
 
-  // **Over another HELVE window** — the cluster moves into it. This is built
+  // **Over another OpenKaava window** — the cluster moves into it. This is built
   // here where the same drop for a single tab was deliberately not, and the
   // difference is real rather than an inconsistency somebody forgot to fix. A
   // tab needs a *pane* to land in, and `window_at_cursor` returns a label — it

@@ -1,13 +1,13 @@
-//! What a HELVE project is, and which one is open.
+//! What an OpenKaava project is, and which one is open.
 //!
 //! A project is **a folder** — chosen, not defaulted to: a game is already a
 //! tree of files a person moves, copies and version-controls, and any other
 //! definition owes an answer for what happens when the folder moves without it.
 //!
-//! A folder becomes a *HELVE* project when it holds a `<name>.helve` manifest —
-//! see [`marker`] for why that name and not `.helve`. An un-marked folder still
-//! opens, so HELVE can be pointed at a game that exists today, before the
-//! format is finished, and "what happens when the `.helve` format changes" is
+//! A folder becomes an *OpenKaava* project when it holds a `<name>.kaava` manifest —
+//! see [`marker`] for why that name and not `.kaava`. An un-marked folder still
+//! opens, so OpenKaava can be pointed at a game that exists today, before the
+//! format is finished, and "what happens when the `.kaava` format changes" is
 //! never answered with "it stops opening"; [`ProjectInfo::initialized`] tells
 //! the two apart, so the frontend can offer to set one up rather than refuse it.
 //!
@@ -20,7 +20,7 @@
 mod marker;
 mod store;
 
-/// Re-exported because `.helve` is a wire format rather than a name (STANDARDS.md §7), so the one
+/// Re-exported because `.kaava` is a wire format rather than a name (STANDARDS.md §7), so the one
 /// literal belongs in one place. `review::store` writes inside this directory and would otherwise
 /// hold a second copy of the string to drift from this one.
 pub use marker::TRACE_DIR;
@@ -57,17 +57,17 @@ pub struct ProjectInfo {
     /// Here because it is the only handle that survives a rename or a move, and
     /// the first thing anything cross-referencing projects will want.
     pub id: Option<String>,
-    /// Whether a `<name>.helve` manifest was found. `false` is a plain folder
-    /// HELVE has been pointed at — openable, and offered a setup.
+    /// Whether a `<name>.kaava` manifest was found. `false` is a plain folder
+    /// OpenKaava has been pointed at — openable, and offered a setup.
     pub initialized: bool,
     /// Whether the folder is still on disk. A recent entry can outlive the
     /// project it names — a moved folder, an unplugged drive — and a row that
     /// silently failed on click would be worse than one drawn as unavailable.
     pub exists: bool,
     /// The manifest's `format`. Greater than [`marker::FORMAT`] means a newer
-    /// HELVE wrote it and this build is reading it partially.
+    /// OpenKaava wrote it and this build is reading it partially.
     pub format: Option<i64>,
-    /// Milliseconds since the Unix epoch, when HELVE last opened it. `None` for
+    /// Milliseconds since the Unix epoch, when OpenKaava last opened it. `None` for
     /// a project opened for the first time this session.
     pub last_opened: Option<u64>,
     /// The folder's own mtime, in the same units. What *the work* last changed,
@@ -278,7 +278,7 @@ pub fn open(app: &AppHandle, path: &Path, cluster_id: &str) -> Result<ProjectSna
     Ok(changed(app, cluster_id))
 }
 
-/// Make `dir` a HELVE project and open it in `cluster_id`.
+/// Make `dir` an OpenKaava project and open it in `cluster_id`.
 ///
 /// The project's name is the folder's, which is why this takes no name
 /// argument: the native folder picker already names a folder, and a second name
@@ -295,7 +295,7 @@ pub fn create(app: &AppHandle, dir: &Path, cluster_id: &str) -> Result<ProjectSn
 }
 
 /// Write a manifest into a folder that is already open without one — the "set
-/// this up as a HELVE project" action.
+/// this up as an OpenKaava project" action.
 ///
 /// Separate from [`create`] despite doing nearly the same thing, because the two
 /// answer differently when the folder is already a project: creating over one is
@@ -327,7 +327,7 @@ pub fn close(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
 }
 
 /// Drop one entry from the Recent list. Deletes nothing on disk — this is the
-/// history forgetting a project, not HELVE removing one.
+/// history forgetting a project, not OpenKaava removing one.
 ///
 /// The Recent list is global, so this is too: forgetting forgets everywhere,
 /// whichever cluster asked. `cluster_id` is only here so the snapshot handed
@@ -381,7 +381,7 @@ fn changed(app: &AppHandle, cluster_id: &str) -> ProjectSnapshot {
 ///
 /// Every field but the cached name is read fresh on each call rather than
 /// stored: a project can be initialized, renamed, or deleted by something that
-/// is not HELVE, and a Recent list reporting its own last belief instead of the
+/// is not OpenKaava, and a Recent list reporting its own last belief instead of the
 /// disk's would be confidently wrong in exactly the cases that matter.
 fn describe(path: &Path, cached_name: Option<&str>, last_opened: Option<u64>) -> ProjectInfo {
     let exists = path.is_dir();

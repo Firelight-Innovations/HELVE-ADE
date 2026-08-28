@@ -1,7 +1,7 @@
-# Developing HELVE
+# Developing OpenKaava
 
 This section is for someone working on the orchestrator's code, not someone
-running the app. If you want to use HELVE instead, see
+running the app. If you want to use OpenKaava instead, see
 [the user docs](../user/README.md).
 
 The prose these pages are built from already lives in this repository, close
@@ -40,7 +40,7 @@ who has never seen the repo.
   that a row writing a value nothing reads is worse than no row at all.
 - **[The Files app's methods](../files-app-methods.md)** — the RPC surface a
   frontend, or an agent, uses to browse, edit and delete files.
-- **[The MCP server manager](../mcp-server-manager.md)** — how HELVE hosts
+- **[The MCP server manager](../mcp-server-manager.md)** — how OpenKaava hosts
   MCP servers for a coding agent, and the rule that decides what earns one.
 - **[Tutorials](../tutorials.md)** — how the in-app Tutorials feature itself
   is built, if you're adding or editing one. (Not to be confused with the

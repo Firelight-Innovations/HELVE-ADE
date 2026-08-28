@@ -1,8 +1,8 @@
 //! Installed plugins: what is on this machine, and what each one can show.
 //!
-//! A **plugin** is a checkout carrying a `helve-tool.toml`. One of them is a
+//! A **plugin** is a checkout carrying a `kaava-tool.toml`. One of them is a
 //! *package* holding zero or more *surfaces*, and a surface is the thing that
-//! reaches the switcher bar — `crates/helve-tool-manifest` is the format and
+//! reaches the switcher bar — `crates/kaava-tool-manifest` is the format and
 //! `docs/tool-protocol.md` §1 is the spec.
 //!
 //! Deliberately not `discovery.rs`, and the manifest behind a record is re-read
@@ -20,7 +20,7 @@ pub use broker::Broker;
 pub use watch::Watchers;
 
 use crate::sync::MutexExt;
-use helve_tool_manifest::{ManifestError, Presentation, ToolManifest};
+use kaava_tool_manifest::{ManifestError, Presentation, ToolManifest};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -53,7 +53,7 @@ pub const CHANGED_EVENT: &str = "plugins:changed";
 /// An app cannot reach the shell's React tree — it is an iframe on another
 /// origin — so "show me the library" travels the only way it can: the app calls
 /// its own Rust half, which emits this, and `App.tsx` opens the screen. The
-/// same shape `helve/open` uses, and for the same reason.
+/// same shape `kaava/open` uses, and for the same reason.
 pub const LIBRARY_OPEN_EVENT: &str = "library:open";
 
 pub const ADDRESS_SEPARATOR: char = '.';
@@ -106,7 +106,7 @@ impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Missing(path) => write!(f, "nothing at {}", path.display()),
-            Self::Manifest(err) => write!(f, "helve-tool.toml: {err}"),
+            Self::Manifest(err) => write!(f, "kaava-tool.toml: {err}"),
         }
     }
 }
@@ -246,7 +246,7 @@ pub fn resolve_enabled(registry: &Registry) -> Vec<ResolvedPlugin> {
 ///
 /// Paired with the record so a caller can name the plugin that failed — a
 /// [`ResolveError`] on its own cannot say which install it came from, and
-/// "helve-tool.toml: missing field `id`" with no plugin attached is a message
+/// "kaava-tool.toml: missing field `id`" with no plugin attached is a message
 /// nobody can act on.
 pub fn resolve_all(registry: &Registry) -> Vec<(Record, Result<ResolvedPlugin, ResolveError>)> {
     registry
@@ -384,7 +384,7 @@ pub fn set_enabled(app: &AppHandle, id: &str, enabled: bool) -> bool {
 /// folder rather than as an error about them.
 #[derive(Debug)]
 pub enum InstallError {
-    /// No `helve-tool.toml`, or one that does not parse.
+    /// No `kaava-tool.toml`, or one that does not parse.
     NotAPlugin(ManifestError),
     /// A package with this id is already installed, from somewhere else.
     AlreadyInstalled { id: String, at: PathBuf },
@@ -408,7 +408,7 @@ impl std::fmt::Display for InstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotAPlugin(err) => {
-                write!(f, "this folder is not a plugin — helve-tool.toml: {err}")
+                write!(f, "this folder is not a plugin — kaava-tool.toml: {err}")
             }
             Self::AlreadyInstalled { id, at } => write!(
                 f,
@@ -493,7 +493,7 @@ pub fn uninstall(app: &AppHandle, id: &str) -> bool {
                 // Not fatal, and deliberately not a failed uninstall: the
                 // record is gone, which is what was asked for. A directory left
                 // behind is untidy, not broken.
-                eprintln!("helve: could not delete {}: {e}", directory.display());
+                eprintln!("kaava: could not delete {}: {e}", directory.display());
             }
         }
         changed(app);
@@ -531,7 +531,7 @@ fn changed(app: &AppHandle) {
     app.state::<Watchers>().sync(app);
 
     if let Err(e) = app.emit(CHANGED_EVENT, ()) {
-        eprintln!("helve: could not announce the plugin change: {e}");
+        eprintln!("kaava: could not announce the plugin change: {e}");
     }
 }
 
@@ -560,7 +560,7 @@ mod tests {
 
     /// The separator cannot appear in either half, so a package called
     /// `a` with a surface `b.c` is unrepresentable — which is why
-    /// `helve-tool-manifest` validates both ids and this only has to split once.
+    /// `kaava-tool-manifest` validates both ids and this only has to split once.
     #[test]
     fn the_separator_is_outside_the_id_alphabet() {
         assert!(!ADDRESS_SEPARATOR.is_ascii_lowercase());

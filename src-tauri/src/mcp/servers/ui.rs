@@ -1,11 +1,11 @@
 //! Seeing and driving the running interface, for the agent working on it.
 //!
-//! The debug server next door answers what HELVE *believes* — its layout tree,
+//! The debug server next door answers what OpenKaava *believes* — its layout tree,
 //! its failures, how boot went. This one answers what is actually on screen, and
 //! can act on it: a screenshot, a list of what can be clicked, and real mouse
 //! and keyboard input into the window.
 //!
-//! **This is the one server that writes.** Everything else HELVE hosts is a
+//! **This is the one server that writes.** Everything else OpenKaava hosts is a
 //! read, deliberately, so that a leaked token costs knowledge and not control.
 //! A tool that clicks cannot be that, which is why this server is `dev_only`,
 //! starts switched off even once developer mode reveals it, and says so on the
@@ -16,7 +16,7 @@
 
 use crate::devtools;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
-use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
+use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
@@ -205,7 +205,7 @@ fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer
         "press_key" => press_key(app, window, required(&params, "key")?).map(Into::into),
         "eval" => evaluate(app, window, required(&params, "expression")?).map(Into::into),
         other => Err(RpcError::new(
-            helve_rpc::METHOD_NOT_FOUND,
+            kaava_rpc::METHOD_NOT_FOUND,
             format!("the UI server has no tool named `{other}`"),
         )),
     }
@@ -281,7 +281,7 @@ fn click(app: &AppHandle, window: Option<&str>, target: &str) -> Result<Value, R
     };
 
     // Move, press, release. `el.click()` would be one call instead of three and
-    // would skip both the pointer events HELVE's menus and drag handles listen
+    // would skip both the pointer events OpenKaava's menus and drag handles listen
     // for and the focus change a real press causes.
     protocol(
         app,
@@ -506,7 +506,7 @@ for (const { doc, dx, dy } of docs()) {
     refs.push(el);
   }
 }
-window.__helveDebugRefs = refs;
+window.__kaavaDebugRefs = refs;
 return JSON.stringify(rows);
 "#;
 
@@ -514,7 +514,7 @@ return JSON.stringify(rows);
 /// position is read — a click at the coordinates of something off screen lands
 /// on whatever is there instead.
 const LOCATE_BODY: &str = r#"
-const kept = window.__helveDebugRefs || [];
+const kept = window.__kaavaDebugRefs || [];
 let el = /^e\d+$/.test(argument) ? kept[Number(argument.slice(1))] : null;
 let dx = 0, dy = 0;
 if (el) {
@@ -646,7 +646,7 @@ mod tests {
             !js.contains("; alert(1); //']\n"),
             "the argument escaped its literal"
         );
-        assert!(js.contains("window.__helveDebugRefs"));
+        assert!(js.contains("window.__kaavaDebugRefs"));
     }
 
     /// `null` is what "no selector" becomes, and the body has to read it as

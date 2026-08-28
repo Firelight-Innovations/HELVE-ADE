@@ -2,13 +2,13 @@
 
 Two audiences, two sections.
 
-## [Using HELVE](user/README.md)
+## [Using OpenKaava](user/README.md)
 
-For someone who wants to run HELVE and learn their way around it. Includes
+For someone who wants to run OpenKaava and learn their way around it. Includes
 [the tutorials](user/tutorials/README.md) — the same ten pages the Tutorials
-app inside HELVE shows you.
+app inside OpenKaava shows you.
 
-## [Developing HELVE](dev/README.md)
+## [Developing OpenKaava](dev/README.md)
 
 For someone working on the orchestrator's own code: how to open a pull
 request, how the project is laid out and why, and what is and is not built

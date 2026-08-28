@@ -13,7 +13,7 @@
 //! copy.
 
 use crate::apps::CallContext;
-use helve_rpc::{RpcError, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 

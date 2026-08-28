@@ -8,7 +8,7 @@
 
 use super::remote::{self, RemoteError, Repo};
 use super::{store, InstallError, Registry, ResolvedPlugin};
-use helve_tool_manifest::ToolManifest;
+use kaava_tool_manifest::ToolManifest;
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const PROGRESS_EVENT: &str = "plugins:install-progress";
 
 /// Where the OS credential store keeps the GitHub token.
-const KEYRING_SERVICE: &str = "com.firelightinnovations.helve";
+const KEYRING_SERVICE: &str = "com.firelightinnovations.openkaava";
 const KEYRING_ACCOUNT: &str = "github-token";
 
 /// How far along one install is.
@@ -300,7 +300,7 @@ fn run(
 /// release yet, and neither is the user's problem. The app stays listed in the
 /// library as something they can install by hand, which is the same place a
 /// successful skip would leave them. Greeting somebody with two red failures
-/// because they opened HELVE on a plane is a worse first impression than
+/// because they opened OpenKaava on a plane is a worse first impression than
 /// starting with fewer apps.
 pub fn seed_defaults(app: &AppHandle) {
     if store::exists(app) {
@@ -324,11 +324,11 @@ pub fn seed_defaults(app: &AppHandle) {
             match from_repo(&handle, &repo, Some(&id), private) {
                 Ok(resolved) => {
                     println!(
-                        "helve: installed {} {} by default",
+                        "kaava: installed {} {} by default",
                         resolved.id, resolved.version
                     )
                 }
-                Err(err) => eprintln!("helve: skipped the default app `{id}`: {err}"),
+                Err(err) => eprintln!("kaava: skipped the default app `{id}`: {err}"),
             }
         }
     });
@@ -364,14 +364,14 @@ mod tests {
     #[test]
     fn sanitize_leaves_a_valid_package_id_alone() {
         assert_eq!(sanitize("forger"), "forger");
-        assert_eq!(sanitize("helve-forger"), "helve-forger");
+        assert_eq!(sanitize("kaava-forger"), "kaava-forger");
     }
 
     #[test]
     fn sanitize_flattens_a_slug_into_one_segment() {
         assert_eq!(
-            sanitize("Firelight-Innovations/HELVE-Forger"),
-            "Firelight-Innovations-HELVE-Forger"
+            sanitize("Firelight-Innovations/OpenKaava-Forger"),
+            "Firelight-Innovations-OpenKaava-Forger"
         );
         assert!(!sanitize("../../etc").contains('.'));
         assert!(!sanitize("a/b").contains('/'));

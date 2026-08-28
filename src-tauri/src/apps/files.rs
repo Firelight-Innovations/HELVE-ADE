@@ -3,7 +3,7 @@
 //!
 //! There is deliberately no sandbox here. A tool is third-party code and its
 //! manifest paths are validated as a security boundary (see
-//! `helve-tool-manifest`), but an app is this repository's own code running in
+//! `kaava-tool-manifest`), but an app is this repository's own code running in
 //! the orchestrator's own process, next to a module that spawns real shells with
 //! the user's full privileges. A path check here would look like a boundary
 //! while defending nothing, which is worse than not having one. `files/write`
@@ -17,7 +17,7 @@ use crate::apps::CallContext;
 use crate::state::AppState;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -740,7 +740,7 @@ fn temp_sibling(path: &Path) -> Result<PathBuf, RpcError> {
     };
 
     let mut name = name.to_os_string();
-    name.push(".helve-tmp");
+    name.push(".kaava-tmp");
     Ok(path.with_file_name(name))
 }
 
@@ -1132,7 +1132,7 @@ fn copy_children(from: &Path, to: &Path) -> std::io::Result<()> {
 /// neither. Everything else about it follows that file too — it must not run on
 /// the main thread (`commands::app_call` moves every app call to a blocking
 /// worker, which is what makes this safe), and it sets a parent so the dialog is
-/// modal to HELVE instead of a second top-level window that can fall behind it.
+/// modal to OpenKaava instead of a second top-level window that can fall behind it.
 ///
 /// **Cancelling is not an error.** It returns `null`, the same way Home's
 /// pickers return the unchanged snapshot — a JSON-RPC error would make the
@@ -1295,7 +1295,7 @@ fn tree_size_at(path: &Path) -> Value {
 /// Whether two paths are the same entry on disk, rather than merely different.
 ///
 /// This exists for one case, and it is a case that would otherwise be a bug on
-/// the platform HELVE runs on: **changing only the capitalisation of a name**.
+/// the platform OpenKaava runs on: **changing only the capitalisation of a name**.
 /// Windows filesystems are case-insensitive, so `Notes.md` and `notes.md` are
 /// the same file — `target.exists()` is therefore `true` when renaming one to
 /// the other, and a plain existence check would refuse a rename that is both
@@ -1343,7 +1343,7 @@ const RESERVED_STEMS: &[&str] = &[
 /// `notes.` becomes `notes`, and the tree would come back showing a file the
 /// user did not ask for with no error anywhere.
 ///
-/// Written for Windows because that is what HELVE runs on, and applied
+/// Written for Windows because that is what OpenKaava runs on, and applied
 /// everywhere rather than behind a `cfg`: the rules are a strict superset of
 /// what POSIX refuses, and a project that syncs between the two is better served
 /// by names that work in both than by names that work here.
@@ -1653,7 +1653,7 @@ mod tests {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or_default();
-            let dir = std::env::temp_dir().join(format!("helve-files-{tag}-{stamp}"));
+            let dir = std::env::temp_dir().join(format!("kaava-files-{tag}-{stamp}"));
             std::fs::create_dir_all(&dir).expect("temp dir");
             Self(dir)
         }
@@ -1738,7 +1738,7 @@ mod tests {
     }
 
     /// The temp file is a sibling and it does not survive the write — a stray
-    /// `main.rs.helve-tmp` in a source tree would end up in someone's commit.
+    /// `main.rs.kaava-tmp` in a source tree would end up in someone's commit.
     #[test]
     fn the_write_leaves_no_temp_file_behind() {
         let dir = TempDir::new("tmp");
@@ -2012,10 +2012,10 @@ mod tests {
         let dir = TempDir::new("dotfile");
 
         create_at(&dir.0, ".gitignore", NewEntry::File).expect("a leading dot is a name");
-        create_at(&dir.0, ".helve", NewEntry::Dir).expect("and so is HELVE's own folder");
+        create_at(&dir.0, ".kaava", NewEntry::Dir).expect("and so is OpenKaava's own folder");
 
         assert!(dir.0.join(".gitignore").is_file());
-        assert!(dir.0.join(".helve").is_dir());
+        assert!(dir.0.join(".kaava").is_dir());
     }
 
     #[test]

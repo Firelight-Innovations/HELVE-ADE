@@ -1,7 +1,7 @@
 [package]
-name = "helve-orchestrator"
+name = "openkaava-orchestrator"
 version.workspace = true
-description = "Entry point for the Helve stack — loads and orchestrates the dev tools"
+description = "Entry point for the OpenKaava stack — loads and orchestrates the dev tools"
 authors = ["Firelight Innovations"]
 edition = "2021"
 
@@ -20,7 +20,7 @@ workspace = true
 # suffix. `main.rs` is a thin shim that calls into this library, which also lets
 # integration tests and the mobile entry point reach the same code.
 # See https://github.com/rust-lang/cargo/issues/8519
-name = "helve_orchestrator_lib"
+name = "openkaava_orchestrator_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -30,8 +30,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 
-# One HELVE process per machine, and the reason is Explorer's context menu.
-# "Open with HELVE" on a folder launches this binary again, and a second
+# One OpenKaava process per machine, and the reason is Explorer's context menu.
+# "Open with OpenKaava" on a folder launches this binary again, and a second
 # process would hold its own ShellState and write its own layout.json and
 # projects.json over the first one's. This plugin hands the argv of the second
 # launch to the process already running and exits it, so the context menu
@@ -69,17 +69,17 @@ tauri-plugin-updater = "2"
 # Linux portal and async-runtime plumbing this uses none of.
 rfd = { version = "0.16", default-features = false }
 
-# Reading `helve-tool.toml` out of a tool's checkout — where its frontend's dev
+# Reading `kaava-tool.toml` out of a tool's checkout — where its frontend's dev
 # URL and built `dist` directory are declared. Shared with every tool repo, so
 # the orchestrator and the tools cannot disagree about the manifest's shape.
-helve-tool-manifest = { path = "../crates/helve-tool-manifest" }
+kaava-tool-manifest = { path = "../crates/kaava-tool-manifest" }
 
 # The wire types of transport A. The orchestrator is not spawning tool cores yet,
 # but `RpcError` is already the error shape a frontend receives: an app's Rust
 # half (`src/apps/`) fails with one, and it crosses to the iframe unchanged. Two
 # error vocabularies for one `invoke` — one for apps, one for tools — is exactly
 # the drift this crate exists to prevent.
-helve-rpc = { path = "../crates/helve-rpc" }
+kaava-rpc = { path = "../crates/kaava-rpc" }
 
 # `files/read-bytes` has to hand bytes to the frontend through a JSON value,
 # which has no byte variant — see the doc on that method for why the answer is
@@ -117,7 +117,7 @@ grep-searcher = "0.1"
 # named directly here because this crate calls its `escape` function itself.
 regex-syntax = "0.8"
 
-# The Model Context Protocol, for the servers HELVE hosts for whatever coding
+# The Model Context Protocol, for the servers OpenKaava hosts for whatever coding
 # agent the user is running in a terminal. See `src/mcp/` and
 # `docs/mcp-server-manager.md`.
 #
@@ -231,7 +231,7 @@ keyring = { version = "3", features = ["windows-native"] }
 # is named here is only that this crate calls them itself.
 #
 # The alternative was a debug port and a second process, which is what the
-# earlier `scripts/helve-ui.mjs` did. `CallDevToolsProtocolMethod` is the same
+# earlier `scripts/kaava-ui.mjs` did. `CallDevToolsProtocolMethod` is the same
 # protocol over the COM interface Tauri already holds, so there is no socket, no
 # environment variable read at launch, and nothing an agent could point at a
 # build somebody is using.

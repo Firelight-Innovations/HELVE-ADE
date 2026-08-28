@@ -1,7 +1,7 @@
 //! Forger's Rust half — technical design software, specced out but not built.
 //!
 //! Forger was going to be a separate repository, installed as a tool the way
-//! `helve.toml` names one. That plan is reversed: what it will show — the open
+//! `kaava.toml` names one. That plan is reversed: what it will show — the open
 //! project, the stack this orchestrator already resolved — is exactly the kind
 //! of thing `apps/README.md` says belongs to an app rather than a tool, and a
 //! process boundary in front of code that would only ask the shell for facts
@@ -15,7 +15,7 @@
 //! built inside, not a preview of it.
 
 use crate::apps::CallContext;
-use helve_rpc::{RpcError, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::AppHandle;
@@ -45,7 +45,7 @@ fn state(context: &CallContext) -> Result<Value, RpcError> {
     };
 
     serde_json::to_value(&state)
-        .map_err(|e| RpcError::new(helve_rpc::INTERNAL_ERROR, format!("could not answer: {e}")))
+        .map_err(|e| RpcError::new(kaava_rpc::INTERNAL_ERROR, format!("could not answer: {e}")))
 }
 
 /// The method match, kept separate from [`call`] so it can be tested without an

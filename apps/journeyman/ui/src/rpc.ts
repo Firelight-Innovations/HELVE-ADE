@@ -3,7 +3,7 @@
  * `src-tauri/src/apps/journeyman.rs` and is restated rather than imported, for
  * the reason `apps/design/ui/src/rpc.ts` gives.
  */
-import { invoke } from "@helve-ade/bridge";
+import { invoke } from "@openkaava/bridge";
 
 /**
  * `journeyman/state`'s reply — everything Journeyman can say about itself

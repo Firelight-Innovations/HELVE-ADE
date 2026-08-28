@@ -33,7 +33,7 @@ The **Terminal** menu holds the same three, plus **Kill Terminal** and
 ## It starts where your project is
 
 A new terminal opens in the folder the **cluster** has open, not in whatever
-directory HELVE was launched from.
+directory OpenKaava was launched from.
 
 A project is open → the cluster owns the band → a new terminal inherits its folder
 
@@ -58,22 +58,22 @@ build beside the code, instead of under it.
 Settings → **Terminal** → **Shell** picks it. The default works it out from
 the machine; you can pin it to PowerShell, `cmd`, bash or zsh instead.
 
-**Open a terminal at launch** in the same section starts one with HELVE. That
-one is read while HELVE is starting, so changing it needs a restart to show —
+**Open a terminal at launch** in the same section starts one with OpenKaava. That
+one is read while OpenKaava is starting, so changing it needs a restart to show —
 the setting says so under the control.
 
-## Why a HELVE terminal is not the same as yours
+## Why an OpenKaava terminal is not the same as yours
 
-HELVE spawns these shells, so it puts things in their environment —
-including the port and token an MCP client needs to reach HELVE's own tools.
+OpenKaava spawns these shells, so it puts things in their environment —
+including the port and token an MCP client needs to reach OpenKaava's own tools.
 
-A shell you opened yourself, outside HELVE, inherits none of that. That shell
+A shell you opened yourself, outside OpenKaava, inherits none of that. That shell
 works fine; it simply cannot reach back into the running application — the
 correct answer, rather than a limitation.
 
-> That single fact is behind almost every "my agent cannot see the HELVE
-> tools" report. Run the agent from a terminal inside HELVE. See
-> [Give your agent HELVE's tools](mcp-servers.md).
+> That single fact is behind almost every "my agent cannot see the OpenKaava
+> tools" report. Run the agent from a terminal inside OpenKaava. See
+> [Give your agent OpenKaava's tools](mcp-servers.md).
 
 ## Resizing the band
 

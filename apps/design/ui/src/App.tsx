@@ -10,13 +10,13 @@
  * the panel that reads out a capture.
  */
 import { useEffect, useRef, useState } from "react";
-import { reportPainted } from "@helve-ade/bridge";
+import { reportPainted } from "@openkaava/bridge";
 import { copyForAgent, type Handoff } from "./handoff";
 import { toLabel, toPrompt } from "./prompt";
 import { useProbeFrame } from "./useProbeFrame";
 
 /** What the frame is allowed to do. Read the omissions rather than the list:
- *  there is no `allow-top-navigation`, so the page cannot replace the HELVE
+ *  there is no `allow-top-navigation`, so the page cannot replace the OpenKaava
  *  window with itself — which a cross-origin frame may otherwise do off a user
  *  gesture, and a click on an element is a user gesture. */
 const FRAME_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";

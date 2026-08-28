@@ -63,7 +63,7 @@ export const HEALTH_TOKEN: Record<Exclude<ToolHealth, "ok">, string> = {
 
 /** Everything a component is allowed to know about a tool. Note what is absent:
  *  version, pinned version, repo URL, checkout path. The shell shows a name and a
- *  short description; versions live in helve.toml and the backend, and stay there. */
+ *  short description; versions live in kaava.toml and the backend, and stay there. */
 export interface ToolPresentation {
   id: string;
   name: string;
@@ -357,7 +357,7 @@ export interface ReviewSend {
 // --- Worktrees — one cluster, one checkout of its own -----------------------
 //
 // A cluster can work inside a git worktree, so two clusters can hold two branches
-// of one repository open at once. `git worktree list` — not anything HELVE writes
+// of one repository open at once. `git worktree list` — not anything OpenKaava writes
 // down — is the authority on which ones exist. They are created *outside* the
 // project, at `<project>/../.worktrees/<project-name>/<name>/`, and that
 // placement is load-bearing: `docs/design-notes/shell-core.md`.
@@ -535,7 +535,7 @@ export interface Menu {
 // --- Updates ----------------------------------------------------------------
 
 /**
- * What the status bar says about a newer HELVE, or `null` for the far more
+ * What the status bar says about a newer OpenKaava, or `null` for the far more
  * common case of nothing worth a pixel.
  *
  * Note what is absent: the version being installed *over*, the download's byte
@@ -592,13 +592,13 @@ export function updateNotice(
     case "downloading":
       return {
         label: state.percent === null ? "Downloading…" : `Downloading ${state.percent}%`,
-        detail: "Fetching the installer. HELVE restarts when it finishes.",
+        detail: "Fetching the installer. OpenKaava restarts when it finishes.",
         tone: "status",
       };
     case "installing":
       return {
         label: "Installing…",
-        detail: "HELVE closes and reopens on the new version.",
+        detail: "OpenKaava closes and reopens on the new version.",
         tone: "status",
       };
     case "failed":

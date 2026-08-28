@@ -1,6 +1,6 @@
 //! The server that exists to prove the plumbing, and nothing else.
 //!
-//! Every other server here will answer a question about HELVE that a harness
+//! Every other server here will answer a question about OpenKaava that a harness
 //! could not answer for itself. This one answers nothing. It is here because the
 //! path from "a client discovered the endpoint" to "a tool ran" crosses a
 //! listener, a bearer token, a route, a protocol handshake and a registry
@@ -11,14 +11,14 @@
 //! answer, something has gone wrong with what it is for.
 
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
-use helve_rpc::{RpcError, INVALID_PARAMS};
+use kaava_rpc::{RpcError, INVALID_PARAMS};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
 pub static SERVER: McpServer = McpServer {
     id: "echo",
     name: "Echo",
-    description: "A test server. Proves an agent can reach HELVE, and nothing more.",
+    description: "A test server. Proves an agent can reach OpenKaava, and nothing more.",
     tools: TOOLS,
     call,
     dev_only: false,
@@ -30,7 +30,7 @@ static TOOLS: &[McpTool] = &[
         // Says out loud that it is diagnostic. A model reading this list should
         // not come away thinking it has found something worth using during real
         // work — a tool with a vague description gets called speculatively.
-        description: "Diagnostic only. Confirms the HELVE MCP endpoint is reachable.",
+        description: "Diagnostic only. Confirms the OpenKaava MCP endpoint is reachable.",
         schema: ping_schema,
     },
     McpTool {
@@ -70,7 +70,7 @@ fn call(_app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswe
         "ping" => Ok(ping().into()),
         "echo" => echo(params).map(Into::into),
         other => Err(RpcError::new(
-            helve_rpc::METHOD_NOT_FOUND,
+            kaava_rpc::METHOD_NOT_FOUND,
             format!("the echo server has no tool named `{other}`"),
         )),
     }

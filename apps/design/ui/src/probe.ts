@@ -17,7 +17,7 @@
 
 /** Present on every message in both directions, so a page's own chatter and
  *  the bridge's transport-B traffic are told apart in one comparison. */
-export const CHANNEL = "helveDesign";
+export const CHANNEL = "kaavaDesign";
 
 export interface Rect {
   x: number;

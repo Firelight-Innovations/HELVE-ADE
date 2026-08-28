@@ -1,4 +1,4 @@
-//! Where HELVE remembers the presets you have saved, across launches.
+//! Where OpenKaava remembers the presets you have saved, across launches.
 //!
 //! The third thing in the orchestrator to touch the disk, after
 //! [`crate::project::store`] and [`crate::shell_store`], and built to the same
@@ -43,7 +43,7 @@ pub struct Stored {
 ///
 /// **Never fatal.** Every failure degrades to [`Stored::default`], which merges
 /// to "just the built-ins". A presets file that is missing, truncated by a power
-/// cut, or written by a future build must not stop HELVE from starting, and must
+/// cut, or written by a future build must not stop OpenKaava from starting, and must
 /// not empty the menu it is meant to fill.
 pub fn load(app: &AppHandle) -> Stored {
     let Some(path) = file(app) else {
@@ -58,14 +58,14 @@ pub fn load(app: &AppHandle) -> Stored {
         // the built-ins, which looks exactly like a first launch.
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::helve_log!(
+        crate::kaava_log!(
             "{} is not readable, falling back to the built-in presets: {e}",
             path.display()
         );
@@ -86,7 +86,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -94,18 +94,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            crate::helve_log!("could not serialize the preset store: {e}");
+            crate::kaava_log!("could not serialize the preset store: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

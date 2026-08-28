@@ -7,10 +7,10 @@
 //!
 //! **If the harness can already do it, it does not get a server.** No file
 //! reading, writing or listing, no search, no git. Every agent worth pointing at
-//! HELVE arrives with those, and a second worse copy costs a permission surface
+//! OpenKaava arrives with those, and a second worse copy costs a permission surface
 //! and a pile of tool descriptions competing for the model's attention.
 //!
-//! What earns a server is something that exists only inside HELVE and has no
+//! What earns a server is something that exists only inside OpenKaava and has no
 //! filesystem equivalent — Forger's design model is the first real case, because
 //! an agent cannot read a spec's *boundaries* by opening a file.
 //!
@@ -35,7 +35,7 @@ use super::Registry;
 /// effect of adding something beside it.
 ///
 /// `debug` is likewise unconditional, and for a reason that will outlast echo's:
-/// the builds worth debugging include the release one. A shipped HELVE that
+/// the builds worth debugging include the release one. A shipped OpenKaava that
 /// misbehaves on a machine none of us have is exactly the case where reading its
 /// layout and its failures is worth the most, and a server compiled out of that
 /// build cannot answer. It is read-only for the same reason — see its module
@@ -63,7 +63,7 @@ mod tests {
         assert_eq!(ids, vec!["echo", "debug", "ui"]);
     }
 
-    /// The read-only servers are usable the moment HELVE starts. The one that
+    /// The read-only servers are usable the moment OpenKaava starts. The one that
     /// can click is not, and no amount of the rest being convenient is a reason
     /// to make it so.
     #[test]
@@ -101,7 +101,7 @@ mod tests {
         seed(&registry);
 
         for server in registry.list(true) {
-            assert_eq!(server.config_key, format!("helve-{}", server.id));
+            assert_eq!(server.config_key, format!("kaava-{}", server.id));
             assert_eq!(server.path, format!("/mcp/{}", server.id));
         }
     }
@@ -121,7 +121,7 @@ mod tests {
     /// fixture. `registry.rs` has the same check over its own test doubles,
     /// which proves the rule and not the shipped set — and the shipped set is
     /// the one where an id becomes a URL path (`/mcp/<id>`) and a `.mcp.json`
-    /// key (`helve-<id>`). The same rule `helve-tool-manifest` holds tool ids
+    /// key (`kaava-<id>`). The same rule `kaava-tool-manifest` holds tool ids
     /// to, for the same reason.
     #[test]
     fn every_registered_server_id_is_url_safe() {

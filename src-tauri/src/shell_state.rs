@@ -1,4 +1,4 @@
-//! What every HELVE window has to agree on.
+//! What every OpenKaava window has to agree on.
 //!
 //! The shell runs in more than one window: the main one, plus a real OS window for anything that
 //! has been dragged out of it. Most of what a window knows is its own business — how wide its
@@ -184,7 +184,7 @@ pub struct Cluster {
     ///
     /// Only the *normal* height is kept. Shut and maximized are the same drag's other two
     /// outcomes, and they stay in the window that draws them: whether a band is open is a fact
-    /// about this session, and a layout that restored a maximized band would open HELVE with the
+    /// about this session, and a layout that restored a maximized band would open OpenKaava with the
     /// apps hidden behind a terminal. See `frame/Frame.tsx`'s `bottomHeight` for the same split
     /// spelled from the view's side.
     ///
@@ -326,7 +326,7 @@ pub struct ShellState {
     /// *every* one of them — so a `reclaim` that trusted `Destroyed` alone
     /// would fold every detached window into `main` on the way out, and,
     /// because every mutation is persisted, would write that collapsed layout
-    /// to disk as the thing to restore. You would close HELVE with three
+    /// to disk as the thing to restore. You would close OpenKaava with three
     /// windows and open it with one, every time, and the tree serialization
     /// would look broken when it was working perfectly.
     ///
@@ -2351,8 +2351,8 @@ mod tests {
     #[test]
     fn shorten_title_passes_a_plain_name_through_untouched() {
         assert_eq!(
-            shorten_title("helve-shell-finishing-touches"),
-            "helve-shell-finishing-touches",
+            shorten_title("kaava-shell-finishing-touches"),
+            "kaava-shell-finishing-touches",
             "a title that isn't a path form must not be mistaken for one"
         );
     }
@@ -2910,7 +2910,7 @@ mod tests {
         );
     }
 
-    /// Released over another HELVE window. A cluster is appended to that
+    /// Released over another OpenKaava window. A cluster is appended to that
     /// window's list, so a label is the whole of the address — which is why this
     /// works where the same drop for a single tab does not.
     #[test]

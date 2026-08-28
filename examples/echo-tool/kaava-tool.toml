@@ -7,5 +7,5 @@ dist    = "ui/dist"
 dev-url = "http://localhost:5174"
 
 [core]
-bin  = "target/debug/helve-echo-tool"
-args = ["--helve-rpc"]
+bin  = "target/debug/kaava-echo-tool"
+args = ["--kaava-rpc"]

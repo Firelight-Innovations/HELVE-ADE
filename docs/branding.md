@@ -13,7 +13,7 @@ to.
 The obvious reason is "make it easy to change names and logos". That is a
 convenience and it would not have earned a work package.
 
-The real reason is that the source in this repository is Apache-2.0 while HELVE,
+The real reason is that the source in this repository is Apache-2.0 while OpenKaava,
 Forger and Journeyman stay trademarks — the open-core split Rust, Docker and
 Mozilla all use. That position is unenforceable, and worse than that
 *unfollowable*, unless somebody who forks the source can strip the marks in one
@@ -31,14 +31,14 @@ node scripts/check-branding.mjs --fix    # write that agreement in, once
 ```
 
 The second reason is smaller and was immediate. The product did not agree with
-itself about its own name. `tauri.conf.json` said `Helve`, `helve.toml` said
-`Helve`, the splash wordmark said `HELVE`, the title bar and the About item
+itself about its own name. `tauri.conf.json` said `OpenKaava`, `kaava.toml` said
+`OpenKaava`, the splash wordmark said `OPENKAAVA`, the title bar and the About item
 appended a second word to it, and `windows.rs` built detached windows titled
-`Helve`. Five surfaces, three answers. One source of truth forces that to be
-answered once, and it is answered: **the product is HELVE**.
+`OpenKaava`. Five surfaces, three answers. One source of truth forces that to be
+answered once, and it is answered: **the product is OpenKaava**.
 
 The title bar was not merely inconsistent, it was wrong. It named the shell as a
-runtime — something other software is built on top of — which HELVE is not, and
+runtime — something other software is built on top of — which OpenKaava is not, and
 it did so in the two most visible strings in the window.
 `src-tauri/src/branding.rs` carries a test that fails if the product's name ever
 contains "engine" again.
@@ -61,21 +61,21 @@ so a fork can work through the list.
 Not templated, not renamed, not made configurable, however much each of them
 looks like branding:
 
-- the `helve.toml` filename
-- the `.helve` file extension and the `.helve/` project directory
-- the `helve/*` RPC method namespace — `helve/painted`, `helve/commands`,
-  `helve/open`, `helve/publish`
-- the `helve-tool://` URL scheme
-- the `@helve/*` npm scope
+- the `kaava.toml` filename
+- the `.kaava` file extension and the `.kaava/` project directory
+- the `kaava/*` RPC method namespace — `kaava/painted`, `kaava/commands`,
+  `kaava/open`, `kaava/publish`
+- the `kaava-tool://` URL scheme
+- the `@openkaava/*` npm scope
 - the crate names
-- the bundle identifier `com.firelightinnovations.helve`
+- the bundle identifier `com.firelightinnovations.openkaava`
 - the OS configuration directory that holds `projects.json`
-- the `helve-<id>` MCP server key
+- the `kaava-<id>` MCP server key
 
 These are wire formats and on-disk contracts, not names. `docs/tool-protocol.md`
 is a published API and half of it is spelled with these strings; a tool repo
-written last year sends `helve/painted` and will keep sending it. Renaming the
-`.helve` extension does not rebrand anything, it makes every existing project
+written last year sends `kaava/painted` and will keep sending it. Renaming the
+`.kaava` extension does not rebrand anything, it makes every existing project
 unopenable. A branding system that reaches into this list is not a branding
 system, it is a rename script with a config file, which is a different and much
 worse thing.
@@ -84,7 +84,7 @@ The same list is in `branding.toml`'s own header, deliberately duplicated,
 because the next person to read that file will assume the opposite and will read
 it before they read this.
 
-Note what the boundary cuts through rather than around. `helve.toml`'s
+Note what the boundary cuts through rather than around. `kaava.toml`'s
 *filename* is frozen; its `[stack] name` value is tier 1 and is checked. The
 bundle *identifier* is frozen; `productName` is tier 1 and is checked. Neither
 file is wholly on one side.
@@ -111,7 +111,7 @@ branding.toml                     the one file anybody edits
     │       apps/files/ui/src/branding.generated.ts Files
     │
     └── scripts/check-branding.mjs       `pnpm lint`; fails naming file + field
-            index.html · splash.html · helve.toml · tauri.conf.json
+            index.html · splash.html · kaava.toml · tauri.conf.json
 ```
 
 Three decisions in that picture are load-bearing.
@@ -132,10 +132,10 @@ is built; if Rust read the name at run time, the installer's name and the window
 title could disagree *on one machine, at once* — which is precisely the class of
 bug this whole package exists to remove. `include_str!` commits every surface at
 the same moment, and cargo rebuilds when the file changes. It also means
-`branding.toml` needs no entry in `bundle.resources`, unlike `helve.toml`.
+`branding.toml` needs no entry in `bundle.resources`, unlike `kaava.toml`.
 
 **One generated module per frontend bundle, not one shared module.**
-STANDARDS.md §1.4 says an app reaches its host through `@helve-ade/bridge` and
+STANDARDS.md §1.4 says an app reaches its host through `@openkaava/bridge` and
 nothing else, and `apps/home/ui/src/icons.tsx` already refuses to import the
 shell's `Icon.tsx` for that reason. A generated file inside the app's own source
 tree is the only form that survives the app being extracted to its own
@@ -190,7 +190,7 @@ changed it and watched nothing happen.
 
 `product.wordmark` is a separate field from `product.name` and is set in mixed
 case, because both stylesheets that draw the wordmark uppercase it. The markup
-holds "Helve" so a screen reader is handed a word; the screen shows "HELVE".
+holds "OpenKaava" so a screen reader is handed a word; the screen shows "OPENKAAVA".
 `apps/home/ui/src/home.css` already made that trade for the lockup, and
 `splash.html` and `src/splash/splash.css` now make it too.
 
@@ -203,11 +203,11 @@ holds "Helve" so a screen reader is handed a word; the screen shows "HELVE".
   word for another across the interface is a fork with extra steps, and small
   forks grow. One config, read once, one build.
 - **`package.json`.** It is checked by nothing here because it holds no brand
-  string. Its `name` is `helve-orchestrator`, the npm identity of a package
-  marked `private` and never published — the same category as the `@helve/*`
+  string. Its `name` is `openkaava-orchestrator`, the npm identity of a package
+  marked `private` and never published — the same category as the `@openkaava/*`
   scope, which is tier 2.
-- **Prose in `apps/tutorial/**` and in `docs/`.** The tutorials say HELVE
-  because they are teaching HELVE, and a tutorial written about a fork is a
+- **Prose in `apps/tutorial/**` and in `docs/`.** The tutorials say OpenKaava
+  because they are teaching OpenKaava, and a tutorial written about a fork is a
   tutorial that needs rewriting anyway.
 
 ### The grammar `branding.toml` may use
@@ -238,7 +238,7 @@ prose because the list is also the trademark surface.
 | `index.html`, `splash.html` | the page `<title>` |
 | `src-tauri/tauri.conf.json` | `productName` — also the installer's filename |
 | `src-tauri/tauri.conf.json` | the main window's `title` |
-| `helve.toml` | `[stack] name` |
+| `kaava.toml` | `[stack] name` |
 | `splash.html` | the wordmark text node |
 | the title bar | the centred title, and the About item |
 | Home | the lockup word and the tagline |
@@ -249,14 +249,14 @@ prose because the list is also the trademark surface.
 
 **Art.** `assets/` is the brand pack, and everything in it is replaceable:
 
-- `assets/helve-mark.svg` — the mark. The generator lifts its `viewBox` and its
+- `assets/kaava-mark.svg` — the mark. The generator lifts its `viewBox` and its
   single `<path>` into the frontend modules, and **fails the build** if the file
   cannot be reduced to one path. A more complicated mark belongs on a surface
   that loads it as a file.
 - `assets/app-icon-source.svg` — what `pnpm tauri icon` draws the PNG set from.
-- `assets/helve-icon.svg`, `helve-icon-256.svg`, `helve-icon-textured.svg` — the
+- `assets/kaava-icon.svg`, `kaava-icon-256.svg`, `kaava-icon-textured.svg` — the
   container-icon variants from the brand packet.
-- `public/helve-splash-field.svg` — the splash art.
+- `public/kaava-splash-field.svg` — the splash art.
 - `src-tauri/icons/` — the generated icon set. Every path in `bundle.icon` is
   checked to sit inside this directory and to exist.
 - the wordmark face, inlined as a base64 woff2 subset in `splash.html`. It is
@@ -271,10 +271,10 @@ prose because the list is also the trademark surface.
 
 `src/ui/Icon.tsx` and `apps/home/ui/src/icons.tsx` both draw the mark as an
 inline `<path>`, and the geometry for both is generated out of
-`assets/helve-mark.svg`. This was the one call site that needed a decision, so
+`assets/kaava-mark.svg`. This was the one call site that needed a decision, so
 here is the decision and the reason.
 
-Loading the branded asset as an `<img src="/helve-mark.svg">` was the
+Loading the branded asset as an `<img src="/kaava-mark.svg">` was the
 alternative. It fails on colour. The mark is drawn on the title bar at 15px in
 the title bar's own text colour, and again — larger — as the placeholder every
 tool shares until it earns its own icon. `fill="currentColor"` is what makes
@@ -286,7 +286,7 @@ would cost a request plus a second way of drawing one glyph.
 Leaving it as a hardcoded default was the other alternative, and it is what the
 code did before: the path data was copied into two files, and a comment in each
 one claimed the copy was faithful. That claim was the only thing checking it.
-Generating the geometry makes `assets/helve-mark.svg` the actual source rather
+Generating the geometry makes `assets/kaava-mark.svg` the actual source rather
 than the nominal one, and a fork replaces one SVG instead of finding two string
 literals.
 
@@ -321,5 +321,5 @@ a caption the shell itself had already stopped producing.
 The tutorials' whole argument is that the pictures are accurate. A picture that
 survives a rename by not being renamed is a picture that has quietly stopped
 being one, so anything that redraws a branded surface reads the name the same
-way the surface does. The prose around it still says HELVE, because prose about
-HELVE is teaching HELVE and a fork rewrites it anyway.
+way the surface does. The prose around it still says OpenKaava, because prose about
+OpenKaava is teaching OpenKaava and a fork rewrites it anyway.

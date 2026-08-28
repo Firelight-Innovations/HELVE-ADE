@@ -16,7 +16,7 @@
  * twice.
  */
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { fileIconUrl, folderIconUrl, rootFolderIconUrl } from "@helve/file-icons";
+import { fileIconUrl, folderIconUrl, rootFolderIconUrl } from "@openkaava/file-icons";
 import { useLocatorTree } from "./useLocatorTree";
 import type { LocatorFocus, LocatorNode } from "./types";
 import "./locator.css";

@@ -18,7 +18,7 @@
 //! renders as an honest "not written yet" card rather than failing.
 
 use crate::apps::CallContext;
-use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -49,7 +49,7 @@ pub struct Tutorial {
     /// One sentence, in the second person, saying what you will be able to do
     /// afterwards. Shown on the card and nowhere else.
     pub blurb: &'static str,
-    /// How long it takes, honestly, for somebody who has not seen HELVE before.
+    /// How long it takes, honestly, for somebody who has not seen OpenKaava before.
     /// A number rather than a band, because "5 min" reads as a measurement and
     /// "short" reads as a guess.
     pub minutes: u32,
@@ -69,7 +69,7 @@ static SECTIONS: &[Section] = &[
     Section {
         id: "shell",
         title: "Working in the shell",
-        description: "Panes, terminals, search — the parts of HELVE that are not an app.",
+        description: "Panes, terminals, search — the parts of OpenKaava that are not an app.",
         order: 10,
     },
     Section {
@@ -81,7 +81,7 @@ static SECTIONS: &[Section] = &[
     Section {
         id: "agents",
         title: "Agents",
-        description: "Pointing a coding agent at HELVE, and what it can reach.",
+        description: "Pointing a coding agent at OpenKaava, and what it can reach.",
         order: 30,
     },
     Section {
@@ -96,7 +96,7 @@ static TUTORIALS: &[Tutorial] = &[
     Tutorial {
         id: "the-window",
         section: "start",
-        title: "The HELVE window",
+        title: "The OpenKaava window",
         blurb: "Name every part of the frame, so the rest of these make sense.",
         minutes: 4,
         after: None,
@@ -105,7 +105,7 @@ static TUTORIALS: &[Tutorial] = &[
         id: "first-project",
         section: "start",
         title: "Your first project",
-        blurb: "Open a folder, set it up as a HELVE project, and know what got written.",
+        blurb: "Open a folder, set it up as an OpenKaava project, and know what got written.",
         minutes: 6,
         after: Some("the-window"),
     },
@@ -137,7 +137,7 @@ static TUTORIALS: &[Tutorial] = &[
         id: "settings",
         section: "shell",
         title: "Settings",
-        blurb: "Change how HELVE looks and behaves, and know when a change takes effect.",
+        blurb: "Change how OpenKaava looks and behaves, and know when a change takes effect.",
         minutes: 5,
         after: Some("search"),
     },
@@ -160,8 +160,8 @@ static TUTORIALS: &[Tutorial] = &[
     Tutorial {
         id: "mcp-servers",
         section: "agents",
-        title: "Give your agent HELVE's tools",
-        blurb: "Let Claude Code or another MCP client drive the parts of HELVE you drive.",
+        title: "Give your agent OpenKaava's tools",
+        blurb: "Let Claude Code or another MCP client drive the parts of OpenKaava you drive.",
         minutes: 7,
         after: None,
     },
@@ -314,14 +314,14 @@ fn load(app: &AppHandle) -> Progress {
         Ok(raw) => raw,
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Progress::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::helve_log!(
+        crate::kaava_log!(
             "{} is not readable, starting the tutorials over: {e}",
             path.display()
         );
@@ -334,7 +334,7 @@ fn save(app: &AppHandle, progress: &Progress) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -342,7 +342,7 @@ fn save(app: &AppHandle, progress: &Progress) {
     let json = match serde_json::to_string_pretty(progress) {
         Ok(json) => json,
         Err(e) => {
-            crate::helve_log!("could not serialize the tutorial progress: {e}");
+            crate::kaava_log!("could not serialize the tutorial progress: {e}");
             return;
         }
     };
@@ -352,11 +352,11 @@ fn save(app: &AppHandle, progress: &Progress) {
     // failure is identical and so is the fix.
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

@@ -6,10 +6,10 @@
 //!
 //! There are two answers, and which one applies is not a preference:
 //!   * **In development**, the tool's own Vite server, declared as `frontend.dev-url` in
-//!     `helve-tool.toml`. Pointing at it means the tool's hot reload works *inside the real
+//!     `kaava-tool.toml`. Pointing at it means the tool's hot reload works *inside the real
 //!     shell*, which is the whole reason a tool author would run the orchestrator at all.
 //!   * **In a release build**, the tool's built `frontend.dist` directory, served over the custom
-//!     `helve-tool://` scheme registered below. There is no dev server in a shipped app, and
+//!     `kaava-tool://` scheme registered below. There is no dev server in a shipped app, and
 //!     loading a built bundle off `file://` would put every tool on the same opaque origin — the
 //!     exact thing the protocol's origin checks depend on not happening.
 //!
@@ -19,16 +19,16 @@
 
 use crate::error::Result;
 use crate::plugins;
-use helve_tool_manifest::ToolManifest;
+use kaava_tool_manifest::ToolManifest;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 /// The scheme detached and docked tool frames are served on in release builds.
-/// Tauri rewrites this per-platform (`helve-tool://…` on macOS and Linux,
-/// `http://helve-tool.localhost/…` on Windows); the frontend never constructs
+/// Tauri rewrites this per-platform (`kaava-tool://…` on macOS and Linux,
+/// `http://kaava-tool.localhost/…` on Windows); the frontend never constructs
 /// one of these by hand, it only ever uses what this module hands back.
-pub const SCHEME: &str = "helve-tool";
+pub const SCHEME: &str = "kaava-tool";
 
 /// What the tool window should do about a given tool.
 ///
@@ -87,7 +87,7 @@ pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
         Ok(m) => m,
         Err(err) => {
             return Ok(ToolFrontend::Unavailable {
-                reason: format!("helve-tool.toml: {err}"),
+                reason: format!("kaava-tool.toml: {err}"),
             })
         }
     };
@@ -150,7 +150,7 @@ pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
 ///
 /// Kept textual rather than reaching for a URL crate: both halves have already
 /// been validated — `dev-url` by the author writing it and `path` by
-/// `helve-tool-manifest`'s relative-path check — and the only thing that can go
+/// `kaava-tool-manifest`'s relative-path check — and the only thing that can go
 /// wrong is a doubled or missing slash between them.
 fn join_url(base: &str, within: &str) -> String {
     if within.is_empty() {

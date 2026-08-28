@@ -1,4 +1,4 @@
-//! MCP servers HELVE hosts for whatever coding agent the user brought — BYOH,
+//! MCP servers OpenKaava hosts for whatever coding agent the user brought — BYOH,
 //! so assume nothing about it. Design: `docs/mcp-server-manager.md`; the rule
 //! about what may be added is in [`servers`].
 

@@ -1,9 +1,9 @@
-//! Where HELVE remembers the projects you have opened, across launches.
+//! Where OpenKaava remembers the projects you have opened, across launches.
 //!
 //! This is the first thing in the orchestrator that wrote to disk. Everything
 //! else it knew it re-derived at boot — the stack snapshot is a scan, a terminal
 //! dies with its process. That was fine while nothing had to survive a restart.
-//! "Open HELVE and land back where you were" was the first thing that did.
+//! "Open OpenKaava and land back where you were" was the first thing that did.
 //!
 //! What survives here now is the **Recent list only**. Which project is open is
 //! a fact about a *cluster* (see `crate::project`'s module doc) and lives in
@@ -35,7 +35,7 @@ const FILE: &str = "projects.json";
 pub struct Stored {
     /// **Vestigial: the migration's only input.** Nothing writes this any more.
     ///
-    /// It was the global "the project that was open when HELVE last closed", the
+    /// It was the global "the project that was open when OpenKaava last closed", the
     /// field this module was built around. A project belongs to a cluster now,
     /// so the authority moved to `Cluster::project` in `layout.json`.
     ///
@@ -98,7 +98,7 @@ impl Stored {
 
 /// Read the store, or start empty. **Never fatal:** every read here degrades to
 /// [`Stored::default`]. A recents file that is missing, truncated by a power
-/// cut, or written by a future build must not stop HELVE from starting — the
+/// cut, or written by a future build must not stop OpenKaava from starting — the
 /// worst honest outcome of a corrupt file is an empty Recent list, and that is a
 /// great deal better than an app that will not open. [`save`] is what makes that
 /// rare: it writes a temp file and renames it, so a reader either sees the whole
@@ -116,14 +116,14 @@ pub fn load(app: &AppHandle) -> Stored {
         // identical to a first launch.
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::helve_log!("{} is not readable, starting fresh: {e}", path.display());
+        crate::kaava_log!("{} is not readable, starting fresh: {e}", path.display());
         Stored::default()
     })
 }
@@ -140,7 +140,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -148,18 +148,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            crate::helve_log!("could not serialize the project store: {e}");
+            crate::kaava_log!("could not serialize the project store: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

@@ -1,10 +1,10 @@
-//! Where review notes survive a restart: `.helve/review-comments.json`, inside the checkout.
+//! Where review notes survive a restart: `.kaava/review-comments.json`, inside the checkout.
 //!
 //! **Inside the checkout, not in the config directory.** The Recent list in `project::store` went
 //! to the OS config directory because it is a fact about *this machine's* history. A note on a
 //! line of a diff is the opposite — it is about that code, it is worth carrying to another machine
 //! with the branch, and a person reviewing an agent's worktree wants the notes to travel with the
-//! worktree. `.helve/` is the directory the project manifest already promises holds what HELVE
+//! worktree. `.kaava/` is the directory the project manifest already promises holds what OpenKaava
 //! produced about a project (see `project::marker`), and this is its first occupant.
 //!
 //! The root handed in is the **repository** root, resolved by the caller through the same
@@ -60,7 +60,7 @@ pub fn load(root: &Path) -> Vec<ReviewComment> {
         Ok(raw) => raw,
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Vec::new();
         }
@@ -73,7 +73,7 @@ pub fn load(root: &Path) -> Vec<ReviewComment> {
             comments
         }
         Err(e) => {
-            crate::helve_log!("{} is not readable, starting fresh: {e}", path.display());
+            crate::kaava_log!("{} is not readable, starting fresh: {e}", path.display());
             Vec::new()
         }
     }
@@ -90,8 +90,8 @@ pub fn load(root: &Path) -> Vec<ReviewComment> {
 /// into it leaves a window where a crash yields half a JSON document. `rename` over an existing
 /// file is atomic on NTFS and POSIX alike, so a reader sees one whole version or the other.
 ///
-/// Creates `.helve/` if it is missing. A cluster working in a git worktree has a checkout git made
-/// rather than one HELVE created, so the directory the project manifest would have written is
+/// Creates `.kaava/` if it is missing. A cluster working in a git worktree has a checkout git made
+/// rather than one OpenKaava created, so the directory the project manifest would have written is
 /// simply not there — and a first note is a perfectly ordinary reason to make it.
 pub fn save(root: &Path, comments: &[ReviewComment]) -> Result<()> {
     let path = file(root);
@@ -147,7 +147,7 @@ mod tests {
     impl TempDir {
         fn new(tag: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
-                "helve-review-{tag}-{}-{:?}",
+                "kaava-review-{tag}-{}-{:?}",
                 review::now_ms(),
                 std::thread::current().id()
             ));
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(read, written);
     }
 
-    /// The `.helve/` directory is HELVE's to create — a git worktree arrives without one.
+    /// The `.kaava/` directory is OpenKaava's to create — a git worktree arrives without one.
     #[test]
     fn saving_creates_the_trace_directory() {
         let dir = TempDir::new("mkdir");

@@ -1,6 +1,6 @@
 //! The reference tool core -- the smallest binary that satisfies
 //! `docs/tool-protocol.md`. Every method here exists to exercise one thing
-//! `helve-rpc` needs proven end-to-end:
+//! `kaava-rpc` needs proven end-to-end:
 //!
 //! - `echo` proves params pass through untouched.
 //! - `echo/upper` proves both success and a handler-generated error
@@ -11,21 +11,21 @@
 //!   part of the protocol; it's a test seam, and it says so below.
 //! - anything else proves `-32601`.
 
-use helve_rpc::{serve, Handler, RpcError, INVALID_PARAMS, METHOD_NOT_FOUND};
+use kaava_rpc::{serve, Handler, RpcError, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde_json::{json, Value};
 
 const USAGE: &str =
-    "helve-echo-tool: this binary only speaks the Helve tool protocol; run it with --helve-rpc";
+    "kaava-echo-tool: this binary only speaks the OpenKaava tool protocol; run it with --kaava-rpc";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if !args.iter().any(|a| a == "--helve-rpc") {
+    if !args.iter().any(|a| a == "--kaava-rpc") {
         eprintln!("{USAGE}");
         std::process::exit(1);
     }
 
     if let Err(e) = serve(Echo) {
-        eprintln!("helve-echo-tool: serve failed: {e}");
+        eprintln!("kaava-echo-tool: serve failed: {e}");
         std::process::exit(1);
     }
 }
@@ -35,10 +35,10 @@ struct Echo;
 impl Handler for Echo {
     fn call(&mut self, method: &str, params: Option<Value>) -> Result<Value, RpcError> {
         match method {
-            "helve/hello" => {
+            "kaava/hello" => {
                 // Logged to stderr (stdout is protocol-only) so the
                 // handshake is visible when a session is being debugged.
-                eprintln!("helve-echo-tool: received handshake session {params:?}");
+                eprintln!("kaava-echo-tool: received handshake session {params:?}");
                 Ok(json!({"id": "echo", "version": "0.1.0", "protocol": 1}))
             }
 
@@ -56,8 +56,8 @@ impl Handler for Echo {
             }
 
             "echo/notify" => {
-                helve_rpc::notify("echo/notified", None)
-                    .map_err(|e| RpcError::new(helve_rpc::INTERNAL_ERROR, e.to_string()))?;
+                kaava_rpc::notify("echo/notified", None)
+                    .map_err(|e| RpcError::new(kaava_rpc::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Value::Null)
             }
 

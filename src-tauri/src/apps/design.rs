@@ -19,7 +19,7 @@
 
 use crate::apps::CallContext;
 use crate::devtools;
-use helve_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Url};
@@ -74,7 +74,7 @@ impl Refusal {
             Refusal::NoHost => "that address names no host to fetch it from".to_string(),
             Refusal::ReservedHost(host) => format!(
                 "`{host}` is reserved — a name under `.localhost` can be mistaken for this \
-                 application's own origin, which would hand the page HELVE's own permissions. \
+                 application's own origin, which would hand the page OpenKaava's own permissions. \
                  Use `localhost` with a port instead."
             ),
             Refusal::OwnOrigin(origin) => format!(
@@ -236,7 +236,7 @@ fn read_clip(params: Option<&Value>) -> Result<Clip, RpcError> {
 /// inventing that mapping is a change to the shell's own model rather than to
 /// this app. The frontend closes the gap from its side instead: it refuses to
 /// ask while `document.hasFocus()` is false, so the window being photographed
-/// is the window the click happened in. A second HELVE window holding a second
+/// is the window the click happened in. A second OpenKaava window holding a second
 /// Design Mode while this one has focus is the case that would otherwise be
 /// answered with a picture of the wrong screen.
 fn capture(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
@@ -384,7 +384,7 @@ mod tests {
             "file:///C:/Windows/System32/drivers/etc/hosts",
             "javascript://x/%0aalert(1)",
             "data:text/html,<h1>hi</h1>",
-            "helve-tool://home/index.html",
+            "kaava-tool://home/index.html",
         ] {
             assert!(
                 matches!(normalize(raw, None), Err(Refusal::Scheme(_))),
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn a_host_under_localhost_is_refused() {
         for raw in [
-            "http://helve-tool.localhost:5173",
+            "http://kaava-tool.localhost:5173",
             "http://tauri.localhost",
             "https://ipc.localhost/anything",
             "http://SOMETHING.LocalHost:1234",
@@ -555,7 +555,7 @@ mod tests {
             let parsed: Value = serde_json::from_str(&text).expect("a capability file is JSON");
             assert!(
                 parsed.get("remote").is_none(),
-                "{} declares `remote`, which lets a page Design Mode embedded reach HELVE's \
+                "{} declares `remote`, which lets a page Design Mode embedded reach OpenKaava's \
                  commands. If this is deliberate, Design Mode needs a different defence and \
                  docs/design-notes/design-mode.md needs rewriting.",
                 path.display()

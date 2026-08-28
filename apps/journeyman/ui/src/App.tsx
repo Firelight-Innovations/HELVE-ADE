@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HelveRpcError, reportPainted } from "@helve-ade/bridge";
+import { KaavaRpcError, reportPainted } from "@openkaava/bridge";
 import { readState, type JourneymanState } from "./rpc";
 
 /**
@@ -68,14 +68,14 @@ export default function App() {
 }
 
 /**
- * A `HelveRpcError` carries the code its host produced it from, which is the
+ * A `KaavaRpcError` carries the code its host produced it from, which is the
  * difference between "this build has no such method" and "the call never
  * reached a host at all" — the second of which is what every reader of this
  * app in a plain browser will see, since `pnpm dev:agent` mounts the shell
  * with nothing behind it. Anything else is shown as-is rather than guessed at.
  */
 function describe(error: unknown): string {
-  if (error instanceof HelveRpcError) return `[${error.code}] ${error.message}`;
+  if (error instanceof KaavaRpcError) return `[${error.code}] ${error.message}`;
   if (error instanceof Error) return error.message;
   return String(error);
 }

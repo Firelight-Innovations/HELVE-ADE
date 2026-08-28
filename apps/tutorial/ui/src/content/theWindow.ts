@@ -10,11 +10,11 @@ import type { Body } from "./blocks";
  */
 export const theWindow: Body = {
   takeaway:
-    "You can name every band of the HELVE window, which is what the rest of these tutorials assume.",
+    "You can name every band of the OpenKaava window, which is what the rest of these tutorials assume.",
   blocks: [
     {
       kind: "text",
-      body: "The HELVE window is five horizontal bands stacked in a column. Only the middle one grows. Naming them is worth four minutes, because every other tutorial says these words without stopping.",
+      body: "The OpenKaava window is five horizontal bands stacked in a column. Only the middle one grows. Naming them is worth four minutes, because every other tutorial says these words without stopping.",
     },
     {
       kind: "mock",

@@ -10,7 +10,7 @@
 //!
 //! Anything the manifest already says. A record names where a package came from
 //! and nothing about what is in it — no surface list, no version, no name. All
-//! of that is read back out of the checkout's own `helve-tool.toml` at load, so
+//! of that is read back out of the checkout's own `kaava-tool.toml` at load, so
 //! a plugin that gains a surface between launches gains it here too, and a
 //! record can never disagree with the code it points at.
 //!
@@ -121,7 +121,7 @@ pub fn load(app: &AppHandle) -> Stored {
         // only the first-party apps, which looks exactly like a fresh install.
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("helve: could not read {}: {e}", path.display());
+                eprintln!("kaava: could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
@@ -129,7 +129,7 @@ pub fn load(app: &AppHandle) -> Stored {
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
         eprintln!(
-            "helve: {} is not readable, starting with no plugins: {e}",
+            "kaava: {} is not readable, starting with no plugins: {e}",
             path.display()
         );
         Stored::default()
@@ -145,7 +145,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!("helve: could not create {}: {e}", parent.display());
+            eprintln!("kaava: could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -153,18 +153,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!("helve: could not serialize the plugin list: {e}");
+            eprintln!("kaava: could not serialize the plugin list: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        eprintln!("helve: could not write {}: {e}", temp.display());
+        eprintln!("kaava: could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        eprintln!("helve: could not replace {}: {e}", path.display());
+        eprintln!("kaava: could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }
@@ -207,7 +207,7 @@ mod tests {
             plugins: vec![Record {
                 id: "forger".to_string(),
                 source: Source::Folder {
-                    path: PathBuf::from("C:/code/helve/forger"),
+                    path: PathBuf::from("C:/code/kaava/forger"),
                 },
                 enabled: true,
             }],

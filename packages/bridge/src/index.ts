@@ -1,5 +1,5 @@
 /**
- * `@helve-ade/bridge` — what a tool's `ui/` imports instead of `@tauri-apps/api`.
+ * `@openkaava/bridge` — what a tool's `ui/` imports instead of `@tauri-apps/api`.
  * Same tool code, either host: an iframe under the orchestrator shell, or a
  * top-level window in its own standalone Tauri app. Wires `createClient` (the
  * testable core, see `client.ts`) to the real `window`. A singleton, not a
@@ -12,7 +12,7 @@ export type {
   CommandMessage,
   EventMessage,
   HelloMessage,
-  HelveErrorPayload,
+  KaavaErrorPayload,
   IncomingMessage,
   OutgoingMessage,
   PublishedTopic,
@@ -21,7 +21,7 @@ export type {
   Session,
 } from "./protocol.js";
 export { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "./protocol.js";
-export { HelveErrorCode, HelveRpcError } from "./errors.js";
+export { KaavaErrorCode, KaavaRpcError } from "./errors.js";
 
 // The cast narrows `addEventListener`: `Window`'s takes any event type, an
 // `EventListenerObject` alternative, capture options — `WindowLike` needs none.
@@ -111,7 +111,7 @@ export function reportPainted(): void {
     // it — a tool build with no such method, a shell that stopped waiting — has
     // told us nothing we can use. What must not happen is an unhandled
     // rejection in an app whose only crime was finishing its first render.
-    void client.invoke("helve/painted").catch(() => {});
+    void client.invoke("kaava/painted").catch(() => {});
   };
 
   const fallback = setTimeout(send, PAINT_FALLBACK_MS);

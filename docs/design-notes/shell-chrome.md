@@ -85,7 +85,7 @@ is about, and it points back here.
 
 ### Why the default context menu is turned off in Rust
 
-Right-clicking anywhere in HELVE used to raise Chromium's own menu: Back,
+Right-clicking anywhere in OpenKaava used to raise Chromium's own menu: Back,
 Forward, Refresh, Print, Save as, View source. None of the six is an operation
 this application has. There is nothing to go back to, "Save as" offers to save
 the shell's own HTML, and printing a workspace is not a thing anybody wants.

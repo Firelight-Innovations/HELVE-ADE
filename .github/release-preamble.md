@@ -1,6 +1,6 @@
 ### Install
 
-Download **`HELVE-setup.exe`** below and run it. The wizard never asks for
+Download **`OpenKaava-setup.exe`** below and run it. The wizard never asks for
 administrator rights and installs for your account only.
 
 > **Windows will warn you, and you can go ahead.** The installer is not signed,
@@ -9,12 +9,12 @@ administrator rights and installs for your account only.
 > pre-alpha does not yet justify.
 
 Once installed, right-click any folder in Explorer and choose **Open with
-HELVE** to open it as a project. Files get the same entry and open in the File
+OpenKaava** to open it as a project. Files get the same entry and open in the File
 Viewer with their folder as the project.
 
 ### Before you file a bug
 
-**HELVE is pre-alpha.** The window runs, and so do its own apps: Home, the File
+**OpenKaava is pre-alpha.** The window runs, and so do its own apps: Home, the File
 Explorer, the File Viewer and Tutorials. Forger and Journeyman, the design
 apps, ship in this same build but do not yet have a working screen behind
 their tabs.

@@ -1,6 +1,6 @@
 [package]
-name = "helve-tool-manifest"
-description = "Parser and validator for helve-tool.toml, the per-tool run manifest"
+name = "kaava-tool-manifest"
+description = "Parser and validator for kaava-tool.toml, the per-tool run manifest"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

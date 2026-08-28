@@ -28,7 +28,7 @@ use tauri::{AppHandle, Manager};
 /// Managed state, empty until [`start`] has bound. Everything that reads it —
 /// the pty environment, the `.mcp.json` writer, the status bar — has to cope
 /// with `None`, because a machine that would not give us a loopback socket is
-/// one where HELVE should still open.
+/// one where OpenKaava should still open.
 #[derive(Default)]
 pub struct Endpoint {
     bound: Mutex<Option<Bound>>,
@@ -52,12 +52,12 @@ impl Endpoint {
     /// Empty when nothing is bound, which is what makes the caller's loop a
     /// no-op rather than a branch: a terminal opened before the listener came up
     /// simply inherits neither variable and cannot connect, and that is the same
-    /// state as a terminal the user opened outside HELVE.
+    /// state as a terminal the user opened outside OpenKaava.
     pub fn env(&self) -> Vec<(String, String)> {
         match self.get() {
             Some((port, token)) => vec![
-                ("HELVE_MCP_PORT".to_string(), port.to_string()),
-                ("HELVE_MCP_TOKEN".to_string(), token),
+                ("KAAVA_MCP_PORT".to_string(), port.to_string()),
+                ("KAAVA_MCP_TOKEN".to_string(), token),
             ],
             None => Vec::new(),
         }
@@ -81,7 +81,7 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let std_listener = match StdTcpListener::bind(socket) {
         Ok(listener) => listener,
         Err(e) => {
-            crate::helve_log!("could not bind the MCP listener: {e}");
+            crate::kaava_log!("could not bind the MCP listener: {e}");
             return None;
         }
     };
@@ -89,13 +89,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
     let port = match std_listener.local_addr() {
         Ok(addr) => addr.port(),
         Err(e) => {
-            crate::helve_log!("the MCP listener has no address: {e}");
+            crate::kaava_log!("the MCP listener has no address: {e}");
             return None;
         }
     };
 
     if let Err(e) = std_listener.set_nonblocking(true) {
-        crate::helve_log!("could not make the MCP listener non-blocking: {e}");
+        crate::kaava_log!("could not make the MCP listener non-blocking: {e}");
         return None;
     }
 
@@ -122,13 +122,13 @@ pub fn start(app: &AppHandle) -> Option<u16> {
         let listener = match tokio::net::TcpListener::from_std(std_listener) {
             Ok(listener) => listener,
             Err(e) => {
-                crate::helve_log!("could not hand the MCP listener to the runtime: {e}");
+                crate::kaava_log!("could not hand the MCP listener to the runtime: {e}");
                 return;
             }
         };
 
         if let Err(e) = axum::serve(listener, router).await {
-            crate::helve_log!("the MCP listener stopped: {e}");
+            crate::kaava_log!("the MCP listener stopped: {e}");
         }
     });
 
@@ -189,7 +189,7 @@ fn router(app: &AppHandle, token: String) -> axum::Router {
 ///
 /// Loopback already keeps this off the network, but not away from other
 /// processes on the same machine: a port is scannable, and these tools reach
-/// into the live application. The token is what makes "HELVE spawned this shell"
+/// into the live application. The token is what makes "OpenKaava spawned this shell"
 /// the actual admission test.
 async fn require_token(
     axum::extract::State(expected): axum::extract::State<Arc<String>>,
@@ -238,7 +238,7 @@ impl ServerHandler for Bridge {
             .build();
 
         info.server_info = Implementation::new(
-            format!("helve-{}", self.id),
+            format!("kaava-{}", self.id),
             env!("CARGO_PKG_VERSION").to_string(),
         );
 
@@ -310,7 +310,7 @@ impl ServerHandler for Bridge {
 /// Say explicitly that a tool list must not be cached. Two reasons, both real.
 ///
 /// **Correctness.** The list changes when a settings toggle moves, so a client
-/// holding one past that moment is reasoning about a HELVE that no longer
+/// holding one past that moment is reasoning about an OpenKaava that no longer
 /// exists.
 ///
 /// **Interop.** `ttlMs` and `cacheScope` are *required* by MCP 2026-07-28.
@@ -371,12 +371,12 @@ mod tests {
 
         let env = endpoint.env();
         assert_eq!(env.len(), 2);
-        assert!(env.contains(&("HELVE_MCP_PORT".to_string(), "4321".to_string())));
-        assert!(env.contains(&("HELVE_MCP_TOKEN".to_string(), "sekrit".to_string())));
+        assert!(env.contains(&("KAAVA_MCP_PORT".to_string(), "4321".to_string())));
+        assert!(env.contains(&("KAAVA_MCP_TOKEN".to_string(), "sekrit".to_string())));
     }
 
-    /// Two launches must not share a token, or one HELVE's terminals could
-    /// speak to another HELVE's listener.
+    /// Two launches must not share a token, or one instance's terminals could
+    /// speak to another instance's listener.
     #[test]
     fn tokens_do_not_repeat() {
         let first = mint_token();

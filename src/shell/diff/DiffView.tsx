@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as monaco from "monaco-editor/editor/editor.api";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
-import { registerToml } from "@helve/monaco-languages";
+import { registerToml } from "@openkaava/monaco-languages";
 import { anchorFor, countLabel, markAtLine, type LineDecoration } from "./reviewComments";
 import "./diff.css";
 
@@ -35,7 +35,7 @@ self.MonacoEnvironment = {
 // Idempotent: `search/previewMonaco.ts` calls this too and is shell-side like
 // this module, so both chunks can be live in one JS context and would
 // otherwise register the same id twice against one global registry. The guard
-// lives in `@helve/monaco-languages` so neither caller has to remember.
+// lives in `@openkaava/monaco-languages` so neither caller has to remember.
 registerToml(monaco);
 
 // Defined once at module scope, not per-mount — `defineTheme` writes into
@@ -47,7 +47,7 @@ registerToml(monaco);
 // `parseHex(hex) || Color.red`, so a perfectly valid CSS `rgba()` string
 // silently becomes opaque red. Which token each reuses, and how that bug went
 // unseen, are in the design note named in the file header.
-monaco.editor.defineTheme("helve-dark", {
+monaco.editor.defineTheme("kaava-dark", {
   base: "vs-dark",
   inherit: true,
   rules: [],
@@ -95,7 +95,7 @@ export interface DiffViewProps {
   modified: string;
   /** Passed straight to Monaco's model, but only `"toml"` actually tokenizes
    *  here; everything else renders as plain text until someone decides this
-   *  editor should carry Monaco's bundled grammars. `@helve/monaco-languages`'s
+   *  editor should carry Monaco's bundled grammars. `@openkaava/monaco-languages`'s
    *  `isTomlPath` is how a caller with a path and no Monaco import decides. */
   language?: string;
   /** Two columns, or one with removals and additions interleaved. Defaults to
@@ -151,7 +151,7 @@ export default function DiffView({
     if (!container) return;
 
     const diffEditor = monaco.editor.createDiffEditor(container, {
-      theme: "helve-dark",
+      theme: "kaava-dark",
       readOnly: true,
       automaticLayout: true,
       renderSideBySide,
