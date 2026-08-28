@@ -62,7 +62,7 @@ import "monaco-editor/languages/definitions/ini/register";
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
-import { registerToml } from "@helve/monaco-languages";
+import { registerToml } from "@openkaava/monaco-languages";
 
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
@@ -92,13 +92,13 @@ jsonDefaults.setDiagnosticsOptions({
 
 /**
  * TOML, the one language here that Monaco does not ship at all. It matters more
- * than its file count suggests: `helve.toml` and `<project>.helve` are the
- * format behind an entire quarter of the search filter — the HELVE kind in
+ * than its file count suggests: `kaava.toml` and `<project>.kaava` are the
+ * format behind an entire quarter of the search filter — the OpenKaava kind in
  * `./kinds.ts` is, today, exactly these two files — so flat grey text would
  * have made the one file type this product names after itself the one file type
  * it could not colour.
  *
- * `registerToml` is idempotent by design; `@helve/monaco-languages`'s header
+ * `registerToml` is idempotent by design; `@openkaava/monaco-languages`'s header
  * explains why that guard exists rather than being belt-and-braces:
  * `diff/DiffView.tsx` calls it too, and shares this module's JS context.
  */
@@ -154,13 +154,13 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   cfg: "ini",
 
   /**
-   * TOML, and HELVE's own marker with it. `<project>.helve` *is* TOML —
+   * TOML, and OpenKaava's own marker with it. `<project>.kaava` *is* TOML —
    * `project/marker.rs` reads one with `raw.parse::<toml::Table>()` — so the
-   * extension is HELVE's and the format is not, which is why one grammar
+   * extension is OpenKaava's and the format is not, which is why one grammar
    * serves both rather than there being a second to keep in step.
    */
   toml: "toml",
-  helve: "toml",
+  kaava: "toml",
 };
 
 /** The Monaco language id for a file, or `undefined` for plain text. */
@@ -174,19 +174,19 @@ function languageFor(extension: string): string | undefined {
  * Monaco's global theme registry, so redefining it on every mount would be
  * repeated work for no visual change.
  *
- * Named `helve-preview-dark`, deliberately **not** `helve-dark`. DiffView also
- * registers a theme called `helve-dark`, and that module shares this one's JS
+ * Named `kaava-preview-dark`, deliberately **not** `kaava-dark`. DiffView also
+ * registers a theme called `kaava-dark`, and that module shares this one's JS
  * context — both are shell-side, so both chunks can be live in the same page at
  * once, unlike Files' copy, which sits behind an iframe boundary and never
- * collides with either. Two `defineTheme("helve-dark", ...)` calls from two
+ * collides with either. Two `defineTheme("kaava-dark", ...)` calls from two
  * different chunks would make whichever evaluates second win, silently, for
  * both. A distinct name sidesteps the question of evaluation order entirely
  * rather than relying on it.
  */
-export const THEME = "helve-preview-dark";
+export const THEME = "kaava-preview-dark";
 
 /**
- * The colours themselves are the same ~45 mappings from Files' `helve-dark`,
+ * The colours themselves are the same ~45 mappings from Files' `kaava-dark`,
  * copied rather than DiffView's four — DiffView only themes a diff's two
  * inserted/removed backgrounds, and this pane is a full read-only editor with
  * find/selection/suggest/menu surfaces of its own (inert here, but still

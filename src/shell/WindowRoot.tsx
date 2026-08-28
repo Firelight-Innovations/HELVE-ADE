@@ -95,7 +95,7 @@ function isTakeover(appId: string | undefined): boolean {
 }
 
 /**
- * One HELVE window.
+ * One OpenKaava window.
  *
  * Both the main window and every detached one mount this. They differ in
  * exactly one visible way — a detached window holds a single tool, so it has no
@@ -179,7 +179,7 @@ export default function WindowRoot({
   // The pinned stack components, resolved but **not openable**.
   //
   // Not the same thing as an installed plugin, and the distinction is the whole
-  // reason both exist. These are the `[[tool]]` entries in `helve.toml` — the
+  // reason both exist. These are the `[[tool]]` entries in `kaava.toml` — the
   // stack this build expects, at the versions it pins — and what the shell does
   // with them is *report* on them: this is what the cluster bar's warning badge
   // and its health list read, and the only place that says a component needs an
@@ -390,7 +390,7 @@ export default function WindowRoot({
       .then((id) => (openedHome.current = id))
       .catch((err: unknown) => {
         setHomeWanted(false);
-        console.error("helve: could not open Home:", err);
+        console.error("kaava: could not open Home:", err);
       });
   }, [label, activePaneId, homeInstanceId, tutorialInstanceId]);
 
@@ -449,7 +449,7 @@ export default function WindowRoot({
       hideTakeover();
       void openInstance(label, appId, activePaneId ?? undefined, splitDirOnOpen(activePaneId))
         .then(setOpenedInstance)
-        .catch((err: unknown) => console.error("helve: could not open that app:", err));
+        .catch((err: unknown) => console.error("kaava: could not open that app:", err));
     },
     [label, activePaneId, hideTakeover],
   );
@@ -480,7 +480,7 @@ export default function WindowRoot({
       // A session id is a tab id in a tree like any other, so the same
       // focus-follows-open path above applies to it unchanged.
       .then(setOpenedInstance)
-      .catch((err: unknown) => console.error("helve: could not open a terminal here:", err));
+      .catch((err: unknown) => console.error("kaava: could not open a terminal here:", err));
   }, [label, activePaneId, hideTakeover]);
 
   /**
@@ -1074,7 +1074,7 @@ export default function WindowRoot({
     if (activeClusterId === null) return;
     void callApp("home", "home/open-project", undefined, {
       clusterId: activeClusterId,
-    }).catch((err: unknown) => console.error("helve: File > Open… failed:", err));
+    }).catch((err: unknown) => console.error("kaava: File > Open… failed:", err));
   }, [activeClusterId]);
 
   // `MenuItem` has no submenu and faking one is out, so Open Recent shows the
@@ -1099,7 +1099,7 @@ export default function WindowRoot({
       // a menu row that silently does nothing is the hardest failure here to see
       // from the outside.
       void applyPreset(label, presetId).catch((err: unknown) =>
-        console.error("helve: could not apply the preset:", err),
+        console.error("kaava: could not apply the preset:", err),
       );
     },
     [label],
@@ -1190,7 +1190,7 @@ export default function WindowRoot({
   // one and the project when there is not.
   const git = useGitStatus(gitControl, activeClusterId);
 
-  // Whether a newer HELVE exists. Per-window, but not a per-window *answer*:
+  // Whether a newer OpenKaava exists. Per-window, but not a per-window *answer*:
   // the state is one value in Rust and arrives on `updater:changed`, so two
   // windows can never offer two different versions. What is genuinely local is
   // `asked` — a check started from this window's Help menu is this window's
@@ -1254,7 +1254,7 @@ export default function WindowRoot({
   // cannot resolve on its own — see its own doc comment for why.
   const drag = useDrag(label, activeClusterId, translateStripIndex);
 
-  // The other drag: files coming in from outside HELVE, which the operating
+  // The other drag: files coming in from outside OpenKaava, which the operating
   // system is already carrying by the time we hear about it. Held here for the
   // same reason as the one above — two regions draw the answer, the band and
   // the one emulator under the cursor, and neither may import the drag layer to
@@ -1330,7 +1330,7 @@ export default function WindowRoot({
         onBottomCollapsedChange={setBottomCollapsed}
         onBottomMaximizedChange={setBottomMaximized}
         slots={{
-          // "HELVE | project | branch". What the window is *pointed at*,
+          // "OpenKaava | project | branch". What the window is *pointed at*,
           // rather than which surface happens to be in front — the tab strip
           // already says that, and says it next to the thing it names. See the
           // note on the title element in `TitleBar.tsx`.

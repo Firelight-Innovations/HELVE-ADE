@@ -19,8 +19,8 @@ import type {
 } from "../contract";
 import { paneLeaves, paneOfTab, paneTabs } from "../contract";
 import { activateInstance, openInstance, setInstanceTitle } from "../state/shellState";
-// The wire types come from `@helve-ade/bridge`'s `protocol`/`errors` subpaths
-// rather than its root entry. The root package does depend on `@helve-ade/bridge`
+// The wire types come from `@openkaava/bridge`'s `protocol`/`errors` subpaths
+// rather than its root entry. The root package does depend on `@openkaava/bridge`
 // now — the first-party apps under `apps/` import it, and they are built by
 // this same Vite config — but the shell must not import the client that entry
 // builds, which is the tool half of transport B and reaches for
@@ -35,9 +35,9 @@ import type {
   ReadyMessage,
   RequestMessage,
   ResponseMessage,
-} from "@helve-ade/bridge/protocol";
-import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@helve-ade/bridge/protocol";
-import { HelveErrorCode } from "@helve-ade/bridge/errors";
+} from "@openkaava/bridge/protocol";
+import { OPENED_EVENT, TOPIC_EVENT_PREFIX } from "@openkaava/bridge/protocol";
+import { KaavaErrorCode } from "@openkaava/bridge/errors";
 import { appPainted, onLaunchTarget, onProjectChanged, takeLaunchTarget } from "../../bindings";
 import { instantOutCss, instantOutMs } from "../motion";
 import { callApp } from "../state/apps";
@@ -67,10 +67,10 @@ const VIEWER_APP = "viewer";
  * against.
  *
  * Four directions of traffic, each argued where it is handled: a frame's
- * `request` messages and the `helve/*` methods the shell answers itself, in
+ * `request` messages and the `kaava/*` methods the shell answers itself, in
  * `onMessage`; a Tauri broadcast relayed inward, at the `project:changed`
  * effect; a menu command posted outward, at `ToolWindowHandle.send`; and the
- * sideways channel — `helve/open` and `helve/publish` — at `answerOpen` and
+ * sideways channel — `kaava/open` and `kaava/publish` — at `answerOpen` and
  * `answerPublish`. Only the Tauri broadcast travels through Rust; for the rest
  * both ends are already in this browser, and a round trip would buy nothing but
  * a chance for the two to disagree about which frame is which.
@@ -119,7 +119,7 @@ interface MountedFrame {
   origin: string | null;
   /**
    * What the frame last declared it can do. Empty until it says
-   * `helve/commands`, which is the honest starting point: a frame that has never
+   * `kaava/commands`, which is the honest starting point: a frame that has never
    * declared anything can do nothing the menu bar knows how to ask for.
    */
   commands: Set<string>;
@@ -175,7 +175,7 @@ const ToolWindow = forwardRef<
     onResize: (splitId: string, sizes: number[]) => void;
     dropTarget?: DropTarget | null;
     /**
-     * A frame's declared command set changed — it said `helve/commands`, or it
+     * A frame's declared command set changed — it said `kaava/commands`, or it
      * went away and its declaration went with it. Keyed by *instance*, because
      * two instances of one app can have different things to offer: one Files
      * with a dirty editor can Save and one without cannot.
@@ -397,7 +397,7 @@ const ToolWindow = forwardRef<
           if (frame.id !== instanceId) continue;
           if (frame.origin === null || !frame.commands.has(command)) return;
           win.postMessage(
-            { helve: 1, kind: "command", command } satisfies CommandMessage,
+            { kaava: 1, kind: "command", command } satisfies CommandMessage,
             frame.origin,
           );
           return;
@@ -419,7 +419,7 @@ const ToolWindow = forwardRef<
     for (const [win, frame] of frames.current) {
       if (frame.id !== instanceId || frame.origin === null) continue;
       win.postMessage(
-        { helve: 1, kind: "event", event, payload } satisfies EventMessage,
+        { kaava: 1, kind: "event", event, payload } satisfies EventMessage,
         frame.origin,
       );
       return;
@@ -467,7 +467,7 @@ const ToolWindow = forwardRef<
   /**
    * The last value published under each topic, and which instance published it.
    *
-   * This is what makes `helve/publish` *retained* rather than a bare relay, and
+   * This is what makes `kaava/publish` *retained* rather than a bare relay, and
    * the retention is the point: a File Viewer publishes which file it is
    * showing once, when it changes. An Explorer opened a minute later would
    * otherwise have no way to learn that until the user clicked something else,
@@ -492,7 +492,7 @@ const ToolWindow = forwardRef<
     topics.current.clear();
   }, [clusterId]);
 
-  // The layout and the instances in it, read by `helve/open` to find a target.
+  // The layout and the instances in it, read by `kaava/open` to find a target.
   // Refs for the reason `report` above is one: the message listener is
   // installed once and must keep reading the current answer rather than the one
   // that was current when it was registered.
@@ -502,7 +502,7 @@ const ToolWindow = forwardRef<
   roster.current = instances;
 
   /**
-   * Which surface a `helve/open` should be delivered to: an existing instance
+   * Which surface a `kaava/open` should be delivered to: an existing instance
    * of that app in this cluster, brought forward, or a new one.
    *
    * The same rule `onOpenRecent` in `WindowRoot.tsx` applies to Home, and the
@@ -528,14 +528,14 @@ const ToolWindow = forwardRef<
   }, []);
 
   /**
-   * Explorer's "Open with HELVE", pointed at a file.
+   * Explorer's "Open with OpenKaava", pointed at a file.
    *
    * Only the file case arrives here. A folder is already open as a project by
    * the time this runs — `launch::apply` does that in Rust, where
    * `project::open` lives — and a file is the half that needs the layout: find
    * or open a viewer, hand it the path. That is `resolveOpenTarget` plus
    * `sendEventWhenReady`, which is to say exactly what `answerOpen` does for a
-   * `helve/open` from the Explorer. The same route, reached from the launch
+   * `kaava/open` from the Explorer. The same route, reached from the launch
    * rather than from a frame.
    *
    * Both delivery paths are taken because the two launches differ. The first
@@ -608,7 +608,7 @@ const ToolWindow = forwardRef<
      */
     function answerHello(source: Window, origin: string, frame: MountedFrame) {
       const reply: ReadyMessage = {
-        helve: 1,
+        kaava: 1,
         kind: "ready",
         toolId: frame.appId,
         protocol: 1,
@@ -629,7 +629,7 @@ const ToolWindow = forwardRef<
         if (held.from === frame.id) continue;
         source.postMessage(
           {
-            helve: 1,
+            kaava: 1,
             kind: "event",
             event: `${TOPIC_EVENT_PREFIX}${topic}`,
             payload: held,
@@ -642,22 +642,22 @@ const ToolWindow = forwardRef<
     }
 
     /**
-     * `helve/open`: put something on screen in a cluster-mate, and tell it.
+     * `kaava/open`: put something on screen in a cluster-mate, and tell it.
      *
      * Half of the sideways channel — one frame reaching another through this
      * component, without either of them learning the other exists. File Explorer
-     * sends `helve/open` naming the app kind `viewer`; the shell finds or opens
+     * sends `kaava/open` naming the app kind `viewer`; the shell finds or opens
      * one in that cluster and delivers the payload as an `OPENED_EVENT`.
      *
      * Routed without being understood: an `appId` is matched against the layout,
      * no payload is inspected and no intent is enumerated, so adding a fifth
      * thing two apps want to say to each other is not an edit to this file. That
-     * is the same discipline `helve/commands` is built on, and what keeps the
+     * is the same discipline `kaava/commands` is built on, and what keeps the
      * shell from accumulating a table of every app's vocabulary.
      */
     function answerOpen(
       params: unknown,
-      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      respond: (body: Omit<ResponseMessage, "kaava" | "kind">) => void,
       id: ResponseMessage["id"],
     ) {
       const target = openRequest(params);
@@ -665,8 +665,8 @@ const ToolWindow = forwardRef<
         respond({
           id,
           error: {
-            code: HelveErrorCode.InvalidParams,
-            message: "helve/open needs an `appId` string",
+            code: KaavaErrorCode.InvalidParams,
+            message: "kaava/open needs an `appId` string",
           },
         });
         return;
@@ -682,13 +682,13 @@ const ToolWindow = forwardRef<
         .catch((err: unknown) =>
           respond({
             id,
-            error: { code: HelveErrorCode.InternalError, message: String(err) },
+            error: { code: KaavaErrorCode.InternalError, message: String(err) },
           }),
         );
     }
 
     /**
-     * `helve/publish`: retain a fact for this cluster, and fan it out.
+     * `kaava/publish`: retain a fact for this cluster, and fan it out.
      *
      * The other half of the sideways channel. File Viewer publishes which file
      * it is showing; the shell retains that and relays it to its cluster-mates,
@@ -698,7 +698,7 @@ const ToolWindow = forwardRef<
      */
     function answerPublish(
       params: unknown,
-      respond: (body: Omit<ResponseMessage, "helve" | "kind">) => void,
+      respond: (body: Omit<ResponseMessage, "kaava" | "kind">) => void,
       id: ResponseMessage["id"],
       frame: MountedFrame,
     ) {
@@ -707,8 +707,8 @@ const ToolWindow = forwardRef<
         respond({
           id,
           error: {
-            code: HelveErrorCode.InvalidParams,
-            message: "helve/publish needs a `topic` string",
+            code: KaavaErrorCode.InvalidParams,
+            message: "kaava/publish needs a `topic` string",
           },
         });
         return;
@@ -727,7 +727,7 @@ const ToolWindow = forwardRef<
         if (other.id === frame.id || other.origin === null) continue;
         win.postMessage(
           {
-            helve: 1,
+            kaava: 1,
             kind: "event",
             event: `${TOPIC_EVENT_PREFIX}${published.topic}`,
             payload: held,
@@ -756,13 +756,13 @@ const ToolWindow = forwardRef<
       }
 
       const { id, method, params } = event.data;
-      const respond = (body: Omit<ResponseMessage, "helve" | "kind">) =>
+      const respond = (body: Omit<ResponseMessage, "kaava" | "kind">) =>
         source.postMessage(
-          { helve: 1, kind: "response", ...body } satisfies ResponseMessage,
+          { kaava: 1, kind: "response", ...body } satisfies ResponseMessage,
           origin,
         );
 
-      // `helve/*` belongs to the host, exactly as `hello` above does — this one
+      // `kaava/*` belongs to the host, exactly as `hello` above does — this one
       // is a frame saying it has drawn its first meaningful content, and it is
       // answered here rather than forwarded on to an app's Rust half. Not an
       // app's question to answer: the frame is claiming something about itself,
@@ -780,11 +780,11 @@ const ToolWindow = forwardRef<
       // there are. A second instance reporting is a duplicate that
       // `boot::await_apps` already ignores, which is the behaviour we want:
       // the splash lifts when each kind of app has drawn once.
-      if (method === "helve/painted") {
+      if (method === "kaava/painted") {
         respond({ id, result: null });
         if (frame.isApp) {
           void appPainted(frame.appId).catch((err: unknown) =>
-            console.error(`helve: could not report ${frame.appId} painted:`, err),
+            console.error(`kaava: could not report ${frame.appId} painted:`, err),
           );
         }
         return;
@@ -794,14 +794,14 @@ const ToolWindow = forwardRef<
       // business, like the two above: which tab this is, is something only the
       // shell knows, and it knows it from `event.source` rather than from
       // anything the frame could assert about itself.
-      if (method === "helve/title") {
+      if (method === "kaava/title") {
         respond({ id, result: null });
         const title = declaredTitle(params);
         if (title) void setInstanceTitle(frame.id, title);
         return;
       }
 
-      // The other `helve/*` the shell answers itself: a frame saying which menu
+      // The other `kaava/*` the shell answers itself: a frame saying which menu
       // commands it can carry out right now. Host business, not an app's Rust
       // half's — the menu being greyed out is a fact about this window's title
       // bar, and the backend has no part in it.
@@ -814,9 +814,9 @@ const ToolWindow = forwardRef<
       //
       // A tool may declare too. Its *requests* cannot be served (the broker is
       // not built), but a declaration asks nothing of a core: it is the frame
-      // making a claim about itself, exactly as `helve/painted` is, so it is
+      // making a claim about itself, exactly as `kaava/painted` is, so it is
       // answered above the `isApp` refusal rather than below it.
-      if (method === "helve/commands") {
+      if (method === "kaava/commands") {
         frame.commands = new Set(declaredCommands(params));
         respond({ id, result: null });
         report.current?.(frame.id, [...frame.commands]);
@@ -825,11 +825,11 @@ const ToolWindow = forwardRef<
 
       // --- the sideways channel -------------------------------------------
       //
-      // Both of these are host business in the same sense `helve/commands` is,
+      // Both of these are host business in the same sense `kaava/commands` is,
       // and they sit above the `isApp` refusal for the same reason: neither
-      // asks anything of a core. `helve/open` is a question about the *layout*
+      // asks anything of a core. `kaava/open` is a question about the *layout*
       // — which surface of a given kind is in this cluster — and only the shell
-      // can answer it. `helve/publish` is a frame making a claim about itself
+      // can answer it. `kaava/publish` is a frame making a claim about itself
       // and asking that its neighbours hear it.
       //
       // A tool may use both, and that is deliberate rather than an oversight.
@@ -841,12 +841,12 @@ const ToolWindow = forwardRef<
       // than a surface, and hands over a payload the receiving app is free to
       // ignore. Per-tool permissions are a later pass; see the `[permissions]`
       // table in `docs/tool-protocol.md` §1, reserved and unenforced today.
-      if (method === "helve/open") {
+      if (method === "kaava/open") {
         answerOpen(params, respond, id);
         return;
       }
 
-      if (method === "helve/publish") {
+      if (method === "kaava/publish") {
         answerPublish(params, respond, id, frame);
         return;
       }
@@ -858,14 +858,14 @@ const ToolWindow = forwardRef<
       // begins and ends; everything else is answered out here and never travels
       // back. Above the `isApp` refusal like the rest, and for the same reason:
       // nothing is asked of a core.
-      if (method === "helve/drag") {
+      if (method === "kaava/drag") {
         const drag = pathDragRequest(params);
         if (!drag) {
           respond({
             id,
             error: {
-              code: HelveErrorCode.InvalidParams,
-              message: 'helve/drag needs a `phase` of "begin" or "end"',
+              code: KaavaErrorCode.InvalidParams,
+              message: 'kaava/drag needs a `phase` of "begin" or "end"',
             },
           });
           return;
@@ -908,7 +908,7 @@ const ToolWindow = forwardRef<
             id,
             error: isErrorPayload(err)
               ? err
-              : { code: HelveErrorCode.InternalError, message: String(err) },
+              : { code: KaavaErrorCode.InternalError, message: String(err) },
           }),
         );
     }
@@ -966,7 +966,7 @@ const ToolWindow = forwardRef<
           if (!frame.isApp || frame.origin === null) continue;
           win.postMessage(
             {
-              helve: 1,
+              kaava: 1,
               kind: "event",
               event: "project:changed",
               payload,
@@ -1072,7 +1072,7 @@ const ToolWindow = forwardRef<
   //
   // "Time to draw" is counted in animation frames, not milliseconds: two of them
   // is what it takes for a change committed now to have been rastered. Only the
-  // fade that follows is a duration, taken from `instantOut`. `helve/painted`
+  // fade that follows is a duration, taken from `instantOut`. `kaava/painted`
   // would be the exact signal to wait on instead, and it is not usable here —
   // `reportPainted` in `packages/bridge/src/index.ts` latches on first call, so
   // a frontend sends it once in its life. It answers "has this app booted",
@@ -1309,7 +1309,7 @@ function changedCluster(payload: unknown): string | null {
 }
 
 /**
- * The `title` off a `helve/title` request, or `null` for anything that is not a
+ * The `title` off a `kaava/title` request, or `null` for anything that is not a
  * non-empty string.
  *
  * Validated for the same reason `declaredCommands` below is: this decides what
@@ -1325,7 +1325,7 @@ function declaredTitle(params: unknown): string | null {
 export default ToolWindow;
 
 /**
- * The `commands` array off a `helve/commands` request, with anything that is
+ * The `commands` array off a `kaava/commands` request, with anything that is
  * not a string dropped.
  *
  * Validated rather than trusted even though every app in this build is
@@ -1342,13 +1342,13 @@ function declaredCommands(params: unknown): string[] {
 }
 
 /**
- * The `appId` and `payload` off a `helve/open` request, or `null` if there is
+ * The `appId` and `payload` off a `kaava/open` request, or `null` if there is
  * no usable app id.
  *
  * Only `appId` is validated. The payload is opaque by design — it is the app's
  * vocabulary, not the protocol's, and the shell checking its shape would mean
  * the shell knowing what an open *means* for each app it can route to. That is
- * exactly the coupling `helve/commands` was designed to avoid, and it would
+ * exactly the coupling `kaava/commands` was designed to avoid, and it would
  * make every new intent an edit to this file.
  */
 function openRequest(params: unknown): { appId: string; payload: unknown } | null {
@@ -1359,7 +1359,7 @@ function openRequest(params: unknown): { appId: string; payload: unknown } | nul
 }
 
 /**
- * The `topic` and `value` off a `helve/publish` request, or `null` for anything
+ * The `topic` and `value` off a `kaava/publish` request, or `null` for anything
  * without a usable topic.
  *
  * `value` is deliberately unchecked, including when it is `undefined` —
@@ -1369,7 +1369,7 @@ function openRequest(params: unknown): { appId: string; payload: unknown } | nul
  * indistinguishable from one nobody had heard from.
  */
 /**
- * The `phase` and `paths` off a `helve/drag` request, or `null` for a phase
+ * The `phase` and `paths` off a `kaava/drag` request, or `null` for a phase
  * this shell does not know. `end` carries no paths and need not.
  *
  * Unlike `openRequest`'s payload, `paths` is validated down to dropping every
@@ -1394,7 +1394,7 @@ function publishRequest(params: unknown): { topic: string; value: unknown } | nu
 }
 
 /**
- * `isHelveMessage` in the bridge package is typed for the frontend's inbound
+ * `isKaavaMessage` in the bridge package is typed for the frontend's inbound
  * direction (`ReadyMessage | ResponseMessage | EventMessage`) — we are the
  * shell, receiving the other direction, so reusing it would narrow to the
  * wrong union. The runtime check is the same two fields either way; this just
@@ -1403,8 +1403,8 @@ function publishRequest(params: unknown): { topic: string; value: unknown } | nu
  */
 function isInboundMessage(data: unknown): data is HelloMessage | RequestMessage {
   if (typeof data !== "object" || data === null) return false;
-  const message = data as { helve?: unknown; kind?: unknown; id?: unknown; method?: unknown };
-  if (message.helve !== 1) return false;
+  const message = data as { kaava?: unknown; kind?: unknown; id?: unknown; method?: unknown };
+  if (message.kaava !== 1) return false;
   if (message.kind === "hello") return true;
   // A request without a numeric id could never be answered — there would be
   // nothing to echo back — and one without a method names nothing to call.

@@ -103,25 +103,25 @@ const KIND_BY_EXTENSION: Record<string, SearchKind> = {
 };
 
 /**
- * Whole filenames that are HELVE's own, checked before any extension.
+ * Whole filenames that are OpenKaava's own, checked before any extension.
  *
- * These have to win over the extension table: `helve.toml` is a `.toml` and
+ * These have to win over the extension table: `kaava.toml` is a `.toml` and
  * would otherwise land in `data`, which is true but useless — the reason to
- * filter for HELVE files at all is to find the ones that configure *this*
+ * filter for OpenKaava files at all is to find the ones that configure *this*
  * tool, and burying them among every other TOML defeats that.
  */
-const HELVE_FILENAMES = new Set(["helve.toml", "helve.lock"]);
+const KAAVA_FILENAMES = new Set(["kaava.toml", "kaava.lock"]);
 
-/** Extensions that are HELVE's own wherever they appear. */
-const HELVE_EXTENSIONS = new Set(["helve"]);
+/** Extensions that are OpenKaava's own wherever they appear. */
+const KAAVA_EXTENSIONS = new Set(["kaava"]);
 
 /**
- * A path segment that makes everything beneath it HELVE's.
+ * A path segment that makes everything beneath it OpenKaava's.
  *
  * Matching on the directory rather than each file inside it is what makes a
- * `.helve/` full of otherwise-ordinary JSON classify the way a user expects.
+ * `.kaava/` full of otherwise-ordinary JSON classify the way a user expects.
  */
-const HELVE_DIRECTORY = ".helve";
+const KAAVA_DIRECTORY = ".kaava";
 
 /** Where the kind table gives no answer. Not an error — most files are prose or unknown. */
 export const DEFAULT_KIND: SearchKind = "content";
@@ -147,7 +147,7 @@ export function extensionOf(name: string): string {
 /**
  * Classify a file by its absolute path.
  *
- * Takes the whole path rather than just the name because the `.helve/`
+ * Takes the whole path rather than just the name because the `.kaava/`
  * directory rule cannot be answered from a basename alone.
  */
 export function kindOf(path: string): SearchKind {
@@ -155,11 +155,11 @@ export function kindOf(path: string): SearchKind {
   const name = normalized.slice(normalized.lastIndexOf("/") + 1);
   const lower = name.toLowerCase();
 
-  if (HELVE_FILENAMES.has(lower)) return "helve";
-  if (normalized.split("/").includes(HELVE_DIRECTORY)) return "helve";
+  if (KAAVA_FILENAMES.has(lower)) return "kaava";
+  if (normalized.split("/").includes(KAAVA_DIRECTORY)) return "kaava";
 
   const extension = extensionOf(lower);
-  if (HELVE_EXTENSIONS.has(extension)) return "helve";
+  if (KAAVA_EXTENSIONS.has(extension)) return "kaava";
 
   return KIND_BY_EXTENSION[extension] ?? DEFAULT_KIND;
 }
@@ -169,8 +169,8 @@ export const KIND_LABEL: Record<SearchKind, string> = {
   script: "Scripts",
   data: "Data",
   content: "Content",
-  helve: "HELVE",
+  kaava: "OpenKaava",
 };
 
 /** The order kinds are drawn in, everywhere they are listed. */
-export const ALL_KINDS: SearchKind[] = ["script", "data", "content", "helve"];
+export const ALL_KINDS: SearchKind[] = ["script", "data", "content", "kaava"];

@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 /// fast instead of sitting for 30s).
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long `shutdown` waits after `helve/shutdown` replies before it kills
+/// How long `shutdown` waits after `kaava/shutdown` replies before it kills
 /// the process itself. Mirrors docs/tool-protocol.md section 2.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
@@ -284,14 +284,14 @@ impl ToolProcess {
         self.notifications.lock_or_panic()
     }
 
-    /// `helve/shutdown`, then wait, then kill. Idempotent: a second call
+    /// `kaava/shutdown`, then wait, then kill. Idempotent: a second call
     /// finds the child already reaped (`try_wait` keeps returning the same
     /// exit status once obtained) and returns immediately.
     pub fn shutdown(&self) -> Result<(), SpawnError> {
         // Best-effort: if the tool already exited this fails with
         // TOOL_EXITED, which is fine -- there's nothing left to negotiate,
         // so fall through to reaping below regardless of the outcome.
-        let _ = self.call_timeout("helve/shutdown", None, SHUTDOWN_GRACE);
+        let _ = self.call_timeout("kaava/shutdown", None, SHUTDOWN_GRACE);
 
         let deadline = Instant::now() + SHUTDOWN_GRACE;
         loop {

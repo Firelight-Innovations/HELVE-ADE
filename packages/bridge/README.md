@@ -1,6 +1,6 @@
-# @helve-ade/bridge
+# @openkaava/bridge
 
-The transport bridge between a HELVE app's frontend and its host.
+The transport bridge between an OpenKaava app's frontend and its host.
 
 An app's UI runs in an iframe on its own origin. This is the only thing it needs
 from the host: a typed `invoke` down to the app's own Rust half, and the events
@@ -9,13 +9,13 @@ if you find yourself reaching for `window.parent` or `@tauri-apps/api` directly,
 something is wrong.
 
 ```sh
-pnpm add @helve-ade/bridge
+pnpm add @openkaava/bridge
 ```
 
 ## Using it
 
 ```ts
-import { invoke, on, session, reportPainted } from "@helve-ade/bridge";
+import { invoke, on, session, reportPainted } from "@openkaava/bridge";
 
 // Call your app's Rust half. The method name is yours; the shell routes it to
 // your package's core by which frame the call came from, never by the string.
@@ -28,16 +28,16 @@ const { projectPath } = await session();
 reportPainted();
 ```
 
-`invoke` rejects with a `HelveRpcError` carrying `{ code, message, data? }` —
+`invoke` rejects with a `KaavaRpcError` carrying `{ code, message, data? }` —
 the JSON-RPC error object your core returned, unchanged.
 
 ## Entry points
 
 | Import | What it is |
 |---|---|
-| `@helve-ade/bridge` | `invoke`, `on`, `onCommand`, `declareCommands`, `openIn`, `publish`, `subscribe`, `session`, `host`, `reportPainted` |
-| `@helve-ade/bridge/protocol` | The wire types of transport B, for anyone implementing the other end |
-| `@helve-ade/bridge/errors` | `HelveRpcError` and the standard codes |
+| `@openkaava/bridge` | `invoke`, `on`, `onCommand`, `declareCommands`, `openIn`, `publish`, `subscribe`, `session`, `host`, `reportPainted` |
+| `@openkaava/bridge/protocol` | The wire types of transport B, for anyone implementing the other end |
+| `@openkaava/bridge/errors` | `KaavaRpcError` and the standard codes |
 
 `@tauri-apps/api` is an **optional** peer dependency. It is needed only when an
 app runs as a standalone Tauri window rather than inside the orchestrator; inside
@@ -46,7 +46,7 @@ the shell, the bridge talks over `postMessage` and pulls in nothing.
 ## Stability
 
 Transport B is at protocol version 1. `docs/tool-protocol.md` in the
-[HELVE repository](https://github.com/Firelight-Innovations/HELVE-ADE/blob/main/docs/tool-protocol.md)
+[OpenKaava repository](https://github.com/Firelight-Innovations/OpenKaava/blob/main/docs/tool-protocol.md)
 is the specification, and §6 is what it promises about changes — the short
 version being that additions are additive and a manifest written today keeps
 parsing.

@@ -12,7 +12,7 @@ use std::io::Write;
 /// The literal `"jsonrpc"` value every message on the wire carries.
 const JSONRPC_VERSION: &str = "2.0";
 
-// Standard JSON-RPC codes, plus the Helve range the host generates itself
+// Standard JSON-RPC codes, plus the OpenKaava range the host generates itself
 // (never sent by a tool). Keeping these as constants rather than inlining
 // the numbers is what lets a test assert `err.code == METHOD_NOT_FOUND`
 // instead of a bare `-32601` that means nothing without the spec open.
@@ -42,7 +42,7 @@ pub const TOOL_EXITED: i32 = -32000;
 /// timed out and may still answer; the host drops the late response.
 pub const TIMED_OUT: i32 = -32001;
 
-/// Host-generated: the tool never completed the `helve/hello` handshake.
+/// Host-generated: the tool never completed the `kaava/hello` handshake.
 /// Published so tools can recognise the code, but nothing in this crate emits
 /// it -- `ToolProcess::spawn` reports startup failures as `SpawnError`.
 pub const HANDSHAKE_FAILED: i32 = -32002;
@@ -100,7 +100,7 @@ pub struct Request {
     /// Unique only within one direction. Host id 3 and tool id 3 are unrelated
     /// requests; never key a shared table on the number alone.
     pub id: u64,
-    /// `helve/*` is reserved for the protocol itself; every other namespace
+    /// `kaava/*` is reserved for the protocol itself; every other namespace
     /// belongs to the tool.
     pub method: String,
     /// Absent for methods that take no arguments. Omitted from the wire when
@@ -232,7 +232,7 @@ struct RawMessage {
     // Not just `#[serde(default)]`: serde's stock `Option<T>` deserializer
     // treats a JSON `null` the same as a missing key, both becoming `None`.
     // That's wrong here specifically -- `{"result":null}` (a real, present
-    // result of `null`, which is exactly what `helve/shutdown` and
+    // result of `null`, which is exactly what `kaava/shutdown` and
     // `echo/notify` reply with) would otherwise collapse into "no result",
     // which is indistinguishable below from "no error either" and gets
     // rejected as an invalid response. `deserialize_present` keeps the
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn a_null_result_is_a_present_success_not_a_missing_one() {
         // Regression test for the serde `Option<T>` gotcha `deserialize_present`
-        // works around: `helve/shutdown` and `echo/notify` both reply with a
+        // works around: `kaava/shutdown` and `echo/notify` both reply with a
         // real `result: null`, which must decode as `Ok(Value::Null)`, not
         // get rejected as "neither result nor error".
         let resp = Response::ok(1, Value::Null);

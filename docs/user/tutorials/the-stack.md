@@ -6,7 +6,7 @@ What Forger and Journeyman are each for.
 
 ---
 
-HELVE is not one program: an orchestrator plus a small stack of separate
+OpenKaava is not one program: an orchestrator plus a small stack of separate
 authoring tools that mount into it. The orchestrator — the thing you are
 reading this in — is the one that ties them together at runtime, and it
 holds none of their code.
@@ -18,7 +18,7 @@ those. A tool that is where it should be says nothing at all.
 > So a stack with nothing wrong raises no badge. An empty result here is the
 > healthy answer, not a screen that failed to load.
 
-The list lives in `helve.toml` at the root of the orchestrator's checkout.
+The list lives in `kaava.toml` at the root of the orchestrator's checkout.
 Each entry pins an exact version, so a given checkout of the orchestrator
 always describes one reproducible stack rather than whatever each
 repository's branch tip happens to be today.
@@ -32,7 +32,7 @@ repository's branch tip happens to be today.
 
 ## Why the badge says things are missing
 
-Reads `helve.toml` → looks for each tool's checkout → resolves one of four states
+Reads `kaava.toml` → looks for each tool's checkout → resolves one of four states
 
 Discovery resolves each checkout to one of four states, and the interface
 never shows the raw word for any of them. A checkout that matches the pin
@@ -60,8 +60,8 @@ in the binary and need no checkout at all.
 > tool tab today could only open on a screen explaining why it is empty. They
 > arrive when the broker does.
 
-`checkout-root` in `helve.toml` says where they are looked for, and defaults
-to `..` — every Helve repository sitting as a sibling of the orchestrator's
+`checkout-root` in `kaava.toml` says where they are looked for, and defaults
+to `..` — every OpenKaava repository sitting as a sibling of the orchestrator's
 own folder. Cloning the pinned version there is what clears a tool from the
 badge; cloning the wrong one only changes which word it shows.
 

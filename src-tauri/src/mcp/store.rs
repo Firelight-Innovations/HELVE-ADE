@@ -43,14 +43,14 @@ pub fn load(app: &AppHandle) -> Stored {
         Ok(raw) => raw,
         Err(e) => {
             if e.kind() != std::io::ErrorKind::NotFound {
-                crate::helve_log!("could not read {}: {e}", path.display());
+                crate::kaava_log!("could not read {}: {e}", path.display());
             }
             return Stored::default();
         }
     };
 
     serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::helve_log!(
+        crate::kaava_log!(
             "{} is not readable, falling back to what each server ships as: {e}",
             path.display()
         );
@@ -64,7 +64,7 @@ pub fn save(app: &AppHandle, stored: &Stored) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -72,18 +72,18 @@ pub fn save(app: &AppHandle, stored: &Stored) {
     let json = match serde_json::to_string_pretty(stored) {
         Ok(json) => json,
         Err(e) => {
-            crate::helve_log!("could not serialize the MCP switches: {e}");
+            crate::kaava_log!("could not serialize the MCP switches: {e}");
             return;
         }
     };
 
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, json) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

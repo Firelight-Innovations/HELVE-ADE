@@ -73,7 +73,7 @@ pub fn create(
         // created by a drag has no splash to wait for and must appear at once — an invisible one
         // would read as the drag having silently lost the tab.
         let _ = window.show();
-        // A drag ending outside HELVE releases over *another* application, which takes the
+        // A drag ending outside OpenKaava releases over *another* application, which takes the
         // foreground with it; Windows will not let a background process raise a new window over
         // the foreground one, so without this the torn-off window opens behind whatever was
         // dropped on and blinks in the taskbar — indistinguishable from the gesture doing nothing.
@@ -158,7 +158,7 @@ pub fn detach_cluster(app: &AppHandle, state: &ShellState, cluster_id: &str) -> 
     create(app, &label, at_drop_point(app), true)
 }
 
-/// Which HELVE window the cursor is over, if any.
+/// Which OpenKaava window the cursor is over, if any.
 ///
 /// A tab moves between windows by being dropped into another window, and no window's frontend can
 /// work out where that is: each window is its own webview with its own DOM and coordinate space,
@@ -233,7 +233,7 @@ fn contains(window: &WebviewWindow, x: f64, y: f64) -> bool {
 /// path, so it can never be mistaken for one of these.
 pub fn request_close(app: &AppHandle, state: &ShellState, label: &str) {
     if label == "main" {
-        // `main` is the session, not just a window: closing it ends HELVE rather than leaving
+        // `main` is the session, not just a window: closing it ends OpenKaava rather than leaving
         // secondaries stranded on screen with no way back to `main`. Whatever is open at this
         // moment is what gets persisted — a three-window session closed via `main` restores as
         // three windows next launch. Flush first: `set_geometry` records position and size without

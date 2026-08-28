@@ -22,7 +22,7 @@ pub mod tutorial;
 use crate::plugins;
 use crate::project;
 use crate::shell_state::ShellState;
-use helve_rpc::{RpcError, INTERNAL_ERROR, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, INTERNAL_ERROR, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -115,7 +115,7 @@ impl CallContext {
     pub fn require_cluster(&self) -> Result<&str, RpcError> {
         self.cluster_id.as_deref().ok_or_else(|| {
             RpcError::new(
-                helve_rpc::INTERNAL_ERROR,
+                kaava_rpc::INTERNAL_ERROR,
                 "there is no cluster to open a project in — this surface is not in one any more",
             )
         })
@@ -132,7 +132,7 @@ impl CallContext {
 /// that boundary because it is someone else's code on its own release cycle; an
 /// app is this code.
 ///
-/// `helve/hello` never reaches one of these. The shell answers the handshake
+/// `kaava/hello` never reaches one of these. The shell answers the handshake
 /// itself in `ToolWindow.tsx` — it is the side that knows the session, and an
 /// app that had to reimplement the reply could get it wrong.
 type Dispatch = fn(&AppHandle, &CallContext, &str, Option<Value>) -> Result<Value, RpcError>;
@@ -146,7 +146,7 @@ struct Registered {
 
 /// Every app this build ships, in the order they appear in the switcher bar.
 ///
-/// Compiled in rather than declared in `helve.toml`, because that manifest
+/// Compiled in rather than declared in `kaava.toml`, because that manifest
 /// answers a different question. It pins *other repositories* at versions this
 /// orchestrator expects, and every state it can report — needs update, not
 /// installed — is about a checkout that might not be there. An app is in the
@@ -203,11 +203,11 @@ const REGISTRY: &[Registered] = &[
     Registered {
         id: "tutorial",
         name: "Tutorials",
-        description: "Learn HELVE — short walkthroughs of the window, projects and the stack.",
+        description: "Learn OpenKaava — short walkthroughs of the window, projects and the stack.",
         // Registered like any other app and deliberately never *listed*: the
         // frontend filters it and Home out of the Apps menu, both covering the
         // cluster rather than taking a pane. This row is still what makes
-        // `helve/open` resolve a frontend. See `docs/tutorials.md` §8.
+        // `kaava/open` resolve a frontend. See `docs/tutorials.md` §8.
         call: tutorial::call,
     },
 ];
@@ -319,7 +319,7 @@ pub fn openables(app: &AppHandle) -> Vec<Openable> {
         .into_iter()
         .flat_map(|plugin| plugin.surfaces)
         // **Only what a plugin asked to have listed.** `present = "cover"` is
-        // reachable by `helve/open` and absent from both menus, as Home and
+        // reachable by `kaava/open` and absent from both menus, as Home and
         // Tutorials already are. A package with *no* surfaces — an MCP server,
         // an indexer — contributes nothing, which is the whole answer to "there
         // should be no button offering to add a backend".
@@ -429,7 +429,7 @@ pub fn entry_url(id: &str) -> String {
 /// caller has already resolved.
 ///
 /// This is the half an app does *not* share with a tool; the *frontend* contract
-/// it does. An app's UI imports `@helve-ade/bridge` and calls `invoke("home/stack")`
+/// it does. An app's UI imports `@openkaava/bridge` and calls `invoke("home/stack")`
 /// exactly as a tool's UI calls `invoke("echo")`, and neither one knows which
 /// kind of host answered. So an app can become a tool later — or a tool be
 /// absorbed into the shell — without its interface code changing.
@@ -460,7 +460,7 @@ pub fn call(
     //
     // `CallContext` is deliberately *not* forwarded. It resolves a cluster and
     // that cluster's project — facts about this shell's layout — and a core is
-    // told about the world it opened into through `session` in `helve/hello`
+    // told about the world it opened into through `session` in `kaava/hello`
     // instead. Handing a plugin the shell's internal vocabulary would make the
     // layout part of the plugin contract, which §3 of the protocol is shaped to
     // avoid; when a core needs to know about a project, `Session` is the field
@@ -506,7 +506,7 @@ mod tests {
         assert_eq!(total, ids.len(), "duplicate app id in the registry");
     }
 
-    /// The same rule `helve-tool.toml` holds tools to (`^[a-z][a-z0-9-]*$`),
+    /// The same rule `kaava-tool.toml` holds tools to (`^[a-z][a-z0-9-]*$`),
     /// applied here for the same reason: an id ends up in a URL.
     #[test]
     fn app_ids_are_url_safe() {

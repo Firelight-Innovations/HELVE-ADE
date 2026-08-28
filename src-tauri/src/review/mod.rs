@@ -2,7 +2,7 @@
 //!
 //! A comment is a note anchored to a line range of one file, in one of the three diffs the
 //! source-control surfaces draw: the unstaged view, the staged view, or a worktree's divergence
-//! from where it forked. `.helve/` inside the checkout is where they live, and [`store`] is the
+//! from where it forked. `.kaava/` inside the checkout is where they live, and [`store`] is the
 //! whole of that.
 //!
 //! It carries **no author and no thread**. There are exactly two parties — the person at the
@@ -32,7 +32,7 @@ use tauri::AppHandle;
 
 /// Serializes the read-modify-write in [`edit`].
 ///
-/// One lock for the whole process rather than one per checkout. HELVE is single-instance but not
+/// One lock for the whole process rather than one per checkout. OpenKaava is single-instance but not
 /// single-*window*, so two windows can have the same project open and two commands can land on the
 /// same file at once — and the loser of that race would silently drop whichever note the winner
 /// had just added. A map keyed by path would be the precise answer; a single lock is the same
@@ -209,7 +209,7 @@ pub fn mark_sent(comments: &mut [ReviewComment], ids: &[String], now: u64) -> us
 }
 
 /// File, then position in it, then age. Applied on every mutation so the stored document is
-/// stable: `.helve/` sits inside the checkout, and a file that reshuffles itself on every write is
+/// stable: `.kaava/` sits inside the checkout, and a file that reshuffles itself on every write is
 /// a file nobody can keep in version control.
 pub fn sort(comments: &mut [ReviewComment]) {
     comments.sort_by(|a, b| {

@@ -7,7 +7,7 @@
 //! allowed to change while a client is connected — see `notify_changed` in the
 //! parent module.
 
-use helve_rpc::{RpcError, METHOD_NOT_FOUND};
+use kaava_rpc::{RpcError, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -67,7 +67,7 @@ pub struct McpServer {
     pub call: Call,
     /// Hidden, unadvertised and undispatchable unless `developer.mode` is on.
     ///
-    /// For a server that exists to work *on* HELVE rather than in it. Somebody
+    /// For a server that exists to work *on* OpenKaava rather than in it. Somebody
     /// who is not writing the shell has no use for one, and one of them can
     /// drive this window — so the default has to be that it is not there, and
     /// the switch that reveals it has to be a deliberate thing to find.
@@ -114,7 +114,7 @@ pub struct ToolDescriptor {
 /// `computer-use` and the rest — which are rejected at load time rather than
 /// renamed.
 pub fn config_key(id: &str) -> String {
-    format!("helve-{id}")
+    format!("kaava-{id}")
 }
 
 /// Where a server answers, relative to the listener's origin.
@@ -255,7 +255,7 @@ impl Registry {
     pub fn hydrate(&self, switched: BTreeMap<String, bool>) {
         for (id, enabled) in switched {
             if !self.set_enabled(&id, enabled) {
-                crate::helve_log!("no MCP server named {id:?}, dropping its saved switch");
+                crate::kaava_log!("no MCP server named {id:?}, dropping its saved switch");
             }
         }
     }
@@ -326,7 +326,7 @@ impl Registry {
         let resolved = {
             let entries = self.entries.lock().map_err(|_| {
                 RpcError::new(
-                    helve_rpc::INTERNAL_ERROR,
+                    kaava_rpc::INTERNAL_ERROR,
                     "the MCP registry lock is poisoned",
                 )
             })?;
@@ -371,7 +371,7 @@ mod tests {
         // Reaching this would mean `call` dispatched without an `AppHandle`,
         // which these tests cannot construct — so the tests below exercise
         // everything up to the handler and stop there.
-        Err(RpcError::new(helve_rpc::INTERNAL_ERROR, "not called"))
+        Err(RpcError::new(kaava_rpc::INTERNAL_ERROR, "not called"))
     }
 
     static TOOLS: &[McpTool] = &[
@@ -611,8 +611,8 @@ mod tests {
     /// The `.mcp.json` key is prefixed so it cannot collide with a server the
     /// user configured, or with the names Claude Code reserves for its own.
     #[test]
-    fn config_keys_and_routes_are_namespaced_under_helve() {
-        assert_eq!(config_key("forger"), "helve-forger");
+    fn config_keys_and_routes_are_namespaced_under_kaava() {
+        assert_eq!(config_key("forger"), "kaava-forger");
         assert_eq!(route("forger"), "/mcp/forger");
 
         for reserved in ["workspace", "computer-use", "claude-in-chrome"] {

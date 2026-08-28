@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { HelveRpcError, invoke, openIn, reportPainted } from "@helve-ade/bridge";
+import { KaavaRpcError, invoke, openIn, reportPainted } from "@openkaava/bridge";
 import { PRODUCT_NAME, TAGLINE, WORDMARK } from "./branding.generated";
 import { Book, Close, FolderOpen, FolderPlus, GitBranch, Mark, PackagePlus } from "./icons";
 import WorktreeDialog from "./WorktreeDialog";
@@ -10,15 +10,15 @@ import "./home.css";
  *
  * Declared here rather than imported from the orchestrator's `src/bindings.ts`,
  * for the same reason `icons.tsx` draws its own glyphs: an app's only coupling to
- * its host is `@helve-ade/bridge` and the shape of what crosses it. Only what this
+ * its host is `@openkaava/bridge` and the shape of what crosses it. Only what this
  * pane actually draws is described — there is no `format` below, because Home
- * does not yet have anything to say about a project written by a newer HELVE.
+ * does not yet have anything to say about a project written by a newer OpenKaava.
  */
 interface Project {
   name: string;
   path: string;
   id: string | null;
-  /** Whether a `<name>.helve` manifest is there. `false` is a plain folder. */
+  /** Whether a `<name>.kaava` manifest is there. `false` is a plain folder. */
   initialized: boolean;
   /** Whether the folder is still on disk. A recent can outlive its project. */
   exists: boolean;
@@ -37,7 +37,7 @@ type State = Projects & { version?: string | null };
 
 /**
  * `home/worktree-state`'s reply. Declared here for the same reason `Project`
- * is: this pane's only coupling to its host is `@helve-ade/bridge` and the shape
+ * is: this pane's only coupling to its host is `@openkaava/bridge` and the shape
  * of what crosses it.
  */
 interface WorktreeState {
@@ -232,8 +232,8 @@ export default function App() {
   }, []);
 
   /**
-   * Home is the app HELVE opens on, so the splash window is held up until this
-   * pane has something on it — see `reportPainted` in `@helve-ade/bridge`, and
+   * Home is the app OpenKaava opens on, so the splash window is held up until this
+   * pane has something on it — see `reportPainted` in `@openkaava/bridge`, and
    * `boot::await_apps` for what is waiting.
    *
    * The condition is "the first answer landed", either way it went. A Home that
@@ -485,12 +485,12 @@ function since(at: number | null): string {
 }
 
 /**
- * A `HelveRpcError` carries the JSON-RPC code its host produced it from, which
+ * A `KaavaRpcError` carries the JSON-RPC code its host produced it from, which
  * is the difference between "this build has no such method" and "the call never
  * reached a host at all". Anything else is shown as-is rather than guessed at.
  */
 function describe(error: unknown): string {
-  if (error instanceof HelveRpcError) return `[${error.code}] ${error.message}`;
+  if (error instanceof KaavaRpcError) return `[${error.code}] ${error.message}`;
   if (error instanceof Error) return error.message;
   return String(error);
 }

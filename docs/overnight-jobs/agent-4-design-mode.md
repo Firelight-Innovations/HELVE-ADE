@@ -3,9 +3,9 @@
 Read `00-PRIMARY-CONTEXT.md` in full before this. It has the license,
 ground rules, and stack-mismatch guidance that apply to you too.
 
-This is the hardest of the four tonight. HELVE has never hosted a webview of
+This is the hardest of the four tonight. OpenKaava has never hosted a webview of
 arbitrary external content inside its own window before — this is new
-architectural ground, not a port of an existing HELVE pattern. Treat it as a
+architectural ground, not a port of an existing OpenKaava pattern. Treat it as a
 stretch goal: land the largest *real, working* slice you can, in the
 priority order below, and stop and document honestly rather than forcing a
 later step to "look" done.
@@ -13,9 +13,9 @@ later step to "look" done.
 ## Setup
 
 ```bash
-cd HELVE-ADE
-git worktree add ../HELVE-ADE-design-mode -b feat/design-mode origin/main
-cd ../HELVE-ADE-design-mode
+cd OpenKaava
+git worktree add ../OpenKaava-design-mode -b feat/design-mode origin/main
+cd ../OpenKaava-design-mode
 ```
 
 Then read, in order: `CONTRIBUTING.md`, `STANDARDS.md`,

@@ -1,4 +1,4 @@
-//! Parses the reference tool's real `helve-tool.toml` off disk.
+//! Parses the reference tool's real `kaava-tool.toml` off disk.
 //!
 //! The unit tests in `lib.rs` assert against a copy of that document pasted
 //! into the test file, which proves the parser agrees with itself but not
@@ -8,7 +8,7 @@
 //! example and fails to load. This test reads the actual file, so the example
 //! and the schema can only ever be wrong together.
 
-use helve_tool_manifest::ToolManifest;
+use kaava_tool_manifest::ToolManifest;
 use std::path::PathBuf;
 
 fn echo_tool_checkout() -> PathBuf {
@@ -22,15 +22,15 @@ fn echo_tool_checkout() -> PathBuf {
 fn reference_tool_manifest_loads_from_disk() {
     let checkout = echo_tool_checkout();
     let manifest = ToolManifest::load(&checkout)
-        .unwrap_or_else(|e| panic!("examples/echo-tool/helve-tool.toml should load: {e}"));
+        .unwrap_or_else(|e| panic!("examples/echo-tool/kaava-tool.toml should load: {e}"));
 
     // `id` has to match the `[[tool]]` entry the stack manifest would carry,
-    // and the protocol says the host rejects a tool whose `helve/hello` reply
+    // and the protocol says the host rejects a tool whose `kaava/hello` reply
     // disagrees with this — so it is the one field with two sources of truth.
     assert_eq!(manifest.tool.id, "echo");
     assert_eq!(
         manifest.core.expect("the example declares a [core]").args,
-        vec!["--helve-rpc".to_string()]
+        vec!["--kaava-rpc".to_string()]
     );
     assert!(manifest
         .frontend
@@ -53,7 +53,7 @@ fn reference_tool_gets_one_synthesised_surface() {
     assert_eq!(manifest.surfaces.len(), 1);
     assert_eq!(
         manifest.surfaces[0].id,
-        helve_tool_manifest::DEFAULT_SURFACE_ID
+        kaava_tool_manifest::DEFAULT_SURFACE_ID
     );
     assert_eq!(manifest.surfaces[0].path, None, "serves the bundle root");
 }

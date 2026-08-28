@@ -1,9 +1,9 @@
 # Agent UI driving
 
-How an agent sees and clicks HELVE's actual interface, and why the obvious
+How an agent sees and clicks OpenKaava's actual interface, and why the obvious
 approaches did not work.
 
-The answer is an MCP server HELVE hosts, `helve-ui`, whose tools are
+The answer is an MCP server OpenKaava hosts, `kaava-ui`, whose tools are
 `screenshot`, `snapshot`, `click`, `type_text`, `press_key` and `eval`. It lives
 in `src-tauri/src/mcp/servers/ui.rs`; the protocol layer under it is
 `src-tauri/src/devtools.rs`.
@@ -16,7 +16,7 @@ project — the shell mounts over an empty backend. What it shows is a layout, n
 the software. The `?fake=1` fixture that once answered those calls was 3930 lines
 of second backend and was deleted for being one.
 
-This drives the WebView2 that HELVE already runs, so what is on screen is the
+This drives the WebView2 that OpenKaava already runs, so what is on screen is the
 real shell over the real Rust. Nothing is simulated and nothing is served twice.
 
 ## Why the DevTools Protocol, and why through COM
@@ -29,7 +29,7 @@ string, which is the whole protocol, and Tauri already holds the
 
 That is what makes this a server rather than a script. Nothing is launched
 differently, no socket is opened, and there is no second process to point at
-anything. The tools work against a HELVE somebody is already using, which the
+anything. The tools work against an OpenKaava somebody is already using, which the
 port approach could not do — the flag is read when the WebView2 environment is
 created, so it cannot be turned on for a webview that already exists.
 
@@ -39,7 +39,7 @@ walking. One transport for all six tools.
 
 ### What the earlier version did, and why it is gone
 
-`scripts/helve-ui.mjs` used to set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` at
+`scripts/kaava-ui.mjs` used to set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` at
 launch and talk to the resulting debug port over a WebSocket. It worked, and it
 had three costs the COM route does not:
 
@@ -61,7 +61,7 @@ somebody's daily driver.
 
 ## Why it is developer-only
 
-Every other server HELVE hosts is a read, deliberately: the endpoint is reachable
+Every other server OpenKaava hosts is a read, deliberately: the endpoint is reachable
 by anything on the machine holding the token, so a leaked token should cost
 knowledge of a window layout and not control of it. This one clicks, and `eval`
 reaches the whole backend through `window.__TAURI__`.
@@ -89,7 +89,7 @@ Verified against a running build rather than assumed:
   could easily have gone the other way. A live `snapshot` returns rows marked
   `app` for the File Explorer's own buttons and tree.
 - **Real input.** `Input.dispatchMouseEvent` at an element's centre, rather than
-  a synthetic `el.click()`. HELVE's menus and drag handles listen for pointer
+  a synthetic `el.click()`. OpenKaava's menus and drag handles listen for pointer
   events and for focus moving, and a dispatched DOM click skips both.
 - **The whole backend, incidentally.** `Runtime.evaluate` can call
   `window.__TAURI__.core.invoke(...)`, which is why `eval` is described to the
@@ -109,11 +109,11 @@ plain CSS selector for cases where that matters.
 
 ## The agent's own instance
 
-`scripts/helve-ui.mjs` is what remains of the old driver, and it does one thing
+`scripts/kaava-ui.mjs` is what remains of the old driver, and it does one thing
 the server cannot do for itself: start an instance that is not the user's.
 
 `pnpm ui:build` compiles the binary under the identifier
-`com.firelightinnovations.helve.agent`. `tauri-plugin-single-instance` builds its
+`com.firelightinnovations.openkaava.agent`. `tauri-plugin-single-instance` builds its
 mutex name as `{identifier}-sim`, so a second launch under the same identifier
 relays its argv to the first process and exits — and, worse, the surviving
 process is the user's, so anything that then "cleans up its own instance" kills
@@ -124,17 +124,17 @@ process and a private `%APPDATA%` tree.
 `pnpm ui launch` writes `developer.mode` and the UI server's switch into that
 private tree before starting the process. The chicken and egg is that the server
 is what an agent would otherwise use to click those switches. Both files are ones
-HELVE writes itself, and both are merged rather than replaced.
+OpenKaava writes itself, and both are merged rather than replaced.
 
 `pnpm ui close` kills by pid, read from the endpoint file that instance wrote.
-The earlier `taskkill /IM helve-orchestrator.exe` would have closed a HELVE
+The earlier `taskkill /IM openkaava-orchestrator.exe` would have closed an OpenKaava
 somebody was using, since both run from a binary of that name.
 
 ## Relationship to the MCP debug server
 
-`helve-debug` and `helve-ui` answer different questions. The debug server reads
+`kaava-debug` and `kaava-ui` answer different questions. The debug server reads
 Rust-side truth — the state the backend holds and the failures it recorded — and
-is on by default in every build, because a shipped HELVE misbehaving on a machine
+is on by default in every build, because a shipped OpenKaava misbehaving on a machine
 none of us have is exactly when that is worth the most. The UI server sees pixels
 and the DOM, and can act on them.
 

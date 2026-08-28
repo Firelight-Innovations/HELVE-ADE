@@ -23,13 +23,13 @@
 # templated, renamed, or made configurable here, however much they look like
 # branding:
 #
-#   the `helve.toml` filename          the `helve-tool://` URL scheme
-#   the `.helve` file extension        the `@helve/*` npm scope
-#   the `.helve/` project directory    the crate names
-#   the `helve/*` RPC namespace        `com.firelightinnovations.helve`
-#     (helve/painted, helve/commands,  the OS config directory holding
-#      helve/open, helve/publish)        projects.json
-#                                      the `helve-<id>` MCP server key
+#   the `kaava.toml` filename          the `kaava-tool://` URL scheme
+#   the `.kaava` file extension        the `@openkaava/*` npm scope
+#   the `.kaava/` project directory    the crate names
+#   the `kaava/*` RPC namespace        `com.firelightinnovations.openkaava`
+#     (kaava/painted, kaava/commands,  the OS config directory holding
+#      kaava/open, kaava/publish)        projects.json
+#                                      the `kaava-<id>` MCP server key
 #
 # Those are wire formats and on-disk contracts. Renaming one breaks every tool
 # repository ever written against this shell and stops existing projects
@@ -48,19 +48,19 @@
 
 [product]
 
-# The name as it is written in prose, window titles and menus. All caps: the
-# product is HELVE, and nothing else. Several surfaces used to append a second
-# word to it and disagree with each other about which one — this file exists so
-# that question has one answer rather than five.
-name = "HELVE"
+# The name as it is written in prose, window titles and menus. The product is
+# OpenKaava, and nothing else. Several surfaces used to append a second word to
+# it and disagree with each other about which one — this file exists so that
+# question has one answer rather than five.
+name = "OpenKaava"
 
 # The same name as the wordmark's text node, in mixed case.
 #
 # Both stylesheets that draw the wordmark uppercase it, so this is what a screen
-# reader is handed: "Helve" is a word, where "HELVE" is five letters it may
-# spell out. The brand packet's lockup already made this trade in
+# reader is handed: "OpenKaava" is a word, where "OPENKAAVA" is nine letters it
+# may spell out. The brand packet's lockup already made this trade in
 # `apps/home/ui/src/home.css`; the splash now makes it too.
-wordmark = "Helve"
+wordmark = "OpenKaava"
 
 # The line under the lockup on Home's hero. Read by nothing else — a tagline
 # repeated on a second surface stops being a tagline.
@@ -76,13 +76,13 @@ tagline = "The Veistra custom agentic development stack"
 # generator lifts the path data out of this file into the frontend's branding
 # module so the shell can draw it as inline SVG in `currentColor`, and it
 # refuses a file it cannot reduce to one path.
-mark = "assets/helve-mark.svg"
+mark = "assets/kaava-mark.svg"
 
 # The art behind the splash wordmark, requested by `splash.html` as a plain
 # image from `public/`. It stays a file rather than being inlined: at 230 kB it
 # would more than 10× the one document whose whole job is to be on screen
 # instantly.
-splash-field = "public/helve-splash-field.svg"
+splash-field = "public/kaava-splash-field.svg"
 
 # What the installer and taskbar icons are drawn from. Its reader is a person
 # running `pnpm tauri icon assets/app-icon-source.svg`, which rewrites the PNG

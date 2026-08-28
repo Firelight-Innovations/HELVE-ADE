@@ -1,12 +1,12 @@
 /**
- * Ask a running HELVE what it is doing, from outside it.
+ * Ask a running OpenKaava what it is doing, from outside it.
  *
  * Usage:
- *   node scripts/helve-probe.mjs                     list the debug tools
- *   node scripts/helve-probe.mjs shell_snapshot
- *   node scripts/helve-probe.mjs recent_errors '{"after":12}'
- *   node scripts/helve-probe.mjs --server ui snapshot
- *   node scripts/helve-probe.mjs --agent --server ui click '{"target":"e12"}'
+ *   node scripts/kaava-probe.mjs                     list the debug tools
+ *   node scripts/kaava-probe.mjs shell_snapshot
+ *   node scripts/kaava-probe.mjs recent_errors '{"after":12}'
+ *   node scripts/kaava-probe.mjs --server ui snapshot
+ *   node scripts/kaava-probe.mjs --agent --server ui click '{"target":"e12"}'
  *
  * Prints the tool's JSON result on stdout and nothing else, so it can be piped
  * into `jq` or read straight by an agent. Everything explanatory goes to stderr.
@@ -28,11 +28,11 @@ import { join } from "node:path";
  *
  * A different identifier is a different config directory, and therefore a
  * different endpoint file. `--agent` picks the one `pnpm ui:build` compiles, so
- * an agent testing a change talks to its own instance rather than to a HELVE
- * somebody is using. `HELVE_IDENTIFIER` covers anything else.
+ * an agent testing a change talks to its own instance rather than to an
+ * OpenKaava somebody is using. `KAAVA_IDENTIFIER` covers anything else.
  */
-const IDENTIFIER = process.env.HELVE_IDENTIFIER || "com.firelightinnovations.helve";
-const AGENT_IDENTIFIER = "com.firelightinnovations.helve.agent";
+const IDENTIFIER = process.env.KAAVA_IDENTIFIER || "com.firelightinnovations.openkaava";
+const AGENT_IDENTIFIER = "com.firelightinnovations.openkaava.agent";
 
 /** Which one this run is talking to. `--agent` moves it; nothing else does. */
 let identifier = IDENTIFIER;
@@ -51,7 +51,7 @@ const PROTOCOL_VERSION = "2025-06-18";
 class Bail extends Error {}
 
 function die(message) {
-  process.stderr.write(`helve-probe: ${message}\n`);
+  process.stderr.write(`kaava-probe: ${message}\n`);
   process.exitCode = 1;
   throw new Bail(message);
 }
@@ -73,7 +73,7 @@ function endpointPath() {
  * Read the endpoint, and refuse a stale one.
  *
  * The pid check is the whole reason the file carries one. Nothing deletes this
- * file on exit, so a file left by a HELVE that is no longer running would
+ * file on exit, so a file left by an OpenKaava that is no longer running would
  * otherwise send every request to a port that is closed, or — worse — to
  * whatever took the port afterwards.
  */
@@ -85,7 +85,7 @@ function readEndpoint() {
     raw = readFileSync(path, "utf8");
   } catch (e) {
     if (e.code === "ENOENT") {
-      die(`no endpoint file at ${path}. Is HELVE running?`);
+      die(`no endpoint file at ${path}. Is OpenKaava running?`);
     }
     die(`could not read ${path}: ${e.message}`);
   }
@@ -98,7 +98,7 @@ function readEndpoint() {
   }
 
   if (!alive(endpoint.pid)) {
-    die(`${path} names pid ${endpoint.pid}, which is not running. HELVE has exited.`);
+    die(`${path} names pid ${endpoint.pid}, which is not running. OpenKaava has exited.`);
   }
 
   return endpoint;
@@ -192,7 +192,7 @@ async function connect(endpoint, server) {
     params: {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: "helve-probe", version: "1" },
+      clientInfo: { name: "kaava-probe", version: "1" },
     },
   });
 
@@ -237,7 +237,7 @@ async function main() {
   }
 
   const endpoint = readEndpoint();
-  process.stderr.write(`helve-probe: ${endpoint.url}/mcp/${server} (pid ${endpoint.pid})\n`);
+  process.stderr.write(`kaava-probe: ${endpoint.url}/mcp/${server} (pid ${endpoint.pid})\n`);
 
   const sessionId = await connect(endpoint, server);
 
@@ -258,7 +258,7 @@ async function main() {
 
   const image = message?.result?.content?.find((block) => block.type === "image");
   if (image) {
-    const path = process.env.HELVE_SHOT || "helve-shot.png";
+    const path = process.env.KAAVA_SHOT || "kaava-shot.png";
     writeFileSync(path, Buffer.from(image.data, "base64"));
     process.stdout.write(`${path}\n`);
     return;
@@ -289,6 +289,6 @@ function unwrap(result) {
 main().catch((e) => {
   // A `Bail` has already said what went wrong and set the exit code.
   if (e instanceof Bail) return;
-  process.stderr.write(`helve-probe: ${e.stack ?? String(e)}\n`);
+  process.stderr.write(`kaava-probe: ${e.stack ?? String(e)}\n`);
   process.exitCode = 1;
 });

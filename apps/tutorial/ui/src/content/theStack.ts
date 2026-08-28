@@ -14,7 +14,7 @@ export const theStack: Body = {
   blocks: [
     {
       kind: "text",
-      body: "HELVE is not one program: a **stack** of separate repositories. The orchestrator — the thing you are reading this in — is the one that ties them together when it runs, and it holds none of their code.",
+      body: "OpenKaava is not one program: a **stack** of separate repositories. The orchestrator — the thing you are reading this in — is the one that ties them together when it runs, and it holds none of their code.",
     },
     {
       kind: "text",
@@ -26,7 +26,7 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "The list lives in `helve.toml` at the root of the orchestrator's checkout. Each entry pins an exact version, so a given checkout of the orchestrator always describes one reproducible stack rather than whatever each repository's branch tip happens to be today.",
+      body: "The list lives in `kaava.toml` at the root of the orchestrator's checkout. Each entry pins an exact version, so a given checkout of the orchestrator always describes one reproducible stack rather than whatever each repository's branch tip happens to be today.",
     },
 
     { kind: "heading", body: "The tools" },
@@ -53,7 +53,7 @@ export const theStack: Body = {
     {
       kind: "flow",
       steps: [
-        "Reads `helve.toml`",
+        "Reads `kaava.toml`",
         "looks for each tool's checkout",
         "resolves one of four states",
       ],
@@ -82,7 +82,7 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "`checkout-root` in `helve.toml` says where they are looked for, and defaults to `..` — every Helve repository sitting as a sibling of the orchestrator's own folder. Cloning the pinned version there is what clears a tool from the badge; cloning the wrong one only changes which word it shows.",
+      body: "`checkout-root` in `kaava.toml` says where they are looked for, and defaults to `..` — every OpenKaava repository sitting as a sibling of the orchestrator's own folder. Cloning the pinned version there is what clears a tool from the badge; cloning the wrong one only changes which word it shows.",
     },
 
     { kind: "heading", body: "Apps and tools are different things" },

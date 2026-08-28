@@ -12,7 +12,7 @@
  *  which is the point `theStack.ts` spends its middle section on. */
 import { Chip, Col, Row } from "./chrome";
 
-/** One row per unwell tool, in the order `helve.toml` pins them. */
+/** One row per unwell tool, in the order `kaava.toml` pins them. */
 const UNWELL: { name: string; tone: "warn" | "err"; label: string }[] = [
   { name: "Forger", tone: "err", label: "not installed" },
   { name: "Journeyman", tone: "warn", label: "needs update" },

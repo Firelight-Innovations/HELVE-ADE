@@ -2,7 +2,7 @@ import type { Body } from "./blocks";
 
 /**
  * Terminals, and the two facts that are not obvious: a terminal belongs to a
- * cluster rather than a window, and a HELVE terminal carries environment a shell
+ * cluster rather than a window, and an OpenKaava terminal carries environment a shell
  * opened outside it does not — which is what makes the MCP tutorial work.
  */
 export const terminals: Body = {
@@ -47,7 +47,7 @@ export const terminals: Body = {
     { kind: "heading", body: "It starts where your project is" },
     {
       kind: "text",
-      body: "A new terminal opens in the folder the **cluster** has open, not in whatever directory HELVE was launched from.",
+      body: "A new terminal opens in the folder the **cluster** has open, not in whatever directory OpenKaava was launched from.",
     },
     {
       kind: "flow",
@@ -91,21 +91,21 @@ export const terminals: Body = {
     },
     {
       kind: "text",
-      body: "**Open a terminal at launch** in the same section starts one with HELVE. That one is read while HELVE is starting, so changing it needs a restart to show — the setting says so under the control.",
+      body: "**Open a terminal at launch** in the same section starts one with OpenKaava. That one is read while OpenKaava is starting, so changing it needs a restart to show — the setting says so under the control.",
     },
 
-    { kind: "heading", body: "Why a HELVE terminal is not the same as yours" },
+    { kind: "heading", body: "Why an OpenKaava terminal is not the same as yours" },
     {
       kind: "text",
-      body: "HELVE spawns these shells, so it puts things in their environment — including the port and token an MCP client needs to reach HELVE's own tools.",
+      body: "OpenKaava spawns these shells, so it puts things in their environment — including the port and token an MCP client needs to reach OpenKaava's own tools.",
     },
     {
       kind: "text",
-      body: "A shell you opened yourself, outside HELVE, inherits none of that. That shell works fine; it simply cannot reach back into the running application — the correct answer, rather than a limitation.",
+      body: "A shell you opened yourself, outside OpenKaava, inherits none of that. That shell works fine; it simply cannot reach back into the running application — the correct answer, rather than a limitation.",
     },
     {
       kind: "note",
-      body: 'That single fact is behind almost every "my agent cannot see the HELVE tools" report. Run the agent from a terminal inside HELVE. See **Give your agent HELVE\'s tools**.',
+      body: 'That single fact is behind almost every "my agent cannot see the OpenKaava tools" report. Run the agent from a terminal inside OpenKaava. See **Give your agent OpenKaava\'s tools**.',
     },
 
     { kind: "heading", body: "Resizing the band" },

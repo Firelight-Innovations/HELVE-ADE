@@ -1,15 +1,15 @@
-//! Writing HELVE's servers into a project's `.mcp.json`.
+//! Writing OpenKaava's servers into a project's `.mcp.json`.
 //!
 //! This is the discovery step: the file is how a harness learns that these
 //! servers exist at all. Two rules govern everything here.
 //!
 //! **The file is the user's, not ours.** A project may already configure its own
-//! servers, and this must round-trip them untouched. Only the `helve-` prefixed
+//! servers, and this must round-trip them untouched. Only the `kaava-` prefixed
 //! keys are ours to add, change or remove.
 //!
 //! **Nothing machine-specific goes in it.** The port and the token are written
-//! as `${HELVE_MCP_PORT}` and `${HELVE_MCP_TOKEN}`, which the client expands
-//! from the environment HELVE gave the shell. So the file holds no secret and no
+//! as `${KAAVA_MCP_PORT}` and `${KAAVA_MCP_TOKEN}`, which the client expands
+//! from the environment OpenKaava gave the shell. So the file holds no secret and no
 //! per-machine value, and can be committed and shared like any other project
 //! config — see `docs/mcp-server-manager.md` §6.
 
@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 /// The `mcpServers` table, and the prefix that marks a row as ours.
 const SERVERS_KEY: &str = "mcpServers";
-const OURS: &str = "helve-";
+const OURS: &str = "kaava-";
 
 #[derive(Debug, PartialEq)]
 pub enum ConfigError {
@@ -39,7 +39,7 @@ pub enum ConfigError {
 /// no enabled servers is left alone rather than given an empty file.
 ///
 /// `mcp.writeProjectConfig` off does not skip this — it merges as though
-/// nothing were enabled. A stale `helve-` row pointing at a route nobody
+/// nothing were enabled. A stale `kaava-` row pointing at a route nobody
 /// advertises is worse than no row at all, so a file that already exists still
 /// gets rewritten with those rows removed; only a project with no file to begin
 /// with stays untouched, via the same `existing.is_none()` check below that
@@ -56,7 +56,7 @@ pub fn sync(app: &AppHandle, project: &Path) {
         Ok(raw) => match serde_json::from_str::<Value>(&raw) {
             Ok(value) => Some(value),
             Err(e) => {
-                crate::helve_log!(
+                crate::kaava_log!(
                     "{} is not valid JSON, leaving it alone: {e}",
                     path.display()
                 );
@@ -73,7 +73,7 @@ pub fn sync(app: &AppHandle, project: &Path) {
     let merged = match merge(existing, &enabled) {
         Ok(merged) => merged,
         Err(ConfigError::NotAnObject) => {
-            crate::helve_log!(
+            crate::kaava_log!(
                 "{} is JSON but not an object, leaving it alone",
                 path.display()
             );
@@ -89,7 +89,7 @@ pub fn sync(app: &AppHandle, project: &Path) {
     text.push('\n');
 
     if let Err(e) = std::fs::write(&path, text) {
-        crate::helve_log!("could not write {}: {e}", path.display());
+        crate::kaava_log!("could not write {}: {e}", path.display());
     }
 }
 
@@ -126,7 +126,7 @@ pub fn sync_all(app: &AppHandle) {
 ///
 /// Pure, so the round-trip rules below can be tested without a project on disk.
 ///
-/// **Every** `helve-` key is dropped before ours are added, not just the ones we
+/// **Every** `kaava-` key is dropped before ours are added, not just the ones we
 /// are about to rewrite. That is what makes a server the user switched off — or
 /// one this build no longer has — disappear from the file rather than linger as
 /// a row pointing at a route that no longer answers.
@@ -161,8 +161,8 @@ fn merge(existing: Option<Value>, enabled: &[String]) -> Result<Value, ConfigErr
 fn entry(id: &str) -> Value {
     json!({
         "type": "http",
-        "url": format!("http://127.0.0.1:${{HELVE_MCP_PORT}}{}", route(id)),
-        "headers": { "Authorization": "Bearer ${HELVE_MCP_TOKEN}" },
+        "url": format!("http://127.0.0.1:${{KAAVA_MCP_PORT}}{}", route(id)),
+        "headers": { "Authorization": "Bearer ${KAAVA_MCP_TOKEN}" },
     })
 }
 
@@ -182,8 +182,8 @@ mod tests {
         let servers = servers_of(&merged);
 
         assert_eq!(servers.len(), 2);
-        assert!(servers.contains_key("helve-echo"));
-        assert!(servers.contains_key("helve-forger"));
+        assert!(servers.contains_key("kaava-echo"));
+        assert!(servers.contains_key("kaava-forger"));
     }
 
     /// The rule the rest of this module exists to protect: a project's own
@@ -208,7 +208,7 @@ mod tests {
             merged["someOtherKey"]["kept"], true,
             "an unrelated top-level key survives"
         );
-        assert!(servers_of(&merged).contains_key("helve-echo"));
+        assert!(servers_of(&merged).contains_key("kaava-echo"));
     }
 
     /// Switching a server off has to remove its row, or the file keeps
@@ -217,8 +217,8 @@ mod tests {
     fn a_server_that_is_no_longer_enabled_is_removed() {
         let existing = json!({
             "mcpServers": {
-                "helve-echo": { "type": "http", "url": "http://127.0.0.1:1/mcp/echo" },
-                "helve-gone": { "type": "http", "url": "http://127.0.0.1:1/mcp/gone" },
+                "kaava-echo": { "type": "http", "url": "http://127.0.0.1:1/mcp/echo" },
+                "kaava-gone": { "type": "http", "url": "http://127.0.0.1:1/mcp/gone" },
                 "github": { "type": "http", "url": "https://api.github.com/mcp" },
             },
         });
@@ -226,9 +226,9 @@ mod tests {
         let merged = merge(Some(existing), &["echo".to_string()]).unwrap();
         let servers = servers_of(&merged);
 
-        assert!(servers.contains_key("helve-echo"));
+        assert!(servers.contains_key("kaava-echo"));
         assert!(
-            !servers.contains_key("helve-gone"),
+            !servers.contains_key("kaava-gone"),
             "a stale row is dropped"
         );
         assert!(servers.contains_key("github"), "and only ours are touched");
@@ -236,7 +236,7 @@ mod tests {
 
     /// What `sync` does when `mcp.writeProjectConfig` reads false: it passes
     /// `merge` an empty enabled list rather than skipping the write, so a
-    /// `helve-` row already in the file is removed instead of left pointing at
+    /// `kaava-` row already in the file is removed instead of left pointing at
     /// a route nobody advertises. Exercised here at the `merge` level, which is
     /// pure, rather than through `sync` itself, which needs a Tauri
     /// `AppHandle` to read the setting.
@@ -244,7 +244,7 @@ mod tests {
     fn the_toggle_being_off_merges_as_though_nothing_were_enabled() {
         let existing = json!({
             "mcpServers": {
-                "helve-echo": { "type": "http", "url": "http://127.0.0.1:1/mcp/echo" },
+                "kaava-echo": { "type": "http", "url": "http://127.0.0.1:1/mcp/echo" },
                 "github": { "type": "http", "url": "https://api.github.com/mcp" },
             },
         });
@@ -253,7 +253,7 @@ mod tests {
         let servers = servers_of(&merged);
 
         assert!(
-            !servers.contains_key("helve-echo"),
+            !servers.contains_key("kaava-echo"),
             "a stale row is removed when discovery is switched off"
         );
         assert!(
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn disabling_everything_leaves_the_users_config_intact() {
         let existing = json!({
-            "mcpServers": { "helve-echo": {}, "github": { "type": "http" } },
+            "mcpServers": { "kaava-echo": {}, "github": { "type": "http" } },
         });
 
         let merged = merge(Some(existing), &[]).unwrap();
@@ -282,8 +282,8 @@ mod tests {
         let row = entry("forger");
 
         assert_eq!(row["type"], "http");
-        assert_eq!(row["url"], "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/forger");
-        assert_eq!(row["headers"]["Authorization"], "Bearer ${HELVE_MCP_TOKEN}");
+        assert_eq!(row["url"], "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/forger");
+        assert_eq!(row["headers"]["Authorization"], "Bearer ${KAAVA_MCP_TOKEN}");
 
         // `entry` is given neither the port nor the token, so the only digits
         // that can appear are the loopback address itself. Anything else would
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn every_entry_declares_its_transport() {
         let merged = merge(None, &["echo".to_string()]).unwrap();
-        assert_eq!(servers_of(&merged)["helve-echo"]["type"], "http");
+        assert_eq!(servers_of(&merged)["kaava-echo"]["type"], "http");
     }
 
     /// Something hand-edited into a shape we did not expect is still the user's

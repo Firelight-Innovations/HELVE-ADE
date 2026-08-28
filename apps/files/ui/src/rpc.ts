@@ -2,13 +2,13 @@
  * Every call this app makes to its host, in one file.
  *
  * The shapes below mirror `src-tauri/src/apps/files.rs` and are *restated*
- * rather than imported: an app knows its host only through `@helve-ade/bridge`, and
+ * rather than imported: an app knows its host only through `@openkaava/bridge`, and
  * the day this one is extracted into a tool repository of its own, nothing in
  * `apps/files/` may be reaching into `src/`. A Rust test catches a drift, not
  * `pnpm build`. Wrapping `invoke` also puts the method-name strings in exactly
  * one place — nothing outside this module spells `"files/read-bytes"`.
  */
-import { HelveRpcError, invoke } from "@helve-ade/bridge";
+import { KaavaRpcError, invoke } from "@openkaava/bridge";
 
 // --- what the backend returns -------------------------------------------------
 
@@ -250,7 +250,7 @@ export const openExternal = (path: string) => invoke<null>("files/open-external"
  *  `null` for every other failure, including a write that failed for a reason
  *  the user cannot resolve by reloading. */
 export function staleWrite(err: unknown): { mtime: number | null } | null {
-  if (!(err instanceof HelveRpcError)) return null;
+  if (!(err instanceof KaavaRpcError)) return null;
   const data = err.data as { kind?: unknown; mtime?: unknown } | undefined;
   if (!data || data.kind !== "stale") return null;
   return { mtime: typeof data.mtime === "number" ? data.mtime : null };
@@ -265,12 +265,12 @@ export function staleWrite(err: unknown): { mtime: number | null } | null {
  *  one caller. If this ever needs to be reliable rather than merely right, it
  *  becomes a `data.kind` like `staleWrite` above. */
 export function isNotText(err: unknown): boolean {
-  return err instanceof HelveRpcError && err.message.includes("not a UTF-8 text file");
+  return err instanceof KaavaRpcError && err.message.includes("not a UTF-8 text file");
 }
 
 /** The failing method, plus whatever the host said about why. */
 export function describe(method: string, err: unknown): string {
-  if (err instanceof HelveRpcError) return `${method} — [${err.code}] ${err.message}`;
+  if (err instanceof KaavaRpcError) return `${method} — [${err.code}] ${err.message}`;
   return `${method} — ${String(err)}`;
 }
 

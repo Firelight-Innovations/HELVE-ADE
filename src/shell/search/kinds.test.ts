@@ -21,26 +21,26 @@ describe("extensionOf", () => {
 });
 
 describe("kindOf", () => {
-  it("classifies HELVE's own filenames before their extension", () => {
-    expect(kindOf("/repo/helve.toml")).toBe("helve");
+  it("classifies OpenKaava's own filenames before their extension", () => {
+    expect(kindOf("/repo/kaava.toml")).toBe("kaava");
     expect(kindOf("/repo/Cargo.toml")).toBe("data");
   });
 
   it("classifies the marker extension wherever it appears", () => {
-    expect(kindOf("/repo/my-game.helve")).toBe("helve");
+    expect(kindOf("/repo/my-game.kaava")).toBe("kaava");
   });
 
-  it("classifies everything beneath a .helve directory", () => {
-    expect(kindOf("/repo/.helve/traces/run.json")).toBe("helve");
+  it("classifies everything beneath a .kaava directory", () => {
+    expect(kindOf("/repo/.kaava/traces/run.json")).toBe("kaava");
     expect(kindOf("/repo/traces/run.json")).toBe("data");
   });
 
   it("reads Windows separators", () => {
-    expect(kindOf("C:\\repo\\.helve\\traces\\run.json")).toBe("helve");
+    expect(kindOf("C:\\repo\\.kaava\\traces\\run.json")).toBe("kaava");
   });
 
-  it("does not match .helve as a partial segment", () => {
-    expect(kindOf("/repo/not.helve.d/run.json")).toBe("data");
+  it("does not match .kaava as a partial segment", () => {
+    expect(kindOf("/repo/not.kaava.d/run.json")).toBe("data");
   });
 
   it("falls back rather than failing on an unknown extension", () => {

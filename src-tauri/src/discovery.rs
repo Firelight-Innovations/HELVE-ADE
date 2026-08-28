@@ -23,7 +23,7 @@ pub struct StackSnapshot {
 
 /// Stack components this build actually resolves and reports health for.
 ///
-/// helve.toml pins every component of the stack, because the manifest's job is
+/// kaava.toml pins every component of the stack, because the manifest's job is
 /// to describe the whole of it — but walk the checkouts today and each one is a
 /// README in an otherwise empty directory. There is no Cargo.toml or
 /// package.json in `forger` or `journeyman` for `probe_version` to read, so
@@ -34,7 +34,7 @@ pub struct StackSnapshot {
 /// This is the filter that keeps that from happening: a tool id not listed
 /// here is dropped before `resolve_one` ever runs, so it is never probed and
 /// never produces a `ResolvedTool` at all — not a warning the frontend has to
-/// know to hide, nothing to resolve. helve.toml keeps every pin regardless, so
+/// know to hide, nothing to resolve. kaava.toml keeps every pin regardless, so
 /// no information about the stack's shape is lost; when a component gets past
 /// a README, giving it health tracking back is exactly one id added here.
 const ENABLED_TOOLS: &[&str] = &[];
@@ -64,7 +64,7 @@ pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapsho
 }
 
 fn resolve_one(spec: &ToolSpec, checkout_root: &Path) -> Result<ResolvedTool> {
-    // Validate the pin even when the checkout is missing — a typo in helve.toml
+    // Validate the pin even when the checkout is missing — a typo in kaava.toml
     // should be loud immediately, not the day someone finally clones the repo.
     let pinned = Version::parse(&spec.version).map_err(|source| AppError::Version {
         id: spec.id.clone(),
@@ -99,7 +99,7 @@ fn resolve_one(spec: &ToolSpec, checkout_root: &Path) -> Result<ResolvedTool> {
 
 /// Read a checkout's own idea of its version.
 ///
-/// Helve components are either Rust crates or npm packages, so those two
+/// OpenKaava components are either Rust crates or npm packages, so those two
 /// manifests cover the field. A repo with neither — an empty scaffold, say —
 /// returns `None` rather than an error, because "not built yet" is a normal
 /// state during pre-alpha, not a failure.
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(normalize(input), PathBuf::from("C:/code/helve"));
     }
 
-    /// Parses the repo's actual helve.toml and resolves it. Catches a typo in a
+    /// Parses the repo's actual kaava.toml and resolves it. Catches a typo in a
     /// pinned version, an unknown key, or a malformed `[[tool]]` table at
     /// `cargo test` time instead of at app launch.
     #[test]
@@ -184,9 +184,9 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri always has a parent")
-            .join("helve.toml");
+            .join("kaava.toml");
 
-        let manifest = crate::manifest::Manifest::load(&path).expect("helve.toml should parse");
+        let manifest = crate::manifest::Manifest::load(&path).expect("kaava.toml should parse");
         let snapshot =
             resolve(&path, &manifest).expect("every pinned version should be valid semver");
 
@@ -212,7 +212,7 @@ mod tests {
         ids.sort_unstable();
         let unique = ids.len();
         ids.dedup();
-        assert_eq!(unique, ids.len(), "duplicate tool id in helve.toml");
+        assert_eq!(unique, ids.len(), "duplicate tool id in kaava.toml");
 
         for tool in &snapshot.tools {
             assert!(
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn probe_version_is_none_for_a_bare_directory() {
-        let dir = std::env::temp_dir().join("helve-probe-empty-test");
+        let dir = std::env::temp_dir().join("kaava-probe-empty-test");
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(probe_version(&dir), None);
         let _ = std::fs::remove_dir(&dir);
@@ -262,7 +262,7 @@ mod tests {
             tools: vec![spec("definitely-not-a-real-tool-id"), spec("also-not-real")],
         };
 
-        let snapshot = resolve(Path::new("helve.toml"), &manifest).expect("resolves");
+        let snapshot = resolve(Path::new("kaava.toml"), &manifest).expect("resolves");
         assert!(
             snapshot.tools.is_empty(),
             "neither synthetic id is on ENABLED_TOOLS, so neither should resolve"

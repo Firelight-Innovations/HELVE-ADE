@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// attached.
 const CAPACITY: usize = 500;
 
-/// Which half of HELVE a record came from.
+/// Which half of OpenKaava a record came from.
 ///
 /// An enum rather than a free string because a reader's first cut is almost
 /// always this one — a Rust store failing to write and an app's promise
@@ -30,7 +30,7 @@ const CAPACITY: usize = 500;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {
-    /// Rust. Written by [`helve_log!`](crate::helve_log).
+    /// Rust. Written by [`kaava_log!`](crate::kaava_log).
     Backend,
     /// The webview: an uncaught error, a rejected promise, or a `console.error`.
     Frontend,
@@ -209,18 +209,18 @@ pub fn report_frontend_error(message: String) {
 
 /// Report a backend failure: to stderr as before, and to the ring buffer.
 ///
-/// Takes the same arguments as `eprintln!` **minus the `helve: ` prefix**, which
+/// Takes the same arguments as `eprintln!` **minus the `kaava: ` prefix**, which
 /// it adds. Every call site this replaced spelled that prefix out, and one that
 /// forgot it was indistinguishable from a stray print by a dependency.
 ///
 /// The stderr half is kept rather than replaced. A debug build with a console
-/// attached is still the fastest way to watch HELVE fail, and this is meant to
+/// attached is still the fastest way to watch OpenKaava fail, and this is meant to
 /// add a second reader, not to take the first one away.
 #[macro_export]
-macro_rules! helve_log {
+macro_rules! kaava_log {
     ($($arg:tt)*) => {{
         let message = format!($($arg)*);
-        eprintln!("helve: {message}");
+        eprintln!("kaava: {message}");
         $crate::diagnostics::diagnostics().record($crate::diagnostics::Origin::Backend, message);
     }};
 }

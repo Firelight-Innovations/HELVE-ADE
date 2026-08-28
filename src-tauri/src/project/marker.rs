@@ -1,35 +1,35 @@
-//! The `<name>.helve` file — what makes a folder a HELVE project.
+//! The `<name>.kaava` file — what makes a folder an OpenKaava project.
 //!
 //! Two things sit at the root of a project and they do opposite jobs:
 //!
-//!   * **`<name>.helve`** is what the project *is*. Identity, and whatever HELVE
+//!   * **`<name>.kaava`** is what the project *is*. Identity, and whatever OpenKaava
 //!     needs to know before it opens anything. It is small, it is a human's to
 //!     read and edit, and it belongs in version control.
-//!   * **`.helve/`** is what HELVE *produced*. Agent traces, designs, docs, the
+//!   * **`.kaava/`** is what OpenKaava *produced*. Agent traces, designs, docs, the
 //!     history of how the game got built. It grows without bound and no human
 //!     hand-edits it.
 //!
 //! They cannot share a name — one directory cannot hold both a file called
-//! `.helve` and a folder called `.helve` — so the manifest takes the project's
+//! `.kaava` and a folder called `.kaava` — so the manifest takes the project's
 //! own name and the [`EXTENSION`]. [`load`] holds the forward-compatibility
-//! promise: a file from a newer HELVE still opens here.
+//! promise: a file from a newer OpenKaava still opens here.
 
 use crate::error::{AppError, Result};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The extension that names a project manifest — `<name>.helve`, the way
+/// The extension that names a project manifest — `<name>.kaava`, the way
 /// `.uproject` and `.sln` do it. Naming the file after the project also means
 /// the filename says which project it is when it turns up in a search result,
-/// and it leaves room for the OS to learn `.helve` as a file type that launches
+/// and it leaves room for the OS to learn `.kaava` as a file type that launches
 /// this orchestrator.
-pub const EXTENSION: &str = "helve";
+pub const EXTENSION: &str = "kaava";
 
-/// The directory beside it, holding everything HELVE generates about the
+/// The directory beside it, holding everything OpenKaava generates about the
 /// project. Created empty — what goes inside is not designed yet, and inventing
 /// a subdirectory layout now would be committing to a shape nothing has asked
 /// for.
-pub const TRACE_DIR: &str = ".helve";
+pub const TRACE_DIR: &str = ".kaava";
 
 /// The format version this build writes.
 ///
@@ -50,19 +50,19 @@ pub struct Marker {
     /// opens, it just cannot be recognised as the same project somewhere else.
     pub id: String,
     /// The `format` this file declares. Greater than [`FORMAT`] means it was
-    /// written by a newer HELVE and this build is reading it partially.
+    /// written by a newer OpenKaava and this build is reading it partially.
     pub format: i64,
 }
 
 /// Find the manifest in a project directory, if there is one.
 ///
-/// A directory with two `.helve` files is malformed rather than ambiguous, but
+/// A directory with two `.kaava` files is malformed rather than ambiguous, but
 /// this has to answer *something* — so it takes the lexicographically first,
 /// which at least makes the answer the same on every machine and every launch.
 /// A filesystem's own iteration order is not stable across either.
 ///
-/// `.helve` the directory cannot be mistaken for a manifest here: Rust treats a
-/// leading dot as the start of the file stem, so `.helve` has no extension at
+/// `.kaava` the directory cannot be mistaken for a manifest here: Rust treats a
+/// leading dot as the start of the file stem, so `.kaava` has no extension at
 /// all, and the `is_file` check would reject it regardless.
 pub fn find(dir: &Path) -> Option<PathBuf> {
     let mut found: Option<PathBuf> = None;
@@ -85,7 +85,7 @@ pub fn find(dir: &Path) -> Option<PathBuf> {
 
 /// Read a manifest. Deliberately lenient: unknown tables and unknown keys are
 /// ignored rather than rejected, and every field this build reads has a
-/// fallback. A project written by a later HELVE must still open here, degraded,
+/// fallback. A project written by a later OpenKaava must still open here, degraded,
 /// rather than failing to open at all — and `format` is how this build finds out
 /// that is what happened, so it can say so instead of quietly misreading the
 /// file.
@@ -108,7 +108,7 @@ pub fn load(path: &Path) -> Result<Marker> {
     let project = doc.get("project").and_then(|v| v.as_table());
 
     // The filename is the fallback for the name, and that is not arbitrary: the
-    // file is *called* `<name>.helve`, so its stem already carries the answer.
+    // file is *called* `<name>.kaava`, so its stem already carries the answer.
     let name = project
         .and_then(|p| p.get("name"))
         .and_then(|v| v.as_str())
@@ -128,7 +128,7 @@ pub fn load(path: &Path) -> Result<Marker> {
             .unwrap_or_default()
             .to_string(),
         format: doc
-            .get("helve")
+            .get("kaava")
             .and_then(|v| v.as_table())
             .and_then(|h| h.get("format"))
             .and_then(toml::Value::as_integer)
@@ -136,7 +136,7 @@ pub fn load(path: &Path) -> Result<Marker> {
     })
 }
 
-/// Write a fresh manifest into `dir`, and create the `.helve/` directory beside
+/// Write a fresh manifest into `dir`, and create the `.kaava/` directory beside
 /// it. Fails if a manifest is already there — adopting an existing project is
 /// [`super::open`]'s job, and silently overwriting one would throw away its id.
 pub fn create(dir: &Path, name: &str) -> Result<Marker> {
@@ -149,25 +149,25 @@ pub fn create(dir: &Path, name: &str) -> Result<Marker> {
 
     // Written by hand rather than serialized from a struct, because this file's
     // comments are most of its value: it is the first thing a person opens when
-    // they want to know what a HELVE project is, and `toml::to_string` cannot
+    // they want to know what an OpenKaava project is, and `toml::to_string` cannot
     // emit a comment.
     let contents = format!(
-        r#"# A HELVE project.
+        r#"# An OpenKaava project.
 #
-# This file is the project itself — its identity, and what HELVE needs to know
+# This file is the project itself — its identity, and what OpenKaava needs to know
 # before opening anything. Small, yours to edit, and meant for version control.
 #
-# The `.helve/` directory beside it is the opposite: everything HELVE produces
+# The `.kaava/` directory beside it is the opposite: everything OpenKaava produces
 # about this project — agent traces, designs, docs, the history of how the game
 # got built. Machine-written, and it grows.
 
-[helve]
-# Bumped only when a change would make an older HELVE misread this file.
+[kaava]
+# Bumped only when a change would make an older OpenKaava misread this file.
 format = {FORMAT}
 created-with = "{version}"
 
 [project]
-# Stable across renames and moves. What HELVE means when it says "this project".
+# Stable across renames and moves. What OpenKaava means when it says "this project".
 id = "{id}"
 name = "{name}"
 # Milliseconds since the Unix epoch. Stored as a number rather than a date so
@@ -241,7 +241,7 @@ mod tests {
 
     impl TempDir {
         fn new(tag: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("helve-marker-{tag}-{}", now_ms()));
+            let dir = std::env::temp_dir().join(format!("kaava-marker-{tag}-{}", now_ms()));
             std::fs::create_dir_all(&dir).expect("temp dir");
             Self(dir)
         }
@@ -259,10 +259,10 @@ mod tests {
         let written = create(&dir.0, "MyGame").expect("create");
 
         let path = find(&dir.0).expect("create leaves a manifest find can locate");
-        assert_eq!(path.file_name().unwrap(), "MyGame.helve");
+        assert_eq!(path.file_name().unwrap(), "MyGame.kaava");
         assert!(
             dir.0.join(TRACE_DIR).is_dir(),
-            ".helve/ is created beside it"
+            ".kaava/ is created beside it"
         );
 
         let read = load(&path).expect("load");
@@ -277,7 +277,7 @@ mod tests {
         create(&dir.0, "MyGame").expect("create");
 
         let found = find(&dir.0).expect("a manifest is there");
-        assert_eq!(found.file_name().unwrap(), "MyGame.helve");
+        assert_eq!(found.file_name().unwrap(), "MyGame.kaava");
     }
 
     #[test]
@@ -300,16 +300,16 @@ mod tests {
     }
 
     /// The forward-compatibility promise in the module doc, as a test: a file
-    /// from a later HELVE, with tables and keys this build has never heard of,
+    /// from a later OpenKaava, with tables and keys this build has never heard of,
     /// still opens — and still reports the format that produced it.
     #[test]
-    fn a_manifest_from_a_newer_helve_still_loads() {
+    fn a_manifest_from_a_newer_kaava_still_loads() {
         let dir = TempDir::new("newer");
-        let path = dir.0.join("Future.helve");
+        let path = dir.0.join("Future.kaava");
         std::fs::write(
             &path,
             r#"
-[helve]
+[kaava]
 format = 99
 created-with = "9.0.0"
 
@@ -336,8 +336,8 @@ pipeline = "deferred"
     #[test]
     fn a_manifest_with_no_name_falls_back_to_its_filename() {
         let dir = TempDir::new("nameless");
-        let path = dir.0.join("Salvage.helve");
-        std::fs::write(&path, "[helve]\nformat = 1\n").expect("write");
+        let path = dir.0.join("Salvage.kaava");
+        std::fs::write(&path, "[kaava]\nformat = 1\n").expect("write");
 
         assert_eq!(load(&path).expect("load").name, "Salvage");
     }

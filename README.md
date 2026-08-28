@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/ui/icon.png" alt="HELVE" width="120" height="120">
+<img src="assets/ui/icon.png" alt="OpenKaava" width="120" height="120">
 
-# HELVE-ADE
+# OpenKaava
 
 <p>
   <strong>An Agentic Development Environment (ADE).</strong><br/>
@@ -10,8 +10,8 @@
 </p>
 
 <p>
-  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml"><img src="https://github.com/Firelight-Innovations/HELVE-ADE/actions/workflows/verify.yml/badge.svg" alt="verify workflow status" /></a>
-  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/stargazers"><img src="https://img.shields.io/github/stars/Firelight-Innovations/HELVE-ADE?style=flat&label=%E2%98%85&color=08C" alt="GitHub stars" /></a>
+  <a href="https://github.com/Firelight-Innovations/OpenKaava/actions/workflows/verify.yml"><img src="https://github.com/Firelight-Innovations/OpenKaava/actions/workflows/verify.yml/badge.svg" alt="verify workflow status" /></a>
+  <a href="https://github.com/Firelight-Innovations/OpenKaava/stargazers"><img src="https://img.shields.io/github/stars/Firelight-Innovations/OpenKaava?style=flat&label=%E2%98%85&color=08C" alt="GitHub stars" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-08C?style=flat" alt="License: Apache-2.0" /></a>
   <img src="https://img.shields.io/badge/platform-Windows-4493F8?style=flat" alt="Platform: Windows" />
   <a href="#what-works-today"><img src="https://img.shields.io/badge/status-pre--alpha-orange?style=flat" alt="Status: pre-alpha" /></a>
@@ -21,41 +21,41 @@
   <a href="docs/user/tutorials/README.md"><ins>Tutorials</ins></a> &middot;
   <a href="docs/user/README.md"><ins>User docs</ins></a> &middot;
   <a href="docs/dev/README.md"><ins>Developer docs</ins></a> &middot;
-  <a href="https://github.com/Firelight-Innovations/HELVE-ADE/discussions"><ins>Discussions</ins></a>
+  <a href="https://github.com/Firelight-Innovations/OpenKaava/discussions"><ins>Discussions</ins></a>
 </p>
 
 </div>
 
 ---
 
-## What HELVE is
+## What OpenKaava is
 
-HELVE is an Agentic Development Environment, or ADE. An ADE is a desktop app.
+OpenKaava is an Agentic Development Environment, or ADE. An ADE is a desktop app.
 It holds your development tools in one window. It also holds a coding agent
 that works alongside you.
 
 VS Code works in a similar way. VS Code is a code editor. Extensions add tools
-to VS Code. HELVE works the same way: tools mount into HELVE.
+to VS Code. OpenKaava works the same way: tools mount into OpenKaava.
 
-HELVE makes one assumption that VS Code does not. HELVE assumes you work next
+OpenKaava makes one assumption that VS Code does not. OpenKaava assumes you work next
 to a coding agent from the start.
 
 This repository holds the orchestrator. The orchestrator is the main window
 itself. It loads your tools. It also runs the code that your tools share.
 
-HELVE is a development tool. It does not run the software that you build with
+OpenKaava is a development tool. It does not run the software that you build with
 it.
 
-## What makes HELVE different
+## What makes OpenKaava different
 
-Most tools bolt a coding agent onto an existing code editor. HELVE takes a
+Most tools bolt a coding agent onto an existing code editor. OpenKaava takes a
 different approach: it keeps design and code in one place.
 
 <table>
 <tr>
 <td>
 
-Two design tools mount into HELVE.
+Two design tools mount into OpenKaava.
 
 **A product design tool.** Use it to write a product requirements document, or
 PRD. A PRD describes what to build and why.
@@ -67,11 +67,11 @@ boundaries between systems.
 A team of coding agents reads both documents and builds the software. The
 agents work inside an environment that enforces strict code quality rules.
 
-HELVE traces every step. The trace starts at the PRD. It runs through the
+OpenKaava traces every step. The trace starts at the PRD. It runs through the
 technical design, the code, the tests, and the build. You can follow any line
 of code back to the decision that produced it.
 
-This traceability is the idea that sets HELVE apart from other development
+This traceability is the idea that sets OpenKaava apart from other development
 environments.
 
 [Forger](https://github.com/Firelight-Innovations/helve-forger) builds the
@@ -85,13 +85,13 @@ builds the product design tool. Neither tool is built yet.
 
 ## The window
 
-HELVE has one main window. The window has five bands. The bands stack in a
+OpenKaava has one main window. The window has five bands. The bands stack in a
 column. Only the middle band grows or shrinks. The other four bands stay a
 fixed height.
 
-![The five bands of the HELVE window: title bar, switcher bar, tool window, terminal band, status bar](assets/ui/window.png)
+![The five bands of the OpenKaava window: title bar, switcher bar, tool window, terminal band, status bar](assets/ui/window.png)
 
-[The HELVE window](docs/user/tutorials/the-window.md) tutorial explains each
+[The OpenKaava window](docs/user/tutorials/the-window.md) tutorial explains each
 band. Read it first. Every other tutorial uses these five names.
 
 ## What works today
@@ -167,7 +167,7 @@ Git worktrees are here too. A second branch does not need a second clone.
 ### MCP servers for your agent
 
 MCP stands for Model Context Protocol. MCP lets your coding agent call
-external tools. HELVE hosts MCP servers for you. It writes each one into
+external tools. OpenKaava hosts MCP servers for you. It writes each one into
 `.mcp.json`. Turn on a server. Your coding agent can then call it.
 
 [The MCP server manager](docs/mcp-server-manager.md) explains which servers
@@ -181,13 +181,13 @@ exist and when a new one is worth adding.
 <tr>
 <td colspan="2">
 
-### Open with HELVE
+### Open with OpenKaava
 
 Right-click a folder in Explorer and open it as a project. Right-click a file
 and it opens in the File Viewer, with its folder as the project.
 
-A second right-click while HELVE is running goes to the window that is already
-open. HELVE runs as one process, so two windows can never disagree about your
+A second right-click while OpenKaava is running goes to the window that is already
+open. OpenKaava runs as one process, so two windows can never disagree about your
 layout.
 
 </td>
@@ -197,7 +197,7 @@ layout.
 
 ### Settings
 
-HELVE generates every setting from one schema. A row you can see is a value
+OpenKaava generates every setting from one schema. A row you can see is a value
 that something reads.
 
 </td>
@@ -209,10 +209,10 @@ that something reads.
 
 ## What does not work yet
 
-HELVE is pre-alpha. The honest list is short.
+OpenKaava is pre-alpha. The honest list is short.
 
 - **The design and stack tools are not built yet.** Forger and Journeyman are
-  placeholder repositories today. A tool's core runs as a child process. HELVE
+  placeholder repositories today. A tool's core runs as a child process. OpenKaava
   does not yet have the broker that starts and talks to that process. The
   switcher bar shows only the orchestrator's own tools.
 - **Nothing is signed.** Windows SmartScreen warns about the installer. You
@@ -226,10 +226,10 @@ HELVE is pre-alpha. The honest list is short.
 
 ## Install
 
-**[Download HELVE for Windows](https://github.com/Firelight-Innovations/HELVE-ADE/releases/latest/download/HELVE-setup.exe)**
+**[Download OpenKaava for Windows](https://github.com/Firelight-Innovations/OpenKaava/releases/latest/download/OpenKaava-setup.exe)**
 
 Run the installer. It does not ask for administrator rights. It installs for
-your account only. HELVE also fetches the WebView2 runtime for you, if your
+your account only. OpenKaava also fetches the WebView2 runtime for you, if your
 machine does not already have it.
 
 > **Windows will warn you. You can go ahead.** The installer is not signed.
@@ -240,17 +240,17 @@ machine does not already have it.
 > signing would and would not fix.
 
 After installing, right-click any folder in Explorer and choose **Open with
-HELVE**. HELVE opens the folder as a project. The same entry appears on files.
+OpenKaava**. OpenKaava opens the folder as a project. The same entry appears on files.
 A file opens in the File Viewer, with its folder as the project.
 
-**One thing will look broken, and is not.** An installed HELVE cannot find a
+**One thing will look broken, and is not.** An installed OpenKaava cannot find a
 stack yet, so every tool reads `not installed`. Run from a source checkout to
 see one resolve. [The stack, end to end](docs/user/tutorials/the-stack.md)
 explains why.
 
 ## Build from source
 
-Use this option to build HELVE yourself, or to contribute code to it.
+Use this option to build OpenKaava yourself, or to contribute code to it.
 
 Every prerequisite below is a Windows prerequisite. Install each one once.
 
@@ -264,8 +264,8 @@ Every prerequisite below is a Windows prerequisite. Install each one once.
 Then run:
 
 ```sh
-git clone https://github.com/Firelight-Innovations/HELVE-ADE.git
-cd HELVE-ADE
+git clone https://github.com/Firelight-Innovations/OpenKaava.git
+cd OpenKaava
 pnpm install
 pnpm app
 ```
@@ -276,15 +276,15 @@ step takes several minutes. Later runs are fast.
 ## Learn your way around
 
 [Ten short tutorials](docs/user/tutorials/README.md) cover the window, panes
-and clusters, files, search, terminals, git, MCP servers, and settings. HELVE
+and clusters, files, search, terminals, git, MCP servers, and settings. OpenKaava
 ships the same ten pages in its own Tutorials tool. Read each tutorial beside
 the thing it describes.
 
-Start with [The HELVE window](docs/user/tutorials/the-window.md).
+Start with [The OpenKaava window](docs/user/tutorials/the-window.md).
 
 ## The stack
 
-HELVE is multi-repo on purpose. Each tool is its own repository. `helve.toml`
+OpenKaava is multi-repo on purpose. Each tool is its own repository. `kaava.toml`
 pins the exact version of each tool that this orchestrator expects.
 
 | Repository | What it is | Status |
@@ -295,8 +295,8 @@ pins the exact version of each tool that this orchestrator expects.
 ![The stack list, showing each tool and its health](assets/ui/stack.png)
 
 Only this repository has code in it today. The other two repositories each
-have a `v0.1.0` tag against a README. They have nothing else. `helve.toml`
-pins that tag, so HELVE reports both tools as `unversioned` rather than
+have a `v0.1.0` tag against a README. They have nothing else. `kaava.toml`
+pins that tag, so OpenKaava reports both tools as `unversioned` rather than
 matching. The pin holds a shape, not a release.
 
 On a fresh machine, every tool reads `not installed`. That reading is correct,
@@ -325,25 +325,25 @@ a set of starter issues are coming. They will point to exactly where.
 
 Found a bug? Open an issue. Want something that is not here? Open an issue
 too. Want to talk about an idea first? Open a
-[discussion](https://github.com/Firelight-Innovations/HELVE-ADE/discussions).
+[discussion](https://github.com/Firelight-Innovations/OpenKaava/discussions).
 
 ## License
 
-HELVE uses the Apache-2.0 license. [LICENSE](LICENSE) has the full text.
+OpenKaava uses the Apache-2.0 license. [LICENSE](LICENSE) has the full text.
 [NOTICE](NOTICE) is the file that a redistributor must carry with it.
 
-HELVE uses Apache, not MIT, because of the patent grant. Third-party tools
-load into HELVE through the tool protocol. MIT says nothing about patents.
-HELVE does not use GPL or AGPL, under any circumstances. A copyleft license
-would give someone a real argument that private tools mounting into HELVE are
+OpenKaava uses Apache, not MIT, because of the patent grant. Third-party tools
+load into OpenKaava through the tool protocol. MIT says nothing about patents.
+OpenKaava does not use GPL or AGPL, under any circumstances. A copyleft license
+would give someone a real argument that private tools mounting into OpenKaava are
 derivative works.
 
-The license covers the code. It does not cover the names. HELVE, Forger, and
+The license covers the code. It does not cover the names. OpenKaava, Forger, and
 Journeyman, and the marks that go with them, are trademarks of Firelight
 Innovations.
 
-You can fork HELVE. You can sell what you build on it. State plainly that your
-work is based on HELVE. All of that is fine.
+You can fork OpenKaava. You can sell what you build on it. State plainly that your
+work is based on OpenKaava. All of that is fine.
 
-Do not ship your fork as HELVE itself. The code is free to copy. The name is
+Do not ship your fork as OpenKaava itself. The code is free to copy. The name is
 not. The name tells a user which build runs the tools on their machine.

@@ -3,21 +3,21 @@
  * Mirrors `docs/tool-protocol.md` §3 exactly; if this drifts from that file,
  * the doc wins.
  *
- * Every message carries `helve: 1`. It's a version marker, but its real job
+ * Every message carries `kaava: 1`. It's a version marker, but its real job
  * is cheaper: an iframe's `window` can receive `message` events from
  * anything, not just its host (browser extensions, embedded widgets, the
- * page's own code posting to itself) — `helve === 1` is what lets the bridge
+ * page's own code posting to itself) — `kaava === 1` is what lets the bridge
  * ignore all of that in one check instead of trying to prove a message is
  * safe to parse.
  */
 
-/** Mirrors the `Session` shape shared with the tool core's `helve/hello`. */
+/** Mirrors the `Session` shape shared with the tool core's `kaava/hello`. */
 export interface Session {
   /** Root of the open project. Null until projects exist. */
   projectPath: string | null;
 }
 
-export interface HelveErrorPayload {
+export interface KaavaErrorPayload {
   code: number;
   message: string;
   data?: unknown;
@@ -26,12 +26,12 @@ export interface HelveErrorPayload {
 // ---- Frontend -> shell ----
 
 export interface HelloMessage {
-  helve: 1;
+  kaava: 1;
   kind: "hello";
 }
 
 export interface RequestMessage {
-  helve: 1;
+  kaava: 1;
   kind: "request";
   id: number;
   method: string;
@@ -43,7 +43,7 @@ export type OutgoingMessage = HelloMessage | RequestMessage;
 // ---- Shell -> frontend ----
 
 export interface ReadyMessage {
-  helve: 1;
+  kaava: 1;
   kind: "ready";
   toolId: string;
   protocol: 1;
@@ -51,15 +51,15 @@ export interface ReadyMessage {
 }
 
 export interface ResponseMessage {
-  helve: 1;
+  kaava: 1;
   kind: "response";
   id: number;
   result?: unknown;
-  error?: HelveErrorPayload;
+  error?: KaavaErrorPayload;
 }
 
 export interface EventMessage {
-  helve: 1;
+  kaava: 1;
   kind: "event";
   event: string;
   payload: unknown;
@@ -72,7 +72,7 @@ export interface EventMessage {
  * two make opposite claims. An event is news — the shell relaying something
  * that happened, which a frame may ignore. A command is an *instruction* the
  * user just gave through the shell's own chrome, and the shell only sends one
- * the frame has said it can carry out (see `helve/commands`). Keeping them
+ * the frame has said it can carry out (see `kaava/commands`). Keeping them
  * apart is what lets a frontend register a handler for one without having to
  * filter the other out of the same stream.
  *
@@ -82,7 +82,7 @@ export interface EventMessage {
  * since the menu has closed by then.
  */
 export interface CommandMessage {
-  helve: 1;
+  kaava: 1;
   kind: "command";
   command: string;
 }
@@ -92,7 +92,7 @@ export type IncomingMessage = ReadyMessage | ResponseMessage | EventMessage | Co
 // ---- The sideways channel: frame -> shell -> another frame ----
 
 /**
- * The event name a `helve/open` is delivered under.
+ * The event name a `kaava/open` is delivered under.
  *
  * One name for every kind of open, rather than a name per intent, because the
  * shell must not learn what any of them mean. What is being asked for lives in
@@ -100,9 +100,9 @@ export type IncomingMessage = ReadyMessage | ResponseMessage | EventMessage | Co
  * `{path, preview}` and File Viewer knows that is a file to show; the source
  * control view will send something else to the same app under the same event.
  * A shell that routed on intent would need a table of every app's verbs, which
- * is the thing `helve/commands` was shaped to avoid.
+ * is the thing `kaava/commands` was shaped to avoid.
  */
-export const OPENED_EVENT = "helve:opened";
+export const OPENED_EVENT = "kaava:opened";
 
 /**
  * The event prefix a published topic is delivered under.
@@ -110,12 +110,12 @@ export const OPENED_EVENT = "helve:opened";
  * Prefixed rather than posted as the bare topic name, so an app's topics can
  * never collide with the shell's own push events (`project:changed`,
  * `files:open-path`). A frame subscribing to `files/active-path` is listening
- * on `helve:topic/files/active-path`, and nothing an app can publish is able to
+ * on `kaava:topic/files/active-path`, and nothing an app can publish is able to
  * impersonate news the shell authored.
  */
-export const TOPIC_EVENT_PREFIX = "helve:topic/";
+export const TOPIC_EVENT_PREFIX = "kaava:topic/";
 
-/** What arrives with a `helve:topic/*` event. */
+/** What arrives with a `kaava:topic/*` event. */
 export interface PublishedTopic {
   value: unknown;
   /**
@@ -136,11 +136,11 @@ export interface PublishedTopic {
  * thing this bridge accepts messages from at all (see the `event.source`
  * check in `client.ts`).
  */
-export function isHelveMessage(data: unknown): data is IncomingMessage {
+export function isKaavaMessage(data: unknown): data is IncomingMessage {
   return (
     typeof data === "object" &&
     data !== null &&
-    (data as { helve?: unknown }).helve === 1 &&
+    (data as { kaava?: unknown }).kaava === 1 &&
     typeof (data as { kind?: unknown }).kind === "string"
   );
 }

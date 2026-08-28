@@ -3,14 +3,14 @@
 The surfaces the orchestrator ships itself.
 
 An app and a tool look identical in the shell — a tab in the switcher bar, an
-iframe in the tool window, `@helve-ade/bridge` in the frontend. The difference is
+iframe in the tool window, `@openkaava/bridge` in the frontend. The difference is
 where the two halves come from, and it decides everything else:
 
 | | Tool | App |
 |---|---|---|
 | Lives in | its own repository, cloned beside this one | `apps/` in this repo |
 | Frontend built by | its own Vite project | this repo's `vite.config.ts` |
-| Frontend served from | its dev server, or `helve-tool://` | the shell's own origin |
+| Frontend served from | its dev server, or `kaava-tool://` | the shell's own origin |
 | Rust half | a child process, over the standard streams | a module in `src-tauri/src/apps/` |
 | Can be | missing, unbuilt, the wrong version | none of those — it is in the binary |
 
@@ -65,7 +65,7 @@ live in `src/shell/state/fakeBackend.ts` and has been removed.
 ## Reporting in at startup
 
 Every app owes the shell one thing beyond drawing itself: a call to
-`reportPainted()` from `@helve-ade/bridge` once its first meaningful content is
+`reportPainted()` from `@openkaava/bridge` once its first meaningful content is
 committed to the DOM.
 
 The orchestrator's splash window stays up until every app in the registry has
@@ -93,8 +93,8 @@ a file in File Explorer has to put it on screen in File Viewer, which is a
 different app, in a different iframe, that the Explorer cannot see and must not
 be able to address.
 
-`helve/open` and `helve/publish` are that, and they are host business — the
-shell routes them, exactly as it answers `helve/painted` and `helve/commands`,
+`kaava/open` and `kaava/publish` are that, and they are host business — the
+shell routes them, exactly as it answers `kaava/painted` and `kaava/commands`,
 and it does so without understanding either. An `appId` is matched against the
 layout; a `topic` is a `Map` key. No payload is inspected and no intent is
 enumerated, so two apps can agree on a new thing to say to each other without a
@@ -121,7 +121,7 @@ and the button says "soon".
 
 The tutorials column used to be dead too, and is not any more. `home/tutorials`
 answers with the first few unfinished tutorials from `apps/tutorial.rs`'s
-catalog, and a card calls `helve/open` on the Tutorials app naming one. Home
+catalog, and a card calls `kaava/open` on the Tutorials app naming one. Home
 holds no list of its own, which is the point: a second copy would be a second
 place to add a tutorial.
 
@@ -132,7 +132,7 @@ README at the repo root.
 **File Explorer** (`files/list`, `files/root`) — the project's folders and what
 is in them, plus everything that changes the shape of it: create, rename,
 duplicate, delete, trash. It does not show a file's contents. Clicking a row
-asks the shell for a File Viewer in the same cluster (`helve/open`) rather than
+asks the shell for a File Viewer in the same cluster (`kaava/open`) rather than
 drawing the file itself.
 
 **File Viewer** (`files/read`, `files/write`) — open files in tabs, and what
@@ -168,7 +168,7 @@ frames the DevTools Protocol's equivalent cannot. The probe answers over
 `postMessage` and is inert in every frame but the one this app armed.
 
 **Tutorials** (`tutorial/catalog`, `tutorial/complete`, `tutorial/reset`) — short
-walkthroughs of what HELVE does today, with a tick against the ones you have
+walkthroughs of what OpenKaava does today, with a tick against the ones you have
 read. `docs/tutorials.md` is how to add one.
 
 It is the only app that reads nothing on the machine: `tutorial::call` ignores
@@ -180,5 +180,5 @@ prose is in the frontend because it is a view.
 Like Home, it **covers** the cluster rather than taking a pane: no tab in the
 switcher, no row in the Apps menu or the `+`, and gone as soon as you choose
 something else. Home's cards are its door. It is still an ordinary registry entry
-all the same — that is what resolves its frontend when `helve/open` asks for one,
+all the same — that is what resolves its frontend when `kaava/open` asks for one,
 and the filtering is a fact about which menus offer it. `docs/tutorials.md` §8.

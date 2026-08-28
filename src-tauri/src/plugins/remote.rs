@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Sent with every API call. GitHub rejects a request without one.
-const USER_AGENT: &str = concat!("HELVE/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("OpenKaava/", env!("CARGO_PKG_VERSION"));
 
 /// How long any one request may take before it is abandoned.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
@@ -82,7 +82,7 @@ pub enum RemoteError {
     /// A 404 from GitHub, and **deliberately one variant for two causes**: a
     /// repository that does not exist and one the token cannot see are
     /// indistinguishable from here. GitHub answers 404 for both precisely so
-    /// that a private repository's existence is not leaked, and HELVE must not
+    /// that a private repository's existence is not leaked, and OpenKaava must not
     /// resolve that ambiguity either.
     NotFoundOrNoAccess {
         slug: String,
@@ -104,7 +104,7 @@ pub enum RemoteError {
         actual: String,
     },
     Unpack(String),
-    /// The zip did not contain a `helve-tool.toml`.
+    /// The zip did not contain a `kaava-tool.toml`.
     NotAPlugin,
     /// The manifest's id is not the one the catalog promised.
     IdMismatch {
@@ -142,7 +142,7 @@ impl std::fmt::Display for RemoteError {
                 "the download does not match its checksum (expected {expected}, got {actual})"
             ),
             Self::Unpack(why) => write!(f, "could not unpack the download: {why}"),
-            Self::NotAPlugin => write!(f, "the release contains no helve-tool.toml"),
+            Self::NotAPlugin => write!(f, "the release contains no kaava-tool.toml"),
             Self::IdMismatch { expected, found } => write!(
                 f,
                 "this release calls itself `{found}`, but `{expected}` was expected"
@@ -382,7 +382,7 @@ pub fn unpack(bytes: &[u8], into: &Path) -> Result<(), RemoteError> {
     Ok(())
 }
 
-/// Find the directory holding `helve-tool.toml`.
+/// Find the directory holding `kaava-tool.toml`.
 ///
 /// A release zip usually wraps everything in one folder named after the tag, so
 /// the manifest is one level down rather than at the root. Looks at the root
@@ -390,13 +390,13 @@ pub fn unpack(bytes: &[u8], into: &Path) -> Result<(), RemoteError> {
 /// differently-shaped archive, and guessing at it would install the wrong thing
 /// quietly.
 pub fn manifest_root(unpacked: &Path) -> Option<PathBuf> {
-    if unpacked.join("helve-tool.toml").is_file() {
+    if unpacked.join("kaava-tool.toml").is_file() {
         return Some(unpacked.to_path_buf());
     }
     let entries = std::fs::read_dir(unpacked).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() && path.join("helve-tool.toml").is_file() {
+        if path.is_dir() && path.join("kaava-tool.toml").is_file() {
             return Some(path);
         }
     }

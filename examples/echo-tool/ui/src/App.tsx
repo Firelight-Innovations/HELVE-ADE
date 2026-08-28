@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HelveRpcError, host, invoke, on, session, type Session } from "@helve-ade/bridge";
+import { KaavaRpcError, host, invoke, on, session, type Session } from "@openkaava/bridge";
 
 interface CallLogEntry {
   method: string;
@@ -39,10 +39,10 @@ export default function App() {
       const result = await invoke(method, params);
       setLog((prev) => [{ method, ok: true, detail: JSON.stringify(result) }, ...prev]);
     } catch (err) {
-      // A HelveRpcError carries the JSON-RPC code either host produced it
+      // A KaavaRpcError carries the JSON-RPC code either host produced it
       // from (shell error envelope, Tauri rejection, or a local timeout) —
       // that's what makes this branch worth showing on its own.
-      const detail = err instanceof HelveRpcError ? `[${err.code}] ${err.message}` : String(err);
+      const detail = err instanceof KaavaRpcError ? `[${err.code}] ${err.message}` : String(err);
       setLog((prev) => [{ method, ok: false, detail }, ...prev]);
     }
   }

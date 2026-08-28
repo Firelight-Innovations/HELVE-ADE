@@ -35,7 +35,7 @@ export interface ResolvedTool {
   name: string;
   kind: ToolKind;
   repo: string;
-  /** The version pinned in helve.toml. */
+  /** The version pinned in kaava.toml. */
   version: string;
   description: string;
   path: string | null;
@@ -53,7 +53,7 @@ export interface StackSnapshot {
   tools: ResolvedTool[];
 }
 
-/** Re-read helve.toml and re-scan the disk. Also serves as "refresh". */
+/** Re-read kaava.toml and re-scan the disk. Also serves as "refresh". */
 export function loadStack(): Promise<StackSnapshot> {
   return invoke<StackSnapshot>("load_stack");
 }
@@ -161,7 +161,7 @@ export interface PluginSurface {
   address: string;
   name: string;
   description: string;
-  /** In the Apps menu, or only reachable through `helve/open`. */
+  /** In the Apps menu, or only reachable through `kaava/open`. */
   listed: boolean;
 }
 
@@ -328,9 +328,9 @@ export function onPluginsChanged(cb: () => void): Promise<UnlistenFn> {
  *
  * Called by `ToolWindow`, which is the only thing that knows which mounted
  * frame a message came from, and never by an app itself — an app calls
- * `invoke` from `@helve-ade/bridge` and the shell relays it here. A rejection
+ * `invoke` from `@openkaava/bridge` and the shell relays it here. A rejection
  * carries `{ code, message, data? }`, the JSON-RPC error object the bridge
- * turns back into a `HelveRpcError`.
+ * turns back into a `KaavaRpcError`.
  */
 export function appCall(
   id: string,
@@ -441,7 +441,7 @@ export function onProjectChanged(cb: (payload: unknown) => void): Promise<Unlist
  */
 export interface WorktreeRef {
   path: string;
-  /** `null` for a detached HEAD — a state HELVE never creates but can find. */
+  /** `null` for a detached HEAD — a state OpenKaava never creates but can find. */
   branch: string | null;
 }
 
@@ -599,7 +599,7 @@ export function gitWorktreeRemove(clusterId: string, force: boolean): Promise<vo
  * report what it is bound to afterwards.
  *
  * Worth calling on a cluster switch and after anything that could have removed
- * a directory from outside HELVE. Cheap — a `is_dir` check, and a git spawn
+ * a directory from outside OpenKaava. Cheap — a `is_dir` check, and a git spawn
  * only in the case where the answer turns out to be "gone".
  */
 export function gitWorktreeReconcile(clusterId: string): Promise<WorktreeRef | null> {
@@ -646,7 +646,7 @@ export function gitDivergenceDiff(
 /* --- review comments ---------------------------------------------------------
  *
  * Notes a person left on lines of a diff, so an agent can be handed them.
- * Mirrors `src-tauri/src/review/`, which keeps them in `.helve/` inside the
+ * Mirrors `src-tauri/src/review/`, which keeps them in `.kaava/` inside the
  * checkout — cluster-scoped for the same reason every git command is, so the
  * frontend never names a directory for the backend to write in.
  */
@@ -821,7 +821,7 @@ export function githubOpenInBrowser(url: string): Promise<void> {
  * Tell the backend that a first-party app's UI has drawn its first meaningful
  * frame.
  *
- * Called by `ToolWindow` when an app frame sends `helve/painted`, and by
+ * Called by `ToolWindow` when an app frame sends `kaava/painted`, and by
  * nothing else: the id is the one the shell resolved from the frame the message
  * arrived on, never one an app named for itself. Boot holds the splash window
  * until every app has reported (`src-tauri/src/boot.rs`), so this is what
@@ -883,7 +883,7 @@ export function bootStatus(): Promise<BootStatus> {
 
 /* --- launched with a path ----------------------------------------------------
  *
- * Explorer's "Open with HELVE". Rust has already opened a folder as a project
+ * Explorer's "Open with OpenKaava". Rust has already opened a folder as a project
  * by the time either of these is called; what reaches the shell is a *file*,
  * and only `ToolWindow` can decide which viewer shows it. See `launch.rs`.
  */
@@ -901,9 +901,9 @@ export function takeLaunchTarget(): Promise<LaunchTarget | null> {
   return invoke<LaunchTarget | null>("take_launch_target");
 }
 
-/** A *second* "Open with HELVE", routed here by single-instance rather than run. */
+/** A *second* "Open with OpenKaava", routed here by single-instance rather than run. */
 export function onLaunchTarget(cb: () => void): Promise<UnlistenFn> {
-  return listen<unknown>("helve://launch-target", () => cb());
+  return listen<unknown>("kaava://launch-target", () => cb());
 }
 
 /** One webview failure into Rust's ring buffer. Swallows its own failure — the caller is an error handler. */
@@ -1169,12 +1169,12 @@ export function setWindowGeometry(label: string, geometry: WindowGeometry): Prom
   return invoke("set_window_geometry", { label, geometry });
 }
 
-/** Which HELVE window the cursor is over, or `null` if it is over none of them. */
+/** Which OpenKaava window the cursor is over, or `null` if it is over none of them. */
 export function windowAtCursor(): Promise<string | null> {
   return invoke<string | null>("window_at_cursor");
 }
 
-/** Drop a terminal into any HELVE window's terminal band, including this one. */
+/** Drop a terminal into any OpenKaava window's terminal band, including this one. */
 export function moveTerminal(id: string, toLabel: string): Promise<void> {
   return invoke("move_terminal", { id, toLabel });
 }
@@ -1288,7 +1288,7 @@ export function terminalInsertPaths(id: string, paths: string[]): Promise<string
   return invoke<string>("terminal_insert_paths", { id, paths });
 }
 
-/* --- files dragged in from outside HELVE ------------------------------------
+/* --- files dragged in from outside OpenKaava ------------------------------------
  *
  * Not a command and not one of our own events: the operating system's own drag,
  * reported by the webview through Tauri. It is the one drag in the shell that
@@ -1561,7 +1561,7 @@ export function onUpdateChanged(cb: (state: UpdateState) => void): Promise<Unlis
 
 /* --- MCP -------------------------------------------------------------------
  *
- * The servers HELVE hosts for whatever coding agent is running in one of its
+ * The servers OpenKaava hosts for whatever coding agent is running in one of its
  * terminals. Design and the rule about what may be added are in
  * `docs/mcp-server-manager.md`.
  */
@@ -1574,7 +1574,7 @@ export interface McpServerInfo {
   enabled: boolean;
   /** The route it answers on, `/mcp/<id>`. Shown so a connection can be checked by hand. */
   path: string;
-  /** The key it takes in a project's `.mcp.json`, `helve-<id>`. */
+  /** The key it takes in a project's `.mcp.json`, `kaava-<id>`. */
   configKey: string;
   toolCount: number;
   /** Only `developer.mode` reveals this one. Rust has already filtered the list; this marks it. */

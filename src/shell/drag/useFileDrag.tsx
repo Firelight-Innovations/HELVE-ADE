@@ -214,7 +214,7 @@ function commit(x: number, y: number, paths: string[]): void {
     // put text where the user was not pointing. Logged at `debug` because
     // declining is correct and a decline is otherwise indistinguishable from a
     // failure; see `useDrag`'s `commitCluster`, which says the same.
-    console.debug(`helve: ${paths.length} file(s) dropped over no terminal`);
+    console.debug(`kaava: ${paths.length} file(s) dropped over no terminal`);
     return;
   }
   if (paths.length > 0) terminalTransport.insertPaths(id, paths);

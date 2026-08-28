@@ -1,7 +1,7 @@
 {
-  "name": "@helve/monaco-languages",
+  "name": "@openkaava/monaco-languages",
   "version": "0.1.0",
-  "description": "Monaco grammars Monaco itself does not ship, shared by every editor in HELVE.",
+  "description": "Monaco grammars Monaco itself does not ship, shared by every editor in OpenKaava.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

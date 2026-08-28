@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HELVE</title>
+    <title>OpenKaava</title>
     <!--
       This file is deliberately standalone: no imports, no build step, no
       shared modules, no coupling of any kind to the rest of the application.
@@ -33,7 +33,7 @@
         - the wordmark's typeface, as a base64 woff2 subset (see @font-face)
         - the boot logic, as a plain non-module <script> at the bottom
 
-      One deliberate exception: `.splash__field` loads `/helve-splash-field.svg`
+      One deliberate exception: `.splash__field` loads `/kaava-splash-field.svg`
       from `public/` as a plain image request. That is a request, unlike
       everything above — but it is a static, standalone asset with no module
       graph behind it, not a dependency on this application's *code*, which
@@ -239,11 +239,11 @@
         font-size: 22px;
         font-weight: 600;
         letter-spacing: 0.16em;
-        /* The markup holds "Helve" and this uppercases it, which is the trade
-           `home.css` already makes for the lockup: a screen reader is handed a
-           word rather than five letters to spell. The face above is subset to
-           uppercase Latin, and `text-transform` runs before shaping, so the
-           glyphs it needs are the ones it has. */
+        /* The markup holds "OpenKaava" and this uppercases it, which is the
+           trade `home.css` already makes for the lockup: a screen reader is
+           handed a word rather than letters to spell. The face above is
+           subset to uppercase Latin, and `text-transform` runs before
+           shaping, so the glyphs it needs are the ones it has. */
         text-transform: uppercase;
         /* The field art behind this varies in brightness by pixel, unlike
            the flat surface colour it sat on before — a fixed text colour
@@ -377,12 +377,12 @@
   <body>
     <div class="splash">
       <div class="splash__content">
-        <!-- helve-splash-field.svg, from public/ — see the file-level
+        <!-- kaava-splash-field.svg, from public/ — see the file-level
              comment above for why this one asset is external. -->
-        <img class="splash__field" src="/helve-splash-field.svg" alt="" />
+        <img class="splash__field" src="/kaava-splash-field.svg" alt="" />
         <div class="splash__field-seam"></div>
 
-        <p class="splash__wordmark">Helve</p>
+        <p class="splash__wordmark">OpenKaava</p>
 
         <div class="splash__error" hidden>
           <div class="splash__error-panel">
@@ -399,8 +399,8 @@
             <!-- `BootArc`, copied from src/ui/Icon.tsx and recoloured: white
                  for the moving arc, grey for the track. The brand mark that
                  used to sit in its centre (`BrandGlyph`, four squares) is
-                 gone rather than moved — HELVE is now written out in full
-                 as the wordmark, so the icon no longer needs to carry the
+                 gone rather than moved — OpenKaava is now written out in
+                 full as the wordmark, so the icon no longer needs to carry the
                  brand on its own too. `aria-hidden`: the label right next
                  to it already says the same thing as text. -->
             <span class="splash-art" aria-hidden="true">

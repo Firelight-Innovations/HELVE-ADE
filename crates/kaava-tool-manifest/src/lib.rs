@@ -1,4 +1,4 @@
-//! Loading and validating `helve-tool.toml`, the per-tool run manifest.
+//! Loading and validating `kaava-tool.toml`, the per-tool run manifest.
 //!
 //! See `docs/tool-protocol.md` section 1 for the spec this implements. The
 //! short version: every tool checkout carries one of these files, and it says
@@ -15,7 +15,7 @@
 //! over one domain rather than a single window. See [`ToolManifest`] for the
 //! shape that came out of that and what each combination means.
 
-// Published contract — see the note in crates/helve-rpc/src/lib.rs.
+// Published contract — see the note in crates/kaava-rpc/src/lib.rs.
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 
@@ -24,7 +24,7 @@ use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
-/// A parsed and validated `helve-tool.toml`.
+/// A parsed and validated `kaava-tool.toml`.
 ///
 /// One file describes a **package**: an identity, at most one core process, and
 /// zero or more **surfaces** — the things a person can put in a pane. The two
@@ -44,7 +44,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolManifest {
     /// Who the tool is. The only section with a second source of truth: the
-    /// `[[tool]]` entry in `helve.toml` has to agree with it.
+    /// `[[tool]]` entry in `kaava.toml` has to agree with it.
     pub tool: ToolSection,
     /// Where the tool window points its iframes, for every surface at once.
     /// `None` when the package ships no UI.
@@ -66,11 +66,11 @@ pub struct ToolManifest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolSection {
     /// Must match `^[a-z][a-z0-9-]*$`, and must equal both the `[[tool]]` id
-    /// in `helve.toml` and the id the core returns from `helve/hello` — the
+    /// in `kaava.toml` and the id the core returns from `kaava/hello` — the
     /// host rejects the tool if the three disagree.
     pub id: String,
     /// Semver; anything else fails the parse. Nothing compares it against the
-    /// version `helve.toml` pins. The pin decides what gets checked out, this
+    /// version `kaava.toml` pins. The pin decides what gets checked out, this
     /// is only what the checkout claims to be.
     pub version: Version,
     /// What to call the package where a person reads it.
@@ -115,7 +115,7 @@ pub struct CoreSection {
     /// Relative to the checkout root. Never includes a platform extension —
     /// see `resolve_bin`.
     pub bin: PathBuf,
-    /// Passed to the binary verbatim on spawn. Defaults to `["--helve-rpc"]`
+    /// Passed to the binary verbatim on spawn. Defaults to `["--kaava-rpc"]`
     /// when the key is absent, which is the flag the protocol expects; set it
     /// only if the binary enters RPC mode some other way.
     pub args: Vec<String>,
@@ -168,12 +168,12 @@ pub enum Presentation {
     #[default]
     Pane,
     /// Covers its cluster and is absent from both menus, reachable only when
-    /// something calls `helve/open` for it. Home and Tutorials are the
+    /// something calls `kaava/open` for it. Home and Tutorials are the
     /// first-party precedent.
     Cover,
 }
 
-/// Why a `helve-tool.toml` was rejected.
+/// Why a `kaava-tool.toml` was rejected.
 ///
 /// Every variant names the offending key and its value: the manifest is
 /// written by a tool author who is not looking at this code, so the `Display`
@@ -200,7 +200,7 @@ pub enum ManifestError {
     // document for its span-highlighting `Display` impl, which makes it much
     // larger than the other variants; boxing keeps `ManifestError` itself
     // cheap to move regardless of which variant it is.
-    #[error("invalid helve-tool.toml: {0}")]
+    #[error("invalid kaava-tool.toml: {0}")]
     Toml(Box<toml::de::Error>),
 
     /// `tool.id` is not `^[a-z][a-z0-9-]*$`. Ids end up as directory names and
@@ -288,9 +288,9 @@ pub enum ManifestError {
 }
 
 impl ToolManifest {
-    /// Read and validate the manifest at `<checkout_root>/helve-tool.toml`.
+    /// Read and validate the manifest at `<checkout_root>/kaava-tool.toml`.
     pub fn load(checkout_root: &Path) -> Result<Self, ManifestError> {
-        let path = checkout_root.join("helve-tool.toml");
+        let path = checkout_root.join("kaava-tool.toml");
         let raw = std::fs::read_to_string(&path).map_err(|source| ManifestError::Io {
             path: path.clone(),
             source,
@@ -466,7 +466,7 @@ fn validate_id(id: &str) -> Result<(), ManifestError> {
 /// Reject anything that could put a resolved path outside the checkout root:
 /// an absolute path, or a path containing a `..` component anywhere in it.
 ///
-/// This is a security boundary rather than a style rule — `helve-tool.toml`
+/// This is a security boundary rather than a style rule — `kaava-tool.toml`
 /// is authored by third-party tool code, and `dist`/`bin` end up joined onto
 /// a trusted root and then read or executed.
 fn validate_relative_path(field: &'static str, raw: &str) -> Result<PathBuf, ManifestError> {
@@ -514,7 +514,7 @@ fn validate_relative_path(field: &'static str, raw: &str) -> Result<PathBuf, Man
 }
 
 fn default_args() -> Vec<String> {
-    vec!["--helve-rpc".to_string()]
+    vec!["--kaava-rpc".to_string()]
 }
 
 #[derive(Debug, Deserialize)]
@@ -595,8 +595,8 @@ mod tests {
         dev-url = "http://localhost:5174"
 
         [core]
-        bin  = "target/debug/helve-echo-tool"
-        args = ["--helve-rpc"]
+        bin  = "target/debug/kaava-echo-tool"
+        args = ["--kaava-rpc"]
     "#;
 
     #[test]
@@ -611,8 +611,8 @@ mod tests {
         assert_eq!(frontend.dev_url.as_deref(), Some("http://localhost:5174"));
 
         let core = manifest.core.as_ref().expect("declares a [core]");
-        assert_eq!(core.bin, PathBuf::from("target/debug/helve-echo-tool"));
-        assert_eq!(core.args, vec!["--helve-rpc".to_string()]);
+        assert_eq!(core.bin, PathBuf::from("target/debug/kaava-echo-tool"));
+        assert_eq!(core.args, vec!["--kaava-rpc".to_string()]);
 
         // The reference manifest declares no `[[surface]]`, and must keep
         // working untouched — the whole point of synthesising one. Anything
@@ -635,13 +635,13 @@ mod tests {
             dist = "ui/dist"
 
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
         "#;
 
         let manifest = ToolManifest::parse(toml).unwrap();
         assert_eq!(
             manifest.core.expect("declares a [core]").args,
-            vec!["--helve-rpc".to_string()]
+            vec!["--kaava-rpc".to_string()]
         );
         assert_eq!(
             manifest.frontend.expect("declares a [frontend]").dev_url,
@@ -658,7 +658,7 @@ mod tests {
             [frontend]
             dist = "ui/dist"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
         "#;
         assert!(ToolManifest::parse(absent).is_ok());
 
@@ -669,7 +669,7 @@ mod tests {
             [frontend]
             dist = "ui/dist"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
             [permissions]
             some-future-key = true
             another = ["a", "b"]
@@ -686,7 +686,7 @@ mod tests {
             [frontend]
             dist = "ui/dist"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
             [nonsense]
             key = 1
         "#;
@@ -707,7 +707,7 @@ mod tests {
             [frontend]
             dist = "ui/dist"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
         "#;
 
         assert!(matches!(
@@ -727,7 +727,7 @@ mod tests {
                 [frontend]
                 dist = "ui/dist"
                 [core]
-                bin = "target/debug/helve-echo-tool"
+                bin = "target/debug/kaava-echo-tool"
                 "#
             );
 
@@ -747,7 +747,7 @@ mod tests {
             [frontend]
             dist = "ui/dist"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
         "#;
 
         match ToolManifest::parse(toml) {
@@ -769,7 +769,7 @@ mod tests {
                 [frontend]
                 dist = "{}"
                 [core]
-                bin = "target/debug/helve-echo-tool"
+                bin = "target/debug/kaava-echo-tool"
                 "#,
                 absolute.replace('\\', "\\\\")
             );
@@ -813,7 +813,7 @@ mod tests {
             [frontend]
             dist = "ui/../../secrets"
             [core]
-            bin = "target/debug/helve-echo-tool"
+            bin = "target/debug/kaava-echo-tool"
         "#;
 
         assert!(matches!(
@@ -836,7 +836,7 @@ mod tests {
                 [frontend]
                 dist = "{empty}"
                 [core]
-                bin = "target/debug/helve-echo-tool"
+                bin = "target/debug/kaava-echo-tool"
                 "#
             );
 
@@ -856,7 +856,7 @@ mod tests {
     impl TempCheckout {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
-                "helve-tool-manifest-test-{}-{}-{name}",
+                "kaava-tool-manifest-test-{}-{}-{name}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

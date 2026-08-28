@@ -1,4 +1,4 @@
-# HELVE Roadmap
+# OpenKaava Roadmap
 
 Rough execution order. Items are mostly sequential; a couple are explicitly
 parallel or vague-on-purpose (noted inline). Updated 2026-08-21.
@@ -35,7 +35,7 @@ enough to seed a tracker.
 
 ## 9. Contributor readiness (done)
 
-The repository is public, as `Firelight-Innovations/HELVE-ADE`. Landed:
+The repository is public, as `Firelight-Innovations/OpenKaava`. Landed:
 Apache-2.0 with the marks held back, CI running `pnpm verify` on every pull
 request and annotating each failure on the line that caused it, a dependency
 audit, `CONTRIBUTING.md` and a code of conduct, a frontend test harness, a
@@ -85,7 +85,7 @@ library, from a GitHub repository named by the user, or from a folder on this
 machine — and nothing else. `docs/design-notes/app-library.md` has why there are
 exactly three.
 
-`helve-tool.toml` grew surfaces, so one repository holds several apps and a
+`kaava-tool.toml` grew surfaces, so one repository holds several apps and a
 backend-only package declares none. The broker relays a surface's `invoke` to
 its own package's core, which was specified at v1 and had never run. A folder
 install is watched, so a rebuilt core restarts without anyone asking.
@@ -114,15 +114,15 @@ Still open from this item:
   `mcp::Registry` holds `&'static` servers, so a plugin-provided MCP server
   cannot be one. The manifest reserves the space; the plumbing does not exist.
 
-## 10b. Publish `@helve-ade/bridge` to npm — blocks #11 and #12
+## 10b. Publish `@openkaava/bridge` to npm — blocks #11 and #12
 
 **Nothing outside this repository can build an app frontend until this is done.**
 
 ### Why
 
 `docs/tool-protocol.md` §5 says a tool frontend's *only* host coupling is
-`@helve-ade/bridge`, and `.github/CODEOWNERS` calls it "the npm package a tool
-author actually installs". It is not published — `npm view @helve-ade/bridge` is a
+`@openkaava/bridge`, and `.github/CODEOWNERS` calls it "the npm package a tool
+author actually installs". It is not published — `npm view @openkaava/bridge` is a
 404 as of 2026-08-21 — so there is nothing to install, and the sentence in the
 protocol document is currently false.
 
@@ -133,21 +133,21 @@ Both repositories are still empty, and neither can get past its first
 A git dependency is not a workaround here. `packages/bridge` publishes `dist`,
 which is built rather than committed, so installing from the repository would
 need a `prepare` script and a build of the whole workspace to get one small
-package. The Rust half has no such problem — `helve-rpc` resolves fine as a git
+package. The Rust half has no such problem — `kaava-rpc` resolves fine as a git
 dependency against a public repo — which is why only the frontend is blocking:
 
 ```toml
-helve-rpc = { git = "https://github.com/Firelight-Innovations/HELVE-ADE.git" }
+kaava-rpc = { git = "https://github.com/Firelight-Innovations/OpenKaava.git" }
 ```
 
-Publishing `helve-rpc` to crates.io is tidier and optional. This is neither.
+Publishing `kaava-rpc` to crates.io is tidier and optional. This is neither.
 
 ### How
 
-1. **Confirm the `@helve` scope is ours.** Unverified — npm was not
+1. **Confirm the `@openkaava` scope is ours.** Unverified — npm was not
    authenticated on the machine this was written on, so `npm whoami` returned
    `ENEEDAUTH` and nothing about ownership could be established. `npm login`,
-   then `npm org ls helve`. If the scope is taken by someone else, the package
+   then `npm org ls openkaava`. If the scope is taken by someone else, the package
    name is the decision to make before anything else, and it reaches
    `tool-protocol.md`, `CODEOWNERS` and every app repository that ever installs
    it.
@@ -163,7 +163,7 @@ Publishing `helve-rpc` to crates.io is tidier and optional. This is neither.
    deliberately does not police this file. Pinning it to the app version would
    tie a wire format to a UI release; say which it is in the package and in
    §6 of the protocol document, and keep the two agreeing.
-4. **Publish.** `pnpm --filter @helve-ade/bridge build`, then
+4. **Publish.** `pnpm --filter @openkaava/bridge build`, then
    `npm publish --access public` from `packages/bridge`. First publish by hand
    is fine; automate it on a tag afterwards, which needs an `NPM_TOKEN` secret
    and a job that refuses to publish a version already on the registry.
@@ -210,5 +210,5 @@ Tackled after Forger is working, and blocked on #10b for the same reason.
 
 ---
 
-*Big-picture goal: get HELVE into the best agentic development environment
+*Big-picture goal: get OpenKaava into the best agentic development environment
 (ADE) shape possible, done properly, efficiently, and ready for open source.*

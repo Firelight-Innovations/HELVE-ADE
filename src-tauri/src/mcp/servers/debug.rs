@@ -1,4 +1,4 @@
-//! What HELVE looks like from the inside, for the agent working on it.
+//! What OpenKaava looks like from the inside, for the agent working on it.
 //!
 //! [`servers`](super)'s rule is that a server answers what no harness could
 //! answer for itself. An agent can read every file in this repo and still not
@@ -18,7 +18,7 @@ use crate::diagnostics::diagnostics;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
 use crate::shell_state::ShellState;
 use crate::state::AppState;
-use helve_rpc::{RpcError, INTERNAL_ERROR};
+use kaava_rpc::{RpcError, INTERNAL_ERROR};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
@@ -28,7 +28,7 @@ pub static SERVER: McpServer = McpServer {
     description: "Read the running shell: its layout, its recent failures, and how boot went.",
     tools: TOOLS,
     call,
-    // Read-only, and useful to anybody diagnosing a HELVE that is misbehaving —
+    // Read-only, and useful to anybody diagnosing an OpenKaava that is misbehaving —
     // which is not only the people who write it. See the module doc.
     dev_only: false,
 };
@@ -52,7 +52,8 @@ static TOOLS: &[McpTool] = &[
     },
     McpTool {
         name: "recent_errors",
-        description: "Failures HELVE has recorded since it started, from both the Rust backend \
+        description:
+            "Failures OpenKaava has recorded since it started, from both the Rust backend \
                       and the webview. These are not written to any file — in a release build \
                       they are not written anywhere at all — so this is the only way to read \
                       them back.",
@@ -104,7 +105,7 @@ fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer
         "recent_errors" => Ok(recent_errors(params.as_ref()).into()),
         "boot_status" => boot_status(app).map(Into::into),
         other => Err(RpcError::new(
-            helve_rpc::METHOD_NOT_FOUND,
+            kaava_rpc::METHOD_NOT_FOUND,
             format!("the debug server has no tool named `{other}`"),
         )),
     }

@@ -1,14 +1,14 @@
 {
-  "name": "@helve-ade/bridge",
+  "name": "@openkaava/bridge",
   "version": "0.1.0",
-  "description": "Transport bridge between a Helve tool's frontend and its host \u2014 the orchestrator shell over window messages, or a standalone Tauri app over Tauri IPC.",
+  "description": "Transport bridge between an OpenKaava tool's frontend and its host \u2014 the orchestrator shell over window messages, or a standalone Tauri app over Tauri IPC.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Firelight-Innovations/HELVE-ADE.git",
+    "url": "git+https://github.com/Firelight-Innovations/OpenKaava.git",
     "directory": "packages/bridge"
   },
-  "homepage": "https://github.com/Firelight-Innovations/HELVE-ADE/blob/main/docs/tool-protocol.md",
+  "homepage": "https://github.com/Firelight-Innovations/OpenKaava/blob/main/docs/tool-protocol.md",
   "publishConfig": {
     "access": "public"
   },

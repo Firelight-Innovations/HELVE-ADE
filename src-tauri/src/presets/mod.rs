@@ -302,8 +302,8 @@ pub fn merge(user: Vec<LayoutPreset>) -> Vec<LayoutPreset> {
 
     for mut preset in user {
         if preset.id.starts_with(BUILTIN_PREFIX) {
-            crate::helve_log!(
-                "ignoring the preset `{}` — `{BUILTIN_PREFIX}` names HELVE's own presets",
+            crate::kaava_log!(
+                "ignoring the preset `{}` — `{BUILTIN_PREFIX}` names OpenKaava's own presets",
                 preset.id
             );
             continue;
@@ -318,7 +318,7 @@ pub fn merge(user: Vec<LayoutPreset>) -> Vec<LayoutPreset> {
             .iter()
             .any(|p| p.name.eq_ignore_ascii_case(&preset.name))
         {
-            crate::helve_log!(
+            crate::kaava_log!(
                 "ignoring the preset `{}` — that name is already taken",
                 preset.name
             );
@@ -370,7 +370,7 @@ pub fn save(app: &AppHandle, name: &str, root: PresetNode) -> Result<Vec<LayoutP
         .find(|b| b.name.eq_ignore_ascii_case(name))
     {
         return Err(AppError::PresetName(format!(
-            "\"{}\" is one of HELVE's own presets, so it cannot be replaced — pick another name",
+            "\"{}\" is one of OpenKaava's own presets, so it cannot be replaced — pick another name",
             clash.name
         )));
     }

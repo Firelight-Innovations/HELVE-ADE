@@ -5,7 +5,7 @@
  * `currentColor`, because here the colour *is* the information: file-type icons wherever a
  * filename is listed to be scanned, and nowhere else — chrome stays inline SVG at `currentColor`.
  * The colour argument in full, the MIT licence, the generated `public/icons/material/` against
- * the hand-drawn `public/icons/helve/`, and the contrast measurements behind the black HELVE
+ * the hand-drawn `public/icons/kaava/`, and the contrast measurements behind the black OpenKaava
  * mark are in `docs/design-notes/file-icons.md`.
  */
 
@@ -21,24 +21,24 @@ import {
 const BASE = "/icons/material/";
 
 /** The hand-drawn half. Tracked in git, unlike `BASE`; the docs page says why. */
-const HELVE_BASE = "/icons/helve/";
+const KAAVA_BASE = "/icons/kaava/";
 
-/** HELVE's own directory inside a project. Matched exactly, dot and all. */
-const HELVE_FOLDER = ".helve";
+/** OpenKaava's own directory inside a project. Matched exactly, dot and all. */
+const KAAVA_FOLDER = ".kaava";
 
 /** The project file's extension, with its dot, ready to test a name's tail. */
-const HELVE_EXTENSION = ".helve";
+const KAAVA_EXTENSION = ".kaava";
 
 /**
- * The HELVE glyph for a file, or `null` to let the theme answer. A suffix test rather than a
+ * The OpenKaava glyph for a file, or `null` to let the theme answer. A suffix test rather than a
  * table, because the basename is the *project's* name and there is no list of those. The dot
- * must have something before it: bare `.helve` is a name, not a `helve` extension, and falls
+ * must have something before it: bare `.kaava` is a name, not a `kaava` extension, and falls
  * through to the generic file glyph — the rule `extensionOf` in `apps/files/ui/src/rpc.ts` uses.
  */
-function helveFileIcon(lower: string): string | null {
-  if (lower.length <= HELVE_EXTENSION.length) return null;
-  if (!lower.endsWith(HELVE_EXTENSION)) return null;
-  return `${HELVE_BASE}helve.svg`;
+function kaavaFileIcon(lower: string): string | null {
+  if (lower.length <= KAAVA_EXTENSION.length) return null;
+  if (!lower.endsWith(KAAVA_EXTENSION)) return null;
+  return `${KAAVA_BASE}kaava.svg`;
 }
 
 /**
@@ -51,8 +51,8 @@ function helveFileIcon(lower: string): string | null {
 export function fileIconUrl(name: string): string {
   const lower = name.toLowerCase();
 
-  const helve = helveFileIcon(lower);
-  if (helve) return helve;
+  const kaava = kaavaFileIcon(lower);
+  if (kaava) return kaava;
 
   const exact = fileNames[lower];
   if (exact) return BASE + exact;
@@ -88,10 +88,10 @@ export function folderIconUrl(name: string, expanded: boolean): string {
   const lower = name.toLowerCase();
 
   // Before the theme and before the decoration strip below, which is why it is here rather than
-  // folded into the exact lookup: `.helve` bares to `helve`, so a theme that ever gains a `helve`
+  // folded into the exact lookup: `.kaava` bares to `kaava`, so a theme that ever gains a `kaava`
   // folder would win the second pass and this folder would stop being ours.
-  if (lower === HELVE_FOLDER) {
-    return `${HELVE_BASE}folder-helve${expanded ? "-open" : ""}.svg`;
+  if (lower === KAAVA_FOLDER) {
+    return `${KAAVA_BASE}folder-kaava${expanded ? "-open" : ""}.svg`;
   }
 
   const exact = table[lower];

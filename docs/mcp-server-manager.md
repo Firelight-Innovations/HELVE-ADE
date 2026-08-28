@@ -1,15 +1,15 @@
 # MCP server manager
 
-Roadmap item #4. HELVE hosts MCP servers; it never consumes them.
+Roadmap item #4. OpenKaava hosts MCP servers; it never consumes them.
 
 The clients are harnesses the user brings themselves — Claude Code, Codex, or
-whatever else — running in terminals **HELVE spawned**. That is the constraint
+whatever else — running in terminals **OpenKaava spawned**. That is the constraint
 the whole design rests on, and it is worth saying plainly before anything else:
 we own the environment the client starts in. Discovery, authentication and port
 assignment are all solvable by writing an environment variable, where for a
 general-purpose MCP server each of them would be a support problem.
 
-HELVE is BYOH. We are not building a harness, so nothing here may assume one.
+OpenKaava is BYOH. We are not building a harness, so nothing here may assume one.
 
 ---
 
@@ -18,13 +18,13 @@ HELVE is BYOH. We are not building a harness, so nothing here may assume one.
 **If the harness can already do it, it does not get an MCP server.**
 
 No file reading, no writing, no directory listing, no search, no git. Every
-coding agent worth pointing at HELVE arrives with those built in, usually better
+coding agent worth pointing at OpenKaava arrives with those built in, usually better
 tuned than ours would be, and wrapping them would buy an agent a second worse way
 to do something it can already do — while costing us a permission surface, a
 maintenance burden, and a pile of tool descriptions competing for the model's
 attention against its own.
 
-What earns a server is the opposite: **something that exists only inside HELVE.**
+What earns a server is the opposite: **something that exists only inside OpenKaava.**
 Forger's design model is the first real case. An agent cannot read a Forger spec
 by opening a file, because the interesting part is not the file — it is the
 model, its boundaries, and the question "does this change violate one?". That has
@@ -46,7 +46,7 @@ concern and not a protocol one.
 So "manager" here means **registry**, not **supervisor** — a data structure, not
 a distributed systems problem. That falls out of section 3.
 
-Right now HELVE needs no MCP server at all. Nothing in the current build does
+Right now OpenKaava needs no MCP server at all. Nothing in the current build does
 anything a harness cannot already do, so by section 1 nothing qualifies. This
 milestone therefore ships **infrastructure plus one echo server**, whose entire
 job is to prove a client can discover the endpoint, authenticate, list a tool and
@@ -93,7 +93,7 @@ costs a route. What separate endpoints buy is worth more than that route:
   to see another tool's, and every tool it can see but must not use is noise in
   its context.
 
-Enable and disable stay on our side — HELVE decides which routes are mounted and
+Enable and disable stay on our side — OpenKaava decides which routes are mounted and
 which entries are written — rather than living in the harness's own `/mcp` panel.
 
 ## 5. Registration
@@ -118,16 +118,16 @@ a preferred port with upward fallback. Loopback only, never `0.0.0.0`: this is a
 local IPC channel that happens to speak HTTP, and binding it to a routable
 interface would put every registered tool on the network.
 
-**Discovery.** HELVE writes the project's `.mcp.json`, and because HELVE owns the
+**Discovery.** OpenKaava writes the project's `.mcp.json`, and because OpenKaava owns the
 pty, both the port and the token can be environment variables:
 
 ```json
 {
   "mcpServers": {
-    "helve-echo": {
+    "kaava-echo": {
       "type": "http",
-      "url": "http://127.0.0.1:${HELVE_MCP_PORT}/mcp/echo",
-      "headers": { "Authorization": "Bearer ${HELVE_MCP_TOKEN}" }
+      "url": "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/echo",
+      "headers": { "Authorization": "Bearer ${KAAVA_MCP_TOKEN}" }
     }
   }
 }
@@ -139,15 +139,15 @@ rather than with the values inlined:
 - **The file is safe to commit.** No secret, no machine-specific port — the same
   file for every developer on the project.
 - **The token rotates per launch** without rewriting anything on disk.
-- **A terminal HELVE did not spawn cannot connect.** It inherits neither
+- **A terminal OpenKaava did not spawn cannot connect.** It inherits neither
   variable, so the URL does not resolve and the bearer is empty. That is the
   correct failure rather than an inconvenience: these tools reach into the live
   application, and a shell opened outside it should not be able to.
 
-HELVE merges rather than clobbers — a project may already have its own servers,
-and only the `helve-*` keys are ours to write or remove.
+OpenKaava merges rather than clobbers — a project may already have its own servers,
+and only the `kaava-*` keys are ours to write or remove.
 
-`helve-*` names avoid Claude Code's reserved set (`workspace`,
+`kaava-*` names avoid Claude Code's reserved set (`workspace`,
 `claude-in-chrome`, `computer-use`, `Claude Preview`, `Claude Browser`).
 
 **Verify before relying on it:** that `${VAR}` expansion applies to `url` and
@@ -160,14 +160,14 @@ launch, which costs the committable-file property and nothing else.
 A project-scoped `.mcp.json` is approved once, interactively, on first use. That
 is a security feature and we should not try to defeat it silently.
 
-What HELVE does instead:
+What OpenKaava does instead:
 
 - **Status bar indicator** with three states — connected, pending approval, off.
   Pending is the one that matters: it is a real state with a real fix, and a user
   who does not know the server is waiting on them will conclude it is broken.
 - **An opt-in in settings** to write `enabledMcpjsonServers` into
-  `.claude/settings.local.json`, pre-approving HELVE's servers for that project.
-  Opt-in and per-project, phrased as trusting HELVE's own server rather than as
+  `.claude/settings.local.json`, pre-approving OpenKaava's servers for that project.
+  Opt-in and per-project, phrased as trusting OpenKaava's own server rather than as
   turning off a prompt.
 
 When the registered set changes while a client is connected, the server emits
@@ -210,7 +210,7 @@ bottom of this section because it is the step people skip.
 
 The id matches `^[a-z][a-z0-9-]*$`, the same rule app ids and tool ids are held
 to, because it becomes the URL path `/mcp/<id>` and the `.mcp.json` key
-`helve-<id>`. `every_registered_server_id_is_url_safe` in `servers/mod.rs` holds
+`kaava-<id>`. `every_registered_server_id_is_url_safe` in `servers/mod.rs` holds
 the shipped set to it, so a bad id fails `cargo test` rather than appearing as a
 route nobody can reach. (`registry.rs` has a same-named check over its own test
 doubles; that one proves the rule, not the set.)
@@ -277,7 +277,7 @@ expect an edit and will not find one:
 - **No route to add.** The listener mounts every registered server at
   `/mcp/<id>` (section 4).
 - **No `.mcp.json` edit.** That file is generated from the registry, and only the
-  `helve-*` keys are ours to write or remove (section 6). It is gated on the
+  `kaava-*` keys are ours to write or remove (section 6). It is gated on the
   `mcp.writeProjectConfig` setting.
 - **No frontend change.** The settings screen lists whatever the registry hands
   it, including servers that are switched off — and *excluding* developer-only
@@ -298,11 +298,11 @@ happen at all:
 
 > **If the harness can already do it, it does not get a server.** No file
 > reading, writing or listing, no search, no git. Every agent worth pointing at
-> HELVE arrives with those, and a second worse copy costs a permission surface
+> OpenKaava arrives with those, and a second worse copy costs a permission surface
 > and a pile of tool descriptions competing for the model's attention against its
 > own.
 >
-> What earns a server is something that exists only inside HELVE and has no
+> What earns a server is something that exists only inside OpenKaava and has no
 > filesystem equivalent — Forger's design model is the first real case, because
 > an agent cannot read a spec's *boundaries* by opening a file.
 
@@ -321,7 +321,7 @@ cannot be added and quietly forget one of them.
 deliberate: the endpoint is reachable by anything on the machine that holds the
 token, so a leaked token should cost knowledge of a window layout and not control
 of it. A server that can click cannot make that promise. `dev_only` is what keeps
-it from being on the list at all for somebody who is not working on HELVE.
+it from being on the list at all for somebody who is not working on OpenKaava.
 
 Three things follow, and they matter more than the flag itself:
 

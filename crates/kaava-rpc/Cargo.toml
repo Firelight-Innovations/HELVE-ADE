@@ -1,5 +1,5 @@
 [package]
-name = "helve-rpc"
+name = "kaava-rpc"
 description = "JSON-RPC over newline-delimited JSON on the standard streams — both the host and tool halves"
 version.workspace = true
 edition.workspace = true

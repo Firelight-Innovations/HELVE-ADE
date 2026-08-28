@@ -330,7 +330,7 @@ static TERMINAL_SETTINGS: &[Setting] = &[
 static TERMINAL: Group = Group {
     id: "terminal",
     title: "Terminal",
-    description: "The shells HELVE spawns, in the panel and in panes.",
+    description: "The shells OpenKaava spawns, in the panel and in panes.",
     order: 30,
     settings: TERMINAL_SETTINGS,
 };
@@ -419,7 +419,7 @@ static GITHUB_SETTINGS: &[Setting] = &[Setting {
     key: keys::GITHUB_ITEM_LIMIT,
     title: "Items to fetch",
     description: "How many open issues and how many open pull requests to ask for — this many of \
-                  each, not in total. A signed-out HELVE gets sixty GitHub requests an hour and \
+                  each, not in total. A signed-out OpenKaava gets sixty GitHub requests an hour and \
                   each refresh spends two of them, so the cost of a larger list is the size of \
                   the reply rather than the quota.",
     control: Control::Number {
@@ -449,7 +449,7 @@ static GITHUB: Group = Group {
 // --- updates ----------------------------------------------------------------
 //
 // Read once, in `lib.rs`'s setup, by `updater::start`. The one thing this
-// governs is whether HELVE asks — the Help menu's Check for Updates works
+// governs is whether OpenKaava asks — the Help menu's Check for Updates works
 // either way, and nothing downloads or installs without the button being
 // pressed.
 
@@ -457,7 +457,7 @@ static UPDATES_SETTINGS: &[Setting] = &[Setting {
     key: keys::UPDATES_CHECK_AUTOMATICALLY,
     title: "Check for a newer version at launch",
     description: "One request to the releases endpoint, in the background, once per launch. \
-                  Switching this off stops HELVE asking; it does not stop you asking, and it \
+                  Switching this off stops OpenKaava asking; it does not stop you asking, and it \
                   has never downloaded or installed anything on its own either way.",
     control: Control::Toggle { default: true },
     // `Restart` for `terminal.openOnLaunch`'s reason: the launch is the only
@@ -469,7 +469,7 @@ static UPDATES_SETTINGS: &[Setting] = &[Setting {
 static UPDATES: Group = Group {
     id: "updates",
     title: "Updates",
-    description: "How HELVE finds out that a newer HELVE exists.",
+    description: "How OpenKaava finds out that a newer OpenKaava exists.",
     order: 50,
     settings: UPDATES_SETTINGS,
 };
@@ -494,7 +494,7 @@ static MCP_SETTINGS: &[Setting] = &[Setting {
 static MCP: Group = Group {
     id: "mcp",
     title: "MCP servers",
-    description: "What HELVE offers the coding agents running in its terminals.",
+    description: "What OpenKaava offers the coding agents running in its terminals.",
     order: 60,
     settings: MCP_SETTINGS,
 };
@@ -510,7 +510,7 @@ static DEVELOPER_SETTINGS: &[Setting] = &[Setting {
     key: keys::DEVELOPER_MODE,
     title: "Developer mode",
     description: "Shows the MCP servers that drive this window rather than read it — \
-                  screenshots, clicks and keystrokes, for an agent working on HELVE itself. \
+                  screenshots, clicks and keystrokes, for an agent working on OpenKaava itself. \
                   Switching this on only makes them visible; each still has its own switch, and \
                   every one of them starts off.",
     control: Control::Toggle { default: false },
@@ -520,7 +520,7 @@ static DEVELOPER_SETTINGS: &[Setting] = &[Setting {
 static DEVELOPER: Group = Group {
     id: "developer",
     title: "Developer",
-    description: "Tools for working on HELVE. Nothing here is needed to use it.",
+    description: "Tools for working on OpenKaava. Nothing here is needed to use it.",
     order: 90,
     settings: DEVELOPER_SETTINGS,
 };

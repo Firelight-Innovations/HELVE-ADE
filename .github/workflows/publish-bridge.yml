@@ -1,4 +1,4 @@
-# Publish @helve-ade/bridge to npm.
+# Publish @openkaava/bridge to npm.
 #
 # Separate from release.yml on purpose: that file ships the orchestrator's own
 # installer off a `v*` tag, this one ships a library out of packages/bridge off
@@ -8,7 +8,7 @@
 # workflow_dispatch      a dry run: build + test only, nothing published
 #
 # docs/dev/architecture.md and docs/dev/app-releases.md both currently say
-# @helve-ade/bridge is not on npm (`npm view @helve-ade/bridge` is a 404). This is the
+# @openkaava/bridge is not on npm (`npm view @openkaava/bridge` is a 404). This is the
 # thing that stops being true.
 
 name: publish-bridge
@@ -65,10 +65,10 @@ jobs:
           fi
 
       - name: Build
-        run: pnpm --filter @helve-ade/bridge build
+        run: pnpm --filter @openkaava/bridge build
 
       - name: Test
-        run: pnpm --filter @helve-ade/bridge test
+        run: pnpm --filter @openkaava/bridge test
 
       # Refuses to publish over an existing version rather than letting npm's
       # own rejection be the first anyone hears of it. `npm view ... version`
@@ -80,8 +80,8 @@ jobs:
         working-directory: packages/bridge
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          if npm view "@helve-ade/bridge@$VERSION" version >/dev/null 2>&1; then
-            echo "::error::@helve-ade/bridge@$VERSION is already on the registry"
+          if npm view "@openkaava/bridge@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::@openkaava/bridge@$VERSION is already on the registry"
             exit 1
           fi
 

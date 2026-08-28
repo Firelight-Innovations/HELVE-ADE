@@ -79,7 +79,7 @@ export default function TitleBar({ kind, project, worktree, menus }: TitleBarPro
 
           A segment with no answer is dropped rather than drawn as a placeholder.
           With nothing open this reads as the product's name alone, which is
-          true; "HELVE | — | —" would be three claims where there is one.
+          true; "OpenKaava | — | —" would be three claims where there is one.
 
           It used to append a second word to the product's name, which was a
           different bug: it named something this shell is not. The name now

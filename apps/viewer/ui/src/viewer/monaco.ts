@@ -66,7 +66,7 @@ import "monaco-editor/languages/definitions/ini/register";
  */
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 
-import { registerToml } from "@helve/monaco-languages";
+import { registerToml } from "@openkaava/monaco-languages";
 
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
@@ -104,8 +104,8 @@ jsonDefaults.setDiagnosticsOptions({
 /**
  * TOML, which Monaco does not ship and this app cannot do without.
  *
- * The grammar has moved from `./toml.ts` to `@helve/monaco-languages`,
- * unchanged, because three editors in HELVE now need it and `src/` and
+ * The grammar has moved from `./toml.ts` to `@openkaava/monaco-languages`,
+ * unchanged, because three editors in OpenKaava now need it and `src/` and
  * `apps/files/` may not import each other — a package is the only ground all
  * three can stand on. That file still argues for its own existence and still
  * lists what the `ini` stand-in it replaced got wrong. Called here rather than
@@ -119,7 +119,7 @@ registerToml(monaco);
  * writes into Monaco's global theme registry, so redefining it on every editor
  * would be repeated work for no visual change.
  *
- * Named `helve-dark`, the same as `src/shell/diff/DiffView.tsx`'s copy. Two
+ * Named `kaava-dark`, the same as `src/shell/diff/DiffView.tsx`'s copy. Two
  * definitions of one name is a real hazard — whichever module evaluates last
  * wins — tolerated only because the two never load together today: nothing in
  * the shell imports `DiffView`. That copy retires when the diff viewer moves in.
@@ -130,7 +130,7 @@ registerToml(monaco);
  * included. That, and why each group takes the token it does, is in
  * `docs/design-notes/viewer-renderers.md`.
  */
-export const THEME = "helve-dark";
+export const THEME = "kaava-dark";
 
 monaco.editor.defineTheme(THEME, {
   base: "vs-dark",
@@ -263,20 +263,20 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   cfg: "ini",
 
   /**
-   * TOML, and HELVE's own two files with it. These used to point at `ini` as an
+   * TOML, and OpenKaava's own two files with it. These used to point at `ini` as an
    * admitted stand-in; they now point at a real grammar.
    *
-   * `helve` is in this table rather than left to the plaintext fallback because
-   * a `<project>.helve` marker *is* TOML: `project/marker.rs` reads one with
-   * `raw.parse::<toml::Table>()`, and `create` writes one with `[helve]` and
-   * `[project]` tables in it. The extension is HELVE's; the format is not, and
+   * `kaava` is in this table rather than left to the plaintext fallback because
+   * a `<project>.kaava` marker *is* TOML: `project/marker.rs` reads one with
+   * `raw.parse::<toml::Table>()`, and `create` writes one with `[kaava]` and
+   * `[project]` tables in it. The extension is OpenKaava's; the format is not, and
    * pretending otherwise would mean a second grammar to keep in step with this
-   * one. It is also the pairing that makes the icon work land: `.helve` gets the
-   * HELVE glyph from `packages/file-icons/src/index.ts` *and* the colour of the
+   * one. It is also the pairing that makes the icon work land: `.kaava` gets the
+   * OpenKaava glyph from `packages/file-icons/src/index.ts` *and* the colour of the
    * format it actually is.
    */
   toml: "toml",
-  helve: "toml",
+  kaava: "toml",
 };
 
 /** The Monaco language id for a file, or `undefined` for plain text. */

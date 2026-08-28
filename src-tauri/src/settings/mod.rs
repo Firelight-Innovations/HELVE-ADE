@@ -1,4 +1,4 @@
-//! Settings — what HELVE lets you change, and what the change is worth.
+//! Settings — what OpenKaava lets you change, and what the change is worth.
 //!
 //! The rules for adding one, and the interface an app registers a section
 //! through, are in `docs/settings.md`. This module is the vocabulary they are
@@ -186,7 +186,7 @@ impl Registry {
         }
         for setting in group.settings {
             if !setting.key.starts_with(&format!("{}.", group.id)) {
-                crate::helve_log!(
+                crate::kaava_log!(
                     "setting {:?} is in group {:?} but is not prefixed by it",
                     setting.key,
                     group.id
@@ -212,7 +212,7 @@ impl Registry {
                 Ok(coerced) => {
                     kept.insert(key, coerced);
                 }
-                Err(e) => crate::helve_log!("ignoring a stored setting: {e}"),
+                Err(e) => crate::kaava_log!("ignoring a stored setting: {e}"),
             }
         }
         if let Ok(mut values) = self.values.lock() {
@@ -404,7 +404,7 @@ fn commit(app: &AppHandle) {
         },
     );
     if let Err(e) = app.emit(SETTINGS_CHANGED_EVENT, &values) {
-        crate::helve_log!("could not announce the settings change: {e}");
+        crate::kaava_log!("could not announce the settings change: {e}");
     }
 }
 
@@ -416,7 +416,7 @@ fn commit(app: &AppHandle) {
 ///
 /// The exception is a setting whose reader is **a file on disk**. `.mcp.json` is
 /// written, not consulted, so a change that only moved a value in memory would
-/// leave that file describing a HELVE that no longer exists until something else
+/// leave that file describing an OpenKaava that no longer exists until something else
 /// happened to rewrite it. Both keys below decide what goes in it.
 ///
 /// Matching on the key rather than syncing after every write, because that file
@@ -445,7 +445,7 @@ pub fn flag(app: &AppHandle, key: &str) -> bool {
         .get(key)
         .and_then(|v| v.as_bool())
         .unwrap_or_else(|| {
-            crate::helve_log!("{key:?} is not a toggle any build declares");
+            crate::kaava_log!("{key:?} is not a toggle any build declares");
             false
         })
 }
@@ -456,7 +456,7 @@ pub fn number(app: &AppHandle, key: &str) -> i64 {
         .get(key)
         .and_then(|v| v.as_i64())
         .unwrap_or_else(|| {
-            crate::helve_log!("{key:?} is not a number any build declares");
+            crate::kaava_log!("{key:?} is not a number any build declares");
             0
         })
 }
@@ -467,7 +467,7 @@ pub fn text(app: &AppHandle, key: &str) -> String {
         .get(key)
         .and_then(|v| v.as_str().map(str::to_string))
         .unwrap_or_else(|| {
-            crate::helve_log!("{key:?} is not a string any build declares");
+            crate::kaava_log!("{key:?} is not a string any build declares");
             String::new()
         })
 }

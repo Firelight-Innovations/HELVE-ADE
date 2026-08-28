@@ -1,5 +1,5 @@
 /**
- * The MCP servers HELVE hosts, with a switch on each.
+ * The MCP servers OpenKaava hosts, with a switch on each.
  *
  * ## This is the only section with a custom panel, and it should stay that way
  *
@@ -81,7 +81,7 @@ export default function McpPanel() {
     );
 
     void setMcpServerEnabled(server.id, next)
-      .catch((err: unknown) => console.error("helve: could not switch an MCP server:", err))
+      .catch((err: unknown) => console.error("kaava: could not switch an MCP server:", err))
       .then(refresh)
       .then((fresh) => {
         // Runs after a failure too, which is the point: the optimistic flip
@@ -186,7 +186,7 @@ function toolCount(count: number): string {
  */
 function refresh(): Promise<McpStatus | null> {
   return mcpStatus().catch((err: unknown) => {
-    console.error("helve: could not read the MCP status:", err);
+    console.error("kaava: could not read the MCP status:", err);
     return null;
   });
 }

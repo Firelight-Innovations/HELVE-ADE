@@ -1,13 +1,13 @@
 //! The tool side of transport A: what a tool core links against to answer
-//! `helve/*` and its own methods on stdin/stdout.
+//! `kaava/*` and its own methods on stdin/stdout.
 
 use crate::codec::{decode_line, write_message, Incoming, Notification, Response, RpcError};
 use serde_json::Value;
 use std::io::{self, BufRead};
 
 /// What a tool core implements to answer everything the protocol doesn't
-/// already own. `serve` intercepts `helve/shutdown` itself (replies, then
-/// returns) so every tool doesn't have to reimplement that; `helve/hello`
+/// already own. `serve` intercepts `kaava/shutdown` itself (replies, then
+/// returns) so every tool doesn't have to reimplement that; `kaava/hello`
 /// and every tool-defined method still reach `call` here.
 pub trait Handler {
     /// Called one request at a time from the `serve` loop, so `&mut self` state
@@ -38,7 +38,7 @@ pub fn notify(method: &str, params: Option<Value>) -> io::Result<()> {
 
 /// Read stdin, dispatch, write stdout. Returns when stdin closes (the
 /// host's cue for a tool to exit -- see docs/tool-protocol.md section 2) or
-/// once `helve/shutdown` has been answered, whichever happens first.
+/// once `kaava/shutdown` has been answered, whichever happens first.
 pub fn serve<H: Handler>(mut handler: H) -> io::Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -66,19 +66,19 @@ pub fn serve<H: Handler>(mut handler: H) -> io::Result<()> {
                 // and (in this stub) requests both only flow tool->host.
                 // Log and keep serving rather than treat it as fatal, same
                 // policy as the malformed-line case below.
-                eprintln!("helve-rpc: ignoring unexpected notification/response on stdin");
+                eprintln!("kaava-rpc: ignoring unexpected notification/response on stdin");
                 continue;
             }
             Err(err) => {
                 // No request id to reply to, so there's nothing to answer --
                 // log to stderr (stdout is protocol-only, see section 2) and
                 // keep serving instead of exiting over one bad line.
-                eprintln!("helve-rpc: dropping malformed line: {err}");
+                eprintln!("kaava-rpc: dropping malformed line: {err}");
                 continue;
             }
         };
 
-        if request.method == "helve/shutdown" {
+        if request.method == "kaava/shutdown" {
             write(&Response::ok(request.id, Value::Null))?;
             return Ok(());
         }

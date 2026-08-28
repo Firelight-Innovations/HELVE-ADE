@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@helve-ade/bridge": "workspace:*",
+    "@openkaava/bridge": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

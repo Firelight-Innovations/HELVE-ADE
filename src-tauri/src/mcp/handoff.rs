@@ -1,9 +1,9 @@
-//! How an agent that HELVE did not spawn finds the MCP endpoint.
+//! How an agent that OpenKaava did not spawn finds the MCP endpoint.
 //!
 //! [`Endpoint::env`](super::listener::Endpoint::env) hands the port and token to
-//! every terminal HELVE opens, which covers the agent working *inside* HELVE and
+//! every terminal OpenKaava opens, which covers the agent working *inside* OpenKaava and
 //! nothing else. An agent in Windows Terminal, in an editor, or in a session
-//! started before HELVE was, inherits neither and has no way to ask. This writes
+//! started before OpenKaava was, inherits neither and has no way to ask. This writes
 //! them down so it can.
 //!
 //! **The token is a bearer credential and this puts it in a file**, readable by
@@ -23,15 +23,15 @@ const FILE: &str = "mcp-endpoint.json";
 /// Write the endpoint where an outside agent can find it.
 ///
 /// Never fatal, on the same rule the four other stores follow: a machine that
-/// will not take this file is one where HELVE should still open. It costs the
-/// out-of-process agent path and nothing else — terminals HELVE spawns still get
+/// will not take this file is one where OpenKaava should still open. It costs the
+/// out-of-process agent path and nothing else — terminals OpenKaava spawns still get
 /// the environment variables.
 pub fn publish(app: &AppHandle, port: u16, token: &str) {
     let Some(path) = file(app) else { return };
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::helve_log!("could not create {}: {e}", parent.display());
+            crate::kaava_log!("could not create {}: {e}", parent.display());
             return;
         }
     }
@@ -41,12 +41,12 @@ pub fn publish(app: &AppHandle, port: u16, token: &str) {
     // one, never half of each.
     let temp = path.with_extension("json.tmp");
     if let Err(e) = std::fs::write(&temp, document(std::process::id(), port, token)) {
-        crate::helve_log!("could not write {}: {e}", temp.display());
+        crate::kaava_log!("could not write {}: {e}", temp.display());
         return;
     }
 
     if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::helve_log!("could not replace {}: {e}", path.display());
+        crate::kaava_log!("could not replace {}: {e}", path.display());
         let _ = std::fs::remove_file(&temp);
     }
 }

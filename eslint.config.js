@@ -84,7 +84,7 @@ const TAURI_RESTRICTION = {
 const BRIDGE_RESTRICTION = {
   group: ["**/packages/bridge/src/**"],
   message:
-    "STANDARDS.md §1.4: import from '@helve-ade/bridge', not from its source tree. " +
+    "STANDARDS.md §1.4: import from '@openkaava/bridge', not from its source tree. " +
     "A relative path into packages/bridge/src breaks the moment the bridge ships separately.",
 };
 
