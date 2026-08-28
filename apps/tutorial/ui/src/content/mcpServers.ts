@@ -17,7 +17,7 @@ export const mcpServers: Body = {
     },
     {
       kind: "text",
-      body: "The servers run **inside** HELVE, not inside the apps or the stack tools. That matters: it explains why this works at all today. A tool's core is a separate process. The broker that would reach it has not been written, so a server hosted in Forger's own repository would be stuck behind that gap. Hosted here, it isn't.",
+      body: "The servers run **inside** HELVE, not inside the apps or the stack tools. That matters: it explains why this works at all today. A tool's core is a separate process. The broker that would reach it has not been written, so a server hosted inside a tool's own repository would be stuck behind that gap. Hosted here, it isn't.",
     },
     {
       kind: "text",

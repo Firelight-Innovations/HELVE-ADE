@@ -74,9 +74,9 @@ of code back to the decision that produced it.
 This traceability is the idea that sets HELVE apart from other development
 environments.
 
-[Forger](https://github.com/Firelight-Innovations/helve-forger) builds the
-technical design tool. [Journeyman](https://github.com/Firelight-Innovations/helve-journeyman)
-builds the product design tool. Neither tool is built yet.
+**Forger** builds the technical design tool. **Journeyman** builds the product
+design tool. Both ship as apps inside this repository rather than as separate
+downloads — see [`apps/README.md`](apps/README.md) — and neither is built yet.
 [What does not work yet](#what-does-not-work-yet) has the full list.
 
 </td>
@@ -211,10 +211,10 @@ that something reads.
 
 HELVE is pre-alpha. The honest list is short.
 
-- **The design and stack tools are not built yet.** Forger and Journeyman are
-  placeholder repositories today. A tool's core runs as a child process. HELVE
-  does not yet have the broker that starts and talks to that process. The
-  switcher bar shows only the orchestrator's own tools.
+- **The design tools are not built yet.** Forger and Journeyman are apps that
+  live in this repository (see [`apps/README.md`](apps/README.md)) and neither
+  has a working screen behind it yet. The switcher bar shows only the
+  orchestrator's other apps in the meantime.
 - **Nothing is signed.** Windows SmartScreen warns about the installer. You
   have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
@@ -242,11 +242,6 @@ machine does not already have it.
 After installing, right-click any folder in Explorer and choose **Open with
 HELVE**. HELVE opens the folder as a project. The same entry appears on files.
 A file opens in the File Viewer, with its folder as the project.
-
-**One thing will look broken, and is not.** An installed HELVE cannot find a
-stack yet, so every tool reads `not installed`. Run from a source checkout to
-see one resolve. [The stack, end to end](docs/user/tutorials/the-stack.md)
-explains why.
 
 ## Build from source
 
@@ -284,24 +279,21 @@ Start with [The HELVE window](docs/user/tutorials/the-window.md).
 
 ## The stack
 
-HELVE is multi-repo on purpose. Each tool is its own repository. `helve.toml`
-pins the exact version of each tool that this orchestrator expects.
+HELVE is multi-repo by design: a tool with its own repository, its own release
+cadence, and its own checkout beside this one, pinned to an exact version in
+`helve.toml`. That stays the model for a genuinely third-party tool — it is why
+`helve.toml` and `catalog.toml` both keep working with zero rows rather than
+being deleted (see their headers).
 
-| Repository | What it is | Status |
-|---|---|---|
-| [helve-forger](https://github.com/Firelight-Innovations/helve-forger) | The technical design tool. Turns a PRD into an architecture and a set of system specs. | Placeholder, README only |
-| [helve-journeyman](https://github.com/Firelight-Innovations/helve-journeyman) | The product design tool. Writes the PRD and prototypes rough, interactive systems. | Placeholder, README only |
-
-![The stack list, showing each tool and its health](assets/ui/stack.png)
-
-Only this repository has code in it today. The other two repositories each
-have a `v0.1.0` tag against a README. They have nothing else. `helve.toml`
-pins that tag, so HELVE reports both tools as `unversioned` rather than
-matching. The pin holds a shape, not a release.
-
-On a fresh machine, every tool reads `not installed`. That reading is correct,
-not broken. [The stack, end to end](docs/user/tutorials/the-stack.md) explains
-why.
+Forger and Journeyman are not that kind of tool, though. Both live in this
+repository, under `apps/`, and ship in the same binary as Home and the File
+Explorer rather than as a separate checkout — see
+[`apps/README.md`](apps/README.md) for what that distinction means. That
+leaves `helve.toml`'s `[[tool]]` array empty today: there is nothing pinned,
+and nothing for the switcher bar's health badge to report on, which is the
+badge's normal silent state rather than a sign that something failed to load.
+[The stack, end to end](docs/user/tutorials/the-stack.md) is what that badge
+means and how to read it once something is pinned there again.
 
 ## Contributing
 

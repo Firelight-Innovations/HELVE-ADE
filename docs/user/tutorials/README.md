@@ -40,7 +40,7 @@ enforces the order.
 
 | Tutorial                                    | Minutes | What you'll be able to do                                                    |
 | ------------------------------------------------ | --------- | ------------------------------------------------------------------------------------ |
-| [The stack, end to end](the-stack.md)         | 6       | Tell a missing tool from a broken one, and know what each repository is for.         |
+| [The stack, end to end](the-stack.md)         | 6       | Tell a missing tool from a broken one, and know why the badge is silent today.        |
 
 ---
 
