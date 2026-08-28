@@ -69,6 +69,7 @@ export default defineConfig(async ({ mode }) => ({
         tutorial: resolve(__dirname, "apps/tutorial/ui/index.html"),
         design: resolve(__dirname, "apps/design/ui/index.html"),
         forger: resolve(__dirname, "apps/forger/ui/index.html"),
+        journeyman: resolve(__dirname, "apps/journeyman/ui/index.html"),
       },
     },
   },
