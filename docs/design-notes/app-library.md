@@ -15,8 +15,14 @@ three are deliberately not variations on one setting.
 - A **repository URL** is the escape hatch. It is what makes the library a
   recommendation rather than a gate, and it is why nothing in the code refuses
   an install because the app is unlisted.
-- A **folder** is the development path. It is how Forger gets built, and it
-  cannot be closed without making the product unable to build itself.
+- A **folder** is the development path. It is how a tool author builds and
+  tests an app against a local checkout before there is a release to point the
+  library or a repository URL at, and it cannot be closed without making that
+  workflow impossible. Forger and Journeyman used to be the concrete case —
+  both were meant to be developed against this path — but both are now
+  in-repo apps built by this repo's own toolchain (`apps/README.md`), so this
+  path currently has no first-party app demonstrating it. It stays for the
+  first genuinely third-party one.
 
 ## The library is not a permission boundary
 

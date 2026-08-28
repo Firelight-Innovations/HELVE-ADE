@@ -6,17 +6,20 @@ want to contribute code instead, see [the developer docs](../dev/README.md).
 ## What OpenKaava is
 
 OpenKaava is an **ADE** — an Agentic Development Environment. It is one shell
-that a stack of separate authoring tools mount into, the way VS Code is one
-shell that extensions mount into. `README.md` at the repository root has the
-full picture of the stack; the short version is that this repository — the
-**orchestrator** — is the shell, and each tool (Forger for technical design,
-Journeyman for product design) is its own project that plugs into it.
+that a stack of authoring tools mount into, the way VS Code is one shell that
+extensions mount into. `README.md` at the repository root has the full
+picture of the stack; the short version is that this repository — the
+**orchestrator** — is the shell, and a genuinely separate tool is its own
+project that plugs into it, pinned by version in `kaava.toml`.
 
-Today the orchestrator itself is what runs: the window, Home, the File
-Explorer, the File Viewer, and Tutorials. The stack tools are placeholders —
-see [The stack, end to end](tutorials/the-stack.md) for exactly what that
-means and why the switcher bar shows them as "not installed" on a fresh
-machine.
+Forger (technical design) and Journeyman (product design) are not that kind of
+tool: both ship as apps built into the orchestrator itself, alongside Home and
+the File Explorer, rather than as separate projects — see
+[`apps/README.md`](../../apps/README.md) at the repository root. Today the
+orchestrator itself is what runs: the window, Home, the File Explorer, the
+File Viewer, and Tutorials, with Forger and Journeyman still unbuilt behind
+their tabs. [The stack, end to end](tutorials/the-stack.md) covers the
+switcher bar's health badge, for whichever tool is pinned in `kaava.toml` next.
 
 ## Getting it running
 

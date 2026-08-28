@@ -1,0 +1,37 @@
+/*
+ * The surface the shell's right-click menu is drawn on, and nothing else.
+ *
+ * The rows inside it are `MenuItemList`'s, so `menuItemList.css` already owns
+ * every pixel of them — the padding, the accelerator column, the dimmed
+ * disabled state, the separator. What is left is the box: which is the same box
+ * `.menu-list__beside` is, because a context menu and a submenu are the same
+ * object opened from two different gestures.
+ */
+
+.context-menu {
+  position: fixed;
+  /* Above `.menu-list__beside`, which is at 41. A right-click while a title-bar
+     submenu happens to be open is rare and not forbidden, and the menu the
+     gesture just asked for is the one that should be in front. */
+  z-index: 42;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 6px 0;
+  /* `placeMenu` flips the whole surface to keep it on screen, which needs a
+     height it can measure — and a menu taller than the window has no side left
+     to flip onto. Past that point scrolling is the only honest answer, the same
+     one `.menu-list__beside` reaches for. */
+  max-height: calc(100vh - 8px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* The container takes focus on open rather than its first row; see the note in
+   `ContextMenuHost.tsx`. A focus ring on a menu that is already the only thing
+   the pointer is pointing at says nothing the menu does not. */
+.context-menu:focus {
+  outline: none;
+}

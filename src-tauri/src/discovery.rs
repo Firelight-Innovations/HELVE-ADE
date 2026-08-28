@@ -24,12 +24,11 @@ pub struct StackSnapshot {
 /// Stack components this build actually resolves and reports health for.
 ///
 /// kaava.toml pins every component of the stack, because the manifest's job is
-/// to describe the whole of it — but walk the checkouts today and each one is a
-/// README in an otherwise empty directory. There is no Cargo.toml or
-/// package.json in `forger` or `journeyman` for `probe_version` to read, so
-/// both would resolve to `Unversioned` and the health popover would carry a
-/// warning per component that nobody can act on, drowning out anything that
-/// might actually be worth seeing.
+/// to describe the whole of it — but a checkout that is nothing but a README in
+/// an otherwise empty directory has no Cargo.toml or package.json for
+/// `probe_version` to read, so it would resolve to `Unversioned` and the health
+/// popover would carry a warning per component that nobody can act on,
+/// drowning out anything that might actually be worth seeing.
 ///
 /// This is the filter that keeps that from happening: a tool id not listed
 /// here is dropped before `resolve_one` ever runs, so it is never probed and
@@ -37,6 +36,11 @@ pub struct StackSnapshot {
 /// know to hide, nothing to resolve. kaava.toml keeps every pin regardless, so
 /// no information about the stack's shape is lost; when a component gets past
 /// a README, giving it health tracking back is exactly one id added here.
+///
+/// Empty today for a second reason on top of that one: kaava.toml's `[[tool]]`
+/// array is itself empty. Forger and Journeyman were its two entries and are
+/// now in-repo apps (`apps/README.md`), so there is currently no stack
+/// component left to enable health tracking for.
 const ENABLED_TOOLS: &[&str] = &[];
 
 pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapshot> {
@@ -190,7 +194,13 @@ mod tests {
         let snapshot =
             resolve(&path, &manifest).expect("every pinned version should be valid semver");
 
-        assert!(!manifest.tools.is_empty(), "manifest declares no tools");
+        // kaava.toml's `[[tool]]` array is empty today — Forger and Journeyman,
+        // its only two entries, were reclassified as in-repo apps (see
+        // `apps/README.md`) and nothing has taken their place yet. That is a
+        // legitimate state for the manifest, not a broken fixture, so this test
+        // no longer asserts non-emptiness; the assertion below still catches
+        // `ENABLED_TOOLS` silently widening or narrowing what it lets through.
+        //
         // `snapshot.tools` is `manifest.tools` narrowed by `ENABLED_TOOLS`, not
         // a straight pass-through — see that constant's doc comment. Asserting
         // the exact count, rather than just "resolve didn't error", is what

@@ -464,11 +464,15 @@ export function mountEditor(
 }
 
 /**
- * Bind Ctrl+S / ⌘S inside the editor. Needed on top of the document-level
- * handler in `App.tsx`: Monaco's keybinding service consumes keydown at the
- * editor's own DOM node and stops it propagating, so with focus in the editor
- * the document listener never sees it. `saveDocument` de-duplicates concurrent
- * calls anyway, so the two firing together are harmless, not a double write.
+ * Bind Ctrl+S inside the editor. `KeyMod.CtrlCmd` is Monaco's own name for the
+ * platform's primary modifier, which on Windows — the only platform OpenKaava ships
+ * on — is Ctrl.
+ *
+ * Needed on top of the document-level handler in `App.tsx`: Monaco's keybinding
+ * service consumes keydown at the editor's own DOM node and stops it
+ * propagating, so with focus in the editor the document listener never sees it.
+ * `saveDocument` de-duplicates concurrent calls anyway, so the two firing
+ * together are harmless, not a double write.
  */
 export function bindSave(editor: CodeEditor, run: () => void): void {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, run);

@@ -25,20 +25,11 @@ checkout-root = ".."
 # the field stays anyway: the manifest's job is to say what a component *is*,
 # and a schema that omits the question cannot answer it later without a
 # migration.
-
-[[tool]]
-id = "forger"
-name = "Forger"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/kaava-forger"
-version = "0.1.0"
-description = "Technical design software — specs out the stack and its boundaries."
-
-[[tool]]
-id = "journeyman"
-name = "Journeyman"
-kind = "dev-tool"
-repo = "https://github.com/Firelight-Innovations/kaava-journeyman"
-version = "0.1.0"
-description = "Design prototyping software — rough, interactive systems built fast."
+#
+# This array is empty right now. Forger and Journeyman were its two entries;
+# both have been reclassified as first-party apps under `apps/` — see
+# `apps/README.md` — which puts them in the binary rather than in a sibling
+# checkout, so they are no longer a stack component this file needs to pin.
+# The array stays, working, with zero rows: it is still where a genuinely
+# separate-repository dev tool gets pinned, the day one exists.
 

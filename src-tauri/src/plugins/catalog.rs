@@ -76,7 +76,17 @@ pub struct CatalogRow {
 /// over the catalog — the caller in `commands.rs` is the half that knows about
 /// Tauri state, and this half is the one worth testing.
 pub fn rows(is_installed: impl Fn(&str) -> bool) -> Vec<CatalogRow> {
-    entries()
+    rows_from(entries(), is_installed)
+}
+
+/// The half of `rows` that has no dependency on the compiled-in catalog.
+///
+/// Split out so a test can exercise the predicate wiring against synthetic
+/// entries: the shipped `catalog.toml` is empty today (see its header), so a
+/// test that only ever called `rows` would have nothing to assert `installed`
+/// against.
+fn rows_from(source: &[Entry], is_installed: impl Fn(&str) -> bool) -> Vec<CatalogRow> {
+    source
         .iter()
         .map(|entry| CatalogRow {
             entry: entry.clone(),
@@ -91,10 +101,14 @@ mod tests {
 
     /// The build's own copy of `catalog.toml` must parse. This is the check that
     /// makes the `eprintln!` fallback in `entries` unreachable in practice.
+    ///
+    /// It no longer also asserts the catalog is non-empty: Forger and
+    /// Journeyman were its only two entries, both are now in-repo apps, and an
+    /// empty `[[app]]` list is the deliberate, documented state described in
+    /// `catalog.toml`'s own header — not a fixture that decayed.
     #[test]
     fn catalog_parses() {
-        let doc: Document = toml::from_str(SOURCE).expect("catalog.toml parses");
-        assert!(!doc.app.is_empty(), "the shipped catalog is not empty");
+        let _doc: Document = toml::from_str(SOURCE).expect("catalog.toml parses");
     }
 
     /// Two entries claiming one id would make "is it installed" ambiguous, and
@@ -137,17 +151,29 @@ mod tests {
         }
     }
 
+    /// Built against synthetic entries rather than `entries()` — the shipped
+    /// catalog is empty today (see `catalog.toml`'s header), and this is
+    /// testing the predicate wiring in `rows_from`, not the catalog's content.
     #[test]
     fn a_row_reports_what_the_predicate_says() {
-        let rows = rows(|id| id == "forger");
-        let forger = rows.iter().find(|row| row.entry.id == "forger");
-        assert!(
-            forger.is_some_and(|row| row.installed),
-            "forger reads installed"
-        );
+        fn entry(id: &str) -> Entry {
+            Entry {
+                id: id.to_string(),
+                name: id.to_string(),
+                description: String::new(),
+                repo: "o/n".to_string(),
+                default: false,
+                private: false,
+            }
+        }
+
+        let source = [entry("a"), entry("b")];
+        let rows = rows_from(&source, |id| id == "a");
+        let a = rows.iter().find(|row| row.entry.id == "a");
+        assert!(a.is_some_and(|row| row.installed), "a reads installed");
         assert!(
             rows.iter()
-                .filter(|row| row.entry.id != "forger")
+                .filter(|row| row.entry.id != "a")
                 .all(|row| !row.installed),
             "and nothing else does"
         );

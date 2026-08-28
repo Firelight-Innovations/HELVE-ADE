@@ -8,7 +8,16 @@
  */
 import { describe, expect, it } from "vitest";
 import type { GithubItem } from "../contract";
-import { applyQuery, fetchScopeOf, matchesQuery, parseQuery } from "./query";
+import {
+  applyQuery,
+  describeQuery,
+  fetchScopeOf,
+  matchesQuery,
+  narrowsByText,
+  parseQuery,
+  withScope,
+  withState,
+} from "./query";
 
 function item(over: Partial<GithubItem> = {}): GithubItem {
   return {
@@ -112,6 +121,130 @@ describe("fetchScopeOf", () => {
 
   it("sends state:all to an all fetch", () => {
     expect(fetchScopeOf(parseQuery("state:all"))).toBe("all");
+  });
+});
+
+describe("withScope", () => {
+  /** The invariant the buttons rest on: what a press writes has to parse back
+   *  to what was pressed, or the highlight and the list disagree. */
+  it("round-trips every kind through the parser", () => {
+    for (const input of ["", "is:pr", "is:issue", "is:closed crash", "label:bug is:pr"]) {
+      for (const scope of ["all", "issue", "pull"] as const) {
+        expect(parseQuery(withScope(input, scope)).scope).toBe(scope);
+      }
+    }
+  });
+
+  it("writes nothing for the default kind", () => {
+    expect(withScope("is:pr", "all")).toBe("");
+    expect(withScope("", "all")).toBe("");
+  });
+
+  it("replaces the kind rather than stacking a second one", () => {
+    expect(withScope("is:pr", "issue")).toBe("is:issue");
+    expect(withScope("is:issue", "pull")).toBe("is:pr");
+  });
+
+  it("keeps free text, labels and the author", () => {
+    expect(withScope("label:bug author:me crash", "pull")).toBe("is:pr label:bug author:me crash");
+  });
+
+  it("keeps the state alone when it is not a pull-request-only one", () => {
+    expect(parseQuery(withScope("is:closed", "issue")).state).toBe("closed");
+  });
+
+  /** `is:merged` and `is:draft` force pull requests, so a kind press that left
+   *  either in place would be undone by the parser a keystroke later. */
+  it("drops a pull-request-only state when the kind moves off pull requests", () => {
+    expect(withScope("is:merged", "issue")).toBe("is:issue");
+    expect(withScope("is:draft", "all")).toBe("");
+    expect(parseQuery(withScope("is:merged", "all")).scope).toBe("all");
+  });
+
+  it("leaves a pull-request-only state alone when the kind stays on pull", () => {
+    expect(parseQuery(withScope("is:merged", "pull")).state).toBe("merged");
+    expect(parseQuery(withScope("is:draft", "pull")).draft).toBe(true);
+  });
+
+  it("keeps a quoted label whole", () => {
+    expect(parseQuery(withScope('label:"needs design"', "pull")).labels).toEqual(["needs design"]);
+  });
+});
+
+describe("withState", () => {
+  it("round-trips every state through the parser", () => {
+    for (const input of ["", "is:pr", "is:closed", "label:bug", "is:draft"]) {
+      for (const state of ["open", "closed", "merged", "all"] as const) {
+        expect(parseQuery(withState(input, state)).state).toBe(state);
+      }
+    }
+  });
+
+  it("writes nothing for the default state", () => {
+    expect(withState("is:closed", "open")).toBe("");
+    expect(withState("state:all", "open")).toBe("");
+  });
+
+  it("replaces the state rather than stacking a second one", () => {
+    expect(withState("is:closed", "all")).toBe("state:all");
+    expect(withState("state:all", "closed")).toBe("is:closed");
+  });
+
+  it("keeps the kind it was given", () => {
+    expect(parseQuery(withState("is:issue", "closed")).scope).toBe("issue");
+    expect(parseQuery(withState("is:pr", "closed")).scope).toBe("pull");
+  });
+
+  /** `is:draft` is the only qualifier setting both axes, so changing the state
+   *  has to put the kind back explicitly or the list silently widens. */
+  it("keeps pull requests when it drops is:draft", () => {
+    expect(parseQuery(withState("is:draft", "closed")).scope).toBe("pull");
+    expect(parseQuery(withState("is:draft", "open")).scope).toBe("pull");
+    expect(parseQuery(withState("is:draft", "open")).draft).toBe(false);
+  });
+
+  it("keeps free text and labels", () => {
+    expect(withState("label:bug crash", "closed")).toBe("is:closed label:bug crash");
+  });
+
+  it("does not add a kind to a query that had none", () => {
+    expect(parseQuery(withState("crash", "closed")).scope).toBe("all");
+  });
+});
+
+describe("describeQuery", () => {
+  it("names both kinds when neither is asked for", () => {
+    expect(describeQuery(parseQuery(""))).toBe("open issues or pull requests");
+  });
+
+  it("names one kind and one state", () => {
+    expect(describeQuery(parseQuery("is:pr is:closed"))).toBe("closed pull requests");
+    expect(describeQuery(parseQuery("is:issue is:closed"))).toBe("closed issues");
+    expect(describeQuery(parseQuery("is:merged"))).toBe("merged pull requests");
+  });
+
+  it("drops the state word when every state is asked for", () => {
+    expect(describeQuery(parseQuery("state:all is:pr"))).toBe("pull requests");
+  });
+
+  it("says draft rather than open for a draft query", () => {
+    expect(describeQuery(parseQuery("is:draft"))).toBe("draft pull requests");
+  });
+});
+
+describe("narrowsByText", () => {
+  /** What separates "this repository has none" from "nothing matches what you
+   *  typed": the buttons are visible, so only the invisible narrowings count. */
+  it("ignores narrowings the buttons above the list already show", () => {
+    expect(narrowsByText(parseQuery(""))).toBe(false);
+    expect(narrowsByText(parseQuery("is:pr is:closed"))).toBe(false);
+    expect(narrowsByText(parseQuery("is:draft"))).toBe(false);
+  });
+
+  it("counts a word, a label and an author", () => {
+    expect(narrowsByText(parseQuery("crash"))).toBe(true);
+    expect(narrowsByText(parseQuery("label:bug"))).toBe(true);
+    expect(narrowsByText(parseQuery("author:me"))).toBe(true);
   });
 });
 

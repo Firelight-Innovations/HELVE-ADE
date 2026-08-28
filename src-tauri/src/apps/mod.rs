@@ -15,7 +15,9 @@
 
 mod design;
 mod files;
+mod forger;
 mod home;
+mod journeyman;
 mod trash;
 pub mod tutorial;
 
@@ -201,6 +203,18 @@ const REGISTRY: &[Registered] = &[
         call: design::call,
     },
     Registered {
+        id: "forger",
+        name: "Forger",
+        description: "Technical design software — specs out the stack and its boundaries.",
+        // Was going to ship as its own repository, installed as a tool. That
+        // plan is reversed: see `apps/forger.rs` for why what it will show
+        // belongs to the orchestrator rather than to a checkout beside it. This
+        // row is a skeleton — `forger::call` answers one placeholder method —
+        // registered now so the switcher, the Apps menu and boot all already
+        // know its shape before anything is built behind it.
+        call: forger::call,
+    },
+    Registered {
         id: "tutorial",
         name: "Tutorials",
         description: "Learn OpenKaava — short walkthroughs of the window, projects and the stack.",
@@ -209,6 +223,17 @@ const REGISTRY: &[Registered] = &[
         // cluster rather than taking a pane. This row is still what makes
         // `kaava/open` resolve a frontend. See `docs/tutorials.md` §8.
         call: tutorial::call,
+    },
+    Registered {
+        id: "journeyman",
+        name: "Journeyman",
+        description: "The build side of the stack, downstream of what Forger specifies.",
+        // Last in the switcher order, and last here to match: unlike Tutorials
+        // and Home above it, Journeyman is an ordinary pane app — it takes a
+        // tab and a spot in the Apps menu like Files or the Viewer, so there is
+        // nothing here for `openables`' filtering to do. It is a skeleton
+        // today; see the module doc for what that means and does not mean.
+        call: journeyman::call,
     },
 ];
 

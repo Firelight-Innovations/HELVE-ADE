@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReviewComment, ReviewSendTarget } from "../contract";
 import { countLabel, describeRange } from "./reviewComments";
+import { hasPrimaryModifier } from "../accelerators";
 import "./reviewNotes.css";
 
 export interface ReviewNotesProps {
@@ -224,7 +225,7 @@ function onComposerKey(
   onSubmit: () => void,
   onCancel: () => void,
 ) {
-  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+  if (event.key === "Enter" && hasPrimaryModifier(event)) {
     event.preventDefault();
     onSubmit();
     return;

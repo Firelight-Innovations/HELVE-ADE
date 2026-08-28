@@ -3,7 +3,7 @@
 # This file is the whole of the "library" tab. There is no server behind it and
 # no database — it ships in the repository, is compiled into the binary by
 # `src-tauri/src/plugins/catalog.rs`, and changes only when somebody merges a
-# change to it. That is a deliberate trade: adding an app to the library needs an
+# change to it. That is a deliberate trade: adding an app to the library needs a
 # OpenKaava release, and in exchange the list cannot be altered by anything that is
 # not a reviewed commit.
 #
@@ -45,17 +45,14 @@
 #                private repository, which changes only the *message* shown
 #                when it cannot be fetched — "sign in to install" rather than
 #                "not found". GitHub still decides access; OpenKaava never does.
-
-[[app]]
-id = "forger"
-name = "Forger"
-description = "Technical design software — specs out the stack and its boundaries."
-repo = "Firelight-Innovations/OpenKaava-Forger"
-default = true
-
-[[app]]
-id = "journeyman"
-name = "Journeyman"
-description = "The build side of the stack, downstream of what Forger specifies."
-repo = "Firelight-Innovations/OpenKaava-Journeyman"
-default = true
+#
+# ## Why this list is empty today
+#
+# Forger and Journeyman used to be the two entries here. Both have been
+# reclassified as first-party apps — compiled into the binary from `apps/`,
+# like Home and Files, rather than downloaded on first run — so neither
+# belongs in a list of things to install. See `apps/README.md`.
+#
+# The mechanism above keeps working with zero rows; it did not go away with
+# the two entries. This is still where a genuinely third-party app goes, the
+# day one exists to list.

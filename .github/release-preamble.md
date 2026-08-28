@@ -9,20 +9,15 @@ administrator rights and installs for your account only.
 > pre-alpha does not yet justify.
 
 Once installed, right-click any folder in Explorer and choose **Open with
-OpenKaava** to open it as a project. Files get the same entry and open in the
-File Viewer with their folder as the project.
+OpenKaava** to open it as a project. Files get the same entry and open in the File
+Viewer with their folder as the project.
 
 ### Before you file a bug
 
-**OpenKaava is pre-alpha.** The window runs, and so do its own apps: Home, the
-File Explorer, the File Viewer and Tutorials. The stack tools, Forger and
-Journeyman, are placeholder repositories and do not load.
-
-**An installed build cannot find a stack yet, and every tool reads
-`not installed`. That reading is correct.** OpenKaava looks for `kaava.toml`
-next to its executable or at `$KAAVA_MANIFEST`, and an installed copy has
-neither pointed at your code. Run from a source checkout to watch a stack
-resolve.
+**OpenKaava is pre-alpha.** The window runs, and so do its own apps: Home, the File
+Explorer, the File Viewer and Tutorials. Forger and Journeyman, the design
+apps, ship in this same build but do not yet have a working screen behind
+their tabs.
 
 **Windows only.** macOS and Linux are untested rather than excluded.
 

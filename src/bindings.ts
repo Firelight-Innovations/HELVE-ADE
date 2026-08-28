@@ -1005,6 +1005,9 @@ export interface Cluster {
   worktree: WorktreeRef | null;
   /** Which terminal this cluster's band shows, or `null` for an empty band. */
   activeTerminal: string | null;
+  /** How tall this cluster's band was left, in CSS pixels, or `null` for one
+   *  nobody has dragged it in — which opens at `BOTTOM_DEFAULT`. */
+  bandHeight: number | null;
 }
 
 /** Mirrors `shell_state::WindowGeometry`. Physical pixels. */
@@ -1182,6 +1185,11 @@ export function moveTerminal(id: string, toLabel: string): Promise<void> {
 /** Which terminal a cluster's band is showing. */
 export function setActiveTerminal(clusterId: string, id: string | null): Promise<void> {
   return invoke("set_active_terminal", { clusterId, id });
+}
+
+/** How tall a cluster's band was left, at the end of a drag on its handle. */
+export function setBandHeight(clusterId: string, height: number): Promise<void> {
+  return invoke("set_band_height", { clusterId, height });
 }
 
 /** An app naming its own tab — "Files" becoming `client.ts`. */

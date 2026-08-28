@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { Openable, StackSnapshot } from "../bindings";
 import Frame, { BOTTOM_DEFAULT } from "./frame/Frame";
+import { bandGeometry, withBandGeometry, type BandGeometryByCluster } from "./frame/bandGeometry";
 import {
   appPresentation,
   pluginPresentation,
@@ -21,6 +22,7 @@ import {
   type WindowKind,
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
+import ContextMenuHost from "./ContextMenuHost";
 import TitleBar from "./titlebar/TitleBar";
 import { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/menus";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
@@ -62,6 +64,7 @@ import {
   renameCluster,
   setActiveCluster,
   setActiveTerminal,
+  setBandHeight,
   setPaneSizes,
   useShellState,
   windowLabel,
@@ -119,7 +122,7 @@ export default function WindowRoot({
   /** Set when the last scan failed. Surfaces in the health list, not a banner. */
   error: string | null;
   rescanning: boolean;
-  /** "Re-scan tools", from the health popover, the empty state, and ⌘R. */
+  /** "Re-scan tools", from the health popover, the empty state, and Ctrl+R. */
   onRescan: () => void;
 }) {
   const label = useMemo(() => windowLabel(), []);
@@ -141,16 +144,19 @@ export default function WindowRoot({
   // without a network.
   const [panelView, setPanelView] = useState<PanelView>("worktree");
 
-  // The terminal band's geometry, view-local for the same reason the panel's
-  // width is. Shut to begin with: a window that opened with an empty band every
+  // The terminal band's open state — shut, or pulled all the way to the top
+  // with the apps minimized under it — **per cluster**, not per window.
+  //
+  // Per cluster because the band is drawn inside the cluster's half of the
+  // window: one value for the window meant pulling the band up in one cluster
+  // pulled it up in the next one you switched to. Its *height* is not here at
+  // all; that one is the cluster's own and comes back from `shell:state` (see
+  // `Cluster.bandHeight`), so it survives a restart the way pane sizes do.
+  // These two stay in the view on purpose — `bandGeometry.ts` says why.
+  //
+  // Every cluster starts shut: a window that opened with an empty band every
   // launch would be spending height on nothing.
-  const [bottomHeight, setBottomHeight] = useState(BOTTOM_DEFAULT);
-  const [bottomCollapsed, setBottomCollapsed] = useState(true);
-
-  // The band pulled all the way to the top, with the apps minimized under it.
-  // Minimized and not closed: the tool window keeps every surface mounted at
-  // zero height, so pulling back down puts them back untouched.
-  const [bottomMaximized, setBottomMaximized] = useState(false);
+  const [bandByCluster, setBandByCluster] = useState<BandGeometryByCluster>({});
 
   // Registered on the band rather than taken by the band itself: `panel` is a
   // region and may not import the drag layer (STANDARDS.md §1.2). This file is
@@ -233,6 +239,45 @@ export default function WindowRoot({
   const activeCluster =
     clusters.find((c) => c.id === placement?.activeClusterId) ?? clusters[0] ?? null;
   const activeClusterId = activeCluster?.id ?? null;
+
+  // The band, as the cluster in front left it. Three values and two homes: the
+  // height is the cluster's own — restored from the saved layout, and defaulted
+  // here for one nobody has dragged the band in, so a new cluster opens at the
+  // size a new window does rather than at its neighbour's — while shut and
+  // maximized are this session's, keyed by cluster in `bandByCluster` above.
+  const bottomHeight = activeCluster?.bandHeight ?? BOTTOM_DEFAULT;
+  const { collapsed: bottomCollapsed, maximized: bottomMaximized } = bandGeometry(
+    bandByCluster,
+    activeClusterId,
+  );
+
+  // The three setters everything below writes through, each aimed at the
+  // cluster in front rather than at the window. A window with no cluster has no
+  // band on screen, so all three are no-ops for it — `withBandGeometry` absorbs
+  // that for the two below, and the height guards for it here.
+  const setBottomCollapsed = useCallback(
+    (collapsed: boolean) => {
+      setBandByCluster((band) => withBandGeometry(band, activeClusterId, { collapsed }));
+    },
+    [activeClusterId],
+  );
+  const setBottomMaximized = useCallback(
+    (maximized: boolean) => {
+      setBandByCluster((band) => withBandGeometry(band, activeClusterId, { maximized }));
+    },
+    [activeClusterId],
+  );
+  // Reported to Rust rather than kept here, because it outlives the session:
+  // this is what `layout.json` brings back, and what follows a cluster dragged
+  // into another window. One call per drag, on pointer-up — `Frame` animates
+  // against a motion value while the pointer is down and reports where it was
+  // let go, the same way `onResizePane` reports a pane split.
+  const setBottomHeight = useCallback(
+    (height: number) => {
+      if (activeClusterId !== null) void setBandHeight(activeClusterId, height);
+    },
+    [activeClusterId],
+  );
 
   // The search field and the search overlay are two regions in two different
   // bands of the frame, reading one query. That state lives here because this
@@ -677,7 +722,11 @@ export default function WindowRoot({
     const id = await terminalControl.create(label, 80, 24);
     setActiveBandTab(id);
     setBottomCollapsed(false);
-  }, [label]);
+    // `setBottomCollapsed` is a dependency now that it aims at a cluster rather
+    // than at the window: captured from an earlier render it would open the
+    // band of the cluster that was in front then. Same for the three callbacks
+    // below.
+  }, [label, setBottomCollapsed]);
 
   // Open a second pty beside the focused pane, under the same tab — Rust
   // decides the group (reusing one if the focused session is already split,
@@ -744,7 +793,7 @@ export default function WindowRoot({
       }
       terminalControl.close(id);
     },
-    [bandTabId, sessions],
+    [bandTabId, sessions, setBottomCollapsed, setBottomMaximized],
   );
 
   // The one confirmation flow for closing a session with something running
@@ -921,7 +970,7 @@ export default function WindowRoot({
       setBottomCollapsed(false);
       onSelectBandTab(member.id);
     },
-    [onSelectBandTab, hideTakeover],
+    [onSelectBandTab, hideTakeover, setBottomCollapsed],
   );
 
   /**
@@ -1058,7 +1107,7 @@ export default function WindowRoot({
       return;
     }
     setBottomCollapsed(false);
-  }, [terminalShowing, sessions.length, onNewTerminal]);
+  }, [terminalShowing, sessions.length, onNewTerminal, setBottomCollapsed]);
 
   // Home is where a project is opened, so File > Open… is Home's
   // `home/open-project` — the same native folder picker its own button raises,
@@ -1264,21 +1313,21 @@ export default function WindowRoot({
   const fileDrag = useFileDrag();
 
   useKeyboard({
-    // ⌘1…⌘9 now select a *cluster* rather than a tool. There is no longer one
-    // list of surfaces to index into — a window holds several panes, each with
-    // its own tabs — and the thing a number key can still name unambiguously is
-    // which cluster you are looking at.
+    // Ctrl+1…Ctrl+9 now select a *cluster* rather than a tool. There is no
+    // longer one list of surfaces to index into — a window holds several panes,
+    // each with its own tabs — and the thing a number key can still name
+    // unambiguously is which cluster you are looking at.
     // Deliberately not `onSelectCluster`: that opens Home when handed the
     // cluster already active, and a number key is navigation rather than a
-    // gesture aimed at a chip. ⌘3 means "be in cluster 3", so pressing it while
-    // already there should do nothing — not pull the view off whatever is on
-    // screen onto Home, which is easy to trigger by repeat and hard to undo.
+    // gesture aimed at a chip. Ctrl+3 means "be in cluster 3", so pressing it
+    // while already there should do nothing — not pull the view off whatever is
+    // on screen onto Home, which is easy to trigger by repeat and hard to undo.
     selectToolByIndex: (index) => {
       const cluster = clusters[index];
       if (cluster && cluster.id !== activeClusterId) void setActiveCluster(label, cluster.id);
     },
     rescan: onRescan,
-    // ⌘. is drawn under the boot spinner, but nothing can act on it yet:
+    // Ctrl+. is drawn under the boot spinner, but nothing can act on it yet:
     // booting a tool is the iframe loading and running its own handshake, and
     // there is no cancel path through that. Wired as a deliberate no-op rather
     // than left unbound, so the day a cancel exists this is where it goes and
@@ -1316,6 +1365,12 @@ export default function WindowRoot({
 
   return (
     <MotionConfig transition={snap} reducedMotion="user">
+      {/* Not a slot: it draws nothing until somebody right-clicks, and when it
+          does it portals to `document.body` from wherever it is mounted. One
+          per window, beside the frame rather than inside it, because the
+          gesture it answers can land on any part of the window including the
+          bits `Frame` does not own. */}
+      <ContextMenuHost />
       <Frame
         kind={kind}
         panelCollapsed={panelCollapsed}

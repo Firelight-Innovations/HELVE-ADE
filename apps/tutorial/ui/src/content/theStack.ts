@@ -1,12 +1,15 @@
 import type { Body } from "./blocks";
 
 /**
- * What the stack's repositories are for.
+ * How the switcher bar's health badge reads a pinned stack of tools.
  *
  * The one tutorial with almost nothing to click. It is here because every other
  * page says "the stack" as though the reader already knows, and because a fresh
- * machine raises a warning badge over tools that are not installed — which
- * reads as breakage until you know none of them are meant to be there yet.
+ * machine could, in principle, raise a warning badge over tools that are not
+ * installed — which reads as breakage until you know none are meant to be
+ * there yet. Today that principle is untested: `kaava.toml`'s `[[tool]]` array
+ * is empty (Forger and Journeyman, its former two entries, are apps now — see
+ * `apps/README.md`), so the badge has nothing to report either way.
  */
 export const theStack: Body = {
   takeaway:
@@ -14,11 +17,11 @@ export const theStack: Body = {
   blocks: [
     {
       kind: "text",
-      body: "OpenKaava is not one program: a **stack** of separate repositories. The orchestrator — the thing you are reading this in — is the one that ties them together when it runs, and it holds none of their code.",
+      body: "OpenKaava is not one program: an orchestrator that a **stack** of separate authoring tools can mount into, plus whatever ships compiled into the orchestrator itself. The orchestrator — the thing you are reading this in — is the one that ties a tool together with the rest when it runs, and it holds none of a tool's code.",
     },
     {
       kind: "text",
-      body: "Their health is reported in the **switcher bar**, behind a warning triangle carrying a count. Clicking it lists the tools that are not well — and only those. A tool that is where it should be says nothing at all.",
+      body: "A tool's health is reported in the **switcher bar**, behind a warning triangle carrying a count. Clicking it lists the tools that are not well — and only those. A tool that is where it should be says nothing at all.",
     },
     {
       kind: "note",
@@ -29,27 +32,17 @@ export const theStack: Body = {
       body: "The list lives in `kaava.toml` at the root of the orchestrator's checkout. Each entry pins an exact version, so a given checkout of the orchestrator always describes one reproducible stack rather than whatever each repository's branch tip happens to be today.",
     },
 
-    { kind: "heading", body: "The tools" },
+    { kind: "heading", body: "Nothing is pinned today" },
     {
       kind: "text",
-      body: "Every component is an authoring tool — a window you open while you work, never something that ships in whatever you build with it.",
-    },
-    {
-      kind: "keys",
-      rows: [
-        { chord: "Forger", what: "Technical design — specs out the stack and its boundaries." },
-        {
-          chord: "Journeyman",
-          what: "Design prototyping and rough playable systems.",
-        },
-      ],
+      body: "`kaava.toml`'s `[[tool]]` array is empty right now. Forger and Journeyman used to be its two entries; both have been reclassified as apps built into the orchestrator itself rather than separate tool repositories — see `apps/README.md` at the repository root for what they are now and why.",
     },
     {
       kind: "note",
-      body: "That table is a list of names, not of keys — it borrows the layout because two columns is what a glossary wants.",
+      body: "The mechanism below still runs, with nothing to say about: an empty list reads exactly like a stack where every pinned tool matches its version, because that is what it is — a stack with nothing unwell in it.",
     },
 
-    { kind: "heading", body: "Why the badge says things are missing" },
+    { kind: "heading", body: "Why the badge would say things are missing" },
     {
       kind: "flow",
       steps: [
@@ -66,7 +59,7 @@ export const theStack: Body = {
       kind: "mock",
       view: "stack-list",
       caption:
-        "Two unwell tools and the count the badge carries. A healthy tool has no row here at all, which is why an empty list is the good outcome rather than a broken one.",
+        "Two unwell tools and the count the badge carries. A healthy tool has no row here at all. Illustrative rather than live — nothing is pinned in kaava.toml today, so this exact screen has no current example to show.",
     },
     {
       kind: "text",
@@ -74,15 +67,11 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "On a fresh machine the badge shows all six at **not installed**, and that is the correct answer rather than a fault. The orchestrator is usable on its own — Home, the File Explorer, the File Viewer, terminals and search are all in the binary and need no checkout at all.",
-    },
-    {
-      kind: "soon",
-      body: "Neither tool is docked in the switcher yet. A tool's core is a child process, and the broker that would reach it is not written. So a tool tab today could only open on a screen explaining why it is empty. They arrive when the broker does.",
+      body: "The orchestrator is usable entirely on its own regardless of what is pinned — Home, the File Explorer, the File Viewer, Tutorials, Forger and Journeyman are all in the binary and need no checkout at all. A pinned tool's checkout is a separate, additional thing to have on the machine, not a requirement for the window to open.",
     },
     {
       kind: "text",
-      body: "`checkout-root` in `kaava.toml` says where they are looked for, and defaults to `..` — every OpenKaava repository sitting as a sibling of the orchestrator's own folder. Cloning the pinned version there is what clears a tool from the badge; cloning the wrong one only changes which word it shows.",
+      body: "`checkout-root` in `kaava.toml` says where a pinned tool's checkout is looked for, and defaults to `..` — every OpenKaava repository sitting as a sibling of the orchestrator's own folder. Cloning the pinned version there is what clears a tool from the badge; cloning the wrong one only changes which word it shows.",
     },
 
     { kind: "heading", body: "Apps and tools are different things" },
@@ -96,7 +85,7 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer and this Tutorials pane are apps: they are compiled into the binary. That leaves no version to disagree with and no way for one to be missing — which is why none of them can ever raise the badge.",
+      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer, this Tutorials pane, Forger and Journeyman are apps: they are compiled into the binary. That leaves no version to disagree with and no way for one to be missing — which is why none of them can ever raise the badge.",
     },
   ],
 };

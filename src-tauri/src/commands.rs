@@ -882,6 +882,19 @@ pub fn set_active_terminal(
     shell.set_active_terminal(&app, &cluster_id, id);
 }
 
+/// How tall a cluster's terminal band was left, at the end of a drag on its
+/// handle. The band is drawn inside the cluster's half of the window, so the
+/// height is the cluster's — see `ShellState::set_band_height`.
+#[tauri::command]
+pub fn set_band_height(
+    app: tauri::AppHandle,
+    shell: State<'_, ShellState>,
+    cluster_id: String,
+    height: f32,
+) {
+    shell.set_band_height(&app, &cluster_id, height);
+}
+
 /// A terminal's own program set its title (an OSC `0`/`2` escape sequence),
 /// and the emulator that saw it is reporting up.
 ///
