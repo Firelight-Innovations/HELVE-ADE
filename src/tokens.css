@@ -100,19 +100,27 @@
      specifies them and the next thing to draw the mark on white — a README
      graphic, a docs page — would otherwise pick three values by eye.
 
+     The seed is the value that carries the mark. Its whole job is to read as a
+     hole, which is how the monochrome silhouette draws it — a counter, cut by
+     winding. So it is chosen by luminance rather than by hue: 0.120 against the
+     flesh's 0.732 is 4.5:1, and the mark survives greyscale and a 15px title
+     bar. The first pass had these two at 0.213 and 0.618, which is 2.5:1, and
+     paired a seed at 0.213 with a skin at 0.240 — near enough the same value
+     that desaturating the mark flattened the seed into the ring around it.
+
      `--accent` does not move. It stays #d98a3f and stays the interface's
      accent; it is not the brand colour any more, and it must not appear behind
-     the mark. Amber's relative luminance is 0.333 against the flesh's 0.324 —
-     a contrast ratio of 1.0:1, so a green mark on an amber field separates by
-     hue alone and disappears when squinted at. */
+     the mark. Amber sits at 0.333 and the skin at 0.207, a contrast ratio of
+     1.5:1, so a green mark on an amber field separates by hue alone and
+     disappears when squinted at. */
 
-  --mark-skin: #6f9142; /* outer body, on dark grounds */
-  --mark-flesh: #b9d98a; /* inner body */
-  --mark-seed: #a9743c; /* seed */
+  --mark-skin: #5c8a2f; /* outer body, on dark grounds */
+  --mark-flesh: #d0e878; /* inner body */
+  --mark-seed: #8a5524; /* seed */
 
-  --mark-skin-light: #3d5a2b; /* the same three, for light grounds */
-  --mark-flesh-light: #7fa650;
-  --mark-seed-light: #8a5a2b;
+  --mark-skin-light: #3f6020; /* the same three, for light grounds */
+  --mark-flesh-light: #8fae35;
+  --mark-seed-light: #5e3a18;
 
   /* --- type ------------------------------------------------------------- */
 

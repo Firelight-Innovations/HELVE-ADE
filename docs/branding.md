@@ -263,7 +263,13 @@ prose because the list is also the trademark surface.
   changing both files; the silhouette is the one the generator checks.
 - `assets/app-icon-source.svg` — what `pnpm tauri icon` draws the PNG set from.
 - `assets/kaava-icon.svg`, `kaava-icon-256.svg` — the container-icon variants
-  from the brand packet, drawn as the same tile at 24 and at 256. There was a
+  from the brand packet, drawn as the same tile at 24 and at 256. All three
+  tiles place the mark by its **ink**, not its viewBox: the silhouette is 19.2
+  of its 24 units tall, so a transform sized against the box leaves a third of
+  the tile empty and the avocado reads as a stamp floating in a square. They
+  scale it to leave 11.7% of the tile clear above and below — on the 256 tile,
+  `translate(5.333 5.333) scale(10.2222)`. Change the mark's geometry and these
+  three numbers have to be recomputed; nothing checks them. There was a
   third, `kaava-icon-textured.svg`, which stippled grain over the whole tile; it
   is gone, because the tile's ground is now a two-stop radial falloff and that
   falloff is the only thing drawing the icon's edge. Grain laid over it fights
