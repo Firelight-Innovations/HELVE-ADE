@@ -59,11 +59,16 @@ function Outline({
 }
 
 /**
- * The product's mark. Today that is a capital H whose crossbar cants and
- * tapers, reading as the grip of a hafted tool. Filled, not stroked — the brand
- * packet draws it as one continuous 14-point outline so there are no subpath
- * seams to hairline at small sizes. Also serves, larger, as the placeholder
- * every tool shares until each earns its own icon.
+ * The product's mark. Today that is an avocado: one outline with the seed as a
+ * counter cut out of it. Filled, not stroked, and monochrome — the three-tone
+ * version exists (`assets/kaava-mark-colour.svg`) but is drawn only by Home's
+ * 52px lockup, because this glyph appears at 15px on the title bar and at 38px
+ * as the placeholder every tool shares until it earns its own icon, and the
+ * hairlines separating the tones close up long before either of those sizes.
+ *
+ * The seed reads as a hole because the outline is wound clockwise and the seed
+ * counter-clockwise, under the default nonzero fill rule. That is a property of
+ * the path data, not of anything here — see `branding.toml`'s note on `mark`.
  *
  * The geometry is generated out of the SVG that `branding.toml` names, rather
  * than copied here or loaded as a file. Copying is what it used to be, and the
