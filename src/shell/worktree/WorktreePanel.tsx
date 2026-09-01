@@ -196,11 +196,17 @@ export default function WorktreePanel({
    * the status bar names the same branch (see that module's header): a
    * checkout that refreshed only this panel would leave the status bar naming
    * the branch the user just left.
+   *
+   * Keyed on `git.refresh` rather than on `git`, which is a fresh object on
+   * every render of `WindowRoot` — `useGitStatus` builds its handle inline. The
+   * function inside it is a stable `useCallback`, so naming it directly is what
+   * keeps this identity from churning down through `CheckoutBar`.
    */
+  const refreshStatus = git.refresh;
   const reload = useCallback(() => {
     setNonce((n) => n + 1);
-    git.refresh();
-  }, [git]);
+    refreshStatus();
+  }, [refreshStatus]);
 
   // --- the divider ---------------------------------------------------------
   // Same pattern as `PaneTree.tsx`'s `Split` and `Frame.tsx`'s panel handle:
