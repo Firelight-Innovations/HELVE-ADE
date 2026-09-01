@@ -170,30 +170,41 @@ fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer
     }
 }
 
-/// A required non-empty string parameter.
-///
-/// Empty is refused rather than accepted, because both of the fields this reads
-/// are the entire message to a person: a resolution with no note tells them
-/// nothing was recorded about a change that did happen.
-fn text(params: &Value, field: &str) -> Result<String, RpcError> {
+/// A required non-empty string parameter, or `None` if it is missing or blank.
+fn some(params: &Value, field: &str) -> Option<String> {
     let value = params
         .get(field)
         .and_then(Value::as_str)
         .unwrap_or_default()
         .trim();
 
-    if value.is_empty() {
-        return Err(RpcError::new(
-            INVALID_PARAMS,
-            format!("`{field}` is required and must say something — it is what the person who left this comment reads"),
-        ));
-    }
+    (!value.is_empty()).then(|| value.to_string())
+}
 
-    Ok(value.to_string())
+/// The `note` or the `question`, refused when it says nothing.
+///
+/// Blank is refused rather than accepted because each of these is the entire
+/// message to a person: a resolution with no note tells them nothing was
+/// recorded about a change that did happen.
+fn text(params: &Value, field: &str) -> Result<String, RpcError> {
+    some(params, field).ok_or_else(|| {
+        RpcError::new(
+            INVALID_PARAMS,
+            format!(
+                "`{field}` has to say something — it is what the person who left this comment \
+                 will read"
+            ),
+        )
+    })
 }
 
 fn id(params: &Value) -> Result<String, RpcError> {
-    text(params, "id")
+    some(params, "id").ok_or_else(|| {
+        RpcError::new(
+            INVALID_PARAMS,
+            "this tool needs a comment id — `list_comments` has the current ones",
+        )
+    })
 }
 
 /// What is outstanding, in one row each.
@@ -493,6 +504,16 @@ mod tests {
             text(&json!({ "note": "  padding halved  " }), "note").ok(),
             Some("padding halved".to_string())
         );
+    }
+
+    /// A missing id is a different mistake from a blank note, and gets a
+    /// different sentence — the one that says where real ids come from.
+    #[test]
+    fn a_missing_id_is_refused_in_its_own_words() {
+        let complaint = id(&json!({})).expect_err("an id is required").message;
+        assert!(complaint.contains("list_comments"));
+        assert!(!complaint.contains("will read"));
+        assert_eq!(id(&json!({ "id": " c7 " })).ok(), Some("c7".to_string()));
     }
 
     /// A model that guessed an id needs to be told where real ones come from,

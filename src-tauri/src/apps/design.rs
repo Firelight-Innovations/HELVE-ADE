@@ -460,9 +460,19 @@ fn read_picked(picked: Option<&Value>) -> Result<(Page, Element), RpcError> {
 /// Strict about the prefix rather than permissive: this string is about to
 /// become a file on disk under a name this code chose, and the one thing worth
 /// checking is that it really is the PNG `design/capture` produced.
+///
+/// Held to the same [`SCREENSHOT_LIMIT`] that call is, and for a second reason
+/// beyond the one there. This one *writes*, so an oversized payload is a file
+/// somebody is stuck with rather than an answer they can ignore, and the check
+/// has to be here rather than trusted to the call that produced it — the
+/// frontend is the only thing between the two, and this method may be reached
+/// without ever having called it.
 fn png_bytes(data_url: Option<&Value>) -> Option<Vec<u8>> {
     let raw = data_url.and_then(Value::as_str)?;
     let payload = raw.strip_prefix("data:image/png;base64,")?;
+    if payload.len() > SCREENSHOT_LIMIT {
+        return None;
+    }
     BASE64.decode(payload).ok()
 }
 
@@ -912,6 +922,18 @@ mod tests {
             assert!(png_bytes(Some(&wrong)).is_none(), "{wrong} is not a shot");
         }
         assert!(png_bytes(None).is_none());
+    }
+
+    /// This method writes, so an oversized payload is a file somebody is stuck
+    /// with rather than an answer they can ignore. `design/capture` refuses the
+    /// same size, and this may be reached without having called it.
+    #[test]
+    fn a_screenshot_over_the_limit_is_not_written_at_all() {
+        let huge = json!(format!(
+            "data:image/png;base64,{}",
+            "A".repeat(SCREENSHOT_LIMIT + 4)
+        ));
+        assert!(png_bytes(Some(&huge)).is_none());
     }
 
     /// A comment is somebody's sentence, and the box it is typed into will take

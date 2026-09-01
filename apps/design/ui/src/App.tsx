@@ -198,7 +198,10 @@ export default function App() {
             </p>
           )}
 
-          {book.problem ? <p className="design__notice">{book.problem}</p> : null}
+          {/* A failed *write* only. `useComments` swallows a failed read on
+              purpose — one repeats in three seconds, and a notice that appears
+              and disappears on its own teaches nobody anything. */}
+          {book.problem ? <p className="design__problem">{book.problem}</p> : null}
 
           <CommentList
             comments={book.comments}

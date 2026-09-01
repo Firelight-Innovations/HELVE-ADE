@@ -13,6 +13,18 @@ and no way for the agent to say "which side did you mean?".
 This is the record of what replaced it: a comment store both halves of the
 product write to, and an MCP server that serves it.
 
+The loop it makes possible, end to end:
+
+1. Open your dev server in Design Mode, pick an element, say what you want
+   changed. Repeat for as many elements as you like.
+2. Tell your agent — in any client, including a terminal — to review the
+   comments on the page.
+3. It calls `list_comments`, then `read_comment` on the ones it is acting on,
+   makes the changes, and calls `resolve_comment` with a note on each.
+4. Where it cannot tell what you meant, it calls `ask_comment` instead. That
+   comment turns up in the panel with a reply box under it, and your answer
+   hands it back.
+
 ## src-tauri/src/design_comments.rs
 
 A comment is the user's request against one captured element. It has an id that
@@ -67,8 +79,9 @@ inside a project. A comment is about a page somebody is looking at, which is not
 the same thing as a checkout, and a file that appeared in a repository because
 somebody clicked a button would be a file they had to decide whether to commit.
 
-It follows the same four rules as the five stores before it — never fatal,
-atomic write, forward-compatible, outside the repo.
+It follows the same four rules every other store in the crate does — never
+fatal, atomic write, forward-compatible, outside the repo. `presets::store` has
+the reasoning, unchanged here.
 
 Screenshots are **one PNG per comment** under `design-shots/`, not base64 inside
 the JSON. A screenshot is hundreds of kilobytes and the JSON is rewritten on
@@ -97,6 +110,12 @@ is used.
 
 **Only resolved comments are ever candidates.** An open comment is somebody's
 outstanding request and no cap may quietly delete one, however many there are.
+
+The cap is applied when a comment is *added*, not when one is resolved. So a
+session that resolves three hundred without leaving a new one is briefly over
+the cap, and the next comment written brings it back. That is deliberate: the
+alternative is a delete-and-write on the resolve path, which is the hot path an
+agent hits once per comment, in order to bound a number nobody is reading.
 
 ### Why the state is process-wide
 

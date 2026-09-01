@@ -44,8 +44,8 @@ export const disarm = (scriptId: string) => invoke<null>("design/disarm", { scri
 export const capture = (rect: { x: number; y: number; width: number; height: number }) =>
   invoke<Screenshot>("design/capture", rect);
 
-/** Every comment on this machine, oldest first. Unfiltered — which page's
- *  comments are on screen is this app's question, and `onPage` answers it. */
+/** Every comment on this machine, oldest first. Unfiltered — the panel decides
+ *  what order to draw them in and which ones to mark as being from elsewhere. */
 export const listComments = () => invoke<Comment[]>("design/comment/list");
 
 /** Leave a comment on what was just picked. The probe's payload goes through

@@ -257,14 +257,17 @@ impl Book {
     /// near-identical functions is how two of them end up forgetting to touch
     /// `updated`.
     fn say(&mut self, id: &str, author: Author, text: &str, status: Status) -> Option<Comment> {
+        // One reading of the clock, so the remark and the comment's `updated`
+        // cannot disagree by whatever the two calls cost.
+        let at = now();
         let comment = self.comments.iter_mut().find(|c| c.id == id)?;
         comment.thread.push(Remark {
             author,
             text: text.to_string(),
-            at: now(),
+            at,
         });
         comment.status = status;
-        comment.updated = now();
+        comment.updated = at;
         Some(comment.clone())
     }
 
@@ -379,8 +382,8 @@ impl Comments {
     }
 }
 
-/// Read the store, or start empty. Never fails, on the same rule the other five
-/// stores follow: a machine that will not hand this file back is one where
+/// Read the store, or start empty. Never fails, on the rule every store in this
+/// crate follows: a machine that will not hand this file back is one where
 /// Design Mode should still open, minus its history.
 fn load(app: &AppHandle) -> Book {
     let Some(path) = file(app) else {

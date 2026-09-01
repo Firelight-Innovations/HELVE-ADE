@@ -307,6 +307,16 @@
 
 /* --- the comments themselves ----------------------------------------------- */
 
+/* Not `.design__notice`, which is the strip under the address bar and carries a
+   border and a background suited to sitting across the whole app. This one is
+   inside the panel, where both would read as a second surface. */
+.design__problem {
+  margin: 0 0 10px;
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .design__nocomments {
   margin: 0;
   color: var(--text-dim-3);
