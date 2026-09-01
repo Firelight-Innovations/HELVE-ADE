@@ -96,6 +96,30 @@
   color: var(--text-dim-3);
 }
 
+/* The section's own totals, pushed into the same right-hand column the rows'
+   counts occupy. `margin-left: auto` rather than a spacer element, since
+   nothing else in this header wants to grow. */
+.worktree__section-delta {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  /* The rest of this header is uppercased; these are numbers and must not be. */
+  text-transform: none;
+}
+
+/* The header's checkbox is the row checkbox one level up, so it is the same
+   control at the same size — see the note on `Section` for why it never needs
+   an indeterminate state. Nudged up by the half-pixel the uppercase header's
+   cap height leaves it sitting low by. */
+.worktree__check--all {
+  position: relative;
+  top: -0.5px;
+}
+
 .worktree__row {
   display: flex;
   align-items: center;
@@ -180,6 +204,31 @@
   text-overflow: ellipsis;
 }
 
+/* --- the +N -N columns ----------------------------------------------------
+   Two spans rather than one string, so added and removed carry their own
+   colour while staying one right-aligned block. `--ok`/`--err` rather than a
+   new pair of tokens: this is the same "grew"/"shrank" reading those two
+   already carry in the status bar's identical readout. Last in the row and
+   `flex: none`, so the directory column is what gives way on a narrow panel. */
+
+.worktree__delta {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding-left: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.worktree__added {
+  color: var(--ok);
+}
+
+.worktree__removed {
+  color: var(--err);
+}
+
 /* "No changes", "Loading diff…" — anything that occupies a list's space
    without being a row. */
 .worktree__quiet {
@@ -215,6 +264,23 @@
   gap: 8px;
   padding: 7px 8px 7px 14px;
   border-bottom: 1px solid var(--line);
+}
+
+/* Which side of the index the pane is showing. First, and a fixed chip rather
+   than trailing text, because it is what changes when the path does not — a
+   row staged from under an open diff moves the pane to its other side. */
+.worktree__diff-side {
+  flex: none;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim-2);
 }
 
 .worktree__diff-path {

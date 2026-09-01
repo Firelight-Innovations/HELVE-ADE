@@ -22,6 +22,7 @@ import { isTomlPath, TOML_LANGUAGE_ID } from "@openkaava/monaco-languages";
 import type { GitControl, GitDiff, GitFileChange, ReviewControl, ReviewSend } from "../contract";
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch } from "../../ui/Icon";
+import { describeLineCounts, formatLineCounts, sumLineCounts } from "./lineCounts";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktree.css";
 
@@ -120,18 +121,32 @@ export default function SourceControlView({
     };
   }, [control, clusterId, selected]);
 
-  const toggle = useCallback(
-    async (change: GitFileChange) => {
-      if (clusterId === null || busy) return;
+  /**
+   * Move one side of the index — for one path, or for a whole section at once.
+   *
+   * A list rather than a path because `GitControl.stage`/`unstage` have always
+   * taken one: staging eight files is one `git add` and one refresh, where a
+   * per-file loop would be eight of each and would redraw the list under the
+   * user's cursor seven times on the way.
+   *
+   * The open diff **follows** its row to the other list instead of closing.
+   * Closing was the old behaviour, and it cost a second click in the commonest
+   * sequence this panel has — read a file's diff, decide to stage it, look at
+   * it again. What made closing look necessary is real: a moment later that
+   * diff is the wrong side of the index. The answer to that is the other side
+   * of the same file, which is precisely where the row went.
+   */
+  const move = useCallback(
+    async (paths: string[], staged: boolean) => {
+      if (clusterId === null || busy || paths.length === 0) return;
       setBusy(true);
       setFailure(null);
       try {
-        if (change.staged) await control.unstage(clusterId, [change.path]);
-        else await control.stage(clusterId, [change.path]);
-        // The row is about to move to the other list, which makes the open
-        // diff the wrong side of the index. Close it rather than show a stale
-        // one.
-        if (selected?.path === change.path) setSelected(null);
+        if (staged) await control.unstage(clusterId, paths);
+        else await control.stage(clusterId, paths);
+        if (selected !== null && selected.staged === staged && paths.includes(selected.path)) {
+          setSelected({ path: selected.path, staged: !staged });
+        }
         refresh();
       } catch (reason: unknown) {
         setFailure(gitMessage(reason));
@@ -140,6 +155,20 @@ export default function SourceControlView({
       }
     },
     [busy, control, refresh, selected, clusterId],
+  );
+
+  const toggle = useCallback(
+    (change: GitFileChange) => void move([change.path], change.staged),
+    [move],
+  );
+
+  const toggleSection = useCallback(
+    (changes: GitFileChange[], staged: boolean) =>
+      void move(
+        changes.map((change) => change.path),
+        staged,
+      ),
+    [move],
   );
 
   const commit = useCallback(async () => {
@@ -185,17 +214,21 @@ export default function SourceControlView({
         <Section
           title="Staged Changes"
           changes={status.staged}
+          staged
           selected={selected}
           busy={busy}
           onToggle={toggle}
+          onToggleAll={toggleSection}
           onSelect={setSelected}
         />
         <Section
           title="Changes"
           changes={status.unstaged}
+          staged={false}
           selected={selected}
           busy={busy}
           onToggle={toggle}
+          onToggleAll={toggleSection}
           onSelect={setSelected}
         />
         {changeCount(status) === 0 && <div className="worktree__quiet">No changes</div>}
@@ -204,6 +237,14 @@ export default function SourceControlView({
       {selected !== null && (
         <div className="worktree__diff">
           <div className="worktree__diff-head">
+            {/* Which of the two diffs this is. A path can be in both lists at
+                once with different contents on each side, so the header naming
+                only the file leaves the two indistinguishable — and the diff
+                now follows a row across the index rather than closing, which
+                makes the pane change under you without the path changing. */}
+            <span className="worktree__diff-side">
+              {selected.staged ? "Staged" : "Working tree"}
+            </span>
             <span className="worktree__diff-path">{selected.path}</span>
             <button
               type="button"
@@ -307,28 +348,69 @@ function BranchRow({
   );
 }
 
+/**
+ * One list, its header, and the header's own checkbox.
+ *
+ * **The header checkbox needs no indeterminate state, and that is a property of
+ * the data rather than a simplification.** Every row in a section shares the
+ * section's side of the index by construction — `git.rs` builds the two lists
+ * by splitting each status entry's two letters — so "some of these are staged"
+ * cannot arise. The box is therefore checked in Staged Changes and clear in
+ * Changes, always, and clicking it moves the whole section across in one call.
+ *
+ * A checkbox rather than a "Stage All" button because it is the same gesture as
+ * the row's, one level up: the row's box means "is this file staged", and this
+ * one means the same thing about all of them. A button beside a column of
+ * checkboxes would be a second vocabulary for the one action.
+ */
 function Section({
   title,
   changes,
+  staged,
   selected,
   busy,
   onToggle,
+  onToggleAll,
   onSelect,
 }: {
   title: string;
   changes: GitFileChange[];
+  staged: boolean;
   selected: Selection | null;
   busy: boolean;
   onToggle: (change: GitFileChange) => void;
+  onToggleAll: (changes: GitFileChange[], staged: boolean) => void;
   onSelect: (selection: Selection) => void;
 }) {
   if (changes.length === 0) return null;
 
+  const totals = sumLineCounts(changes);
+  const summary = formatLineCounts(totals.insertions, totals.deletions);
+
   return (
     <div className="worktree__section">
       <div className="worktree__section-head">
+        <input
+          type="checkbox"
+          className="worktree__check worktree__check--all"
+          checked={staged}
+          disabled={busy}
+          aria-label={`${staged ? "Unstage" : "Stage"} all ${changes.length} ${
+            changes.length === 1 ? "change" : "changes"
+          }`}
+          onChange={() => onToggleAll(changes, staged)}
+        />
         <span>{title}</span>
         <span className="worktree__section-count">{changes.length}</span>
+        {/* The section's own totals, not `GitStatus`'s: those measure HEAD
+            against the working tree in one pass and are deliberately not the
+            sum of either list (see `GitFileChange` in `bindings.ts`). */}
+        {summary !== null && (
+          <span className="worktree__section-delta">
+            <span className="worktree__added">{summary.added}</span>
+            <span className="worktree__removed">{summary.removed}</span>
+          </span>
+        )}
       </div>
       {changes.map((change) => (
         <ChangeRow
@@ -353,6 +435,12 @@ function Section({
  * The checkbox and the label are separate controls rather than one row-wide
  * click with a hit-test, because they do genuinely different things: one
  * mutates the index, the other only changes what the diff pane is showing.
+ *
+ * The `+12 −3` sits last, in its own fixed column, so the counts line up down
+ * the list rather than trailing each file name at a different x. A row with no
+ * counts — a binary file, an untracked file over the backend's read cap, a
+ * conflict — draws nothing there rather than `+0 −0`; see `lineCounts.ts` for
+ * why those are different claims.
  */
 function ChangeRow({
   change,
@@ -370,6 +458,10 @@ function ChangeRow({
   const classes = ["worktree__row"];
   if (selected) classes.push("worktree__row--selected");
 
+  const counts = formatLineCounts(change.insertions, change.deletions);
+  const spoken = describeLineCounts(change.insertions, change.deletions);
+  const named = change.renamedFrom ? `${change.path} (was ${change.renamedFrom})` : change.path;
+
   return (
     <div className={classes.join(" ")}>
       <input
@@ -383,7 +475,7 @@ function ChangeRow({
       <button
         type="button"
         className="worktree__rowtext"
-        title={change.renamedFrom ? `${change.path} (was ${change.renamedFrom})` : change.path}
+        title={spoken === null ? named : `${named} — ${spoken}`}
         onClick={() => onSelect({ path: change.path, staged: change.staged })}
       >
         <span className="worktree__kind" style={{ color: GIT_KIND_TOKEN[change.kind] }}>
@@ -397,6 +489,15 @@ function ChangeRow({
           {change.file}
         </span>
         <span className="worktree__dir">{change.dir}</span>
+        {counts !== null && (
+          // No `aria-label` here: a bare span has no role that can take a name,
+          // so one would be dropped. The button's `title` above carries the
+          // same counts as a sentence, which is where they are actually read.
+          <span className="worktree__delta">
+            <span className="worktree__added">{counts.added}</span>
+            <span className="worktree__removed">{counts.removed}</span>
+          </span>
+        )}
       </button>
     </div>
   );
