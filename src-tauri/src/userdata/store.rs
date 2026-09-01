@@ -182,6 +182,14 @@ fn durably(temp: &Path, text: &str) -> std::io::Result<()> {
 /// one file. That needs the single-instance mutex to have failed, which is
 /// precisely what an identifier change does — and coupling a naming mistake to
 /// a corrupt file is worth removing for the cost of a `format!`.
+///
+/// **The trade, stated because it is a real one:** the old fixed name was
+/// reused by the next write, so a process killed between `create` and `rename`
+/// left at most one stray temp file per store. This leaves one per *pid*.
+/// Nothing sweeps them, deliberately — a sweep would have to decide which
+/// `.tmp` belongs to a live process, and reading the process table to tidy a
+/// few kilobytes is a worse trade than the kilobytes. The window is between two
+/// adjacent statements, so a file only appears when the process dies inside it.
 fn temp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".{}.tmp", std::process::id()));
