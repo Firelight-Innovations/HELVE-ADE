@@ -417,6 +417,8 @@ pub fn run() {
             git::git_worktree_remove,
             git::git_worktree_reconcile,
             git::git_graph,
+            git::git_branches,
+            git::git_checkout,
             git::git_divergence,
             git::git_divergence_diff,
             git::git_cluster_status,

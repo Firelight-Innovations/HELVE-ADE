@@ -493,6 +493,11 @@ export type GitChangeKind =
  * `path` is repo-relative with forward slashes, the identity every other git
  * command takes back as an argument. `renamedFrom` is present only when
  * `kind` is `"renamed"`.
+ *
+ * `insertions`/`deletions` are this change's own counts on its own side of the
+ * index — `null` together for a binary, an untracked file over 5 MiB, or a
+ * conflict, a different fact from `0`. **Not** a breakdown of `GitStatus`'s
+ * totals, which measure `HEAD` against the working tree in one pass.
  */
 export interface GitFileChange {
   path: string;
@@ -501,6 +506,8 @@ export interface GitFileChange {
   kind: GitChangeKind;
   staged: boolean;
   renamedFrom?: string;
+  insertions: number | null;
+  deletions: number | null;
 }
 
 /**
@@ -554,6 +561,32 @@ export interface GitDivergence {
  */
 export function gitGraph(clusterId: string, limit: number): Promise<GitCommit[]> {
   return invoke<GitCommit[]>("git_graph", { clusterId, limit });
+}
+
+/** One local branch. Mirrors `git::GitBranch`. `worktree` is the path of
+ *  *another* checkout holding it, absent for a free branch and for `current` —
+ *  git refuses a branch twice, and a picker wants that before the click. */
+export interface GitBranch {
+  name: string;
+  /** Full length, so it matches `GitCommit.sha` without either side abbreviating. */
+  head: string;
+  current: boolean;
+  worktree?: string;
+}
+
+/** Every local branch, most recently committed to first. Local only, matching
+ *  `gitGraph`: these are what can be checked out, where a remote-tracking ref
+ *  would detach HEAD. Empty for "no project", "not a repo" and "no commits". */
+export function gitBranches(clusterId: string): Promise<GitBranch[]> {
+  return invoke<GitBranch[]>("git_branches", { clusterId });
+}
+
+/** Move the cluster's checkout onto `target`. `detach` is false with a name from
+ *  `gitBranches`, true with a sha from the commit graph — told rather than
+ *  inferred, since a hex string is a legal branch name. Rejects in git's own
+ *  words; nothing is pre-checked, so the message is never a copy of its rules. */
+export function gitCheckout(clusterId: string, target: string, detach: boolean): Promise<void> {
+  return invoke("git_checkout", { clusterId, target, detach });
 }
 
 /**
