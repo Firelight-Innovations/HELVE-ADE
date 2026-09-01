@@ -30,6 +30,11 @@ const RECENT_LIMIT: usize = 20;
 
 const FILE: &str = "projects.json";
 
+/// Precious. The Recent list is the history of what somebody has worked on, and
+/// nothing on the machine can rebuild it — a checkout on disk says nothing
+/// about whether it was ever opened here.
+const KEEP: crate::userdata::store::Keep = crate::userdata::store::Keep::Aside;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Stored {
@@ -104,63 +109,21 @@ impl Stored {
 /// rare: it writes a temp file and renames it, so a reader either sees the whole
 /// previous file or the whole new one.
 pub fn load(app: &AppHandle) -> Stored {
-    let Some(path) = file(app) else {
-        return Stored::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        // Not-found is the ordinary first-launch case and says nothing worth
-        // printing. Anything else is a real read failure and is worth a line in
-        // the log, since the visible symptom — an empty Recent list — looks
-        // identical to a first launch.
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                crate::kaava_log!("could not read {}: {e}", path.display());
-            }
-            return Stored::default();
-        }
-    };
-
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::kaava_log!("{} is not readable, starting fresh: {e}", path.display());
-        Stored::default()
-    })
+    file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default()
 }
 
-/// Write the store, atomically.
+/// Write the store, atomically, through `userdata::store`.
 ///
-/// Temp file then rename, because the alternative — truncating the real file and
-/// writing into it — has a window where a crash leaves a half-written JSON
-/// document that the next launch cannot parse. `rename` over an existing file is
-/// atomic on both NTFS and POSIX filesystems, so a reader sees one whole version
-/// or the other and never a partial one.
+/// Temp file then rename there, because the alternative — truncating the real
+/// file and writing into it — has a window where a crash leaves a half-written
+/// JSON document that the next launch cannot parse. `rename` over an existing
+/// file is atomic on both NTFS and POSIX filesystems, so a reader sees one whole
+/// version or the other and never a partial one.
 pub fn save(app: &AppHandle, stored: &Stored) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(stored) {
-        Ok(json) => json,
-        Err(e) => {
-            crate::kaava_log!("could not serialize the project store: {e}");
-            return;
-        }
-    };
-
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, stored, "the project store");
     }
 }
 

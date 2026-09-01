@@ -51,9 +51,19 @@
   ; Delete the `command` subkey first: `DeleteRegKey` removes a key and its
   ; children, but doing the parents in this order leaves nothing behind if one
   ; of them is missing because a previous version did not write it.
+  ;
+  ; Every name the product has had, not only the current one. Only an
+  ; uninstaller ever removes one of these keys, so a build that renamed itself
+  ; and deleted only its own stem would leave the previous name in the registry
+  ; forever, on a menu entry pointing at a binary that is no longer installed.
+  ; The list has to match `SUPERSEDED_PRODUCTS` in `userdata/identity.rs`, and
+  ; `scripts/check-identity.mjs` fails the build when it does not.
   DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenWithOpenKaava"
+  DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenWithHELVE"
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenWithOpenKaava"
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenWithHELVE"
   DeleteRegKey HKCU "Software\Classes\*\shell\OpenWithOpenKaava"
+  DeleteRegKey HKCU "Software\Classes\*\shell\OpenWithHELVE"
 
   System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
 !macroend

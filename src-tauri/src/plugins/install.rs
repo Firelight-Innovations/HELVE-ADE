@@ -21,7 +21,15 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const PROGRESS_EVENT: &str = "plugins:install-progress";
 
 /// Where the OS credential store keeps the GitHub token.
-const KEYRING_SERVICE: &str = "com.firelightinnovations.openkaava";
+///
+/// The bundle identifier, written out by hand — `keyring` has no equivalent of
+/// `app_config_dir()` to derive it. That copy is why `userdata::identity`
+/// exists and why `scripts/check-identity.mjs` checks this line: a rename that
+/// moved the config directory and left this behind would orphan the token
+/// without orphaning anything else, which is the shape of failure nobody
+/// notices until a private install asks for a credential that is still there
+/// under a name nothing looks up any more.
+pub const KEYRING_SERVICE: &str = "com.firelightinnovations.openkaava";
 const KEYRING_ACCOUNT: &str = "github-token";
 
 /// How far along one install is.
@@ -90,6 +98,39 @@ pub fn set_token(value: &str) -> Result<(), String> {
 /// no use for the value and every reason not to hold it.
 pub fn has_token() -> bool {
     token().is_some()
+}
+
+/// Move a token stored under a superseded identifier onto [`KEYRING_SERVICE`].
+///
+/// The credential-store half of `userdata::adopt`, and it has to be a read,
+/// a write and a delete rather than a rename because `keyring::Entry` has no
+/// rename. Called only from adoption, which has already established that this
+/// build's own directory was unused.
+///
+/// **Refuses to overwrite a token that is already here**, which is the same
+/// rule adoption follows for the files: a credential this build has been given
+/// is newer than one an older name was left holding.
+///
+/// Quiet throughout. Every failure ends with the user re-entering a token they
+/// entered once before, which is a smaller cost than a launch that stops to
+/// report a locked keychain.
+pub fn adopt_token(superseded: &str) -> bool {
+    if superseded == KEYRING_SERVICE || has_token() {
+        return false;
+    }
+
+    let Ok(old) = keyring::Entry::new(superseded, KEYRING_ACCOUNT) else {
+        return false;
+    };
+    let Ok(secret) = old.get_password() else {
+        return false;
+    };
+
+    if set_token(&secret).is_err() {
+        return false;
+    }
+    let _ = old.delete_credential();
+    true
 }
 
 /// Where downloaded plugins live: one directory per package id.

@@ -22,11 +22,21 @@
 use crate::shell_state::{
     ShellSnapshot, SurfaceInstance, TerminalSession, WindowGeometry, WindowPlacement,
 };
+use crate::userdata::store::Keep;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const FILE: &str = "layout.json";
+
+/// Reconstructible, and the deliberate asymmetry in `userdata::store`.
+///
+/// This is the file written most often — `persist` runs inside every
+/// `ShellState::mutate`, so a divider drag writes it — which makes it both the
+/// one most likely to be caught mid-write and the worst candidate for keeping a
+/// copy of each failure. Rearranging the windows again costs a minute. A
+/// directory holding a hundred `layout.json.corrupt-…` files costs more.
+const KEEP: Keep = Keep::Nothing;
 
 /// What survives a restart.
 ///
@@ -141,55 +151,17 @@ fn prune_unreachable(mut stored: Stored) -> Stored {
 
 /// Read the store, or start empty. Never fails — see the module doc.
 pub fn load(app: &AppHandle) -> Stored {
-    let Some(path) = file(app) else {
-        return Stored::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                crate::kaava_log!("could not read {}: {e}", path.display());
-            }
-            return Stored::default();
-        }
-    };
-
-    let stored = serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::kaava_log!("{} is not readable, starting fresh: {e}", path.display());
-        Stored::default()
-    });
+    let stored = file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default();
 
     prune_unreachable(stored)
 }
 
-/// Write the store, atomically.
+/// Write the store, atomically, through `userdata::store`.
 pub fn save(app: &AppHandle, stored: &Stored) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(stored) {
-        Ok(json) => json,
-        Err(e) => {
-            crate::kaava_log!("could not serialize the layout: {e}");
-            return;
-        }
-    };
-
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, stored, "the layout");
     }
 }
 
