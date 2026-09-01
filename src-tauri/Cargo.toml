@@ -238,3 +238,17 @@ keyring = { version = "3", features = ["windows-native"] }
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
+
+# One call — `SetErrorMode`, in `lib.rs`'s `quiet_hard_errors`, which stops
+# Windows showing a modal box on this process's behalf when `CreateProcess` is
+# handed an image it will not load. See issue #36.
+#
+# Not a new tree. `windows-sys` 0.61 is already here through the crates that
+# reach Win32, and the only thing underneath it is `windows-link`, also already
+# present. Named directly because this crate now calls it itself.
+#
+# `windows-sys` rather than the `windows` crate `webview2-com` brings in, and
+# the difference is what a binding *is*: `windows-sys` is raw `extern`
+# declarations, which is the whole of what a bitmask setter needs, where
+# `windows` wraps every call in generated types this would not use.
+windows-sys = { version = "0.61", features = ["Win32_System_Diagnostics_Debug"] }

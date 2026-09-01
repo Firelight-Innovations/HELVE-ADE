@@ -25,6 +25,7 @@ mod project;
 mod pty;
 mod quoting;
 mod review;
+mod runnable;
 mod search;
 mod settings;
 mod shell_state;
@@ -44,8 +45,45 @@ use state::AppState;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WindowEvent};
 
+/// Stop Windows putting a modal box in front of the splash for a failure it
+/// could simply return.
+///
+/// `SEM_FAILCRITICALERRORS` turns off the *hard error* dialogs the system shows
+/// on a process's behalf: no disk in the drive, and — the one that matters here
+/// — an image `CreateProcess` will not load. Without it, one bad `.exe` on
+/// `PATH` is an application that looks like it did not start, because the box is
+/// modal and the spawn that raised it is on this thread. `runnable` stops the
+/// shell candidates reaching that state; this covers everything else the
+/// orchestrator or a plugin ever spawns.
+///
+/// Set once, before Tauri builds anything, so no other thread exists to race it.
+/// The previous mask is read and kept rather than replaced: `SetErrorMode`
+/// takes the whole value, and dropping whatever the loader had set would be a
+/// change nobody asked for.
+///
+/// **Not observed to fix issue #36** — that needs a clean machine — and it is
+/// here as the general form of that failure rather than as its confirmed cure.
+#[cfg(windows)]
+fn quiet_hard_errors() {
+    use windows_sys::Win32::System::Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS};
+
+    // SAFETY: `SetErrorMode` reads and writes one process-wide bitmask and
+    // touches nothing else. Called before any thread but this one exists.
+    unsafe {
+        let previous = SetErrorMode(0);
+        SetErrorMode(previous | SEM_FAILCRITICALERRORS);
+    }
+}
+
+/// Nothing to do: the other two platforms return an error from `exec` rather
+/// than showing anybody a dialog.
+#[cfg(not(windows))]
+fn quiet_hard_errors() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    quiet_hard_errors();
+
     let launched = tauri::Builder::default()
         // **First, before every other plugin.** Explorer's "Open with OpenKaava"
         // launches this binary again, and everything registered above this
