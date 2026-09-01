@@ -117,6 +117,13 @@ export function layoutCommits(commits: GitCommit[]): PlacedCommit[] {
 const LANE_W = 22;
 const NODE_R = 5;
 
+/** How wide the lane column is allowed to get before it clips, mirroring
+ *  `.commitgraph__graph`'s `max-width` in `commitGraph.css`. Duplicated here
+ *  because CSS cannot tell JavaScript whether a clip is happening and the fade
+ *  must only appear when one is; the two are commented at both ends so a change
+ *  to either is visibly a change to a pair. */
+const GRAPH_MAX_W = 123;
+
 /** Radius of the halo ring drawn around a prominent node (see the `prominent`
  *  prop on `CommitRow`) — a plain circle at `NODE_R` for every other commit,
  *  this one extra ring for HEAD and live-branch tips, rather than also
@@ -143,7 +150,7 @@ const LANE_COLORS = [
   "var(--graph-pink)",
 ];
 
-function laneColor(lane: number): string {
+export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
 }
 
@@ -170,6 +177,16 @@ function curve(x1: number, y1: number, x2: number, y2: number): string {
   return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
 }
 
+/** One drawn line, already coloured. `stroke` rather than a lane the caller
+ *  resolves, and that is the point: the bug this shape prevents was a component
+ *  painting every path in one colour it picked itself. */
+export interface Segment {
+  d: string;
+  /** A `var(--...)` token from `LANE_COLORS`, chosen by the lane this line runs
+   *  in — for a curve, the end that is *not* the node. */
+  stroke: string;
+}
+
 /**
  * Every line segment this row's `<svg>` needs to draw, derived purely from
  * `placed`'s own before/after snapshots — no neighbouring row is consulted,
@@ -177,12 +194,21 @@ function curve(x1: number, y1: number, x2: number, y2: number): string {
  * function easy to reason about: it only ever looks at one commit's own
  * lane state).
  *
+ * **Each segment is coloured by its own lane, not the row's.** A row's `<svg>`
+ * is mostly lines with nothing to do with the commit beside them: every branch
+ * open anywhere in the visible history passes through every row. Painting them
+ * all in the node's colour made one continuous branch change colour on every
+ * row, according to which column its neighbours happened to occupy — a
+ * five-branch history drew as horizontal stripes rather than as five rails. A
+ * curve takes the lane of the end that is *not* the node, so a line keeps its
+ * own colour right up to where it joins or leaves.
+ *
  * y is 0/50/100 throughout — top edge, node centre, bottom edge — read as
  * percent of the row by the `viewBox`/`preserveAspectRatio="none"` pairing
  * in `CommitRow`, so this never has to know the row's actual pixel height.
  */
-function rowSegments(placed: PlacedCommit): string[] {
-  const segments: string[] = [];
+export function rowSegments(placed: PlacedCommit): Segment[] {
+  const segments: Segment[] = [];
   const laneCount = Math.max(placed.lanesBefore.length, placed.lanesAfter.length);
   const ownX = laneX(placed.lane);
 
@@ -195,8 +221,8 @@ function rowSegments(placed: PlacedCommit): string[] {
       // The node's own column: a line in from above if something was
       // waiting for this commit, a line out below to its first parent (or
       // nothing, for a root commit — `after` is null and this is skipped).
-      if (before !== null) segments.push(straight(x, 0, x, 50));
-      if (after !== null) segments.push(straight(x, 50, x, 100));
+      if (before !== null) segments.push({ d: straight(x, 0, x, 50), stroke: laneColor(idx) });
+      if (after !== null) segments.push({ d: straight(x, 50, x, 100), stroke: laneColor(idx) });
       continue;
     }
 
@@ -205,14 +231,14 @@ function rowSegments(placed: PlacedCommit): string[] {
       // this node. Drawn as a curve into the node rather than the column's
       // own straight line, and the column is not revisited below because
       // `layoutCommits` already closed it (it will not appear in `after`).
-      segments.push(curve(x, 0, ownX, 50));
+      segments.push({ d: curve(x, 0, ownX, 50), stroke: laneColor(idx) });
       continue;
     }
 
     if (before !== null && after !== null && before === after) {
       // Untouched by this commit: a lane elsewhere in the graph just passing
       // through this row.
-      segments.push(straight(x, 0, x, 100));
+      segments.push({ d: straight(x, 0, x, 100), stroke: laneColor(idx) });
       continue;
     }
 
@@ -220,7 +246,7 @@ function rowSegments(placed: PlacedCommit): string[] {
       // A column that did not exist above this row but does below it can
       // only be a merge parent this commit just opened — draw the branch
       // out of the node rather than a line with nothing above it.
-      segments.push(curve(ownX, 50, x, 100));
+      segments.push({ d: curve(ownX, 50, x, 100), stroke: laneColor(idx) });
     }
 
     // The remaining case (open above, closed below, unrelated to this sha)
@@ -390,8 +416,22 @@ function CommitRow({
           gets wide: shrinking `LANE_W` to fit more lanes makes the nodes
           overlap and the graph unreadable well before it makes the column
           narrow enough to matter, and a history with more than a handful of
-          concurrent lanes is rare in the repositories this panel opens. */}
-      <div className="commitgraph__graph" style={{ width: laneCount * LANE_W }}>
+          concurrent lanes is rare in the repositories this panel opens.
+
+          The `--clipped` modifier fades that edge when the clip is actually
+          happening. Without it the widest lane is simply chopped mid-stroke,
+          which reads as a rendering fault rather than as "there is more of
+          this graph than fits" — the one thing a person needs to know before
+          they conclude a branch ends here. Decided in JS rather than CSS
+          because the width is known here and nowhere else. */}
+      <div
+        className={
+          laneCount * LANE_W > GRAPH_MAX_W
+            ? "commitgraph__graph commitgraph__graph--clipped"
+            : "commitgraph__graph"
+        }
+        style={{ width: laneCount * LANE_W }}
+      >
         <svg
           className="commitgraph__lines"
           width={laneCount * LANE_W}
@@ -399,12 +439,12 @@ function CommitRow({
           viewBox={`0 0 ${laneCount * LANE_W} 100`}
           preserveAspectRatio="none"
         >
-          {segments.map((d, i) => (
+          {segments.map((segment, i) => (
             <path
               key={i}
-              d={d}
+              d={segment.d}
               className="commitgraph__line"
-              style={{ stroke: laneColor(placed.lane) }}
+              style={{ stroke: segment.stroke }}
             />
           ))}
         </svg>
@@ -461,9 +501,20 @@ function CommitRow({
       )}
 
       <span className="commitgraph__meta">
-        <span className="commitgraph__sha">{commit.short}</span>
-        <span className="commitgraph__author">{commit.author}</span>
-        <span className="commitgraph__when">{relativeTime(commit.when)}</span>
+        <span className="commitgraph__sha" title={commit.sha}>
+          {commit.short}
+        </span>
+        <span className="commitgraph__author" title={commit.author}>
+          {commit.author}
+        </span>
+        {/* The compact stamp is the only thing on this row that cannot be read
+            precisely — "5d" covers a span of a day. The exact time is one
+            hover away rather than a second column, which the row has no width
+            for. `title` rather than `<time dateTime>`: nothing consumes the
+            machine-readable form, and only one of the two is visible. */}
+        <span className="commitgraph__when" title={exactTime(commit.when)}>
+          {relativeTime(commit.when)}
+        </span>
       </span>
     </div>
   );
@@ -474,16 +525,21 @@ function CommitRow({
  *  into from here); one with a live worktree gets the branch glyph and a
  *  surface behind it; the active cluster's own branch gets the accent wash
  *  instead of the neutral one, which is the same "this one" language the
- *  accent already carries everywhere else in the shell. */
+ *  accent already carries everywhere else in the shell.
+ *
+ *  `title` because the chip itself is capped and ellipsised in CSS — a branch
+ *  named for a ticket and its whole summary is a real thing people cut, and
+ *  before the cap one of them pushed the sha, author and date off the row
+ *  entirely. */
 function RefBadge({ name, active, live }: { name: string; active: boolean; live: boolean }) {
   const classes = ["commitgraph__ref"];
   if (live) classes.push("commitgraph__ref--live");
   if (active) classes.push("commitgraph__ref--active");
 
   return (
-    <span className={classes.join(" ")}>
+    <span className={classes.join(" ")} title={name}>
       {live && <GitBranch size={9} strokeWidth={2} />}
-      {name}
+      <span className="commitgraph__ref-name">{name}</span>
     </span>
   );
 }
@@ -512,4 +568,19 @@ function relativeTime(unixSeconds: number): string {
     value /= span;
   }
   return `${Math.floor(value)}y`;
+}
+
+/**
+ * The same instant, in full, for the stamp's tooltip.
+ *
+ * The viewer's own locale and zone, with no format string: a commit time means
+ * "when it happened here", and every other date this shell shows a person is
+ * left to `Intl` for the same reason. `GitCommit.when` is Unix **seconds**,
+ * which is the multiplication this and `relativeTime` both exist to remember.
+ */
+function exactTime(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
