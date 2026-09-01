@@ -1,10 +1,16 @@
 /*
  * Design tokens shared by every entry point.
  *
- * Every value here is lifted from `docs/handoffs/shell-spec.html` — the decoded
- * handoff. Nothing in this file is a choice; if a value looks wrong, the spec
- * is the thing to check, not this file. Do not add a colour that does not
- * appear there.
+ * Every interface value here is lifted from `docs/handoffs/shell-spec.html` —
+ * the decoded handoff. Nothing in this file is a choice; if a value looks
+ * wrong, the spec is the thing to check, not this file. Do not add an interface
+ * colour that does not appear there.
+ *
+ * Two blocks below are marked as exceptions and say why: the commit-graph lane
+ * colours, and the mark's three tones. The lane colours extend a rotation the
+ * handoff's four semantic colours cannot cover; the mark's tones are brand
+ * colours from the brand packet rather than interface colours, and nothing in
+ * the interface may reach for them.
  *
  * Split out of styles.css so the splash window (src/splash/splash.css) can use
  * the same palette and base resets without pulling in the whole app stylesheet
@@ -77,6 +83,44 @@
   --graph-violet: #956fd9;
   --graph-teal: #4fc4bd;
   --graph-pink: #d96fb1;
+
+  /* --- the mark's three tones ---------------------------------------------
+     The only values in this file that are NOT from the handoff. They come from
+     the brand packet, they are brand colours rather than interface colours, and
+     nothing in the interface may reach for them — a component that wants green
+     wants `--ok`. Their one reader is `Mark` in `apps/home/ui/src/icons.tsx`,
+     which inlines the mark's colour geometry for Home's 52px lockup and would
+     otherwise be three hardcoded hexes — the thing every other token here
+     exists to prevent. Home reaches them the same way it reaches `--bg`, by
+     loading this file (`apps/home/ui/index.html`), not by importing the shell.
+
+     The `-light` three are the same mark for a bone surface, where the dark
+     trio loses its separation. Nothing in the app has a bone surface, so they
+     have no reader here yet; they are recorded because the brand packet
+     specifies them and the next thing to draw the mark on white — a README
+     graphic, a docs page — would otherwise pick three values by eye.
+
+     The seed is the value that carries the mark. Its whole job is to read as a
+     hole, which is how the monochrome silhouette draws it — a counter, cut by
+     winding. So it is chosen by luminance rather than by hue: 0.120 against the
+     flesh's 0.732 is 4.5:1, and the mark survives greyscale and a 15px title
+     bar. The first pass had these two at 0.213 and 0.618, which is 2.5:1, and
+     paired a seed at 0.213 with a skin at 0.240 — near enough the same value
+     that desaturating the mark flattened the seed into the ring around it.
+
+     `--accent` does not move. It stays #d98a3f and stays the interface's
+     accent; it is not the brand colour any more, and it must not appear behind
+     the mark. Amber sits at 0.333 and the skin at 0.207, a contrast ratio of
+     1.5:1, so a green mark on an amber field separates by hue alone and
+     disappears when squinted at. */
+
+  --mark-skin: #5c8a2f; /* outer body, on dark grounds */
+  --mark-flesh: #d0e878; /* inner body */
+  --mark-seed: #8a5524; /* seed */
+
+  --mark-skin-light: #3f6020; /* the same three, for light grounds */
+  --mark-flesh-light: #8fae35;
+  --mark-seed-light: #5e3a18;
 
   /* --- type ------------------------------------------------------------- */
 

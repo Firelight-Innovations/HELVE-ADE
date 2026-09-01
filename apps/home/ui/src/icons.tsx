@@ -13,7 +13,11 @@
  * the parent; no icon here hardcodes a hex.
  */
 
-import { MARK_PATH, MARK_VIEW_BOX } from "./branding.generated";
+/* `MARK_VIEW_BOX` only: `Mark` below draws the three-tone version, whose
+   geometry the generator cannot reduce to one path and so does not emit. The
+   box is still generated, because both versions are authored in it and a
+   replacement mark is allowed to change it. */
+import { MARK_VIEW_BOX } from "./branding.generated";
 
 interface IconProps {
   size?: number;
@@ -43,20 +47,22 @@ function Outline({ size = 24, className, children }: IconProps & { children: Rea
 /**
  * The product's mark, for the lockup at the top of the page.
  *
- * The one glyph here that is not an outline: it is the identity, not an icon,
- * and the brand packet draws it filled as a single continuous path so there are
- * no subpath seams to hairline at small sizes.
+ * The one glyph here that is neither an outline nor `currentColor`: it is the
+ * identity, not an icon. At 52px this lockup is the only surface large enough
+ * to carry the mark's three tones — dark skin, light flesh, brown seed. The
+ * shell draws the monochrome silhouette everywhere smaller, because the
+ * hairlines between the tones close up and the seed stops reading as a hole.
  *
- * The geometry comes from this directory's own `branding.generated.ts`, not the
- * shell's — the rule at the top of this file, applied to the identity as well
- * as to the icons. `scripts/generate-branding.mjs` emits one module per bundle
- * for that reason, and a generated file inside the app's own tree is the only
- * form that survives this directory becoming its own repository.
+ * So the geometry is written out here rather than generated: the generator
+ * reduces the mark to one path — which is what lets every other call site draw
+ * it in `currentColor` — and three drawables do not reduce.
+ * `assets/kaava-mark-colour.svg` is the declared asset this copies, kept in
+ * step by hand. `docs/branding.md` §6 has the argument, and why not an `<img>`.
  *
- * `size` is the mark's *height* in the packet's sense: the lockup's other
- * measurements are ratios of the 24×24 box, not of the 18-unit ink inside it.
- * The packet sets 16px as the floor for the bare mark; below that it wants the
- * container icon, which Home has no use for.
+ * The strokes are `var(--bg)` because the gap between tones *is* the
+ * background, not a colour. Fills are the `--mark-*` tokens, so the rule at the
+ * top of this file still holds: no hex is written here. `size` is the mark's
+ * height in the packet's sense — a ratio of the 24×24 box, not of the ink.
  */
 export function Mark({ size = 24, className }: IconProps) {
   return (
@@ -64,12 +70,28 @@ export function Mark({ size = 24, className }: IconProps) {
       width={size}
       height={size}
       viewBox={MARK_VIEW_BOX}
-      fill="currentColor"
       aria-hidden="true"
       focusable="false"
       className={className}
     >
-      <path d={MARK_PATH} />
+      <path
+        fill="var(--mark-skin)"
+        d="M12 2.4c3.3 0 7 4.2 7 10.1 0 4.8-3.1 9.1-7 9.1s-7-4.3-7-9.1C5 6.6 8.7 2.4 12 2.4z"
+      />
+      <path
+        fill="var(--mark-flesh)"
+        stroke="var(--bg)"
+        strokeWidth={0.9}
+        d="M12 3.85c2.85 0 5.9 3.7 5.9 8.75 0 4.15-2.65 7.75-5.9 7.75s-5.9-3.6-5.9-7.75C6.1 7.55 9.15 3.85 12 3.85z"
+      />
+      <circle
+        fill="var(--mark-seed)"
+        stroke="var(--bg)"
+        strokeWidth={0.9}
+        cx="12"
+        cy="13.7"
+        r="2.9"
+      />
     </svg>
   );
 }

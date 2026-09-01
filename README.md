@@ -89,7 +89,7 @@ OpenKaava has one main window. The window has five bands. The bands stack in a
 column. Only the middle band grows or shrinks. The other four bands stay a
 fixed height.
 
-![The five bands of the OpenKaava window: title bar, switcher bar, tool window, terminal band, status bar](assets/ui/window.png)
+![The OpenKaava window with a project open: the title bar, the switcher bar, a tool window split between the File Explorer and the File Viewer, the terminal band, and the status bar](assets/ui/window.png)
 
 [The OpenKaava window](docs/user/tutorials/the-window.md) tutorial explains each
 band. Read it first. Every other tutorial uses these five names.
@@ -113,7 +113,7 @@ terminals under them swap together.
 
 </td>
 <td width="50%">
-  <img src="assets/ui/panes.png" alt="One pane splitting into two, the second opening in a right-hand column" width="100%" />
+  <img src="assets/ui/panes.png" alt="Two panes side by side in one cluster: the File Explorer on a project's tree, and the File Viewer showing a Rust file from it" width="100%" />
 </td>
 </tr>
 <tr>
@@ -129,7 +129,7 @@ terminal band swaps with everything else.
 
 </td>
 <td width="50%">
-  <img src="assets/ui/terminal.png" alt="A terminal band with two tabs, bash and bash 2" width="100%" />
+  <img src="assets/ui/terminal.png" alt="The terminal band: two PowerShell tabs down the left, the active one at a prompt in the project's directory" width="100%" />
 </td>
 </tr>
 <tr>
@@ -175,7 +175,7 @@ exist and when a new one is worth adding.
 
 </td>
 <td width="50%">
-  <img src="assets/ui/mcp.png" alt="An MCP server toggle, and the .mcp.json entry it writes" width="100%" />
+  <img src="assets/ui/mcp.png" alt="The MCP servers settings section: each server with its route and tool count and a switch, and below them the switch that writes .mcp.json into open projects" width="100%" />
 </td>
 </tr>
 <tr>

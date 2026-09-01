@@ -184,6 +184,7 @@ changed it and watched nothing happen.
 | `product.wordmark` | the generated modules, and `splash.html`'s check |
 | `product.tagline` | Home's hero, and nothing else |
 | `assets.mark` | the generator, which lifts its path data into the modules |
+| `assets.mark-colour` | `Mark` in `apps/home/ui/src/icons.tsx`, by hand |
 | `assets.splash-field` | `splash.html`'s check |
 | `assets.icon-source` | `pnpm tauri icon <path>`, run by a person |
 | `assets.bundle-icons` | the check on `tauri.conf.json`'s `bundle.icon` |
@@ -249,13 +250,30 @@ prose because the list is also the trademark surface.
 
 **Art.** `assets/` is the brand pack, and everything in it is replaceable:
 
-- `assets/kaava-mark.svg` — the mark. The generator lifts its `viewBox` and its
-  single `<path>` into the frontend modules, and **fails the build** if the file
-  cannot be reduced to one path. A more complicated mark belongs on a surface
-  that loads it as a file.
+- `assets/kaava-mark.svg` — the mark, as a monochrome silhouette. The generator
+  lifts its `viewBox` and its single `<path>` into the frontend modules, and
+  **fails the build** if the file cannot be reduced to one path. A more
+  complicated mark belongs on a surface that loads it as a file. It also lifts
+  `d` and nothing else, so a `fill-rule` on the source path is dropped silently:
+  a counter has to work under the default nonzero rule, by winding.
+- `assets/kaava-mark-colour.svg` — the same mark in its three tones, which the
+  generator cannot reduce and so does not compile in. Its one reader is `Mark`
+  in `apps/home/ui/src/icons.tsx`, which inlines the geometry by hand so the
+  hairlines between the tones can be `var(--bg)`. Changing the mark means
+  changing both files; the silhouette is the one the generator checks.
 - `assets/app-icon-source.svg` — what `pnpm tauri icon` draws the PNG set from.
-- `assets/kaava-icon.svg`, `kaava-icon-256.svg`, `kaava-icon-textured.svg` — the
-  container-icon variants from the brand packet.
+- `assets/kaava-icon.svg`, `kaava-icon-256.svg` — the container-icon variants
+  from the brand packet, drawn as the same tile at 24 and at 256. All three
+  tiles place the mark by its **ink**, not its viewBox: the silhouette is 19.2
+  of its 24 units tall, so a transform sized against the box leaves a third of
+  the tile empty and the avocado reads as a stamp floating in a square. They
+  scale it to leave 11.7% of the tile clear above and below — on the 256 tile,
+  `translate(5.333 5.333) scale(10.2222)`. Change the mark's geometry and these
+  three numbers have to be recomputed; nothing checks them. There was a
+  third, `kaava-icon-textured.svg`, which stippled grain over the whole tile; it
+  is gone, because the tile's ground is now a two-stop radial falloff and that
+  falloff is the only thing drawing the icon's edge. Grain laid over it fights
+  the edge it is there to make.
 - `public/kaava-splash-field.svg` — the splash art.
 - `src-tauri/icons/` — the generated icon set. Every path in `bundle.icon` is
   checked to sit inside this directory and to exist.
@@ -289,6 +307,22 @@ one claimed the copy was faithful. That claim was the only thing checking it.
 Generating the geometry makes `assets/kaava-mark.svg` the actual source rather
 than the nominal one, and a fork replaces one SVG instead of finding two string
 literals.
+
+**Home's lockup is the exception, and it is the colour that buys it.** The mark
+has a three-tone version, and Home draws it at 52px — the only surface in the
+product large enough for the hairlines between the tones to survive. The
+generator cannot carry it: reducing the mark to one path is what lets every
+other surface draw it in `currentColor`, and three drawables do not reduce. So
+`Mark` in `apps/home/ui/src/icons.tsx` writes that geometry out, and
+`assets/kaava-mark-colour.svg` is the file it is a copy of. Two files to keep in
+step is the price; the argument above still holds for the silhouette, which is
+what the other four call sites draw and what the generator still checks.
+
+Loading the colour file as an `<img>` fails for a second reason on top of the
+first. The hairline between the tones is *the background*, not a colour — `--bg`
+on Home, `--surface` if it were ever drawn on a bar. Inline SVG resolves a CSS
+variable in a `stroke`; an `<img>` resolves nothing, so the file on disk has to
+commit to a literal and every surface it does not match gets a visible seam.
 
 ---
 
