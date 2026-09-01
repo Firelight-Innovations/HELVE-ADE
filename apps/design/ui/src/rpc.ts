@@ -4,6 +4,8 @@
  * reason `apps/files/ui/src/rpc.ts` gives.
  */
 import { KaavaRpcError, invoke } from "@openkaava/bridge";
+import type { Comment } from "./comments";
+import type { PickedElement } from "./probe";
 
 /** A URL the backend has cleared for embedding. */
 export interface Target {
@@ -41,6 +43,30 @@ export const disarm = (scriptId: string) => invoke<null>("design/disarm", { scri
  *  pixels — which is what `absoluteRect` produces. */
 export const capture = (rect: { x: number; y: number; width: number; height: number }) =>
   invoke<Screenshot>("design/capture", rect);
+
+/** Every comment on this machine, oldest first. Unfiltered — which page's
+ *  comments are on screen is this app's question, and `onPage` answers it. */
+export const listComments = () => invoke<Comment[]>("design/comment/list");
+
+/** Leave a comment on what was just picked. The probe's payload goes through
+ *  unchanged rather than being flattened here — `design.rs` maps the two shapes
+ *  onto each other in one place. `shot` is the `dataUrl` from {@link capture},
+ *  and null is honest: an element that could not be photographed is still worth
+ *  commenting on. */
+export const addComment = (picked: PickedElement, request: string, shot: string | null) =>
+  invoke<Comment>("design/comment/add", { picked, request, shot });
+
+/** Answer a question the agent asked, which hands the comment back to it. */
+export const replyToComment = (id: string, text: string) =>
+  invoke<Comment>("design/comment/reply", { id, text });
+
+/** Close a comment yourself — because it is done, or because it no longer
+ *  matters. The agent's own resolutions come in over MCP, not through here. */
+export const resolveComment = (id: string, text: string) =>
+  invoke<Comment>("design/comment/resolve", { id, text });
+
+/** Forget a comment and its picture outright. */
+export const deleteComment = (id: string) => invoke<null>("design/comment/delete", { id });
 
 /** The host's own words for why a call failed. Every refusal in `design.rs` is
  *  written as a sentence for a person, so none is mapped to a category here. */

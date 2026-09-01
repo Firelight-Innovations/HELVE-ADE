@@ -9,6 +9,7 @@ mod apps;
 mod boot;
 mod branding;
 mod commands;
+mod design_comments;
 mod devtools;
 mod diagnostics;
 mod discovery;
@@ -37,6 +38,7 @@ mod updater;
 mod webview;
 mod windows;
 
+use design_comments::Comments;
 use project::ProjectState;
 use pty::PtySessions;
 use shell_state::ShellState;
@@ -114,6 +116,12 @@ pub fn run() {
         // launch, because almost every launch is somebody opening the app
         // rather than opening something with it.
         .manage(launch::LaunchState::default())
+        // Every comment left on an element in Design Mode. One list for the
+        // process rather than one per Design Mode tab: two tabs pointed at the
+        // same dev server are two views of one set of outstanding requests, and
+        // the MCP server that serves them to an agent is not in a tab at all.
+        // Empty until `hydrate` reads the file, in setup below.
+        .manage(Comments::default())
         // Which MCP servers this build hosts for whatever agent the user is
         // running in a terminal, and which of them are switched on. Empty until
         // something registers into it — see `mcp`'s module doc for why an app
@@ -238,6 +246,13 @@ pub fn run() {
             // first window means the settings surface never draws an empty one
             // it then has to correct.
             mcp::seed(app.handle());
+
+            // Before the listener below, because the design server answers out
+            // of this list and a client that connected during the gap would be
+            // told there were no comments rather than that they were still
+            // loading. Reading one small file, on the setup thread, for the same
+            // reason `project::restore` is here.
+            app.state::<Comments>().hydrate(app.handle());
 
             // Immediately after seeding and **before any terminal is spawned**,
             // because a terminal inherits the port and token as environment

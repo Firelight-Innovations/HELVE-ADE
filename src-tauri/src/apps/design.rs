@@ -1,7 +1,8 @@
 //! Design Mode's Rust half: which page may be embedded, what may be put inside
-//! it, and how a picture of part of it is taken.
+//! it, how a picture of part of it is taken, and the comments left on what was
+//! picked.
 //!
-//! Three methods, and each is here because it could not be a component.
+//! The first three methods are each here because they could not be a component.
 //! `design/target` decides what may be loaded at all — a security boundary
 //! rather than a convenience, and the one part of this feature that most needs
 //! a careful read. `design/arm` installs the probe through
@@ -9,19 +10,24 @@
 //! shell can reach into a frame showing somebody else's origin.
 //! `design/capture` crops a screenshot out of the window.
 //!
-//! No state, like `files::call`: a second Design Mode in a second cluster is a
-//! second frame with its own probe, and anything remembered here would be
-//! shared between them by accident.
+//! **Nothing about a *frame* is remembered here**, like `files::call`: a second
+//! Design Mode in a second cluster is a second frame with its own probe. The
+//! `design/comment/*` methods are the other side of that rule rather than an
+//! exception to it — see `docs/design-notes/design-comments.md`.
 //!
 //! `docs/design-notes/design-mode.md` is the long form — what each rule in
 //! [`normalize`] is defending against, and exactly what a hostile page in that
 //! frame can and cannot reach.
 
 use crate::apps::CallContext;
+use crate::design_comments::{Author, Comment, Comments, Draft, Element, Page, Rect, Status};
 use crate::devtools;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use tauri::{AppHandle, Manager, Url};
 
 /// The probe, as browser code. See `design_probe.js` for why it is a file.
@@ -328,6 +334,218 @@ fn target(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
         .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not answer: {e}")))
 }
 
+/// The most text one comment may carry.
+///
+/// Generous — this is a paragraph or two, not a tweet — and bounded, because the
+/// store is rewritten in full on every reply and a textarea will take whatever
+/// somebody pastes into it. Refused rather than truncated: a request silently
+/// cut off halfway is a request an agent answers wrongly.
+const MAX_TEXT: usize = 4000;
+
+/// A string parameter that has to say something.
+fn said(params: Option<&Value>, field: &str, method: &str) -> Result<String, RpcError> {
+    let text = params
+        .and_then(|p| p.get(field))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+
+    if text.is_empty() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{method} needs a `{field}`"),
+        ));
+    }
+
+    if text.chars().count() > MAX_TEXT {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("that is longer than a comment can be ({MAX_TEXT} characters)"),
+        ));
+    }
+
+    Ok(text.to_string())
+}
+
+/// A comment id, as every `design/comment/*` method but `add` takes one.
+fn comment_id(params: Option<&Value>, method: &str) -> Result<String, RpcError> {
+    params
+        .and_then(|p| p.get("id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("{method} needs a comment id")))
+}
+
+/// The string entries of a JSON object, and nothing else.
+///
+/// Anything that is not a string is dropped rather than refused, on the same
+/// reasoning `probe.ts` gives for its own version: a page that put a nested
+/// object in its attribute map is a page whose payload is wrong, not a comment
+/// worth losing.
+fn strings(value: Option<&Value>) -> BTreeMap<String, String> {
+    value
+        .and_then(Value::as_object)
+        .map(|map| {
+            map.iter()
+                .filter_map(|(key, entry)| Some((key.clone(), entry.as_str()?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn finite(value: Option<&Value>) -> f64 {
+    value
+        .and_then(Value::as_f64)
+        .filter(|n| n.is_finite())
+        .unwrap_or_default()
+}
+
+/// Turn the `PickedElement` the app already holds into what the store keeps.
+///
+/// The app sends the probe's payload through unchanged rather than
+/// restructuring it, so this is the one place the two shapes are mapped onto
+/// each other and the one place to look when they disagree.
+fn read_picked(picked: Option<&Value>) -> Result<(Page, Element), RpcError> {
+    let page = picked.and_then(|p| p.get("page"));
+    let target = picked.and_then(|p| p.get("target"));
+
+    let tag = target
+        .and_then(|t| t.get("tagName"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if tag.is_empty() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "a comment needs the element it is about — nothing was picked",
+        ));
+    }
+
+    let text = |owner: Option<&Value>, field: &str| {
+        owner
+            .and_then(|o| o.get(field))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    let rect = target.and_then(|t| t.get("rect"));
+
+    Ok((
+        Page {
+            url: text(page, "url"),
+            title: text(page, "title"),
+        },
+        Element {
+            tag: tag.to_string(),
+            selector: text(target, "selector"),
+            ancestors: text(target, "ancestors"),
+            text: text(target, "text"),
+            html: text(target, "html"),
+            attributes: strings(target.and_then(|t| t.get("attributes"))),
+            styles: strings(target.and_then(|t| t.get("styles"))),
+            rect: Rect {
+                x: finite(rect.and_then(|r| r.get("x"))),
+                y: finite(rect.and_then(|r| r.get("y"))),
+                width: finite(rect.and_then(|r| r.get("width"))),
+                height: finite(rect.and_then(|r| r.get("height"))),
+            },
+        },
+    ))
+}
+
+/// The bytes behind a `data:image/png;base64,…`, or `None` for anything else.
+///
+/// Strict about the prefix rather than permissive: this string is about to
+/// become a file on disk under a name this code chose, and the one thing worth
+/// checking is that it really is the PNG `design/capture` produced.
+fn png_bytes(data_url: Option<&Value>) -> Option<Vec<u8>> {
+    let raw = data_url.and_then(Value::as_str)?;
+    let payload = raw.strip_prefix("data:image/png;base64,")?;
+    BASE64.decode(payload).ok()
+}
+
+/// Every comment on this machine, for the app's own list.
+///
+/// Unfiltered: the app knows which page it is showing and which comments belong
+/// to it, and a filter here would be a second answer to a question the frontend
+/// already has to be able to answer while it draws them.
+fn comment_list(app: &AppHandle) -> Result<Value, RpcError> {
+    let comments = app.state::<Comments>().all();
+
+    serde_json::to_value(comments).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            format!("the comments would not serialize: {e}"),
+        )
+    })
+}
+
+/// Write down what somebody asked for, and keep the picture beside it.
+///
+/// A screenshot that will not decode or will not write is recorded as a comment
+/// *without* one rather than as a failure. The sentence is the part an agent
+/// acts on; losing it because a PNG did not land would be the wrong trade, and
+/// `has_shot` already tells every reader which happened.
+fn comment_add(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
+    let request = said(params, "request", "design/comment/add")?;
+    let (page, element) = read_picked(params.and_then(|p| p.get("picked")))?;
+    let png = png_bytes(params.and_then(|p| p.get("shot")));
+
+    let comment = app.state::<Comments>().add(
+        app,
+        Draft {
+            page,
+            element,
+            request,
+        },
+        png.as_deref(),
+    );
+
+    answer(comment)
+}
+
+/// The user's own turn on a comment: replying to a question, or resolving it.
+fn comment_say(
+    app: &AppHandle,
+    params: Option<&Value>,
+    method: &str,
+    status: Status,
+) -> Result<Value, RpcError> {
+    let id = comment_id(params, method)?;
+    let text = said(params, "text", method)?;
+
+    let comment = app
+        .state::<Comments>()
+        .say(app, &id, Author::User, &text, status)
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no comment with id `{id}`")))?;
+
+    answer(comment)
+}
+
+fn comment_delete(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
+    let id = comment_id(params, "design/comment/delete")?;
+
+    if !app.state::<Comments>().remove(app, &id) {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("no comment with id `{id}`"),
+        ));
+    }
+
+    Ok(Value::Null)
+}
+
+fn answer(comment: Comment) -> Result<Value, RpcError> {
+    serde_json::to_value(comment).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            format!("the comment would not serialize: {e}"),
+        )
+    })
+}
+
 /// Route one `invoke` from the Design Mode app.
 ///
 /// The `CallContext` is ignored, as Tutorials' is: what is on screen here is a
@@ -343,6 +561,18 @@ pub fn call(
         "design/arm" => arm(app, params.as_ref()),
         "design/disarm" => disarm(app, params.as_ref()),
         "design/capture" => capture(app, params.as_ref()),
+        "design/comment/list" => comment_list(app),
+        "design/comment/add" => comment_add(app, params.as_ref()),
+        "design/comment/reply" => {
+            comment_say(app, params.as_ref(), "design/comment/reply", Status::Open)
+        }
+        "design/comment/resolve" => comment_say(
+            app,
+            params.as_ref(),
+            "design/comment/resolve",
+            Status::Resolved,
+        ),
+        "design/comment/delete" => comment_delete(app, params.as_ref()),
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no such method: {method}"),
@@ -581,6 +811,135 @@ mod tests {
         assert!(
             PROBE.contains("if (window.parent === window) return;"),
             "the probe must never arm in the shell's own top frame"
+        );
+    }
+
+    fn picked() -> Value {
+        json!({
+            "page": { "url": "http://localhost:5173/", "title": "Home" },
+            "target": {
+                "tagName": "button",
+                "selector": ".cta",
+                "ancestors": "main > form",
+                "text": "Save",
+                "html": "<button class=\"cta\">Save</button>",
+                "attributes": { "class": "cta", "disabled": false },
+                "styles": { "padding": "8px", "color": "rgb(0, 0, 0)" },
+                "rect": { "x": 10.0, "y": 20.0, "width": 30.0, "height": 40.0 },
+            },
+        })
+    }
+
+    #[test]
+    fn a_picked_element_maps_onto_what_the_store_keeps() {
+        let (page, element) = read_picked(Some(&picked())).expect("an ordinary capture");
+
+        assert_eq!(page.url, "http://localhost:5173/");
+        assert_eq!(page.title, "Home");
+        assert_eq!(element.tag, "button");
+        assert_eq!(element.selector, ".cta");
+        assert_eq!(element.ancestors, "main > form");
+        assert_eq!(
+            element.attributes.get("class").map(String::as_str),
+            Some("cta")
+        );
+        assert_eq!(element.styles.len(), 2);
+        assert_eq!(element.rect.width, 30.0);
+    }
+
+    /// The probe budgets what it sends and a page can post junk on purpose, so
+    /// a non-string entry is dropped rather than taking the comment with it.
+    #[test]
+    fn a_non_string_attribute_is_dropped_rather_than_refused() {
+        let (_, element) = read_picked(Some(&picked())).expect("an ordinary capture");
+        assert!(!element.attributes.contains_key("disabled"));
+    }
+
+    /// A comment with no element is a comment nothing can act on, and the only
+    /// way to get one is a bug in the app rather than a page misbehaving.
+    #[test]
+    fn a_comment_needs_an_element() {
+        for missing in [json!({}), json!({ "target": {} }), json!(null)] {
+            assert!(
+                read_picked(Some(&missing)).is_err(),
+                "{missing} should not become a comment"
+            );
+        }
+        assert!(read_picked(None).is_err());
+    }
+
+    /// Every field but the tag defaults rather than refusing. A page that would
+    /// not report its own title is not a reason to lose the sentence somebody
+    /// typed about it.
+    #[test]
+    fn everything_but_the_tag_survives_being_absent() {
+        let bare = json!({ "target": { "tagName": "div" } });
+        let (page, element) = read_picked(Some(&bare)).expect("a tag is enough");
+
+        assert_eq!(element.tag, "div");
+        assert!(page.url.is_empty());
+        assert!(element.styles.is_empty());
+        assert_eq!(element.rect.width, 0.0);
+    }
+
+    /// `NaN` and infinities arrive from JavaScript, where a subtraction between
+    /// two rects one of which was never laid out produces one.
+    #[test]
+    fn a_rect_that_is_not_a_number_reads_as_zero() {
+        let odd = json!({
+            "target": { "tagName": "div", "rect": { "x": "left", "width": null } },
+        });
+        let (_, element) = read_picked(Some(&odd)).expect("a tag is enough");
+        assert_eq!(element.rect.x, 0.0);
+        assert_eq!(element.rect.width, 0.0);
+    }
+
+    /// The file this decodes into is named by this code and written under the
+    /// config directory, so the one thing worth checking is that it really is
+    /// the PNG `design/capture` produced.
+    #[test]
+    fn only_a_png_data_url_becomes_a_screenshot() {
+        let png = json!("data:image/png;base64,aGk=");
+        assert_eq!(png_bytes(Some(&png)), Some(b"hi".to_vec()));
+
+        for wrong in [
+            json!("data:image/svg+xml;base64,aGk="),
+            json!("data:text/html;base64,aGk="),
+            json!("data:image/png;base64,not base64"),
+            json!("http://example.com/x.png"),
+            json!(null),
+        ] {
+            assert!(png_bytes(Some(&wrong)).is_none(), "{wrong} is not a shot");
+        }
+        assert!(png_bytes(None).is_none());
+    }
+
+    /// A comment is somebody's sentence, and the box it is typed into will take
+    /// whatever is pasted. Refused rather than truncated: a request silently cut
+    /// in half is a request an agent answers wrongly.
+    #[test]
+    fn a_comment_has_to_say_something_and_may_not_say_everything() {
+        let method = "design/comment/add";
+        assert!(said(Some(&json!({ "request": "" })), "request", method).is_err());
+        assert!(said(Some(&json!({ "request": "   " })), "request", method).is_err());
+        assert!(said(None, "request", method).is_err());
+
+        let huge = json!({ "request": "x".repeat(MAX_TEXT + 1) });
+        assert!(said(Some(&huge), "request", method).is_err());
+
+        assert_eq!(
+            said(Some(&json!({ "request": "  bigger  " })), "request", method).ok(),
+            Some("bigger".to_string())
+        );
+    }
+
+    #[test]
+    fn every_comment_method_needs_an_id() {
+        assert!(comment_id(None, "design/comment/reply").is_err());
+        assert!(comment_id(Some(&json!({ "id": "" })), "design/comment/reply").is_err());
+        assert_eq!(
+            comment_id(Some(&json!({ "id": "c7" })), "design/comment/reply").ok(),
+            Some("c7".to_string())
         );
     }
 }

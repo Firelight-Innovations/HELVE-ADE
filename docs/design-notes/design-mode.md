@@ -222,3 +222,16 @@ text, a chat window that accepts images takes both. The image half is
 best-effort by design: writing an image needs a secure context and permission
 that a text write does not, so a refusal there falls back to text rather than
 failing the handoff, and what is reported back says which happened.
+
+### What replaced it
+
+`design_comments` and `mcp::servers::design` did, and the argument above is now
+about a *fallback*. The clipboard still works, still costs one button, and is
+still what a chat client wants; what it cannot do is reach an agent in a
+terminal, which was always the case this feature was for. `docs/design-notes/
+design-comments.md` is the record of the replacement.
+
+The paragraph about inserting into the active terminal is still true and is now
+much less interesting. An MCP tool call reaches an agent whether or not it is in
+a terminal OpenKaava spawned, so the verb that would have been needed is one this
+no longer waits on.

@@ -238,8 +238,200 @@
 }
 
 .design__idle {
-  margin: auto 0;
+  margin: 0 0 12px;
   color: var(--text-dim-3);
   font-size: 12px;
   text-align: center;
+}
+
+/* --- leaving a comment ----------------------------------------------------- */
+
+.design__capture {
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.design__compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.design__request,
+.design__answerbox {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.design__request:focus-visible,
+.design__answerbox:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent-line-strong);
+}
+
+.design__copy:disabled {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.design__details {
+  margin-top: 10px;
+  color: var(--text-dim-2);
+  font-size: 11px;
+}
+
+.design__details summary {
+  cursor: pointer;
+}
+
+/* Bounded, so opening the fallback does not push the comment list off the
+   bottom of a panel whose main job is now to show it. */
+.design__details .design__prompt {
+  margin-top: 8px;
+  max-height: 260px;
+}
+
+/* --- the comments themselves ----------------------------------------------- */
+
+.design__nocomments {
+  margin: 0;
+  color: var(--text-dim-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.design__comments {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design__comment {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+/* The one state that is blocked on the person reading this panel. Everything
+   else is either the agent's turn or already done, so only this is marked. */
+.design__comment[data-status="question"] {
+  border-left-color: var(--warn);
+}
+
+.design__comment[data-status="resolved"] {
+  opacity: 0.62;
+}
+
+.design__commenthead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.design__commentid {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.design__commentwhere {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim-2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.design__commentstatus {
+  flex: 0 0 auto;
+  color: var(--text-dim-3);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.design__commentpage {
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim-3);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.design__commentrequest {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.design__thread {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design__remark {
+  padding-left: 8px;
+  border-left: 1px solid var(--line-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.design__remark[data-author="agent"] {
+  border-left-color: var(--accent-line);
+}
+
+.design__remarkwho {
+  display: block;
+  color: var(--text-dim-3);
+  font-size: 10px;
+}
+
+.design__answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.design__commentactions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
 }
