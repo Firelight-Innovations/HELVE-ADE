@@ -94,6 +94,15 @@ describe("pendingQuestion", () => {
 
     expect(pendingQuestion(odd)).toBeNull();
   });
+
+  // The case the optional chain exists for. Indexing past the end is typed
+  // `Remark` but is `undefined` at runtime, so this is the one path the
+  // compiler cannot be asked to hold.
+  it("is silent for a question with an empty thread rather than throwing", () => {
+    const empty = comment("c1", "question", 2);
+    expect(empty.thread).toHaveLength(0);
+    expect(pendingQuestion(empty)).toBeNull();
+  });
 });
 
 describe("elsewhere", () => {

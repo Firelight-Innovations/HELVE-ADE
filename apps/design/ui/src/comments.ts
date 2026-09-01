@@ -95,7 +95,11 @@ export function forDisplay(comments: readonly Comment[]): Comment[] {
  *  came from the user is a state the backend does not produce. */
 export function pendingQuestion(comment: Comment): string | null {
   if (comment.status !== "question") return null;
-  const last = comment.thread.at(-1);
+  // Indexed rather than `.at(-1)`: that is ES2022 and this project's `lib` is
+  // ES2020. The optional chain below is doing real work despite the index
+  // access being typed `Remark` — an empty thread yields `undefined` at
+  // runtime, and `noUncheckedIndexedAccess` is off, so the type does not say so.
+  const last = comment.thread[comment.thread.length - 1];
   return last?.author === "agent" ? last.text : null;
 }
 
