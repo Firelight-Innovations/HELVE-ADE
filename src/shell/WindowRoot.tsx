@@ -23,6 +23,8 @@ import {
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
 import ContextMenuHost from "./ContextMenuHost";
+import CommandPalette from "./palette/CommandPalette";
+import { commandsFromMenus } from "./palette/registry";
 import TitleBar from "./titlebar/TitleBar";
 import { APP_COMMAND, defaultMenus, type CommandHandlers } from "./titlebar/menus";
 import { editHandlers, useEditTarget } from "./titlebar/useEditTarget";
@@ -1087,6 +1089,17 @@ export default function WindowRoot({
     });
   }, []);
 
+  // The command palette. Per window, because the commands in it are this
+  // window's — which cluster is active decides half of what is possible.
+  //
+  // Ctrl+Shift+P and View ▸ Command Palette used to expand the *search* field,
+  // which was the nearest thing the shell had to one and was not one: search
+  // looks inside the open project's files and can neither list nor run a
+  // command. Both point here now, and Ctrl+K still opens search.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+
   // "The terminal is showing" is now just the band being open. It used to need
   // a second clause — the panel could be open on the worktree tab, which is an
   // open panel with no terminal in it — and the band has nothing else to show,
@@ -1345,7 +1358,7 @@ export default function WindowRoot({
     duplicate: () => runIfAllowed(app, APP_COMMAND.duplicate),
     closeWindow: onCloseWindow,
 
-    commandPalette: () => setSearchExpanded(true),
+    commandPalette: openPalette,
     togglePanel: () => setPanelCollapsed((c) => !c),
     toggleTerminal: onToggleTerminal,
     toggleFullscreen: onToggleFullscreen,
@@ -1363,6 +1376,48 @@ export default function WindowRoot({
   // spinner, the value is already here.
   void rescanning;
 
+  // The menu tree, built once per render and read twice: the title bar draws
+  // it, and the command palette is it, flattened. Not memoized, because it was
+  // already rebuilt on every render when it lived inline in the JSX below —
+  // that is what makes a row that has just become possible possible in the same
+  // frame — and a `useMemo` here would need every handler above in its deps,
+  // most of which are fresh closures anyway.
+  const menus = defaultMenus({
+    app,
+    edit,
+    apps: appsHandlers,
+    file: {
+      newWindow: onNewWindow,
+      // Both disabled when this window has no cluster: a project opens *into*
+      // one, and Home has to be shown *in* one. The items say so rather than
+      // failing silently.
+      openProject: activeClusterId === null ? undefined : onOpenProject,
+      openRecent: activeClusterId === null ? undefined : onOpenRecent,
+      closeWindow: onCloseWindow,
+    },
+    view: {
+      commandPalette: openPalette,
+      panelCollapsed,
+      togglePanel: () => setPanelCollapsed((c) => !c),
+      terminalShowing,
+      toggleTerminal: onToggleTerminal,
+      fullscreen,
+      toggleFullscreen: onToggleFullscreen,
+      zoomIn: () => onZoom(1),
+      zoomOut: () => onZoom(-1),
+      zoomInBlocked: zoomBlocked(zoom, 1),
+      zoomOutBlocked: zoomBlocked(zoom, -1),
+    },
+    terminal: {
+      onNew: onNewTerminal,
+      onSplit,
+      onKill: onKillTerminal,
+      onClear,
+      enabled: Boolean(focusedPaneId),
+    },
+    help: { checkForUpdates: updates.check },
+  });
+
   return (
     <MotionConfig transition={snap} reducedMotion="user">
       {/* Not a slot: it draws nothing until somebody right-clicks, and when it
@@ -1371,6 +1426,16 @@ export default function WindowRoot({
           gesture it answers can land on any part of the window including the
           bits `Frame` does not own. */}
       <ContextMenuHost />
+      {/* Beside the frame for the same reason and by the same route: it
+          portals to `document.body`, it covers whatever is on screen rather
+          than occupying a band, and `Frame` has no slot it belongs in. The
+          commands are the menu tree above, flattened — one source of truth for
+          the bar and the palette both. */}
+      <CommandPalette
+        open={paletteOpen}
+        commands={commandsFromMenus(menus)}
+        onClose={closePalette}
+      />
       <Frame
         kind={kind}
         panelCollapsed={panelCollapsed}
@@ -1398,41 +1463,7 @@ export default function WindowRoot({
               // dropped — see the note on the title element in `TitleBar.tsx`
               // for why an approximation would be worse than an absence.
               worktree={activeCluster?.worktree?.branch ?? null}
-              menus={defaultMenus({
-                app,
-                edit,
-                apps: appsHandlers,
-                file: {
-                  newWindow: onNewWindow,
-                  // Both disabled when this window has no cluster: a project
-                  // opens *into* one, and Home has to be shown *in* one. The
-                  // items say so rather than failing silently.
-                  openProject: activeClusterId === null ? undefined : onOpenProject,
-                  openRecent: activeClusterId === null ? undefined : onOpenRecent,
-                  closeWindow: onCloseWindow,
-                },
-                view: {
-                  commandPalette: () => setSearchExpanded(true),
-                  panelCollapsed,
-                  togglePanel: () => setPanelCollapsed((c) => !c),
-                  terminalShowing,
-                  toggleTerminal: onToggleTerminal,
-                  fullscreen,
-                  toggleFullscreen: onToggleFullscreen,
-                  zoomIn: () => onZoom(1),
-                  zoomOut: () => onZoom(-1),
-                  zoomInBlocked: zoomBlocked(zoom, 1),
-                  zoomOutBlocked: zoomBlocked(zoom, -1),
-                },
-                terminal: {
-                  onNew: onNewTerminal,
-                  onSplit,
-                  onKill: onKillTerminal,
-                  onClear,
-                  enabled: Boolean(focusedPaneId),
-                },
-                help: { checkForUpdates: updates.check },
-              })}
+              menus={menus}
             />
           ),
           // Present in *every* window now, where it used to be omitted from a

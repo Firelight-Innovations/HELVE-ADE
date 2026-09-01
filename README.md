@@ -135,10 +135,14 @@ terminal band swaps with everything else.
 <tr>
 <td width="50%" valign="middle">
 
-### Search
+### Search, and the command palette
 
 Press `Ctrl+K` to search the open project. The results, the file each result
 came from, and a preview all sit on one screen.
+
+Press `Ctrl+Shift+P` for the command palette. It holds every menu row the
+window has, fuzzy-matched as you type — including the ones that ask for a name
+or a command before they act.
 
 </td>
 <td width="50%">
@@ -219,10 +223,9 @@ OpenKaava is pre-alpha. The honest list is short.
   have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
   design is Windows-only. No machine here runs them yet.
-- **Some menu items do nothing.** The command palette, the Run menu, and four
-  of the five Help items already exist. The shape of the menu is settled. None
-  of those items acts yet. Help ▸ Check for Updates is the exception and is
-  wired — see `docs/dev/releases.md`.
+- **Some menu items do nothing.** The Run menu and Help ▸ Documentation are
+  drawn and do not act yet. The shape of the menu is settled. Help ▸ Check for
+  Updates is wired — see `docs/dev/releases.md`.
 
 ## Install
 
