@@ -36,6 +36,7 @@ import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 // the glyph and the record would otherwise be the same identifier.
 import { GitBranch as BranchGlyph } from "../../ui/Icon";
 import CommitGraph from "./CommitGraph";
+import { focusWithoutScrolling } from "./rowFocus";
 import SourceControlView from "./SourceControlView";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktreePanel.css";
@@ -674,6 +675,10 @@ function DivFileRow({
       type="button"
       className={classes.join(" ")}
       title={change.renamedFrom ? `${change.path} (was ${change.renamedFrom})` : change.path}
+      // `.worktreepanel__divlist` scrolls exactly as the source-control lists
+      // do, so an edge row here had the same unclickable defect — see
+      // `focusWithoutScrolling`.
+      onMouseDown={focusWithoutScrolling}
       onClick={onSelect}
     >
       <span className="worktreepanel__divkind" style={{ color: GIT_KIND_TOKEN[change.kind] }}>

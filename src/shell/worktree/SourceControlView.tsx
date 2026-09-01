@@ -23,6 +23,7 @@ import type { GitControl, GitDiff, GitFileChange, ReviewControl, ReviewSend } fr
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch } from "../../ui/Icon";
 import { describeLineCounts, formatLineCounts, sumLineCounts } from "./lineCounts";
+import { focusWithoutScrolling } from "./rowFocus";
 import { followAcrossIndex, isRowSelected, selectionFor, type Selection } from "./selection";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktree.css";
@@ -476,6 +477,9 @@ function ChangeRow({
         type="button"
         className="worktree__rowtext"
         title={spoken === null ? named : `${named} — ${spoken}`}
+        // Without this a row at either edge of the scrolling list cannot be
+        // clicked at all — see `focusWithoutScrolling`.
+        onMouseDown={focusWithoutScrolling}
         onClick={() => onSelect(selectionFor(change))}
       >
         <span className="worktree__kind" style={{ color: GIT_KIND_TOKEN[change.kind] }}>
