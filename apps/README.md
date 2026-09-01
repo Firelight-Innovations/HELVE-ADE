@@ -150,10 +150,16 @@ which is a fact about where the *frame* is placed rather than which app is in
 it. So an Explorer and a Viewer in one cluster resolve the same project, and a
 pair in the next cluster resolve theirs.
 
-**Design Mode** (`design/target`, `design/arm`, `design/disarm`, `design/capture`) —
-a page you are building, in a frame, with a click on any element in it becoming
-that element's markup, computed styles and a cropped screenshot on the
-clipboard, ready for an agent.
+**Design Mode** (`design/target`, `design/arm`, `design/disarm`, `design/capture`,
+`design/comment/*`) — a page you are building, in a frame, with a click on any
+element in it capturing that element's markup, computed styles and a cropped
+screenshot. You then say what you want changed, and the capture becomes a comment
+with an id.
+
+It is the only app whose output an agent reads over MCP rather than through the
+shell. `mcp::servers::design` serves the comments and takes the agent's turns on
+the same threads; the clipboard handoff is still there and is now the fallback.
+`docs/design-notes/design-comments.md` is the account of that half.
 
 It is the only app that mounts something this repository did not write, and the
 only one whose Rust half is a security boundary rather than a data source: what
