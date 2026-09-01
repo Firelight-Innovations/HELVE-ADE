@@ -329,6 +329,27 @@ impl PaneNode {
         removed
     }
 
+    /// [`remove_tab`](Self::remove_tab) without the tidy-up, **leaving the tree
+    /// in a state that breaks this module's first invariant** until the caller
+    /// restores it with [`prune`](Self::prune).
+    ///
+    /// For the one caller shape that cannot use the tidy version: a removal
+    /// followed immediately by an insertion *into the same pane*. `prune`
+    /// deletes an empty leaf, so taking a pane's last tab out and then naming
+    /// that pane in the next call is naming a pane that no longer exists — the
+    /// insertion fails and whatever was being placed lands nowhere at all. Both
+    /// halves of that sequence looked correct in isolation, which is why this
+    /// is a named method rather than a comment at each site.
+    ///
+    /// `place_surface` in `shell_state.rs` is the only sequence that reaches
+    /// this, directly and through `dismiss_takeover`, and it is what restores
+    /// the invariant — after the insertion, and only for the pane the insertion
+    /// did not refill. Its own comments say why that is narrower than a
+    /// `prune` on the way out.
+    pub fn remove_tab_unpruned(&mut self, instance_id: &str) -> bool {
+        self.remove_tab_inner(instance_id)
+    }
+
     fn remove_tab_inner(&mut self, instance_id: &str) -> bool {
         match self {
             PaneNode::Leaf {
