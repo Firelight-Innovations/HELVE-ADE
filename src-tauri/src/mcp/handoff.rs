@@ -9,8 +9,9 @@
 //! **The token is a bearer credential and this puts it in a file**, readable by
 //! anything running as this user. That is only a reasonable trade while the
 //! served surface stays read-only, and a server that mutates anything has to
-//! reopen the decision rather than inherit it. Nothing deletes the file either;
-//! `pid` is what tells a reader whether it is still live.
+//! reopen the decision rather than inherit it. `mcp::servers::design` is the
+//! first that has; `docs/design-notes/design-comments.md` is where. Nothing
+//! deletes the file either; `pid` is what tells a reader whether it is live.
 //!
 //! Both arguments in full: `docs/design-notes/agent-debugging.md`.
 
