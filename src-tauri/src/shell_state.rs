@@ -1088,21 +1088,28 @@ impl ShellState {
             let Some(w) = windows.iter_mut().find(|w| w.label == label) else {
                 return;
             };
-            let Some(cluster) = w.active_cluster_mut() else {
+
+            // The cluster that **owns the pane the caller named**, and only
+            // failing that the window's active one.
+            //
+            // It used to be the active cluster unconditionally, which was fine
+            // for as long as every caller's pane came from the screen in front
+            // of them. `fill_preset_gaps` does not: it names panes belonging to
+            // the cluster a project just opened into, and `apply_preset_to_cluster`
+            // says in its own doc why that is not necessarily the active one by
+            // the time the folder pick has resolved. Reaching for the active
+            // cluster there addressed a tree that has no such pane — which was
+            // survivable while an unknown pane refused the open outright, and is
+            // not now that `place_surface` falls back to a first pane. Forgiving
+            // a stale id *within* a cluster is right; dropping a surface into a
+            // cluster the caller was not talking about is not.
+            let owner = pane_id.and_then(|p| w.clusters.iter().position(|c| c.tree.holds_pane(p)));
+            let Some(cluster) = (match owner {
+                Some(i) => w.clusters.get_mut(i),
+                None => w.active_cluster_mut(),
+            }) else {
                 return;
             };
-
-            let target = pane_id
-                .map(str::to_string)
-                .unwrap_or_else(|| cluster.tree.first_pane_id().to_string());
-
-            // A takeover surface does not get to evict another one — it covers
-            // it, and uncovering puts the one underneath back. Every other open
-            // evicts: see `dismiss_takeover`'s doc comment for why this runs
-            // *before* `open_into` rather than after.
-            if !is_takeover_app(app_id) {
-                dismiss_takeover(&mut cluster.tree, &target, instances);
-            }
 
             let split = match (dir, &split_ids) {
                 (Some(dir), Some((split_id, new_pane_id))) => {
@@ -1111,7 +1118,18 @@ impl ShellState {
                 _ => None,
             };
 
-            if !cluster.tree.open_into(&target, &instance_id, None, split) {
+            // A takeover surface does not get to evict another one — it covers
+            // it, and uncovering puts the one underneath back. Every other open
+            // evicts; `place_surface` owns the rest of the sequence.
+            if !place_surface(
+                &mut cluster.tree,
+                instances,
+                &instance_id,
+                pane_id,
+                None,
+                split,
+                !is_takeover_app(app_id),
+            ) {
                 return;
             }
 
@@ -1198,10 +1216,31 @@ impl ShellState {
                 windows, instances, ..
             } = s;
 
-            // Removed from wherever it was before it is inserted anywhere, so
-            // a move within one pane cannot leave two copies behind. `layout`
-            // makes the same guarantee for the same-pane case; doing it here
-            // as well is what makes the cross-pane case safe.
+            // Look before leaping, for the reason `split_with_instance`'s doc
+            // comment sets out at length: the sweep below takes the tab out of
+            // wherever it was, and running that ahead of a target that turns
+            // out not to exist is how a drop *deletes* what was dragged.
+            //
+            // It also holds `place_surface`'s first-pane fallback off this one
+            // gesture, deliberately. An open must produce a surface somewhere,
+            // so falling back is right for it; a drop onto a pane that has gone
+            // should leave the tab exactly where it was, because that is what a
+            // cancelled drag looks like and the user is watching.
+            let known = windows
+                .iter()
+                .flat_map(|w| w.clusters.iter())
+                .any(|c| c.id == to_cluster && c.tree.holds_pane(to_pane));
+            if !known {
+                return;
+            }
+
+            // Every *other* cluster loses the tab before anything gains it, so a
+            // drag across clusters cannot leave two copies behind. The target
+            // cluster is deliberately not swept here: `place_surface` removes
+            // the tab from that tree itself, without pruning, because the pane
+            // being dropped into may be the pane the tab was the only occupant
+            // of. Sweeping it here with the pruning `remove_tab` would delete
+            // that pane and the drop would land nowhere.
             for w in windows.iter_mut() {
                 for c in w.clusters.iter_mut() {
                     if c.id != to_cluster {
@@ -1214,10 +1253,18 @@ impl ShellState {
                 if let Some(c) = w.cluster_mut(to_cluster) {
                     // Dragging Home itself must not evict Home; every other
                     // tab landing in its pane does — see `dismiss_takeover`.
-                    if !is_takeover(instances, instance_id) {
-                        dismiss_takeover(&mut c.tree, to_pane, instances);
-                    }
-                    moved = c.tree.insert_tab(to_pane, instance_id, index);
+                    // Read before the call rather than in the argument list,
+                    // which would want `instances` shared and mutable at once.
+                    let evict = !is_takeover(instances, instance_id);
+                    moved = place_surface(
+                        &mut c.tree,
+                        instances,
+                        instance_id,
+                        Some(to_pane),
+                        index,
+                        None,
+                        evict,
+                    );
                     if moved {
                         w.active_cluster_id = Some(to_cluster.to_string());
                     }
@@ -1535,14 +1582,24 @@ impl ShellState {
             };
             for w in windows.iter_mut() {
                 if let Some(c) = w.cluster_mut(cluster_id) {
-                    // A terminal is never Home, so this always applies — see
+                    // A terminal is never Home, so the eviction always applies — see
                     // `dismiss_takeover`.
-                    dismiss_takeover(&mut c.tree, pane_id, instances);
-                    // A `pane_id` that no longer names a pane leaves the session in the band
-                    // instead of nowhere. That is a real shell with an entry you can find, which
-                    // is the failure worth having — the alternative is a live process with nothing
-                    // on screen for it.
-                    c.tree.open_into(pane_id, id, index, split);
+                    //
+                    // A `pane_id` that no longer names a pane lands the session in the
+                    // cluster's first pane rather than in the band. The band was the old
+                    // answer and it was the wrong one: a preset's terminal slot names a pane
+                    // the preset itself just planned, so a miss there is not a stale drop to
+                    // be forgiving about — it is this session ending up somewhere nobody
+                    // arranged. `place_surface` is what makes a miss rare enough to say that.
+                    place_surface(
+                        &mut c.tree,
+                        instances,
+                        id,
+                        Some(pane_id),
+                        index,
+                        split,
+                        true,
+                    );
                     return;
                 }
             }
@@ -1785,14 +1842,13 @@ fn is_takeover(instances: &[SurfaceInstance], id: &str) -> bool {
 /// user, the instant that happens, rather than leaving a live instance nobody can reach and nobody
 /// asked to keep.
 ///
-/// Called from every path that can put something new into a pane:
-/// `open_instance` and `add_terminal_in_pane`, both *before* they call
-/// `PaneNode::open_into`, and `move_instance`, before `insert_tab`. Running
-/// ahead of the insertion rather than cleaning up after it is what makes a
-/// pane holding only Home read as empty to `open_into`'s own "should this
-/// split?" check — the surface opened over it takes the pane outright, rather
-/// than gaining Home as a permanent neighbour in a sibling pane because Home
-/// was still there to make `pane_is_empty` say no.
+/// Reached from every path that can put something new into a pane, through
+/// [`place_surface`] — which runs this *before* the insertion rather than
+/// cleaning up after it. That order is what makes a pane holding only Home read
+/// as empty to `open_into`'s own "should this split?" check: the surface opened
+/// over it takes the pane outright, rather than gaining Home as a permanent
+/// neighbour in a sibling pane because Home was still there to make
+/// `pane_is_empty` say no.
 fn dismiss_takeover(
     tree: &mut PaneNode,
     pane_id: &str,
@@ -1803,9 +1859,69 @@ fn dismiss_takeover(
         .iter()
         .find(|id| is_takeover(instances, id.as_str()))?
         .clone();
-    tree.remove_tab(&home_id);
+    // Unpruned, and the whole mechanism depends on it. Emptying a pane and then
+    // pruning deletes that pane, so the caller's very next call — which names it
+    // — would address nothing and the arriving surface would land nowhere. That
+    // was survivable only for a cluster of one pane, where `prune` exempts the
+    // root; in every split cluster it silently swallowed the open.
+    tree.remove_tab_unpruned(&home_id);
     instances.retain(|i| i.id != home_id);
     Some(home_id)
+}
+
+/// Put a surface into a pane of one cluster: pick the pane, take the surface out
+/// of wherever it already is, evict a takeover surface sitting in the way, place.
+///
+/// **The one door into a pane.** One function rather than three, because the
+/// three that came before it — `open_instance`, `add_terminal_in_pane`,
+/// `move_instance` — each got a different piece of this wrong, and every one of
+/// those defects was invisible in a cluster of a single pane. What each step is
+/// for is at the step.
+///
+/// Returns whether the surface is now in the tree. `false` means the cluster had
+/// no pane to put it in at all, which is the only remaining way this can fail.
+fn place_surface(
+    tree: &mut PaneNode,
+    instances: &mut Vec<SurfaceInstance>,
+    instance_id: &str,
+    pane_id: Option<&str>,
+    index: Option<usize>,
+    split: Option<(SplitDir, &str, &str)>,
+    evict_takeover: bool,
+) -> bool {
+    // A `pane_id` this tree does not hold falls back to the first pane — the
+    // forgiveness `active_pane` documents, and `open_instance` already showed a
+    // `None`. A stale id is ordinary rather than exceptional: the frontend's idea
+    // of the focused pane is a render behind the tree, and the pane a takeover
+    // surface lives in stops existing the moment it is closed. `move_instance`
+    // holds itself off this, at its own `holds_pane` guard.
+    let target = pane_id
+        .filter(|id| tree.pane_of_id(id))
+        .unwrap_or_else(|| tree.first_pane_id())
+        .to_string();
+
+    // A no-op for a freshly minted surface, and the whole of the move for a
+    // dragged one. `insert_tab` used to be the only removal there was, and it
+    // only ever looked in the pane it was inserting into — so a tab dragged
+    // between two panes of one cluster was copied rather than moved. Unpruned,
+    // because the pane a tab is dropped back into may be the pane it was the
+    // only occupant of, and pruning here would delete the pane the drop names.
+    let moved = tree.remove_tab_unpruned(instance_id);
+
+    if evict_takeover {
+        dismiss_takeover(tree, &target, instances);
+    }
+
+    let placed = tree.open_into(&target, instance_id, index, split);
+    // The pane a dragged tab *left* is the only one this can have emptied and
+    // not refilled, so it is the only reason to prune. Pruning unconditionally
+    // would be wrong: between a preset being applied and its gaps being filled
+    // the tree deliberately holds an empty leaf per gap (`presets::plan`), and
+    // one prune after the first fill deletes the panes the rest were to land in.
+    if moved {
+        tree.prune();
+    }
+    placed
 }
 
 /// Close Home in every pane it now shares with something else.
@@ -1832,6 +1948,14 @@ fn dismiss_crowded_takeover(tree: &mut PaneNode, instances: &mut Vec<SurfaceInst
             dismiss_takeover(tree, &pane_id, instances);
         }
     }
+    // No `prune` to finish with, and that is a decision rather than an
+    // omission. `dismiss_takeover` no longer prunes for itself, so this is
+    // where one would go — but nothing here can empty a pane (only a *crowded*
+    // one is touched), and the tree this runs against deliberately holds empty
+    // leaves: `presets::plan` leaves one per gap for `fill_preset_gaps` to
+    // land in, and pruning would delete every pane the preset had just
+    // reserved. Not pruning is also what keeps the ids collected above valid
+    // for the whole loop.
 }
 
 /// Fold a preset into one cluster's tree: match existing surfaces to slots,
@@ -3232,6 +3356,170 @@ mod tests {
         assert_eq!(tree.tabs_in("p1"), Some(&[][..]));
     }
 
+    // --- `place_surface` ----------------------------------------------------
+    //
+    // Every property an arrival into a pane has, exercised against the one
+    // function that now provides them all. Three of these are defects that
+    // shipped: opening an app over a Home alone in a split cluster placed
+    // nothing at all, dragging a tab between two panes of one cluster drew it
+    // in both, and a pane id a render out of date refused the open outright.
+    // Every one of them was invisible in a cluster of a single pane, which is
+    // the shape the tests that came before these all used.
+
+    /// The `#45` case, and the one the single-pane test above cannot reach.
+    ///
+    /// Opening an app while Home covers a **split** cluster: Home is alone in
+    /// its pane, so evicting it empties that pane, and pruning there deleted it
+    /// — leaving `open_into` naming a pane that no longer existed. The open
+    /// returned false, `open_instance` handed the command an `UnknownTool`
+    /// error, and the app the user asked for simply never appeared.
+    #[test]
+    fn opening_over_a_takeover_alone_in_a_split_cluster_takes_its_pane() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "files-1", None);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "home-1", false);
+        let mut instances = vec![app_instance("files-1", "files"), home_instance("home-1")];
+
+        let placed = place_surface(
+            &mut tree,
+            &mut instances,
+            "design-1",
+            Some("p2"),
+            None,
+            Some((SplitDir::Row, "s2", "p3")),
+            true,
+        );
+
+        assert!(placed, "the surface has to land somewhere");
+        assert_eq!(
+            tree.tabs_in("p2"),
+            Some(&["design-1".to_string()][..]),
+            "it takes the pane the takeover surface was in, rather than splitting it"
+        );
+        assert!(
+            !instances.iter().any(|i| i.id == "home-1"),
+            "and the takeover surface is closed, not merely hidden"
+        );
+    }
+
+    /// A tab dragged from one pane to another **inside one cluster**.
+    ///
+    /// `move_instance` swept every cluster but the target one, and `insert_tab`
+    /// only ever removed within the pane it was inserting into — so the tab was
+    /// copied rather than moved. Two panes then named one instance, which is
+    /// one surface drawn twice and two tabs that disagree about where it is.
+    #[test]
+    fn moving_a_tab_between_two_panes_of_one_cluster_moves_it() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "files-1", None);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "viewer-1", false);
+        let mut instances = vec![
+            app_instance("files-1", "files"),
+            app_instance("viewer-1", "viewer"),
+        ];
+
+        assert!(place_surface(
+            &mut tree,
+            &mut instances,
+            "files-1",
+            Some("p2"),
+            None,
+            None,
+            true,
+        ));
+
+        assert_eq!(
+            tree.tabs(),
+            vec!["viewer-1", "files-1"],
+            "one copy, in the pane it was dropped into"
+        );
+        assert_eq!(
+            tree.tabs_in("p1"),
+            None,
+            "the pane it emptied collapsed with it — the one case `place_surface` prunes for"
+        );
+        assert_eq!(tree.pane_count(), 1);
+    }
+
+    /// Dropping a tab back into the pane it was the only occupant of.
+    ///
+    /// The case that makes the removal in `place_surface` have to be unpruned:
+    /// taking the tab out empties the pane, and a prune there would delete the
+    /// very pane the drop names.
+    #[test]
+    fn dropping_a_pane_s_only_tab_back_into_it_keeps_the_pane() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "files-1", None);
+        tree.split_pane("p1", SplitDir::Row, "s1", "p2", "viewer-1", false);
+        let mut instances = vec![
+            app_instance("files-1", "files"),
+            app_instance("viewer-1", "viewer"),
+        ];
+
+        assert!(place_surface(
+            &mut tree,
+            &mut instances,
+            "viewer-1",
+            Some("p2"),
+            Some(0),
+            None,
+            true,
+        ));
+
+        assert_eq!(tree.tabs_in("p2"), Some(&["viewer-1".to_string()][..]));
+        assert_eq!(tree.pane_count(), 2, "nothing collapsed under it");
+    }
+
+    /// A pane id from a layout that has since changed lands in the first pane
+    /// rather than refusing the open — the same forgiveness `active_pane`
+    /// documents, and the thing that keeps the close-then-open pair the shell
+    /// fires when it uncovers Home from racing itself into a silent failure.
+    #[test]
+    fn placing_into_a_pane_that_has_gone_falls_back_to_the_first_one() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "files-1", None);
+        let mut instances = vec![app_instance("files-1", "files")];
+
+        assert!(place_surface(
+            &mut tree,
+            &mut instances,
+            "design-1",
+            Some("pane-99"),
+            None,
+            None,
+            true,
+        ));
+
+        assert!(tree.tabs().contains(&"design-1"));
+    }
+
+    /// A takeover surface arriving does not evict the one already there, and
+    /// the caller says so rather than this deciding — `open_instance` passes
+    /// `false` for Home and Tutorials, every other path passes `true`.
+    #[test]
+    fn placing_without_eviction_leaves_the_takeover_surface_alone() {
+        let mut tree = PaneNode::leaf("p1");
+        tree.insert_tab("p1", "home-1", None);
+        let mut instances = vec![home_instance("home-1")];
+
+        assert!(place_surface(
+            &mut tree,
+            &mut instances,
+            "tutorial-1",
+            Some("p1"),
+            None,
+            None,
+            false,
+        ));
+
+        assert_eq!(
+            tree.tabs_in("p1"),
+            Some(&["home-1".to_string(), "tutorial-1".to_string()][..]),
+            "the tutorial covers Home; closing it has to put Home back"
+        );
+        assert!(instances.iter().any(|i| i.id == "home-1"));
+    }
+
     #[test]
     fn dismiss_takeover_leaves_the_panes_other_tabs_and_active_tab_alone() {
         let mut tree = PaneNode::leaf("p1");
@@ -3393,18 +3681,19 @@ mod tests {
         );
 
         // Filling the app gaps (Files, the viewer) lands in panes Home was
-        // never in, so they run `dismiss_takeover` too but it finds nothing to do.
+        // never in, so they evict too but find nothing to evict.
         for gap in &gaps {
             if let presets::PresetSlot::App { app_id } = &gap.slot {
-                dismiss_takeover(
-                    &mut placement.clusters[0].tree,
-                    &gap.pane_id,
-                    &mut instances,
-                );
                 let instance_id = format!("{app_id}-1");
-                placement.clusters[0]
-                    .tree
-                    .open_into(&gap.pane_id, &instance_id, None, None);
+                assert!(place_surface(
+                    &mut placement.clusters[0].tree,
+                    &mut instances,
+                    &instance_id,
+                    Some(&gap.pane_id),
+                    None,
+                    None,
+                    true,
+                ));
             }
         }
         assert!(
@@ -3413,20 +3702,21 @@ mod tests {
         );
 
         // The terminal gap is the pane the leftover sweep actually put Home
-        // in — `add_terminal_in_pane`'s own `dismiss_takeover` call, run here
+        // in — `add_terminal_in_pane`'s own `place_surface` call, run here
         // directly since spawning a real pty needs an `AppHandle`.
         let terminal_gap = gaps
             .iter()
             .find(|g| g.slot == presets::PresetSlot::Terminal)
             .expect("the preset asks for a terminal");
-        dismiss_takeover(
+        assert!(place_surface(
             &mut placement.clusters[0].tree,
-            &terminal_gap.pane_id,
             &mut instances,
-        );
-        placement.clusters[0]
-            .tree
-            .open_into(&terminal_gap.pane_id, "term-1", None, None);
+            "term-1",
+            Some(&terminal_gap.pane_id),
+            None,
+            None,
+            true,
+        ));
 
         assert!(
             !instances.iter().any(|i| i.id == "home-1"),
@@ -3435,6 +3725,16 @@ mod tests {
         assert!(
             !placement.clusters[0].tree.tabs().contains(&"home-1"),
             "and not just closed as an instance — no pane still names it"
+        );
+        // The assertion this test was missing, and the reason `#45` survived it:
+        // it proved Home had gone without ever proving the terminal had
+        // arrived. It had not — evicting Home pruned the pane away underneath
+        // the very call that was about to fill it, so a project opened with a
+        // terminal slot in its preset and no terminal in its layout.
+        assert_eq!(
+            placement.clusters[0].tree.tabs_in(&terminal_gap.pane_id),
+            Some(&["term-1".to_string()][..]),
+            "the terminal is in the pane the preset asked for, not banished to the band"
         );
     }
 }

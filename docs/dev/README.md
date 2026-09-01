@@ -36,6 +36,9 @@ who has never seen the repo.
   overrun a module's comment budget: why a mechanism is shaped the way it
   is, and what was considered and rejected. One page per area, e.g.
   `shell-state.md`, `backend-project.md`, `files-app.md`.
+- **[Windowing: what was wrong](windowing-investigation.md)** — the pane-tree
+  defects behind issue #45, why every existing test passed over them, and the
+  three hypotheses that were looked at and deliberately left alone.
 - **[Settings](../settings.md)** — what a setting costs to add, and the rule
   that a row writing a value nothing reads is worse than no row at all.
 - **[The Files app's methods](../files-app-methods.md)** — the RPC surface a
