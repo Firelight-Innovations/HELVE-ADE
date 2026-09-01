@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import type {
   AppInfo,
   Cluster,
+  GitBranch,
   GitChangeKind,
   GitCommit,
   GitDiff,
@@ -375,6 +376,12 @@ export interface WorktreeControl {
    *  on `GitControl` because it spans every worktree of the repository — see
    *  `docs/design-notes/shell-core.md`. */
   graph(clusterId: string, limit: number): Promise<GitCommit[]>;
+  /** Every local branch, newest commit first. Here rather than on `GitControl`
+   *  for `graph`'s reason: a branch is a fact about the repository. */
+  branches(clusterId: string): Promise<GitBranch[]>;
+  /** Move this cluster's checkout onto a branch, or any commit when `detach`.
+   *  Nothing is pre-checked, so a refusal arrives in git's own words. */
+  checkout(clusterId: string, target: string, detach: boolean): Promise<void>;
   /** Everything this cluster's worktree has changed since it forked. `null` for a
    *  cluster working in its project folder: there is no fork point to measure
    *  from, and the panel draws its ordinary source-control view instead. */
@@ -650,6 +657,7 @@ export interface GitHunk {
  *  [`clusterRoot`] for which of a cluster's two possible roots wins. */
 export type {
   Cluster,
+  GitBranch,
   GitCommit,
   GitDiff,
   GitDivergence,

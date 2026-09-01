@@ -68,6 +68,167 @@
   overflow-y: auto;
 }
 
+/* --- the checkout bar -----------------------------------------------------
+   The strip above the graph: the branch button, the selected commit's action,
+   and the menu that drops out of the first. `position: relative` because that
+   menu is positioned against this rather than portalled — it is a short list
+   inside a panel that already clips, and a portal would have to reimplement
+   the flip-at-the-window-edge arithmetic `MenuItemList` carries, for a surface
+   that never reaches an edge. */
+
+.worktreepanel__head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.worktreepanel__branchbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  padding: 4px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worktreepanel__branchbtn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.worktreepanel__branchbtn:disabled {
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+.worktreepanel__branchname {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.worktreepanel__branchbtn:disabled .worktreepanel__branchname {
+  color: var(--text-dim-3);
+}
+
+.worktreepanel__chevron {
+  font-size: 9px;
+  color: var(--text-dim-3);
+}
+
+/* Pushed right, and accent-outlined rather than filled: it appears and
+   disappears as the graph's selection moves, and a filled button arriving in
+   an otherwise quiet strip reads as an alert. */
+.worktreepanel__detachbtn {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 9px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font:
+    500 10.5px/1 "IBM Plex Sans",
+    sans-serif;
+  cursor: pointer;
+}
+
+.worktreepanel__detachbtn:disabled {
+  border-color: var(--line-2);
+  color: var(--text-dim-3);
+  cursor: default;
+}
+
+/* --- the branch menu ------------------------------------------------------
+   Capped and scrolling: a repository with sixty branches must not drop a
+   surface taller than the panel it opens inside. */
+
+.worktreepanel__branchmenu {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 10px;
+  z-index: 3;
+  min-width: 200px;
+  max-width: calc(100% - 20px);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 32%);
+}
+
+.worktreepanel__branchopt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.worktreepanel__branchopt:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.worktreepanel__branchopt:disabled {
+  color: var(--text-dim-2);
+  cursor: default;
+}
+
+.worktreepanel__branchopt--current {
+  color: var(--accent);
+}
+
+.worktreepanel__branchopt-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.worktreepanel__branchopt-note {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-dim-3);
+}
+
+/* git's refusal, in the bar that asked for it. Positioned out of the flow so a
+   long message pushes nothing: this bar's height is what the graph below is
+   laid out against, and a two-line error must not resize the section. */
+.worktreepanel__error--head {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 10px;
+  left: 10px;
+  z-index: 2;
+  margin: 0;
+}
+
 /* --- the divider ---------------------------------------------------------
    A 1px line with a wider invisible grab band, drawn with `::before` rather
    than negative margins on the element itself — the divider is a flex child

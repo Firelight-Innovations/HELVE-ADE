@@ -19,6 +19,8 @@
  * for reasons the note on `git_cluster_status` in `git.rs` tells in full.
  */
 import {
+  gitBranches,
+  gitCheckout,
   gitClusterCommit,
   gitClusterDiff,
   gitClusterStage,
@@ -79,6 +81,14 @@ export const worktreeControl: WorktreeControl = {
 
   graph(clusterId, limit) {
     return gitGraph(clusterId, limit);
+  },
+
+  branches(clusterId) {
+    return gitBranches(clusterId);
+  },
+
+  checkout(clusterId, target, detach) {
+    return gitCheckout(clusterId, target, detach);
   },
 
   divergence(clusterId) {

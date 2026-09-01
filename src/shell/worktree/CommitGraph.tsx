@@ -18,6 +18,7 @@
 import { useMemo, useRef } from "react";
 import type { GitCommit, GitWorktree } from "../contract";
 import { GitBranch } from "../../ui/Icon";
+import { focusWithoutScrolling } from "./rowFocus";
 import "./commitGraph.css";
 
 // ---------------------------------------------------------------------------
@@ -378,6 +379,11 @@ function CommitRow({
       role="option"
       aria-selected={selected}
       tabIndex={onSelect ? tabIndex : undefined}
+      // These rows are focusable and `.worktreepanel__graph-scroll` scrolls, so
+      // an edge row had the same unclickable defect the change lists did — see
+      // `focusWithoutScrolling`. Mouse only: the arrow-key roving below focuses
+      // rows *without* this, and must keep scrolling them into view.
+      onMouseDown={focusWithoutScrolling}
       onClick={() => onSelect?.(commit.sha)}
     >
       {/* Fixed width in lane units, clipped rather than shrunk once a history
