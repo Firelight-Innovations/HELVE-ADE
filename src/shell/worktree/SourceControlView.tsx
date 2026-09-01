@@ -23,6 +23,7 @@ import type { GitControl, GitDiff, GitFileChange, ReviewControl, ReviewSend } fr
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch } from "../../ui/Icon";
 import { describeLineCounts, formatLineCounts, sumLineCounts } from "./lineCounts";
+import { followAcrossIndex, isRowSelected, selectionFor, type Selection } from "./selection";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktree.css";
 
@@ -69,12 +70,13 @@ export interface SourceControlViewProps {
   reviewSend: ReviewSend;
 }
 
-/** Which row is open in the diff pane. The pair, not just the path: a path can
- *  be in both lists at once, and those are two different diffs. */
-interface Selection {
-  path: string;
-  staged: boolean;
-}
+// `Selection` and the three rules over it live in `./selection.ts`. They were an
+// object literal here, a boolean expression in `Section` and an `if` in the
+// stage handler — three places that had to agree about what identifies a row,
+// and none of them reachable by a test. The runner has no DOM and cannot press
+// a button (STANDARDS.md §8.3), but it can hold the layer underneath one, and a
+// row identity disagreeing with itself is exactly how a click sets state and
+// the pane draws nothing.
 
 export default function SourceControlView({
   control,
@@ -144,9 +146,7 @@ export default function SourceControlView({
       try {
         if (staged) await control.unstage(clusterId, paths);
         else await control.stage(clusterId, paths);
-        if (selected !== null && selected.staged === staged && paths.includes(selected.path)) {
-          setSelected({ path: selected.path, staged: !staged });
-        }
+        setSelected(followAcrossIndex(selected, paths, staged));
         refresh();
       } catch (reason: unknown) {
         setFailure(gitMessage(reason));
@@ -416,7 +416,7 @@ function Section({
         <ChangeRow
           key={change.path}
           change={change}
-          selected={selected?.path === change.path && selected.staged === change.staged}
+          selected={isRowSelected(selected, change)}
           busy={busy}
           onToggle={onToggle}
           onSelect={onSelect}
@@ -476,7 +476,7 @@ function ChangeRow({
         type="button"
         className="worktree__rowtext"
         title={spoken === null ? named : `${named} — ${spoken}`}
-        onClick={() => onSelect({ path: change.path, staged: change.staged })}
+        onClick={() => onSelect(selectionFor(change))}
       >
         <span className="worktree__kind" style={{ color: GIT_KIND_TOKEN[change.kind] }}>
           {GIT_KIND_LETTER[change.kind]}
