@@ -122,8 +122,8 @@ export default function MenuItemList({
  * button, which neither fires `onSelect` nor closes the menu, because a click
  * that lands on a control with nothing to do should not read as having done
  * something. That is the only inert state left worth having: an item with no
- * `onSelect` at all now means the Run and Help menus, which are the two this
- * work deliberately did not touch.
+ * `onSelect` at all now means one row of the Help menu — Documentation, which
+ * has nothing published to point at yet.
  */
 function MenuRow({
   item,

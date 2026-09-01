@@ -50,6 +50,11 @@ function stubHandlers(view: Partial<MenuHandlers["view"]> = {}): MenuHandlers {
       zoomOut: noop,
       ...view,
     },
+    // A `last` command, so the Re-run row is built with its label filled in
+    // rather than in the state where it names nothing — that label is the one
+    // string in this menu assembled from user input, which is exactly where a
+    // glyph would arrive unnoticed.
+    run: { run: () => Promise.resolve(), interrupt: noop, last: "pnpm verify" },
     terminal: { onNew: noop, onSplit: noop, onKill: noop, onClear: noop, enabled: true },
     help: { checkForUpdates: noop },
   };

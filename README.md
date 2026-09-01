@@ -219,10 +219,11 @@ OpenKaava is pre-alpha. The honest list is short.
   have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
   design is Windows-only. No machine here runs them yet.
-- **Some menu items do nothing.** The command palette, the Run menu, and four
-  of the five Help items already exist. The shape of the menu is settled. None
-  of those items acts yet. Help ▸ Check for Updates is the exception and is
-  wired — see `docs/dev/releases.md`.
+- **Two menu items do nothing.** View ▸ Command Palette opens the search field
+  rather than a palette of commands, and Help ▸ Documentation has nothing
+  published to point at yet. Every other row in every menu acts, the Run menu
+  included — it runs a command in the cluster's terminal, stops it, and runs it
+  again.
 
 ## Install
 
