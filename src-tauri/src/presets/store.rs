@@ -18,11 +18,16 @@
 //! user expects to still be there next year.
 
 use super::LayoutPreset;
+use crate::userdata::store::Keep;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const FILE: &str = "presets.json";
+
+/// Precious. A preset library is built by hand, one preset at a time, and
+/// nothing in the app or on the machine can reconstruct one.
+const KEEP: Keep = Keep::Aside;
 
 /// What is on disk: the user's own presets, and nothing else.
 ///
@@ -46,67 +51,21 @@ pub struct Stored {
 /// cut, or written by a future build must not stop OpenKaava from starting, and must
 /// not empty the menu it is meant to fill.
 pub fn load(app: &AppHandle) -> Stored {
-    let Some(path) = file(app) else {
-        return Stored::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        // Not-found is the ordinary case — nobody has saved a preset yet — and
-        // says nothing worth printing. Anything else is a real read failure and
-        // is worth a line, because the visible symptom is a menu holding only
-        // the built-ins, which looks exactly like a first launch.
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                crate::kaava_log!("could not read {}: {e}", path.display());
-            }
-            return Stored::default();
-        }
-    };
-
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::kaava_log!(
-            "{} is not readable, falling back to the built-in presets: {e}",
-            path.display()
-        );
-        Stored::default()
-    })
+    file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default()
 }
 
-/// Write the store, **atomically**: temp file, then rename — atomic on NTFS and
-/// POSIX alike, so a crash mid-write leaves the previous file intact rather than
-/// half of two.
+/// Write the store, **atomically**, through `userdata::store`.
 ///
-/// See `project::store::save`, which this is a copy of down to the error
-/// handling — deliberately, because the failure it guards against is the same
-/// one and a second version of it that drifted would be a second way to lose a
-/// file.
+/// This was a copy of `project::store::save` down to the error handling,
+/// deliberately, "because a second version of it that drifted would be a second
+/// way to lose a file". The argument was right and the answer was not: eight
+/// copies could not drift apart, and could all be wrong together — which is
+/// what the missing format field turned out to be.
 pub fn save(app: &AppHandle, stored: &Stored) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(stored) {
-        Ok(json) => json,
-        Err(e) => {
-            crate::kaava_log!("could not serialize the preset store: {e}");
-            return;
-        }
-    };
-
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, stored, "the preset store");
     }
 }
 

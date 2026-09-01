@@ -323,7 +323,9 @@ mod tests {
             &parent.join(format!("{IDENTIFIER}.agent"))
         ));
         assert!(!derived_from_the_identifier(&parent.join("OpenKaava")));
-        assert!(!derived_from_the_identifier(&parent.join("com.example.other")));
+        assert!(!derived_from_the_identifier(
+            &parent.join("com.example.other")
+        ));
     }
 
     /// Adoption must never move a directory onto itself, which is what a

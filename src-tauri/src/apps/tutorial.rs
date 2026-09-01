@@ -291,6 +291,11 @@ fn set_done(app: &AppHandle, id: &str, done: bool) {
 
 const FILE: &str = "tutorials.json";
 
+/// Reconstructible. Losing this offers a tutorial somebody has already read,
+/// which is a small annoyance and not a loss — and the alternative, a directory
+/// of set-aside copies of a set of ids, is worth less than the annoyance.
+const KEEP: crate::userdata::store::Keep = crate::userdata::store::Keep::Nothing;
+
 /// What is on disk. A set of ids and nothing else — no timestamps, no
 /// position within a tutorial. Resuming mid-tutorial would need the frontend to
 /// have a notion of "where you are" that it does not have, and a stored scroll
@@ -306,58 +311,18 @@ pub struct Progress {
 /// `settings::store` follows, and for the same reason: nothing here is worth
 /// refusing to draw a tutorial over.
 fn load(app: &AppHandle) -> Progress {
-    let Some(path) = file(app) else {
-        return Progress::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                crate::kaava_log!("could not read {}: {e}", path.display());
-            }
-            return Progress::default();
-        }
-    };
-
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::kaava_log!(
-            "{} is not readable, starting the tutorials over: {e}",
-            path.display()
-        );
-        Progress::default()
-    })
+    file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default()
 }
 
+/// Temp-and-rename, as everything else that writes here does — through
+/// `userdata::store`, which is where that lives now. A half-written progress
+/// file is a smaller loss than a half-written project list, but the failure is
+/// identical and so is the fix.
 fn save(app: &AppHandle, progress: &Progress) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(progress) {
-        Ok(json) => json,
-        Err(e) => {
-            crate::kaava_log!("could not serialize the tutorial progress: {e}");
-            return;
-        }
-    };
-
-    // Temp-and-rename, as everything else that writes here does. A half-written
-    // progress file is a smaller loss than a half-written project list, but the
-    // failure is identical and so is the fix.
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, progress, "the tutorial progress");
     }
 }
 

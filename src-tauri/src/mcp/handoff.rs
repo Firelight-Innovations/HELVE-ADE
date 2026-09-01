@@ -26,29 +26,19 @@ const FILE: &str = "mcp-endpoint.json";
 /// will not take this file is one where OpenKaava should still open. It costs the
 /// out-of-process agent path and nothing else — terminals OpenKaava spawns still get
 /// the environment variables.
+/// Temp file then rename, like every other store here, through
+/// `userdata::store::write_raw` — the same mechanism without the format stamp
+/// the eight config stores carry. This file records a fact about *this launch*
+/// rather than a document with a format: it is rewritten every time, nothing
+/// reads it back into Rust, and versioning it would version a port number.
 pub fn publish(app: &AppHandle, port: u16, token: &str) {
     let Some(path) = file(app) else { return };
 
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    // Temp file then rename, like every other store here. A reader that opens
-    // this while it is being written gets the previous launch's file or the new
-    // one, never half of each.
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, document(std::process::id(), port, token)) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
-    }
+    crate::userdata::store::write_raw(
+        &path,
+        &document(std::process::id(), port, token),
+        "the MCP endpoint",
+    );
 }
 
 /// The file's contents.
