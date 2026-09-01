@@ -19,12 +19,17 @@
 //! later build that changes what a server ships as reaches everyone who never
 //! disagreed with the old answer.
 
+use crate::userdata::store::Keep;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const FILE: &str = "mcp.json";
+
+/// Reconstructible. This file is a handful of switch positions, every one of
+/// them visible on the settings screen and one click from being set again.
+const KEEP: Keep = Keep::Nothing;
 
 /// What is on disk: server id to the switch position the user chose.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -35,56 +40,15 @@ pub struct Stored {
 
 /// Read the store, or start empty. Never fails — see the module doc.
 pub fn load(app: &AppHandle) -> Stored {
-    let Some(path) = file(app) else {
-        return Stored::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                crate::kaava_log!("could not read {}: {e}", path.display());
-            }
-            return Stored::default();
-        }
-    };
-
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
-        crate::kaava_log!(
-            "{} is not readable, falling back to what each server ships as: {e}",
-            path.display()
-        );
-        Stored::default()
-    })
+    file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default()
 }
 
-/// Write the store, atomically.
+/// Write the store, atomically, through `userdata::store`.
 pub fn save(app: &AppHandle, stored: &Stored) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            crate::kaava_log!("could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(stored) {
-        Ok(json) => json,
-        Err(e) => {
-            crate::kaava_log!("could not serialize the MCP switches: {e}");
-            return;
-        }
-    };
-
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        crate::kaava_log!("could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        crate::kaava_log!("could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, stored, "the MCP switches");
     }
 }
 

@@ -6,13 +6,21 @@
  * what was captured is how somebody ends up unsure which element they picked.
  *
  * This component owns no sequencing — `useProbeFrame` does, and its header says
- * why the order matters. What is here is the address bar, the pick toggle, and
- * the panel that reads out a capture.
+ * why the order matters. What is here is the address bar, the pick toggle, the
+ * panel that reads out a capture, and the box that turns one into a comment.
+ *
+ * **Leaving a comment is the primary action; copying is the fallback.** The
+ * clipboard is kept because it still works and costs one button, and it is what
+ * a chat client wants. What it cannot do is reach an agent in a terminal, which
+ * is the whole reason `design_comments` and `mcp::servers::design` exist.
  */
 import { useEffect, useRef, useState } from "react";
 import { reportPainted } from "@openkaava/bridge";
+import CommentList from "./CommentList";
+import { CLOSED_BY_HAND } from "./comments";
 import { copyForAgent, type Handoff } from "./handoff";
 import { toLabel, toPrompt } from "./prompt";
+import { useComments } from "./useComments";
 import { useProbeFrame } from "./useProbeFrame";
 
 /** What the frame is allowed to do. Read the omissions rather than the list:
@@ -40,7 +48,9 @@ export default function App() {
     togglePicking,
     dismiss,
   } = useProbeFrame();
+  const book = useComments();
   const [address, setAddress] = useState("");
+  const [request, setRequest] = useState("");
   const [handoff, setHandoff] = useState<string | null>(null);
   const painted = useRef(false);
 
@@ -65,6 +75,19 @@ export default function App() {
   const copy = async () => {
     if (!captured) return;
     setHandoff(HANDOFF_WORDING[await copyForAgent(captured.element, captured.shot)]);
+  };
+
+  // Clears the capture on success, because a comment left is a capture spent:
+  // leaving a second one on the same element is a deliberate act that starts
+  // with picking it again, not with the box still being open.
+  const leave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!captured || request.trim() === "") return;
+    const left = await book.leave(captured.element, request, captured.shot?.dataUrl ?? null);
+    if (!left) return;
+    setRequest("");
+    setHandoff(null);
+    dismiss();
   };
 
   return (
@@ -114,8 +137,9 @@ export default function App() {
             <div className="design__empty">
               <p>Open a page you are working on — your dev server, usually.</p>
               <p className="design__hint">
-                Then pick an element in it, and its markup, its computed styles and a picture of it
-                go to an agent in one paste.
+                Then pick an element and say what you want changed. Its markup, its computed styles
+                and a picture of it are kept with your comment, and an agent in any terminal reads
+                the lot over MCP.
               </p>
             </div>
           )}
@@ -123,7 +147,7 @@ export default function App() {
 
         <aside className="design__panel">
           {captured ? (
-            <>
+            <section className="design__capture">
               <header className="design__panelhead">
                 <h2 className="design__panelname">{toLabel(captured.element)}</h2>
                 <button className="design__plain" type="button" onClick={dismiss}>
@@ -137,17 +161,35 @@ export default function App() {
                 <p className="design__shotmiss">{captured.shotProblem ?? "Taking the picture…"}</p>
               )}
 
-              <div className="design__actions">
-                <button className="design__copy" type="button" onClick={() => void copy()}>
-                  Copy for agent
-                </button>
-                {handoff ? <span className="design__said">{handoff}</span> : null}
-              </div>
+              <form className="design__compose" onSubmit={(event) => void leave(event)}>
+                <textarea
+                  className="design__request"
+                  value={request}
+                  rows={3}
+                  placeholder="What should change about this?"
+                  aria-label="What should change about the element you picked"
+                  onChange={(event) => setRequest(event.target.value)}
+                />
+                <div className="design__actions">
+                  <button className="design__copy" type="submit" disabled={request.trim() === ""}>
+                    Leave comment
+                  </button>
+                  <button className="design__plain" type="button" onClick={() => void copy()}>
+                    Copy instead
+                  </button>
+                  {handoff ? <span className="design__said">{handoff}</span> : null}
+                </div>
+              </form>
 
-              <pre className="design__prompt">
-                {toPrompt(captured.element, { withScreenshot: captured.shot !== null })}
-              </pre>
-            </>
+              {/* Collapsed, because this is now the fallback path. It was the
+                  whole panel when the only way out of this app was a paste. */}
+              <details className="design__details">
+                <summary>What an agent is given</summary>
+                <pre className="design__prompt">
+                  {toPrompt(captured.element, { withScreenshot: captured.shot !== null })}
+                </pre>
+              </details>
+            </section>
           ) : (
             <p className="design__idle">
               {picking
@@ -155,6 +197,19 @@ export default function App() {
                 : "Nothing picked yet. Open a page, then use Pick element."}
             </p>
           )}
+
+          {/* A failed *write* only. `useComments` swallows a failed read on
+              purpose — one repeats in three seconds, and a notice that appears
+              and disappears on its own teaches nobody anything. */}
+          {book.problem ? <p className="design__problem">{book.problem}</p> : null}
+
+          <CommentList
+            comments={book.comments}
+            showing={target?.url ?? null}
+            onReply={(id, text) => void book.reply(id, text)}
+            onResolve={(id) => void book.resolve(id, CLOSED_BY_HAND)}
+            onForget={(id) => void book.forget(id)}
+          />
         </aside>
       </div>
     </div>

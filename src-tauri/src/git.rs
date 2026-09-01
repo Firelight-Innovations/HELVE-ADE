@@ -20,6 +20,7 @@
 use crate::error::{AppError, Result};
 use crate::shell_state::WorktreeRef;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Manager};
@@ -59,6 +60,19 @@ pub struct GitFileChange {
     /// arriving as an explicit `null`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub renamed_from: Option<String>,
+    /// How many lines this one change adds and removes, on its own side of the
+    /// index — `GitStatus`'s totals answer the same question for the whole
+    /// checkout at once and are not a sum of these (see the note on those
+    /// fields for why the two cannot be derived from each other).
+    ///
+    /// `None` on both, together, for a change that has no line count to give:
+    /// a binary file, an untracked file over [`UNTRACKED_LINE_COUNT_CAP`], or
+    /// a conflicted path. Deliberately not `0` — a row showing `+0 −0` claims
+    /// a file was staged unchanged, which is a different fact from "this is
+    /// not a thing lines can be counted in". Serialized as an explicit `null`
+    /// rather than skipped, because absence here is the value the panel draws.
+    pub insertions: Option<u32>,
+    pub deletions: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -109,21 +123,30 @@ pub struct GitDiff {
 /// explorer draws by simply not decorating anything.
 #[tauri::command]
 pub fn git_cluster_status(app: AppHandle, cluster_id: String) -> Result<Option<GitStatus>> {
-    let Some(cwd) = crate::project::cluster_path(&app, &cluster_id) else {
+    let Some(working) = crate::project::cluster_path(&app, &cluster_id) else {
         return Ok(None);
     };
 
-    if !is_repo(&cwd) {
+    // The **repository root**, for `cluster_checkout`'s reason: every path in a
+    // `GitStatus` is repo-relative, and `status_in` joins some of them against
+    // this directory to read a file. A project that is a subdirectory of a
+    // larger repository resolved those against the wrong base — silently, since
+    // an unreadable untracked file is counted as zero lines rather than as an
+    // error. `repo_root` also subsumes the `is_repo` check that used to stand
+    // here: it is `None` for exactly the directories that one rejected.
+    let Some(root) = repo_root(&working) else {
         return Ok(None);
-    }
+    };
 
-    status_in(&cwd).map(Some)
+    status_in(&root).map(Some)
 }
 
 /// The body both status commands share, once their id has become a directory.
+/// `cwd` is the repository root — see the note in `git_cluster_status`.
 fn status_in(cwd: &Path) -> Result<GitStatus> {
     let porcelain = run_git(cwd, "status", &["status", "--porcelain=v1", "-z"])?;
-    let (staged, unstaged) = parse_porcelain(&porcelain);
+    let (mut staged, mut unstaged) = parse_porcelain(&porcelain);
+    attach_line_counts(cwd, &mut staged, &mut unstaged);
 
     // A repository with no commits yet has no resolvable HEAD, and one with no
     // upstream has nothing to count against. Both are ordinary states of a
@@ -258,6 +281,139 @@ fn line_change_counts(cwd: &Path, unstaged: &[GitFileChange]) -> (u32, u32) {
     (insertions, deletions)
 }
 
+/// One `--numstat` record's two numbers, in the order git prints them: added,
+/// then removed. Either is `None` for a binary file, and git marks both when it
+/// marks one, so the pair travels together everywhere below.
+type LineCounts = (Option<u32>, Option<u32>);
+
+/// Fill in `insertions`/`deletions` on every row of a status, in place.
+///
+/// **Two more `git diff` runs, and neither is the one `line_change_counts` already does.** That
+/// looks like waste and is not. The totals on `GitStatus` are the net change from `HEAD` to the
+/// working tree, which is the right answer to "how much has this cluster changed" precisely because
+/// it refuses to count a staged-then-further-edited file twice — and that refusal is what makes it
+/// useless per row, since it cannot say how much of a file's change is in the index.
+///
+/// A row needs its own side: `--cached` compares `HEAD` to the index, bare `diff` compares the
+/// index to disk, and a file in both lists gets a different number in each. The totals are
+/// therefore *not* a sum of these, and both fields say so.
+///
+/// `--find-renames` on both, matching `parse_porcelain`: status already reports a rename as one row
+/// under the new path, and a numstat without it would name two paths no row has.
+///
+/// Best-effort throughout: a `git diff` that fails leaves every row's counts at `None`, which the
+/// panel draws as no count rather than as a failure.
+fn attach_line_counts(cwd: &Path, staged: &mut [GitFileChange], unstaged: &mut [GitFileChange]) {
+    let cached = numstat_by_path(
+        cwd,
+        &["diff", "--cached", "--find-renames", "--numstat", "-z"],
+    );
+    for change in staged.iter_mut() {
+        if let Some(&(added, removed)) = cached.get(&change.path) {
+            change.insertions = added;
+            change.deletions = removed;
+        }
+    }
+
+    let worktree = numstat_by_path(cwd, &["diff", "--find-renames", "--numstat", "-z"]);
+    for change in unstaged.iter_mut() {
+        if matches!(change.kind, GitChangeKind::Untracked) {
+            let path = cwd.join(&change.path);
+            // The cap and the binary check are inside `untracked_line_count`,
+            // which reports both as `0`. Re-deriving "was it counted at all"
+            // from a zero would misread a genuinely empty new file, so the two
+            // reasons to decline are asked here instead.
+            if countable_untracked(&path) {
+                change.insertions = Some(untracked_line_count(&path));
+                change.deletions = Some(0);
+            }
+            continue;
+        }
+        if let Some(&(added, removed)) = worktree.get(&change.path) {
+            change.insertions = added;
+            change.deletions = removed;
+        }
+    }
+}
+
+/// Whether `untracked_line_count` will give a real answer for this path, as
+/// opposed to the `0` it returns for every way it can decline. Kept beside it
+/// rather than folded into it because the totals in `line_change_counts` want
+/// the `0` and the per-row counts want the distinction.
+fn countable_untracked(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if meta.len() > UNTRACKED_LINE_COUNT_CAP {
+        return false;
+    }
+    match std::fs::read(path) {
+        Ok(bytes) => !looks_binary(&bytes),
+        Err(_) => false,
+    }
+}
+
+/// `git diff --numstat -z` for one comparison, as a map from repo-relative path
+/// to its two counts. Empty for a diff that fails, which is how a caller ends up
+/// leaving every row uncounted rather than reporting an error.
+fn numstat_by_path(cwd: &Path, args: &[&str]) -> HashMap<String, LineCounts> {
+    run_git(cwd, "diff", args)
+        .map(|out| parse_numstat_z(&out).into_iter().collect())
+        .unwrap_or_default()
+}
+
+/// `git diff --numstat -z` into one record per changed path, newest-git-first.
+///
+/// **`-z` rather than the plain form, because the plain form is ambiguous and this needs the
+/// path.** Without it a path containing a tab, a newline or a non-ASCII byte comes back quoted and
+/// C-escaped, and a rename is printed as the composite `src/{a.txt => b.txt}` — neither of which is
+/// a string that can be handed back to `git show`. `parse_numstat_line` above gets away with
+/// ignoring all of this because it only ever wanted the two numbers.
+///
+/// The `-z` grammar is two shapes sharing one prefix. An ordinary change is a single NUL-terminated
+/// field, `<added>\t<removed>\t<path>`. A rename ends its field at the second tab and follows it
+/// with two more fields, source then destination — so an empty third column is the marker that two
+/// more reads are owed, and the destination is the path the status list holds. A trailing NUL after
+/// the last record leaves one empty field, which is why an empty field is skipped rather than
+/// treated as a malformed record.
+///
+/// Either count is `None` for a binary file, which `--numstat` marks with a bare `-` where the
+/// number would be. Both are `None` together in that case, since git marks both.
+fn parse_numstat_z(out: &str) -> Vec<(String, LineCounts)> {
+    let mut records = Vec::new();
+    let mut fields = out.split('\0');
+
+    while let Some(field) = fields.next() {
+        if field.is_empty() {
+            continue;
+        }
+
+        let mut columns = field.splitn(3, '\t');
+        let (Some(added), Some(removed), Some(rest)) =
+            (columns.next(), columns.next(), columns.next())
+        else {
+            continue;
+        };
+
+        let path = if rest.is_empty() {
+            let _source = fields.next();
+            // An empty destination is the trailing field a final NUL leaves,
+            // not a path — a truncated rename record ends the walk rather than
+            // recording counts against `""`, which no row could ever match.
+            match fields.next() {
+                Some(destination) if !destination.is_empty() => destination.to_string(),
+                _ => break,
+            }
+        } else {
+            rest.to_string()
+        };
+
+        records.push((path, (added.parse().ok(), removed.parse().ok())));
+    }
+
+    records
+}
+
 /// One line of `git diff --numstat` — `<added>\t<removed>\t<path>` — into its
 /// two counts. `None` for a line that does not parse as one of these records at
 /// all (the format has no other kind of line, but a future git printing one
@@ -332,8 +488,22 @@ pub fn git_cluster_diff(
     let cwd = cluster_checkout(&app, &cluster_id, "diff")?;
 
     if staged {
+        // A staged rename is the one row in this list whose `HEAD` side is not
+        // under its own path: `parse_porcelain` names the row for the
+        // destination, which is exactly the path `HEAD` does not have. Asking
+        // for it and taking the miss as "no left-hand side" drew every renamed
+        // file as though its whole contents had just been written — a moved
+        // file with a one-line edit showed as a thousand added lines and no
+        // removed ones. The source is asked for only on that miss, so an
+        // ordinary modification still costs one `git show` and a genuinely new
+        // file still costs the miss it was always going to take.
+        let original = show(&cwd, &format!("HEAD:{path}")).or_else(|| {
+            let source = staged_rename_source(&cwd, &path)?;
+            show(&cwd, &format!("HEAD:{source}"))
+        });
+
         return Ok(GitDiff {
-            original: show(&cwd, &format!("HEAD:{path}")).unwrap_or_default(),
+            original: original.unwrap_or_default(),
             modified: show(&cwd, &format!(":{path}")).unwrap_or_default(),
         });
     }
@@ -351,6 +521,63 @@ pub fn git_cluster_diff(
         // empty right-hand side as far as the diff is concerned.
         modified: std::fs::read_to_string(cwd.join(&path)).unwrap_or_default(),
     })
+}
+
+/// Where a staged rename's destination came from, or `None` when `path` is not
+/// the destination of one.
+///
+/// `--diff-filter=R` so git does the selecting: everything else in the index is
+/// filtered out before the output is parsed, which keeps this from having to
+/// tell a rename from a copy or a modification by reading status letters.
+fn staged_rename_source(cwd: &Path, path: &str) -> Option<String> {
+    let out = run_git(
+        cwd,
+        "diff",
+        &[
+            "diff",
+            "--cached",
+            "--find-renames",
+            "--name-status",
+            "-z",
+            "--diff-filter=R",
+        ],
+    )
+    .ok()?;
+
+    parse_rename_pairs(&out)
+        .into_iter()
+        .find(|(_, destination)| destination == path)
+        .map(|(source, _)| source)
+}
+
+/// `git diff --name-status -z --diff-filter=R` into `(source, destination)` pairs.
+///
+/// Three NUL-terminated fields per record: the status letter with its similarity score (`R100`),
+/// then the two paths, source first. `-z` for [`parse_numstat_z`]'s reason — the plain form quotes
+/// and escapes any path that is not plain ASCII, and these strings are handed straight back to
+/// `git show`. A trailing NUL leaves one empty field, so an empty status field ends the walk rather
+/// than producing a record with two `None` paths.
+fn parse_rename_pairs(out: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    let mut fields = out.split('\0');
+
+    while let Some(status) = fields.next() {
+        if status.is_empty() {
+            continue;
+        }
+        // Neither path is ever legitimately empty, so an empty one is the
+        // trailing field a final NUL leaves after a record that was cut short.
+        // Recording it would hand `git show` a `HEAD:` with nothing after it.
+        let (Some(source), Some(destination)) = (fields.next(), fields.next()) else {
+            break;
+        };
+        if source.is_empty() || destination.is_empty() {
+            break;
+        }
+        pairs.push((source.to_string(), destination.to_string()));
+    }
+
+    pairs
 }
 
 #[tauri::command]
@@ -599,22 +826,14 @@ pub fn prune_worktrees(repo: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Whether `path` is inside a git working tree at all — the check every
-/// other function in this module assumes has already been done.
-///
-/// This is not `path.join(".git").is_dir()`. In a linked worktree `.git` is a
-/// *file* containing a `gitdir:` pointer to the real metadata under the main
-/// checkout's `.git/worktrees/<name>`, so a directory check would report a
-/// perfectly good worktree as not a repository. Asking git itself sidesteps
-/// the whole distinction.
-pub fn is_repo(path: &Path) -> bool {
-    run_git(path, "rev-parse", &["rev-parse", "--is-inside-work-tree"])
-        .map(|out| out.trim() == "true")
-        .unwrap_or(false)
-}
-
 /// The root of the working tree containing `path`, or `None` if it is not
 /// inside one.
+///
+/// This is also how the module answers "is this a repository at all", now that
+/// its last caller wanted the root anyway. An `is_repo` sat here doing that
+/// with `rev-parse --is-inside-work-tree`, and this returns `None` for exactly
+/// the directories that returned `false` for — so asking both was one `git`
+/// spawn spent proving what the next one was about to say.
 ///
 /// Run from inside a linked worktree, this is *that worktree's* root, not the
 /// main checkout's — the two only coincide when `path` is already inside the
@@ -1466,6 +1685,155 @@ fn parse_refs(raw: &str) -> Vec<String> {
         .collect()
 }
 
+// --- moving the checkout -------------------------------------------------------
+//
+// The two commands a person needs to leave the branch they are on: what the
+// branches are, and go to one. Both are about the *checkout* rather than the
+// index, which is why the frontend reaches them through `WorktreeControl` and
+// not through `GitControl` — see the split documented on those two interfaces.
+//
+// Nothing here creates a branch. `git_worktree_create` is the one command in
+// this module that does, and it does it by cutting a worktree; a second way to
+// arrive at a branch that does not also give it somewhere to live would be a
+// second answer to a question the shell has already settled.
+
+/// One local branch, for the picker in the source-control panel.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranch {
+    /// Short name — `feat/x`, not `refs/heads/feat/x`.
+    pub name: String,
+    /// The commit it points at, full length, so it can be matched against
+    /// `GitCommit.sha` without either side abbreviating first.
+    pub head: String,
+    /// Checked out by the worktree the asking cluster is working in.
+    pub current: bool,
+    /// The path of *another* worktree holding this branch, when one does.
+    ///
+    /// Present because git refuses to check a branch out twice, and a picker
+    /// that only found that out by trying would report the refusal as an error
+    /// after the click. Absent for the branch that is `current`: a branch is
+    /// not "held elsewhere" by the checkout doing the asking.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<String>,
+}
+
+/// Every local branch of this cluster's repository, most recently committed to first.
+///
+/// Ordered by `committerdate` rather than by name, because the answer to "which branch do I want"
+/// is nearly always one of the handful most recently touched, and an alphabetical list buries those
+/// among every branch ever created.
+///
+/// Local only, matching `git_graph` — the picker offers what can be checked out, and checking out a
+/// remote-tracking ref detaches HEAD rather than putting you on a branch.
+///
+/// An empty list rather than an error for a cluster with no project, a project that is not a
+/// repository, and a repository with no commits yet. The picker draws the same thing for all three.
+#[tauri::command]
+pub fn git_branches(app: AppHandle, cluster_id: String) -> Result<Vec<GitBranch>> {
+    let Some(working) = crate::project::cluster_path(&app, &cluster_id) else {
+        return Ok(Vec::new());
+    };
+    let Some(root) = repo_root(&working) else {
+        return Ok(Vec::new());
+    };
+
+    let format = format!("--format=%(refname:short){FIELD}%(objectname){FIELD}%(HEAD)");
+    let Ok(out) = run_git(
+        &root,
+        "for-each-ref",
+        &[
+            "for-each-ref",
+            "--sort=-committerdate",
+            &format,
+            "refs/heads",
+        ],
+    ) else {
+        return Ok(Vec::new());
+    };
+
+    // Which branch each *other* worktree holds. `worktrees` is pointed at the
+    // main checkout on purpose (see `main_repo_root`), so this covers every
+    // checkout of the repository and not only the one asking.
+    let held = worktrees(&root).unwrap_or_default();
+    let root_text = root.to_string_lossy().replace('\\', "/");
+
+    Ok(out
+        .lines()
+        .filter_map(parse_branch_line)
+        .map(|mut branch| {
+            branch.worktree = held
+                .iter()
+                .find(|w| w.branch.as_deref() == Some(&branch.name) && w.path != root_text)
+                .map(|w| w.path.clone());
+            branch
+        })
+        .collect())
+}
+
+/// One `for-each-ref` record into a branch, or `None` if it is not one.
+///
+/// `%(HEAD)` is git's own marker for the checked-out branch: `*` for it and a
+/// single space for every other. Compared trimmed, because the space is what
+/// distinguishes them and trimming leaves the empty string.
+fn parse_branch_line(line: &str) -> Option<GitBranch> {
+    let mut fields = line.split(FIELD);
+    let name = fields.next()?.to_string();
+    let head = fields.next()?.to_string();
+    let current = fields.next().unwrap_or_default().trim() == "*";
+
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(GitBranch {
+        name,
+        head,
+        current,
+        worktree: None,
+    })
+}
+
+/// Move this cluster's checkout onto `target` — a local branch, or any commit-ish when `detach`.
+///
+/// **Nothing here second-guesses git's refusals, and that is the whole safety model.** A checkout
+/// that would overwrite uncommitted work, a branch another worktree already holds, a target that
+/// does not resolve: git declines each with a message written for whoever typed it, and
+/// `AppError::Git` carries those words through unaltered. Pre-checking any of them here would mean
+/// maintaining a second, worse copy of git's rules and would still race the filesystem between the
+/// check and the command.
+///
+/// `--detach` is passed rather than inferred from the shape of `target`, because a forty-character
+/// hex string is a legal branch name and guessing wrong would silently detach a person who asked
+/// for a branch. The caller knows which of the two it is offering: a name out of `git_branches`, or
+/// a sha out of the commit graph.
+///
+/// Deliberately not `git switch`. `checkout` is the verb every version of git in circulation
+/// understands, and this module's contract with the user's own `git` is that it uses commands their
+/// installation already has.
+#[tauri::command]
+pub fn git_checkout(
+    app: AppHandle,
+    cluster_id: String,
+    target: String,
+    detach: bool,
+) -> Result<()> {
+    let cwd = cluster_checkout(&app, &cluster_id, "checkout")?;
+
+    let mut args = vec!["checkout"];
+    if detach {
+        args.push("--detach");
+    }
+    // A *trailing* `--`, which is the form that means "everything before this
+    // was a revision" — the leading form means the opposite, that everything
+    // after it is a pathspec, and `git checkout -- main` restores a file called
+    // `main` rather than switching to the branch. Without either, a repository
+    // holding both a `README` file and a `README` branch leaves git to guess.
+    args.extend([target.as_str(), "--"]);
+    run_git(&cwd, "checkout", &args)?;
+    Ok(())
+}
+
 // --- parsing -----------------------------------------------------------------
 
 /// `git rev-list --left-right --count HEAD...@{u}` prints two counts separated
@@ -1577,5 +1945,142 @@ fn change(
         kind,
         staged,
         renamed_from,
+        // Filled in afterwards by `attach_line_counts`, which needs a `git
+        // diff` this function has no directory to run. `None` is the honest
+        // value until then and the permanent one for anything that diff does
+        // not report.
+        insertions: None,
+        deletions: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shapes below are copied from real `git` output rather than written
+    /// by hand: every one was produced by running the command in the doc
+    /// comment against a scratch repository, with `\0` written out.
+    #[test]
+    fn numstat_z_reads_an_ordinary_change() {
+        let records = parse_numstat_z("12\t3\tsrc/a.rs\0");
+        assert_eq!(records, vec![("src/a.rs".to_string(), (Some(12), Some(3)))]);
+    }
+
+    /// The bug this guards: `--numstat -z` spends the third column on nothing
+    /// for a rename and follows the record with the two paths, source first.
+    /// Reading the empty column as the path attributed every renamed file's
+    /// counts to `""`, so no row in the panel ever matched one.
+    #[test]
+    fn numstat_z_reads_a_rename_under_its_destination() {
+        let records = parse_numstat_z("0\t0\t\0src/a.txt\0src/renamed.txt\0");
+        assert_eq!(
+            records,
+            vec![("src/renamed.txt".to_string(), (Some(0), Some(0)))]
+        );
+    }
+
+    /// A binary file is marked with a bare `-` in each count rather than being
+    /// left out, so the path is known and the numbers are not.
+    #[test]
+    fn numstat_z_reads_a_binary_file_as_no_counts() {
+        let records = parse_numstat_z("-\t-\tassets/logo.png\0");
+        assert_eq!(records, vec![("assets/logo.png".to_string(), (None, None))]);
+    }
+
+    #[test]
+    fn numstat_z_reads_a_mixed_stream() {
+        // Assembled from one literal per NUL-terminated field rather than
+        // written as a single string, so that a `\0` followed by a digit is
+        // unambiguously a separator and a digit.
+        let stream = [
+            "-\t-\tbin.dat\0",
+            "0\t0\t\0",
+            "src/a.txt\0",
+            "src/b.txt\0",
+            "9\t1\tsrc/c.rs\0",
+        ]
+        .concat();
+        let records = parse_numstat_z(&stream);
+        assert_eq!(
+            records,
+            vec![
+                ("bin.dat".to_string(), (None, None)),
+                ("src/b.txt".to_string(), (Some(0), Some(0))),
+                ("src/c.rs".to_string(), (Some(9), Some(1))),
+            ]
+        );
+    }
+
+    #[test]
+    fn numstat_z_of_an_empty_diff_is_empty() {
+        assert!(parse_numstat_z("").is_empty());
+    }
+
+    /// The trailing NUL after the last record leaves an empty field, and a
+    /// rename record reaches forward for two more. Reading that empty field as
+    /// the destination filed a change under `""`, which no row can match.
+    #[test]
+    fn numstat_z_drops_a_rename_missing_its_destination() {
+        let truncated = ["0\t0\t\0", "src/a.txt\0"].concat();
+        assert!(parse_numstat_z(&truncated).is_empty());
+    }
+
+    /// The regression behind the staged-rename diff: `parse_porcelain` names a
+    /// renamed row for its destination, which is the one path `HEAD` does not
+    /// have, so `git_cluster_diff` drew the whole file as added. Finding the
+    /// source is what gives that diff a left-hand side.
+    #[test]
+    fn rename_pairs_read_source_then_destination() {
+        let pairs = parse_rename_pairs("R100\0src/a.txt\0src/renamed.txt\0");
+        assert_eq!(
+            pairs,
+            vec![("src/a.txt".to_string(), "src/renamed.txt".to_string())]
+        );
+    }
+
+    #[test]
+    fn rename_pairs_read_several_records() {
+        let pairs = parse_rename_pairs("R100\0a\0b\0R087\0c/d\0c/e\0");
+        assert_eq!(
+            pairs,
+            vec![
+                ("a".to_string(), "b".to_string()),
+                ("c/d".to_string(), "c/e".to_string()),
+            ]
+        );
+    }
+
+    /// A truncated record is dropped rather than panicking or inventing a path,
+    /// matching every other parser in this module.
+    #[test]
+    fn rename_pairs_drop_a_record_missing_its_destination() {
+        assert!(parse_rename_pairs("R100\0src/a.txt\0").is_empty());
+    }
+
+    #[test]
+    fn branch_line_reads_the_checked_out_marker() {
+        let line = format!("main{FIELD}c3dc7dc{FIELD}*");
+        let branch = parse_branch_line(&line).expect("a well-formed record parses");
+        assert_eq!(branch.name, "main");
+        assert_eq!(branch.head, "c3dc7dc");
+        assert!(branch.current);
+        assert_eq!(branch.worktree, None);
+    }
+
+    /// `%(HEAD)` is a single space for a branch that is not checked out, which
+    /// is why the comparison trims rather than testing for emptiness.
+    #[test]
+    fn branch_line_reads_an_unchecked_out_branch() {
+        let line = format!("feat/x{FIELD}9f1e2d3{FIELD} ");
+        let branch = parse_branch_line(&line).expect("a well-formed record parses");
+        assert_eq!(branch.name, "feat/x");
+        assert!(!branch.current);
+    }
+
+    #[test]
+    fn branch_line_rejects_a_nameless_record() {
+        assert!(parse_branch_line("").is_none());
+        assert!(parse_branch_line(&format!("{FIELD}abc{FIELD}*")).is_none());
     }
 }

@@ -397,7 +397,12 @@ fn spawn_shell(
         .into_iter()
         .chain(shell_candidates());
 
-    for (name, mut cmd) in candidates {
+    for Candidate {
+        name,
+        program,
+        mut cmd,
+    } in runnable_only(candidates)
+    {
         cmd.cwd(cwd);
         // Programs decide what they may draw from `TERM`. Without it, most TUIs
         // fall back to a dumb-terminal path and render as a wall of plain text
@@ -419,7 +424,17 @@ fn spawn_shell(
             // case — for the automatic order's own entries, and doubly so for
             // whatever the user named, which this machine may never have had.
             // Only running out of candidates is an error.
-            Err(e) => last_err = format!("{name}: {e}"),
+            //
+            // **Logged as well as remembered**, which it was not. Only the last
+            // failure reached the caller, and only when every candidate had
+            // failed — so a launch that fell through to the third shell left
+            // nothing behind saying the first two had been tried, and `pnpm
+            // probe recent_errors` could not answer what happened during a
+            // launch. That silence is why issue #36 was unanswerable.
+            Err(e) => {
+                crate::kaava_log!("shell candidate {program} did not start: {e}");
+                last_err = format!("{name}: {e}");
+            }
         }
     }
 
@@ -506,12 +521,56 @@ fn pump(
 /// The name a tab shows: the executable's stem, without its extension or the
 /// directory it was found in. `C:\Program Files\Git\bin\bash.exe` becomes
 /// `bash`.
-fn candidate(program: &str) -> (String, CommandBuilder) {
+fn candidate(program: &str) -> Candidate {
     let name = Path::new(program)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| program.to_string());
-    (name, CommandBuilder::new(program))
+    Candidate {
+        name,
+        program: program.to_string(),
+        cmd: CommandBuilder::new(program),
+    }
+}
+
+/// One shell worth trying.
+///
+/// `program` is kept beside the builder it went into, which `CommandBuilder`
+/// does not give back. [`runnable_only`] needs it to read the file's header
+/// before the operating system is asked to run it, and the log line on a
+/// failure needs it to name something a person can look at — `bash` is a tab
+/// title, `C:\Program Files\Git\bin\bash.exe` is a diagnostic.
+struct Candidate {
+    name: String,
+    program: String,
+    cmd: CommandBuilder,
+}
+
+/// Drop every candidate Windows would answer with a dialog rather than an error.
+///
+/// `CreateProcess` handed a file that begins `MZ` and has no PE header behind it
+/// puts up a modal **"Unsupported 16-Bit Application"** box and blocks the
+/// calling thread until somebody presses OK. The launch terminal is spawned from
+/// `lib.rs`'s `setup`, synchronously, while the splash is the only window on
+/// screen — so one such file on `PATH` is an application that appears not to
+/// start until a box nobody can explain is dismissed. That is issue #36.
+///
+/// Filtering rather than reordering: a candidate that cannot be run is not a
+/// candidate, and the list already degrades to the next entry. See
+/// `crate::runnable`, which is where the header is read and which does nothing
+/// at all off Windows.
+fn runnable_only(candidates: impl Iterator<Item = Candidate>) -> Vec<Candidate> {
+    candidates
+        .filter(
+            |candidate| match crate::runnable::unrunnable(&candidate.program) {
+                None => true,
+                Some(why) => {
+                    crate::kaava_log!("skipping shell candidate {}: {why}", candidate.program);
+                    false
+                }
+            },
+        )
+        .collect()
 }
 
 /// The candidate implied by `terminal.defaultShell`'s current value, or `None`
@@ -523,7 +582,7 @@ fn candidate(program: &str) -> (String, CommandBuilder) {
 /// The values matched here are exactly `settings::schema`'s `SHELLS` options;
 /// a new option added there needs an arm added here or it silently falls back
 /// to `None` and behaves like `"auto"`.
-fn preferred_candidate(preference: &str) -> Option<(String, CommandBuilder)> {
+fn preferred_candidate(preference: &str) -> Option<Candidate> {
     #[cfg(windows)]
     let program = match preference {
         "pwsh" => "pwsh.exe",
@@ -551,7 +610,7 @@ fn preferred_candidate(preference: &str) -> Option<(String, CommandBuilder)> {
 /// cannot be answered honestly without trying to run it: a `PATH` lookup can
 /// succeed against a stub, and a file existing says nothing about whether this
 /// user may execute it.
-fn shell_candidates() -> Vec<(String, CommandBuilder)> {
+fn shell_candidates() -> Vec<Candidate> {
     if let Ok(explicit) = std::env::var("KAAVA_SHELL") {
         if !explicit.trim().is_empty() {
             return vec![candidate(explicit.trim())];
@@ -624,6 +683,53 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    /// The test that would have caught issue #36. A file on `PATH` that begins
+    /// `MZ` and is not a program image is what Windows answers with a modal
+    /// "Unsupported 16-Bit Application" box instead of an error — and the
+    /// launch terminal is spawned synchronously from `lib.rs`'s `setup`, so the
+    /// box lands in front of a splash and the application looks like it did not
+    /// start.
+    #[test]
+    fn a_candidate_that_is_not_a_program_image_is_dropped() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let dir = std::env::temp_dir().join(format!("kaava-pty-candidate-{stamp}"));
+        std::fs::create_dir_all(&dir).expect("the temp directory is writable");
+
+        let fake = dir.join("pwsh.exe");
+        std::fs::write(&fake, b"MZ and nothing a loader would accept").expect("writes");
+
+        let kept = runnable_only(vec![candidate(&fake.to_string_lossy())].into_iter());
+
+        #[cfg(windows)]
+        assert!(
+            kept.is_empty(),
+            "a file that is not an image is not a shell"
+        );
+        #[cfg(not(windows))]
+        assert_eq!(kept.len(), 1, "the check is Windows' and does nothing here");
+    }
+
+    /// And the other half: the filter must not be so eager that it drops a real
+    /// one. The test binary is a program image on whatever this is running on.
+    #[test]
+    fn a_real_program_is_kept_as_a_candidate() {
+        let me = std::env::current_exe().expect("a test binary has a path");
+        let kept = runnable_only(vec![candidate(&me.to_string_lossy())].into_iter());
+        assert_eq!(kept.len(), 1);
+    }
+
+    /// A shell this machine does not have is not this filter's business — the
+    /// spawn's own error already says so, and dropping it here would replace a
+    /// real diagnostic with silence.
+    #[test]
+    fn a_shell_that_is_not_installed_is_still_tried() {
+        let kept = runnable_only(vec![candidate("kaava-no-such-shell-9f3a.exe")].into_iter());
+        assert_eq!(kept.len(), 1);
+    }
 
     /// A drop aimed at a terminal that has since closed answers `None` rather
     /// than panicking or silently succeeding. It is the case a slow drag makes
@@ -796,7 +902,7 @@ mod tests {
         // environment would race with the test above resolving its own shell.
         // The candidate list is pure apart from that one read, so asserting on
         // the default list is the honest half of this.
-        let names: Vec<String> = shell_candidates().into_iter().map(|(n, _)| n).collect();
+        let names: Vec<String> = shell_candidates().into_iter().map(|c| c.name).collect();
         assert!(!names.is_empty(), "some shell is always worth trying");
 
         #[cfg(windows)]

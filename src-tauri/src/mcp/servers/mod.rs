@@ -12,14 +12,13 @@
 //!
 //! What earns a server is something that exists only inside OpenKaava and has no
 //! filesystem equivalent — Forger's design model is the first real case, because
-//! an agent cannot read a spec's *boundaries* by opening a file.
-//!
-//! [`debug`] is the second: the running shell's layout and the failures it has
-//! recorded exist only in this process's memory. [`ui`] is the third, and passes
-//! most obviously of all — no harness can see a screen, or click one. It is also
-//! the only server that *writes*, hence the only one marked `dev_only`.
+//! an agent cannot read a spec's *boundaries* by opening a file. [`debug`] is
+//! the second, [`design`] the third and [`ui`] the fourth. Each module's own doc
+//! says which fact about it earns its place, and — for the two that write —
+//! which fact decides its gate, because "it writes" is not on its own one.
 
 pub mod debug;
+pub mod design;
 pub mod echo;
 pub mod ui;
 
@@ -29,24 +28,25 @@ use super::Registry;
 ///
 /// The echo server is registered unconditionally, release included, because a
 /// feature whose whole surface is compiled out cannot be verified by the person
-/// who most needs to verify it. Now that a real server has landed this is the
-/// line that should grow a `cfg` — left alone in this change so that switching
-/// echo off is its own decision, taken on its own evidence, rather than a side
-/// effect of adding something beside it.
+/// who most needs to verify it. Now that real servers have landed this is the
+/// line that should grow a `cfg` — left alone so that switching echo off is its
+/// own decision rather than a side effect of adding something beside it.
 ///
 /// `debug` is likewise unconditional, and for a reason that will outlast echo's:
 /// the builds worth debugging include the release one. A shipped OpenKaava that
 /// misbehaves on a machine none of us have is exactly the case where reading its
 /// layout and its failures is worth the most, and a server compiled out of that
-/// build cannot answer. It is read-only for the same reason — see its module
-/// doc.
+/// build cannot answer.
 ///
-/// `ui` ships too, and it is the one that can click. What makes that safe is not
-/// a `cfg` — it is `dev_only`, which is a gate the tests above can hold to
+/// `design` ships for the ordinary user rather than for us — the comments it
+/// serves are theirs, left in a release build — which is why it is the one write
+/// surface with no gate. `ui` ships too and is the one that can click; what makes
+/// that safe is not a `cfg` but `dev_only`, a gate the tests below can hold to
 /// account where a missing module cannot.
 pub fn seed(registry: &Registry) {
     registry.register(&echo::SERVER);
     registry.register(&debug::SERVER);
+    registry.register(&design::SERVER);
     registry.register(&ui::SERVER);
 }
 
@@ -60,14 +60,14 @@ mod tests {
         seed(&registry);
 
         let ids: Vec<String> = registry.list(true).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids, vec!["echo", "debug", "ui"]);
+        assert_eq!(ids, vec!["echo", "debug", "design", "ui"]);
     }
 
-    /// The read-only servers are usable the moment OpenKaava starts. The one that
+    /// Every ordinary server is usable the moment OpenKaava starts. The one that
     /// can click is not, and no amount of the rest being convenient is a reason
     /// to make it so.
     #[test]
-    fn an_ordinary_server_starts_on_and_the_one_that_writes_starts_off() {
+    fn an_ordinary_server_starts_on_and_the_developer_only_one_starts_off() {
         let registry = Registry::default();
         seed(&registry);
 
@@ -83,14 +83,17 @@ mod tests {
     /// With developer mode off, the shipped build looks exactly as it did before
     /// the UI server existed. This is the assertion that would fail if a future
     /// change leaked it into the ordinary list.
+    ///
+    /// `design` is in this list and is meant to be: it is the one write surface
+    /// an ordinary user is supposed to have, for the reasons in its module doc.
     #[test]
-    fn a_default_install_sees_only_the_read_only_servers() {
+    fn a_default_install_sees_every_server_except_the_one_that_can_click() {
         let registry = Registry::default();
         seed(&registry);
 
         let ids: Vec<String> = registry.list(false).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids, vec!["echo", "debug"]);
-        assert_eq!(registry.enabled_ids(false), vec!["echo", "debug"]);
+        assert_eq!(ids, vec!["echo", "debug", "design"]);
+        assert_eq!(registry.enabled_ids(false), vec!["echo", "debug", "design"]);
     }
 
     /// The id reaches two places a typo would not be caught in: a URL path and a
@@ -114,7 +117,7 @@ mod tests {
         seed(&registry);
         seed(&registry);
 
-        assert_eq!(registry.list(true).len(), 3);
+        assert_eq!(registry.list(true).len(), 4);
     }
 
     /// Held against the servers this build actually registers, not against a

@@ -22,6 +22,7 @@ import {
   type WindowKind,
 } from "./contract";
 import { searchBarHoldMs, snap } from "./motion";
+import { INTERRUPT, commandLine, terminalInput } from "./run";
 import ContextMenuHost from "./ContextMenuHost";
 import CommandPalette from "./palette/CommandPalette";
 import { commandsFromMenus } from "./palette/registry";
@@ -1291,6 +1292,55 @@ export default function WindowRoot({
     [activeCluster?.activeTerminal],
   );
 
+  // --- the Run menu ---------------------------------------------------------
+  //
+  // It runs in the terminal the cluster is showing, and it does not open one
+  // when there is none. Creating a pty and immediately writing into it was the
+  // alternative, and it was rejected as unverifiable: whether ConPTY keeps
+  // input written before its client has attached is not something this work
+  // could establish without launching the app, and a Run that silently drops
+  // the command on a cold terminal is worse than a Run that says it needs one.
+  // `ReviewSend` above takes the same decision — no session, no action — and
+  // this menu says so on the row rather than in a console line.
+  const runTerminalId = activeCluster?.activeTerminal ?? null;
+
+  const runBlocked =
+    runTerminalId === null
+      ? "This cluster has no terminal to run a command in. Open one with Ctrl+Shift+`."
+      : undefined;
+
+  // Per window rather than per cluster, and deliberately not persisted. It is
+  // the "again" in Re-run — a fact about what you just did in front of this
+  // window, with the same lifetime as the menu offering it. A last command
+  // restored from disk into a session that has not run anything is a row
+  // offering to repeat something nobody here did.
+  const [lastCommand, setLastCommand] = useState<string | undefined>(undefined);
+
+  const onRunCommand = useCallback(
+    async (input: string) => {
+      const line = commandLine(input);
+      // A string, not an `Error`: `MenuPrompt.onSubmit`'s rejection is shown
+      // under the field, and `PromptField` renders a bare string as the
+      // sentence it is. Rust's `AppError` arrives the same way.
+      if ("refused" in line) throw line.refused;
+      if (runTerminalId === null) throw runBlocked;
+
+      terminalTransport.write(runTerminalId, terminalInput(line.command));
+      setLastCommand(line.command);
+
+      // A command whose output is behind a shut band is a click that reads as
+      // having missed — the same reasoning `onNewTerminal` gives for opening
+      // it. Only for a band session: a terminal dragged into the pane tree is
+      // already on screen, and revealing the band would show a different one.
+      if (sessions.some((s) => s.id === runTerminalId)) setBottomCollapsed(false);
+    },
+    [runTerminalId, runBlocked, sessions, setBottomCollapsed],
+  );
+
+  const onInterrupt = useCallback(() => {
+    if (runTerminalId !== null) terminalTransport.write(runTerminalId, INTERRUPT);
+  }, [runTerminalId]);
+
   // What the title bar names, and it is the active *cluster's* project rather
   // than a process-wide one. That is the whole of what lets two windows on two
   // monitors say two different things: each asks about the cluster it is
@@ -1407,6 +1457,12 @@ export default function WindowRoot({
       zoomOut: () => onZoom(-1),
       zoomInBlocked: zoomBlocked(zoom, 1),
       zoomOutBlocked: zoomBlocked(zoom, -1),
+    },
+    run: {
+      run: onRunCommand,
+      interrupt: onInterrupt,
+      last: lastCommand,
+      blocked: runBlocked,
     },
     terminal: {
       onNew: onNewTerminal,

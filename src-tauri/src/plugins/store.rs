@@ -19,11 +19,17 @@
 //! the disk; what it actually buys is a second source of truth that goes stale
 //! the first time somebody rebuilds a plugin.
 
+use crate::userdata::store::Keep;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const FILE: &str = "plugins.json";
+
+/// Precious. Not for the checkouts, which a re-download replaces, but for the
+/// list: which packages somebody chose and where each came from is a decision,
+/// and a private repository they can no longer remember the URL of is gone.
+const KEEP: Keep = Keep::Aside;
 
 /// What is on disk: one record per installed package, in install order.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -108,64 +114,25 @@ pub fn exists(app: &AppHandle) -> bool {
 }
 
 /// Read the store, or start empty. Never fails — see the module doc.
+///
+/// **Careful with the interaction with [`exists`] above.** A file this build
+/// cannot use is set aside rather than left in place, which makes `exists`
+/// answer `false` on the next launch and the default apps re-install. That is
+/// the right outcome for a store that was unreadable — the alternative is a
+/// switcher that is empty and stays empty — but it is a consequence rather than
+/// an accident, and it is why `Keep::Aside` matters here: the record of what
+/// they had installed is beside it.
 pub fn load(app: &AppHandle) -> Stored {
-    let Some(path) = file(app) else {
-        return Stored::default();
-    };
-
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        // Not-found is the ordinary case — nobody has installed a plugin — and
-        // says nothing worth printing. Anything else is a real read failure and
-        // is worth a line, because the visible symptom is a switcher holding
-        // only the first-party apps, which looks exactly like a fresh install.
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("kaava: could not read {}: {e}", path.display());
-            }
-            return Stored::default();
-        }
-    };
-
-    serde_json::from_str(&raw).unwrap_or_else(|e| {
-        eprintln!(
-            "kaava: {} is not readable, starting with no plugins: {e}",
-            path.display()
-        );
-        Stored::default()
-    })
+    file(app)
+        .map(|path| crate::userdata::store::read(&path, KEEP))
+        .unwrap_or_default()
 }
 
-/// Write the store, atomically. A copy of `settings::store::save` down to the
-/// error handling — deliberately, because the failure it guards against is the
-/// same one and a second version of it that drifted would be a second way to
-/// lose a file.
+/// Write the store, atomically, through `userdata::store` — see that module for
+/// why the copy of this that used to live here is gone.
 pub fn save(app: &AppHandle, stored: &Stored) {
-    let Some(path) = file(app) else { return };
-
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!("kaava: could not create {}: {e}", parent.display());
-            return;
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(stored) {
-        Ok(json) => json,
-        Err(e) => {
-            eprintln!("kaava: could not serialize the plugin list: {e}");
-            return;
-        }
-    };
-
-    let temp = path.with_extension("json.tmp");
-    if let Err(e) = std::fs::write(&temp, json) {
-        eprintln!("kaava: could not write {}: {e}", temp.display());
-        return;
-    }
-    if let Err(e) = std::fs::rename(&temp, &path) {
-        eprintln!("kaava: could not replace {}: {e}", path.display());
-        let _ = std::fs::remove_file(&temp);
+    if let Some(path) = file(app) {
+        crate::userdata::store::write(&path, stored, "the plugin list");
     }
 }
 

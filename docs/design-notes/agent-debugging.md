@@ -125,6 +125,11 @@ reach the MCP surface, and it is only a reasonable trade while that surface stay
 read-only — which is why `servers::debug` says so in its own module doc and why a
 server that mutates anything should reopen this decision rather than inherit it.
 
+`servers::design` is the first that did. It writes, ships ungated, and the case
+for that rests on what its writes can reach — a comment thread the user can read
+and undo in the app, and nothing outside the comment store — rather than on
+anything inherited from here. `docs/design-notes/design-comments.md` has it.
+
 Two things bound the damage. The file goes in the app config directory, under the
 user's profile, which on Windows is not readable by other standard users. And the
 token is minted fresh on every launch, so a copy of this file is worthless the

@@ -323,6 +323,15 @@ token, so a leaked token should cost knowledge of a window layout and not contro
 of it. A server that can click cannot make that promise. `dev_only` is what keeps
 it from being on the list at all for somebody who is not working on OpenKaava.
 
+**Writing is not on its own what earns it.** `design` writes — a reply, a
+question or a resolution on a comment thread — and ships ungated, because what a
+leaked token buys there is a line of text on somebody's own screen that they can
+read and undo, not their mouse. It is also the one server whose whole purpose is
+to serve an ordinary user's agent in an ordinary release build, so a gate would
+have taken it away from the only people it is for. `docs/design-notes/
+design-comments.md` has the argument in full; the point for this section is that
+the question to ask is *what the writes can reach*, not whether there are any.
+
 Three things follow, and they matter more than the flag itself:
 
 - **Revealing is not enabling.** `Registry::register` starts a `dev_only` server

@@ -14,6 +14,7 @@ import { PRODUCT_NAME } from "../../branding.generated";
 import { openShortcuts } from "../shortcutsSurface";
 import { appsMenu } from "../appsMenu";
 import type { AppsMenuHandlers } from "../appsMenu";
+import { rerunLabel } from "../run";
 
 /**
  * Every command the shell's menus can ask a mounted app frame to carry out.
@@ -107,6 +108,40 @@ export interface ViewMenuHandlers {
   zoomOutBlocked?: string;
 }
 
+/**
+ * What the Run menu's three items act on: the terminal the cluster is showing.
+ *
+ * "Run" means running a command *here*, in the cluster you are looking at,
+ * rather than running a run configuration. The alternative — a saved list of
+ * named tasks, which is what the menu's shape borrows from — was rejected for
+ * this pass because nothing on either side of the Tauri boundary stores one:
+ * there is no task type in `bindings.ts`, nothing in `shell:state` to hold it,
+ * and no file on disk it would be read out of. A menu whose items name a
+ * feature that does not exist is the defect #40 reported, and inventing the
+ * feature is a larger decision than the bug.
+ *
+ * One `blocked` for the whole menu rather than a reason per row, because all
+ * three rows are stopped by the same fact: a command needs a shell to be typed
+ * into, and this cluster has no terminal.
+ */
+export interface RunMenuHandlers {
+  /**
+   * Run one command line in that terminal.
+   *
+   * Rejects with the sentence to show under the field — see `MenuPrompt`.
+   * Called for the prompt row and for Re-run alike, so a command that is
+   * refused is refused the same way whichever row asked.
+   */
+  run(command: string): Promise<void>;
+  /** Ctrl+C to the same terminal. */
+  interrupt(): void;
+  /** The last command run from this menu in this window, or `undefined` when
+   *  nothing has been run yet. Re-run's label names it. */
+  last?: string;
+  /** Why none of the three can act, or `undefined` when they can. */
+  blocked?: string;
+}
+
 /** What the Terminal menu's four items act on. */
 export interface TerminalMenuHandlers {
   onNew: () => void;
@@ -174,14 +209,15 @@ export interface MenuHandlers {
   apps: AppsMenuHandlers;
   file: FileMenuHandlers;
   view: ViewMenuHandlers;
+  run: RunMenuHandlers;
   terminal: TerminalMenuHandlers;
   help: HelpMenuHandlers;
 }
 
 /**
- * All seven menus. File, Edit, View and Terminal operate the app; Run is still
- * scaffolding. Help has one inert item left — Documentation, which has nothing
- * published to point at yet.
+ * All seven menus. File, Edit, View, Run and Terminal operate the app. Help has
+ * one inert item left — Documentation, which has nothing published to point at
+ * yet.
  *
  * ## Accelerators are bound, and that is a change
  *
@@ -199,7 +235,7 @@ export interface MenuHandlers {
  * those left Run with #42, and `shell/accelerators.test.ts` keeps them out.
  */
 export function defaultMenus(handlers: MenuHandlers): Menu[] {
-  const { app, edit, apps, file, view, terminal, help } = handlers;
+  const { app, edit, apps, file, view, run, terminal, help } = handlers;
 
   /** One File/Edit row, disabled with an explanation when it cannot act. */
   const command = (
@@ -339,18 +375,62 @@ export function defaultMenus(handlers: MenuHandlers): Menu[] {
         },
       ],
     },
-    // Run keeps its three inert items and has lost their accelerators, which
-    // were the last Mac glyphs left in the app. Translating them was the wrong
-    // repair: nothing binds them, and the Windows spellings would have been
-    // Ctrl+R and Ctrl+C — already Re-scan tools and Copy — so the menu would
-    // have advertised two keystrokes that do something else instead. The rule
-    // above is bind it or drop it, and these three cannot be bound.
+    // Run acts now, and its three rows are not the three it had. "Run Active
+    // Tool" is gone rather than wired: a tool is a checkout this shell *mounts*,
+    // not a program it starts, so that row named an operation with nothing
+    // behind it — see `RunMenuHandlers` for what replaced the run-configuration
+    // reading of this menu and why. Stop and Re-run Last kept their labels and
+    // gained the terminal they were always about.
+    //
+    // Still no accelerators, and still for the reason the header gives. The
+    // Windows spellings of the two this menu lost would have been Ctrl+R and
+    // Ctrl+C — already Re-scan tools and Copy — so displaying either would be
+    // advertising a keystroke that does something else. Bind it or drop it.
     {
       label: "Run",
       items: [
-        { label: "Run Active Tool" },
-        { label: "Stop", separatorBefore: true },
-        { label: "Re-run Last", separatorBefore: true },
+        {
+          label: "Run Command…",
+          disabled: run.blocked !== undefined,
+          hint: run.blocked,
+          // Pre-filled with the last command and selected, so re-running it
+          // with one flag changed costs an edit rather than retyping — the
+          // case `MenuPrompt.initialValue` exists for. Re-run below is the
+          // other half: unchanged, it costs one click.
+          prompt: {
+            label: "Run a command in this cluster's terminal.",
+            placeholder: "pnpm verify",
+            initialValue: run.last,
+            confirmLabel: "Run",
+            onSubmit: run.run,
+          },
+        },
+        {
+          label: rerunLabel(run.last),
+          disabled: run.blocked !== undefined || run.last === undefined,
+          hint: run.blocked ?? (run.last === undefined ? "Nothing has been run yet." : undefined),
+          // The rejection has nowhere to go: this row is not a prompt, so there
+          // is no field to show a sentence under, and the menu has closed by
+          // the time the promise settles. It can only be the refusal
+          // `commandLine` gives — and a command that reached `last` was
+          // accepted by it once already.
+          onSelect: () => {
+            if (run.last !== undefined) void run.run(run.last);
+          },
+        },
+        {
+          label: "Stop",
+          separatorBefore: true,
+          onSelect: run.interrupt,
+          disabled: run.blocked !== undefined,
+          // Live whenever there is a terminal, rather than only while something
+          // is running. Whether a shell has a foreground job is a process scan
+          // (`pty::busy`) and an async one, which a menu built synchronously on
+          // every render cannot ask — and the answer would be stale by the time
+          // the row was clicked anyway. Ctrl+C at an idle prompt draws a new
+          // prompt, which is what the keystroke does and so is not a lie.
+          hint: run.blocked ?? "Sends Ctrl+C, exactly as pressing it in the terminal would.",
+        },
       ],
     },
     {

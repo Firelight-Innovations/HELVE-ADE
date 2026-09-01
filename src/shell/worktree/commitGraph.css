@@ -26,6 +26,14 @@
      against their neighbours above and below. */
   height: 28px;
   padding: 0 10px 0 14px;
+}
+
+/* Only a row that can actually be selected offers to be clicked. `CommitGraph`
+   takes `onSelect` as optional and derives `tabIndex` from it, so a graph
+   mounted without one is a picture — and a pointer cursor over a picture
+   promises something that will not happen. Keyed off `tabindex`, the attribute
+   that already tracks exactly that distinction. */
+.commitgraph__row[tabindex] {
   cursor: pointer;
 }
 
@@ -54,10 +62,28 @@
      see the comment where this width is set in `CommitRow`. Scaled up from
      the original 78px by the same factor `LANE_W` grew (14 -> 22), so this
      clips at the same *number* of lanes as before rather than showing fewer
-     of the now-wider ones. */
+     of the now-wider ones. Mirrored as `GRAPH_MAX_W` in `CommitGraph.tsx`,
+     which needs the number to decide whether the fade below applies —
+     changing this means changing that. */
   max-width: 123px;
   overflow: hidden;
   height: 100%;
+}
+
+/* Applied only on the rows where the clip is actually happening — see the
+   comment at `--clipped` in `CommitRow`. A mask rather than a gradient overlay
+   because the rails behind it are eight different colours and a solid scrim in
+   any one of them would be wrong against the other seven; a mask fades whatever
+   is there to the panel's own background, whichever theme that is.
+
+   Both spellings: the unprefixed `mask-image` only reached Chromium in 120,
+   and WebView2 is Evergreen but is not guaranteed to be current on a machine
+   that has been offline. `-webkit-` has carried this since long before. The
+   two are identical, so an engine that honours both applies the same mask
+   twice, which is the same mask. */
+.commitgraph__graph--clipped {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent 100%);
 }
 
 .commitgraph__lines {
@@ -118,17 +144,27 @@
   text-overflow: ellipsis;
 }
 
+/* Capped at a third of the row rather than `flex: none`. A branch named for a
+   ticket and its whole summary is an ordinary thing to find in a repository,
+   and at `none` one of them pushed the sha, author and date off the row
+   entirely — the columns that say *which* commit this is. The chips give way
+   rather than those because a truncated branch name is still recognisable and
+   keeps its full text in a `title`, where a missing sha is simply gone. */
 .commitgraph__refs {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 33%;
   display: flex;
   align-items: center;
   gap: 4px;
+  overflow: hidden;
 }
 
 .commitgraph__ref {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
   padding: 1px 5px;
   border-radius: 3px;
   font-family: var(--mono);
@@ -137,6 +173,14 @@
   line-height: 1.4;
   color: var(--text-dim-3);
   white-space: nowrap;
+}
+
+/* The glyph beside it must not shrink, so the name is what ellipsises — hence
+   the extra span rather than truncating the chip itself. */
+.commitgraph__ref-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .commitgraph__ref--live {

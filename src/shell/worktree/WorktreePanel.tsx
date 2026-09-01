@@ -20,6 +20,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { isTomlPath, TOML_LANGUAGE_ID } from "@openkaava/monaco-languages";
 import type {
+  GitBranch,
   GitCommit,
   GitControl,
   GitDiff,
@@ -31,7 +32,11 @@ import type {
   WorktreeControl,
 } from "../contract";
 import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
+// Aliased: `GitBranch` is already the contract's word for a branch here, and
+// the glyph and the record would otherwise be the same identifier.
+import { GitBranch as BranchGlyph } from "../../ui/Icon";
 import CommitGraph from "./CommitGraph";
+import { focusWithoutScrolling } from "./rowFocus";
 import SourceControlView from "./SourceControlView";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktreePanel.css";
@@ -113,6 +118,11 @@ export interface WorktreePanelProps {
 interface RepoData {
   commits: GitCommit[];
   worktrees: GitWorktree[];
+  /** Every local branch, most recently committed to first — what `CheckoutBar`
+   *  offers. Fetched alongside the graph rather than on opening the menu, so
+   *  the button can say which branch is current without a round trip and the
+   *  list is already there when the menu opens. */
+  branches: GitBranch[];
   /** `null` means this cluster works in its project folder, not a worktree —
    *  see `WorktreeControl.divergence`. */
   divergence: GitDivergence | null;
@@ -130,6 +140,11 @@ export default function WorktreePanel({
   const [data, setData] = useState<RepoData | null>(null);
   const [loading, setLoading] = useState(clusterId !== null);
   const [error, setError] = useState<string | null>(null);
+  /** Bumped to re-ask, the same shape `useGitStatus` uses. A checkout is the
+   *  only thing that turns it: nothing else in this panel changes which commit
+   *  is HEAD, and there is no watcher behind any of these calls. */
+  const [nonce, setNonce] = useState(0);
+  const [selectedSha, setSelectedSha] = useState<string | null>(null);
 
   useEffect(() => {
     if (clusterId === null) {
@@ -148,11 +163,12 @@ export default function WorktreePanel({
     Promise.all([
       worktreeControl.graph(clusterId, GRAPH_LIMIT),
       worktreeControl.list(clusterId),
+      worktreeControl.branches(clusterId),
       worktreeControl.divergence(clusterId),
     ]).then(
-      ([commits, worktrees, divergence]) => {
+      ([commits, worktrees, branches, divergence]) => {
         if (!live) return;
-        setData({ commits, worktrees, divergence });
+        setData({ commits, worktrees, branches, divergence });
         setError(null);
         setLoading(false);
       },
@@ -167,7 +183,31 @@ export default function WorktreePanel({
     return () => {
       live = false;
     };
-  }, [clusterId, worktreeControl]);
+  }, [clusterId, worktreeControl, nonce]);
+
+  // A commit selected in one repository means nothing in another's graph.
+  useEffect(() => setSelectedSha(null), [clusterId]);
+
+  /**
+   * Everything a checkout invalidates, re-asked.
+   *
+   * Both halves, and neither is optional. This panel's own data moves because
+   * HEAD did — the graph's badges, the worktree list, the divergence. The
+   * change list moves too and lives in `useGitStatus`, one level up, because
+   * the status bar names the same branch (see that module's header): a
+   * checkout that refreshed only this panel would leave the status bar naming
+   * the branch the user just left.
+   *
+   * Keyed on `git.refresh` rather than on `git`, which is a fresh object on
+   * every render of `WindowRoot` — `useGitStatus` builds its handle inline. The
+   * function inside it is a stable `useCallback`, so naming it directly is what
+   * keeps this identity from churning down through `CheckoutBar`.
+   */
+  const refreshStatus = git.refresh;
+  const reload = useCallback(() => {
+    setNonce((n) => n + 1);
+    refreshStatus();
+  }, [refreshStatus]);
 
   // --- the divider ---------------------------------------------------------
   // Same pattern as `PaneTree.tsx`'s `Split` and `Frame.tsx`'s panel handle:
@@ -262,11 +302,22 @@ export default function WorktreePanel({
         ref={topRef}
         style={{ flexBasis: sectionBasis(topRatio) }}
       >
+        <CheckoutBar
+          clusterId={clusterId}
+          worktreeControl={worktreeControl}
+          branches={data.branches}
+          activeBranch={activeBranch}
+          selected={data.commits.find((c) => c.sha === selectedSha) ?? null}
+          onCheckedOut={reload}
+        />
+
         <div className="worktreepanel__graph-scroll">
           <CommitGraph
             commits={data.commits}
             worktrees={data.worktrees}
             activeBranch={activeBranch}
+            selected={selectedSha}
+            onSelect={setSelectedSha}
           />
         </div>
       </div>
@@ -302,6 +353,171 @@ export default function WorktreePanel({
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Moving the checkout: the branch picker and the selected commit's action
+// ---------------------------------------------------------------------------
+
+/**
+ * The strip above the graph: which branch this cluster is on, a menu of the
+ * others, and — once a commit is selected in the graph below — a button that
+ * checks that commit out detached.
+ *
+ * **Above the graph rather than inside the source-control view below it**, and
+ * that placement is the decision worth recording. Switching branches reads as
+ * an operation on the change list, so the branch row in `SourceControlView` is
+ * where it first went — but that view is only mounted for a cluster working in
+ * its project folder. A cluster on a worktree gets `DivergenceView` instead and
+ * would have had no way to switch at all.
+ *
+ * Nothing here guards the checkout. Uncommitted work in the way, a branch
+ * another worktree holds, a target that stopped resolving between the fetch and
+ * the click: git refuses each with a sentence written to be read, and that
+ * sentence is what lands in `failure`. See `git_checkout` in `git.rs`.
+ */
+function CheckoutBar({
+  clusterId,
+  worktreeControl,
+  branches,
+  activeBranch,
+  selected,
+  onCheckedOut,
+}: {
+  clusterId: string;
+  worktreeControl: WorktreeControl;
+  branches: GitBranch[];
+  activeBranch: string | null;
+  /** The commit selected in the graph, or `null` when none is. */
+  selected: GitCommit | null;
+  onCheckedOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss on a pointerdown outside, matching every other menu in the shell.
+  // `pointerdown` rather than `click`, so a press that begins outside closes
+  // the menu before whatever it lands on can act.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target instanceof Node)) return;
+      if (menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const checkout = useCallback(
+    async (target: string, detach: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      setFailure(null);
+      setOpen(false);
+      try {
+        await worktreeControl.checkout(clusterId, target, detach);
+        onCheckedOut();
+      } catch (reason: unknown) {
+        setFailure(gitMessage(reason));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, clusterId, onCheckedOut, worktreeControl],
+  );
+
+  // The tip of the branch already checked out is not somewhere to go, and
+  // offering it would detach HEAD at the exact commit the user is standing on.
+  const detachable =
+    selected !== null && !branches.some((b) => b.current && b.head === selected.sha);
+
+  return (
+    <div className="worktreepanel__head" ref={menuRef}>
+      <button
+        type="button"
+        className="worktreepanel__branchbtn"
+        disabled={busy || branches.length === 0}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <BranchGlyph size={12} />
+        <span className="worktreepanel__branchname">{activeBranch ?? "detached"}</span>
+        <span className="worktreepanel__chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+
+      {detachable && (
+        <button
+          type="button"
+          className="worktreepanel__detachbtn"
+          disabled={busy}
+          title={`Check out ${selected.short} — ${selected.summary}`}
+          onClick={() => void checkout(selected.sha, true)}
+        >
+          Check out {selected.short}
+        </button>
+      )}
+
+      {open && (
+        <div className="worktreepanel__branchmenu" role="menu">
+          {branches.map((branch) => (
+            <BranchOption
+              key={branch.name}
+              branch={branch}
+              busy={busy}
+              onPick={() => void checkout(branch.name, false)}
+            />
+          ))}
+        </div>
+      )}
+
+      {failure !== null && (
+        <div className="worktreepanel__error worktreepanel__error--head">{failure}</div>
+      )}
+    </div>
+  );
+}
+
+/** One row of the branch menu. The branch already checked out here is inert
+ *  rather than hidden — a menu that dropped it would leave the reader working
+ *  out which one they are on — and so is one another worktree holds, which git
+ *  would refuse anyway; saying whose it is beats reporting the refusal after
+ *  the click. */
+function BranchOption({
+  branch,
+  busy,
+  onPick,
+}: {
+  branch: GitBranch;
+  busy: boolean;
+  onPick: () => void;
+}) {
+  const held = branch.worktree !== undefined;
+  const classes = ["worktreepanel__branchopt"];
+  if (branch.current) classes.push("worktreepanel__branchopt--current");
+
+  return (
+    <button
+      type="button"
+      className={classes.join(" ")}
+      role="menuitem"
+      disabled={busy || branch.current || held}
+      title={held ? `Checked out in ${branch.worktree}` : branch.name}
+      onClick={onPick}
+    >
+      <span className="worktreepanel__branchopt-name">{branch.name}</span>
+      {branch.current ? (
+        <span className="worktreepanel__branchopt-note">current</span>
+      ) : held ? (
+        <span className="worktreepanel__branchopt-note">in use</span>
+      ) : null}
+    </button>
   );
 }
 
@@ -459,6 +675,10 @@ function DivFileRow({
       type="button"
       className={classes.join(" ")}
       title={change.renamedFrom ? `${change.path} (was ${change.renamedFrom})` : change.path}
+      // `.worktreepanel__divlist` scrolls exactly as the source-control lists
+      // do, so an edge row here had the same unclickable defect — see
+      // `focusWithoutScrolling`.
+      onMouseDown={focusWithoutScrolling}
       onClick={onSelect}
     >
       <span className="worktreepanel__divkind" style={{ color: GIT_KIND_TOKEN[change.kind] }}>

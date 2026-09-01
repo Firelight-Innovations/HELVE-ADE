@@ -9,6 +9,7 @@ mod apps;
 mod boot;
 mod branding;
 mod commands;
+mod design_comments;
 mod devtools;
 mod diagnostics;
 mod discovery;
@@ -25,6 +26,7 @@ mod project;
 mod pty;
 mod quoting;
 mod review;
+mod runnable;
 mod search;
 mod settings;
 mod shell_state;
@@ -34,9 +36,11 @@ mod sync;
 mod tool;
 mod tool_frontend;
 mod updater;
+mod userdata;
 mod webview;
 mod windows;
 
+use design_comments::Comments;
 use project::ProjectState;
 use pty::PtySessions;
 use shell_state::ShellState;
@@ -44,8 +48,45 @@ use state::AppState;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WindowEvent};
 
+/// Stop Windows putting a modal box in front of the splash for a failure it
+/// could simply return.
+///
+/// `SEM_FAILCRITICALERRORS` turns off the *hard error* dialogs the system shows
+/// on a process's behalf: no disk in the drive, and — the one that matters here
+/// — an image `CreateProcess` will not load. Without it, one bad `.exe` on
+/// `PATH` is an application that looks like it did not start, because the box is
+/// modal and the spawn that raised it is on this thread. `runnable` stops the
+/// shell candidates reaching that state; this covers everything else the
+/// orchestrator or a plugin ever spawns.
+///
+/// Set once, before Tauri builds anything, so no other thread exists to race it.
+/// The previous mask is read and kept rather than replaced: `SetErrorMode`
+/// takes the whole value, and dropping whatever the loader had set would be a
+/// change nobody asked for.
+///
+/// **Not observed to fix issue #36** — that needs a clean machine — and it is
+/// here as the general form of that failure rather than as its confirmed cure.
+#[cfg(windows)]
+fn quiet_hard_errors() {
+    use windows_sys::Win32::System::Diagnostics::Debug::{SetErrorMode, SEM_FAILCRITICALERRORS};
+
+    // SAFETY: `SetErrorMode` reads and writes one process-wide bitmask and
+    // touches nothing else. Called before any thread but this one exists.
+    unsafe {
+        let previous = SetErrorMode(0);
+        SetErrorMode(previous | SEM_FAILCRITICALERRORS);
+    }
+}
+
+/// Nothing to do: the other two platforms return an error from `exec` rather
+/// than showing anybody a dialog.
+#[cfg(not(windows))]
+fn quiet_hard_errors() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    quiet_hard_errors();
+
     let launched = tauri::Builder::default()
         // **First, before every other plugin.** Explorer's "Open with OpenKaava"
         // launches this binary again, and everything registered above this
@@ -114,6 +155,12 @@ pub fn run() {
         // launch, because almost every launch is somebody opening the app
         // rather than opening something with it.
         .manage(launch::LaunchState::default())
+        // Every comment left on an element in Design Mode. One list for the
+        // process rather than one per Design Mode tab: two tabs pointed at the
+        // same dev server are two views of one set of outstanding requests, and
+        // the MCP server that serves them to an agent is not in a tab at all.
+        // Empty until `hydrate` reads the file, in setup below.
+        .manage(Comments::default())
         // Which MCP servers this build hosts for whatever agent the user is
         // running in a terminal, and which of them are switched on. Empty until
         // something registers into it — see `mcp`'s module doc for why an app
@@ -216,11 +263,17 @@ pub fn run() {
         // its own thread. `AppHandle` is cheap to clone by design — it's a
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
-            // First, because everything below this line may read a setting and
-            // a registry that has not been seeded answers every read with "no
-            // such setting". It depends on nothing itself: registration puts
-            // static descriptors on a list, and the only file it touches is its
-            // own.
+            // Before `settings::seed` and so before anything at all reads a
+            // store, because a store that has already answered "nothing here"
+            // has already told a window the wrong thing. Does nothing on every
+            // launch but the first after a rename — see `userdata::adopt`.
+            userdata::adopt::run(app.handle());
+
+            // First of the seeds, because everything below this line may read a
+            // setting and a registry that has not been seeded answers every
+            // read with "no such setting". It depends on nothing itself:
+            // registration puts static descriptors on a list, and the only file
+            // it touches is its own.
             settings::seed(app.handle());
 
             // Before the layout, because `restore_session` reads the old global
@@ -238,6 +291,13 @@ pub fn run() {
             // first window means the settings surface never draws an empty one
             // it then has to correct.
             mcp::seed(app.handle());
+
+            // Before the listener below, because the design server answers out
+            // of this list and a client that connected during the gap would be
+            // told there were no comments rather than that they were still
+            // loading. Reading one small file, on the setup thread, for the same
+            // reason `project::restore` is here.
+            app.state::<Comments>().hydrate(app.handle());
 
             // Immediately after seeding and **before any terminal is spawned**,
             // because a terminal inherits the port and token as environment
@@ -417,6 +477,8 @@ pub fn run() {
             git::git_worktree_remove,
             git::git_worktree_reconcile,
             git::git_graph,
+            git::git_branches,
+            git::git_checkout,
             git::git_divergence,
             git::git_divergence_diff,
             git::git_cluster_status,
