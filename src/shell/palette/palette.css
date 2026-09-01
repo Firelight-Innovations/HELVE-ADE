@@ -13,6 +13,9 @@
  * from `src/shell/motion.ts`; nothing here participates.
  */
 
+/* The backdrop and the layout box in one element, which is what lets a press
+   be tested with `target === currentTarget` — the sheet is its only child, so
+   anything that lands on this element landed outside the sheet. */
 .palette {
   position: fixed;
   inset: 0;
@@ -21,16 +24,10 @@
   z-index: 60;
   display: flex;
   justify-content: center;
-}
-
-.palette__backdrop {
-  position: absolute;
-  inset: 0;
   background: rgb(0 0 0 / 45%);
 }
 
 .palette__sheet {
-  position: relative;
   margin-top: 12vh;
   width: min(620px, calc(100vw - 48px));
   max-height: 60vh;

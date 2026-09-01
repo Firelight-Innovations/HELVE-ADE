@@ -33,12 +33,50 @@ export interface CommandPaletteProps {
   onClose: () => void;
 }
 
+/**
+ * The portal is outside `AnimatePresence` and the surface inside it, which is
+ * `ContextMenuHost`'s shape rather than a choice made again here — the wrapper
+ * is always rendered so presence can watch the sheet leave, and an empty one
+ * draws no DOM. The two motion elements nest exactly as `SettingsScreen`'s do,
+ * so the sheet inherits the variant state its parent is in.
+ */
 export default function CommandPalette({ open, commands, onClose }: CommandPaletteProps) {
-  return (
-    <AnimatePresence>{open && <Palette commands={commands} onClose={onClose} />}</AnimatePresence>
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="palette"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
+          variants={settingsBackdrop}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          // Only a press that landed on the backdrop itself, compared the way
+          // `SettingsScreen` compares it — a blanket `stopPropagation` on the
+          // sheet would be a rule every control inside it has to work around.
+          //
+          // `onMouseDown` rather than `onClick`, because a click that began in
+          // the field and ended out here is a selection dragged past the edge,
+          // not a dismissal.
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) onClose();
+          }}
+        >
+          <motion.div className="palette__sheet" variants={settingsScreen}>
+            <Palette commands={commands} onClose={onClose} />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
   );
 }
 
+/** The sheet's contents: the field and the list, or the one field a command
+ *  that needs an argument asked for. Mounted with the sheet, so its state is
+ *  reset by the unmount rather than by an effect. */
 function Palette({ commands, onClose }: Omit<CommandPaletteProps, "open">) {
   const [query, setQuery] = useState("");
 
@@ -74,42 +112,20 @@ function Palette({ commands, onClose }: Omit<CommandPaletteProps, "open">) {
     onClose();
   };
 
-  return createPortal(
-    <div className="palette" role="dialog" aria-modal="true" aria-label="Command palette">
-      {/* `onMouseDown`, not `onClick`: a click that started inside the surface
-          and ended on the backdrop — a drag off the end of a selection in the
-          field — should not dismiss what it was selecting in. */}
-      <motion.div
-        className="palette__backdrop"
-        variants={settingsBackdrop}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        onMouseDown={onClose}
-      />
-      <motion.div
-        className="palette__sheet"
-        variants={settingsScreen}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-      >
-        {asking === null ? (
-          <CommandList
-            query={query}
-            rows={rows}
-            active={active}
-            onQuery={onQuery}
-            onMove={setIndex}
-            onRun={run}
-            onClose={onClose}
-          />
-        ) : (
-          <PromptStage command={asking} onDone={onClose} onBack={() => setAsking(null)} />
-        )}
-      </motion.div>
-    </div>,
-    document.body,
+  if (asking !== null) {
+    return <PromptStage command={asking} onDone={onClose} onBack={() => setAsking(null)} />;
+  }
+
+  return (
+    <CommandList
+      query={query}
+      rows={rows}
+      active={active}
+      onQuery={onQuery}
+      onMove={setIndex}
+      onRun={run}
+      onClose={onClose}
+    />
   );
 }
 
