@@ -91,8 +91,15 @@ what the README's download button points at.
 
 Those filenames come from `productName` in `tauri.conf.json`, which is checked
 against `branding.toml` — renaming the product renames the installers with it.
-The bundle identifier does *not* change, and neither does the OS configuration
-directory Tauri derives from it, so nobody's existing projects or settings move.
+
+This page used to add that the bundle identifier does not change, and that
+therefore nobody's projects or settings move. Both halves were false by the
+time anybody read them: the rename to OpenKaava moved the identifier and
+orphaned a live `%APPDATA%` directory, and it moved `productName` too, which is
+what installed OpenKaava beside HELVE instead of over it. Nothing was watching
+either value. `pnpm lint:identity` now is, and `docs/dev/user-data.md` is where
+the whole subject lives — what user data is at risk, what a rename costs, and
+what to run when one is deliberate.
 
 WiX and NSIS are downloaded automatically on the first release build. The
 workflow does not cache them, or the Rust `target/` directory: release-profile

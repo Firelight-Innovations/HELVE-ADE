@@ -34,6 +34,7 @@ mod sync;
 mod tool;
 mod tool_frontend;
 mod updater;
+mod userdata;
 mod webview;
 mod windows;
 
@@ -216,11 +217,17 @@ pub fn run() {
         // its own thread. `AppHandle` is cheap to clone by design — it's a
         // thin reference to the app's shared internals, not a copy of them.
         .setup(|app| {
-            // First, because everything below this line may read a setting and
-            // a registry that has not been seeded answers every read with "no
-            // such setting". It depends on nothing itself: registration puts
-            // static descriptors on a list, and the only file it touches is its
-            // own.
+            // Before `settings::seed` and so before anything at all reads a
+            // store, because a store that has already answered "nothing here"
+            // has already told a window the wrong thing. Does nothing on every
+            // launch but the first after a rename — see `userdata::adopt`.
+            userdata::adopt::run(app.handle());
+
+            // First of the seeds, because everything below this line may read a
+            // setting and a registry that has not been seeded answers every
+            // read with "no such setting". It depends on nothing itself:
+            // registration puts static descriptors on a list, and the only file
+            // it touches is its own.
             settings::seed(app.handle());
 
             // Before the layout, because `restore_session` reads the old global
