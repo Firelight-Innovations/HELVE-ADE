@@ -145,3 +145,58 @@ One function, five tests, and the two surfaces now cannot drift.
 Overlapping ranges are legal — a note on 3-9 and a note on 5 are both about
 line 5 — and the decorations are in file order, so the first match is the one
 starting soonest.
+
+## src/shell/worktree/rowFocus.ts
+
+### The row that could not be clicked
+
+Clicking a change at the top or bottom edge of the source-control list did
+nothing. No diff pane, no error, nothing in the diagnostics ring buffer. The
+same row opened every time from the keyboard.
+
+Every list in this panel scrolls — `.worktree__lists`,
+`.worktreepanel__divlist` and `.worktreepanel__graph-scroll` are each
+`overflow-y: auto` — and every row in them is focusable. Chromium focuses a
+control on `mousedown`, and focusing an element that is only partly in view
+scrolls it into view. So an edge row slid out from under the cursor between the
+press and the release, `mouseup` landed on a different element, and the browser
+generated no `click` at all. Not swallowed, not blocked by a handler: never
+created. A row in the middle of a list does not move, and always worked.
+
+**The scroll is the browser's, not this repository's.** Nothing here calls
+`scrollIntoView`, and `scroll-behavior` is set nowhere; the native focus scroll
+needs no script and is instant, which is why the default behaviour is unaffected
+by that property. Grepping for a scroll call finds nothing and proves nothing.
+That search is what made this look impossible for a while, and it is the reason
+this page exists.
+
+The position-dependence is what identified it. Everything a reader would suspect
+first had already been cleared from the source — the handler is wired
+identically for both lists, the row identity round-trips, no effect resets the
+selection, the pane's open condition is `selected !== null`, nothing remounts the
+subtree, no overlay intercepts the pointer, and no capture-phase listener eats
+the event. All of that was true, and none of it mattered.
+
+### Why `focus({ preventScroll: true })` rather than the alternatives
+
+`preventDefault` on `mousedown` suppresses the browser's focus and the scroll
+with it; the explicit `focus` puts the focus back without one. It is mouse-only
+on purpose: a row focused by Tab, or by the commit graph's arrow-key roving,
+*should* scroll into view, since that is the only thing making an off-screen row
+reachable, and neither path goes through the helper.
+
+Rejected, and why:
+
+- **Activating on `pointerup` or `mousedown` instead of `click`.** Sidesteps the
+  pairing rather than fixing it, and breaks the keyboard — neither fires for
+  Enter on a focused button, so `onClick` would have to stay beside them and
+  every mouse activation would then run twice.
+- **Leaving focus alone and giving the rows `scroll-margin`.** Changes where a
+  scroll lands, not whether one happens, so the row still moves.
+
+### What is not covered by a test
+
+The defect is a `mousedown`/`mouseup` pairing inside a scroll container: it needs
+layout and hit-testing to reproduce. The vitest runner is `node` with no DOM and
+no rendering library (STANDARDS.md §8.3), so nothing in this repository can hold
+it. `selection.test.ts` sits underneath this and would not have caught it.
