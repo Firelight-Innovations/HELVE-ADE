@@ -50,6 +50,7 @@ const REGIONS = [
   "frame",
   "github",
   "keys",
+  "palette",
   "panel",
   "panes",
   "search",

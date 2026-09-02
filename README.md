@@ -135,10 +135,14 @@ terminal band swaps with everything else.
 <tr>
 <td width="50%" valign="middle">
 
-### Search
+### Search, and the command palette
 
 Press `Ctrl+K` to search the open project. The results, the file each result
 came from, and a preview all sit on one screen.
+
+Press `Ctrl+Shift+P` for the command palette. It holds every menu row the
+window has, fuzzy-matched as you type — including the ones that ask for a name
+or a command before they act.
 
 </td>
 <td width="50%">
@@ -219,11 +223,10 @@ OpenKaava is pre-alpha. The honest list is short.
   have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
   design is Windows-only. No machine here runs them yet.
-- **Two menu items do nothing.** View ▸ Command Palette opens the search field
-  rather than a palette of commands, and Help ▸ Documentation has nothing
-  published to point at yet. Every other row in every menu acts, the Run menu
-  included — it runs a command in the cluster's terminal, stops it, and runs it
-  again.
+- **One menu item does nothing.** Help ▸ Documentation has nothing published to
+  point at yet. Every other row in every menu acts — the Run menu runs a command
+  in the cluster's terminal, stops it, and runs it again, and View ▸ Command
+  Palette opens the palette that menu tree is flattened into.
 
 ## Install
 
