@@ -95,6 +95,71 @@ function baseRestrictions() {
 }
 
 /**
+ * The first-party surfaces under `apps/`, each its own Vite entry point rather
+ * than a workspace package (`apps/README.md`). Kept in sync with that file's
+ * layout listing by hand — there is no directory scan here, matching how
+ * `REGIONS` above is a hand-kept list rather than a `fs.readdirSync`, so an app
+ * mid-scaffold with no `ui/` yet cannot make this config throw.
+ *
+ * `shared` is deliberately absent: it holds `apps/shared/app.css`, the common
+ * chrome every app opts into by an absolute `/apps/shared/app.css` import, and
+ * is not an app with a source tree of its own to be isolated from.
+ */
+const APPS = ["design", "files", "home", "schematify", "tutorial", "viewer"];
+
+/**
+ * PRD §14.6 / Schematify wave 10a scope item 2: gate TypeScript imports across
+ * package boundaries in CI. `apps/README.md`'s "Apps talking to each other"
+ * section already states the boundary in prose — an app reaches another app
+ * only through the shell-routed `kaava/open` and `kaava/publish` topics, never
+ * by importing its source — and this is that rule made mechanical, on the same
+ * `no-restricted-imports` machinery `regionIsolation` below already uses for
+ * `src/shell/<region>`.
+ *
+ * This is the reason a separate `dependency-cruiser` config was not added: the
+ * repository already has an equivalent mechanism (flat-config
+ * `no-restricted-imports` patterns) doing the same job for `src/shell/<region>`
+ * and for the Tauri/bridge doors above, and a second tool enforcing the same
+ * kind of boundary through a different config file and a different CI step
+ * would be two sources of truth for one rule. Extending the existing one keeps
+ * "which imports are illegal" answerable by reading one file.
+ *
+ * No existing app imports another today (confirmed by grep before adding
+ * this), so the rule starts clean rather than needing a suppression.
+ */
+const appIsolation = APPS.map((app) => ({
+  files: [`apps/${app}/ui/**/*.{ts,tsx}`],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          ...baseRestrictions(),
+          {
+            // Two forms, unlike `regionIsolation`'s single `../${other}`: a
+            // region's siblings sit one `../` away, but an app's source nests
+            // arbitrarily deep under `ui/src/`, so a relative import out of it
+            // and into another app never has a fixed `../` count for the
+            // pattern to anchor on. `**/${other}/ui/**` matches the substring
+            // regardless of how many `../` precede it — which is also why the
+            // literal `apps/` form is kept alongside it, for the day an alias
+            // or an absolute import reaches for one instead.
+            group: APPS.filter((other) => other !== app).flatMap((other) => [
+              `**/apps/${other}/ui/**`,
+              `**/${other}/ui/**`,
+            ]),
+            message:
+              `apps/README.md: the '${app}' app may not import another app's source. ` +
+              "Two apps that need to reach each other do it through the shell-routed " +
+              "kaava/open and kaava/publish topics, not a TypeScript import.",
+          },
+        ],
+      },
+    ],
+  },
+}));
+
+/**
  * One config block per region, forbidding relative imports into any *other*
  * region.
  *
@@ -210,6 +275,7 @@ export default tseslint.config(
   },
 
   ...regionIsolation,
+  ...appIsolation,
 
   // The other half of taking `state` off the region list. A region may call a
   // verb; the verb layer may not reach back up into a region. Without this the
