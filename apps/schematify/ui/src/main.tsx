@@ -7,7 +7,11 @@ import App from "./App";
 // them; a second copy of the palette is a second thing to forget to update.
 import "/src/tokens.css";
 import "/apps/shared/app.css";
-import "./schematify.css";
+// This app's own tokens (PRD §13) and shell styling (PRD §17 Wave 2) — see
+// `./tokens.css` and `./shell/shell.css`'s own header comments. `App.tsx`
+// imports the shell stylesheet directly, following `apps/files/ui`'s
+// component-level pattern (`explorer/Explorer.tsx` imports its own CSS).
+import "./tokens.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

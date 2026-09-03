@@ -1,65 +1,97 @@
 /**
- * Schematify: the design layer of OpenKaava, today an empty shell.
+ * Schematify's shell — PRD §17 Wave 2. Opens the `auth-service` Service
+ * Schematic (`../graph`) and draws the breadcrumb, the toolbar, the Outline,
+ * the Schematic host frame, the Inspector shell, the dock frame, and the
+ * status bar around it.
  *
- * Schematify replaces the two predecessor applications this scaffold was
- * built from, folded into one app rather than two — see
- * `docs/design/SCHEMATIFY-PRD.md` §1.3 for the layers it now holds. There is
- * no product surface yet: this wave is the rename and the scaffold, and the
- * Schematic engine arrives in a later wave. What this component owes today
- * is the same thing every app owes: draw something honest and report
- * `reportPainted()` once it has, whether `schematify/state` answered or
- * failed.
+ * No title bar and no application tab strip: the real shell already draws
+ * both, once, outside this iframe (`src/shell/titlebar/TitleBar.tsx`,
+ * `src/shell/switcher/ClusterBar.tsx`) — see the handoff doc for the ruling
+ * and why the status bar stays anyway.
+ *
+ * `?view=empty-stack` swaps the whole body for the Stack Schematic's
+ * first-run empty state (`./shell/EmptyStack`) instead — see that module's
+ * doc comment for why this wave reaches it by query param rather than by
+ * building the tier switch that would otherwise show it.
  */
 import { useEffect, useState } from "react";
 import { reportPainted } from "@openkaava/bridge";
-import { fetchState, reasonFor, type State } from "./rpc";
+import { loadGraph, type ServiceGraph } from "./graph";
+import { Breadcrumb } from "./shell/Breadcrumb";
+import { Dock } from "./shell/Dock";
+import { EmptyStack } from "./shell/EmptyStack";
+import { InspectorShell } from "./shell/InspectorShell";
+import { Outline } from "./shell/Outline";
+import { SchematicHost } from "./shell/SchematicHost";
+import { StatusBar } from "./shell/StatusBar";
+import { Toolbar } from "./shell/Toolbar";
+import "./shell/shell.css";
+
+const SHOW_EMPTY_STACK =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("view") === "empty-stack";
 
 export default function App() {
-  const [state, setState] = useState<State | null>(null);
+  const [graph, setGraph] = useState<ServiceGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchState()
+    loadGraph()
       .then((result) => {
-        if (!cancelled) setState(result);
+        if (!cancelled) setGraph(result);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(reasonFor(err));
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // The condition is "the first answer landed", either way it went — the same
-  // rule `apps/README.md` states and `apps/home/ui/src/App.tsx` follows. A
-  // browser with no Tauri under it (`pnpm dev:agent`) rejects every `invoke`,
-  // and that failure is this app's honest first frame, not a reason to wait.
+  // The condition is "the first frame is honest", the rule every app here
+  // follows (`apps/home/ui/src/App.tsx` line 246, `apps/files/ui/src/App.tsx`
+  // line 78) — the empty-stack view has nothing to load, so it paints
+  // immediately; the populated view paints once `loadGraph()` settles,
+  // whether it resolved or rejected. `loadGraph()` cannot reject today (it
+  // resolves a local fixture), but the seam it will become
+  // (`./graph/index.ts`'s doc comment) can, and a rejection that never
+  // reports painted would hang the splash screen rather than show an error.
   useEffect(() => {
-    if (state !== null || error !== null) reportPainted();
-  }, [state, error]);
+    if (SHOW_EMPTY_STACK || graph !== null || error !== null) reportPainted();
+  }, [graph, error]);
+
+  if (SHOW_EMPTY_STACK) {
+    return (
+      <div className="kv-shell">
+        <EmptyStack />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="kv-shell">
+        <p className="kv-shell__error">{error}</p>
+      </div>
+    );
+  }
+
+  if (!graph) return <div className="kv-shell" />;
 
   return (
-    <div className="app">
-      <header className="app__head">
-        <h1 className="app__title">Schematify</h1>
-        <span className="app__sub">The design layer of OpenKaava</span>
-      </header>
-      <div className="app__body">
-        {error ? (
-          <p className="app__error">{error}</p>
-        ) : (
-          <div className="schematify__empty">
-            <p>Schematify is not built yet.</p>
-            <p className="app__note">
-              {state?.project
-                ? `This cluster's project is ${state.project}, but there is nothing here to draw a Schematic against it with.`
-                : "This cluster has no project open, and there would be nothing to draw a Schematic against it yet either way."}
-            </p>
-          </div>
-        )}
+    <div className="kv-shell">
+      <div className="kv-chrome-row">
+        <Breadcrumb segments={["Stack", graph.serviceTitle]} activeSlug={graph.serviceSlug} />
+        <Toolbar />
       </div>
+      <div className="kv-shell__body">
+        <Outline graph={graph} />
+        <SchematicHost />
+        <InspectorShell />
+      </div>
+      <Dock />
+      <StatusBar graph={graph} />
     </div>
   );
 }

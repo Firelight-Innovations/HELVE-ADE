@@ -1,0 +1,85 @@
+/*
+ * Schematify's own design tokens — PRD §13, scoped to this document (this app
+ * is a separate iframe document from the shell, so a `:root` here reaches
+ * nothing outside it and collides with nothing in `/src/tokens.css`).
+ *
+ * Most values below are `[W]`, read straight off PRD §13's tables — but not
+ * all: PRD §13 itself already marks `--kv-info`, `--kv-font-sans`, and
+ * `--kv-radius-frame` `[P]` (proposals, never claimed as read from a
+ * wireframe), and this file's own header used to claim the whole table was
+ * `[W]` but 2, which was wrong about these 3. `--kv-bg-root` and
+ * `--kv-accent-hover` are a 4th and 5th `[P]` pair, but for a different
+ * reason: the wireframe extraction demoted both from PRD §13's original
+ * `[W]` claim (`docs/overnight-jobs/overnight-2/WIREFRAME-EXTRACT.md`,
+ * Resolutions 7.3a/7.3b) once it found neither hex value occurs inside any
+ * of the 6 product screens, only in the wireframe *tool's own* page chrome.
+ * Both are derived here instead — `--kv-bg-root` by extending the existing
+ * 3-step surface ladder one step darker than `--kv-bg-app`,
+ * `--kv-accent-hover` by blending `--kv-accent` 18% toward white — so
+ * neither is a free choice, each is one documented step from a `[W]` value.
+ * Every `[P]` token below is marked at its own line.
+ *
+ * PRD §17 Wave 2's acceptance condition is "no literal hex value" in this
+ * app's own code — this file is the one place that trades, once, so every
+ * other file under `apps/schematify/ui/` can hold none. `noLiteralHex.test.ts`
+ * proves that for every file but this one and `main.tsx`'s import of it.
+ */
+
+:root {
+  /* --- 13.1 surface and line --------------------------------------------- */
+  --kv-bg-root: #0d0e10; /* [P], derived — see header */
+  --kv-bg-app: #14161a;
+  --kv-bg-panel: #1b1e24;
+  --kv-bg-raised: #22262e;
+  --kv-line: #2c313b;
+  --kv-line-draft: #3a404b;
+
+  /* --- 13.2 text ---------------------------------------------------------- */
+  --kv-text-primary: #e4e7ec;
+  --kv-text-near: #c9ced8;
+  --kv-text-secondary: #949cab;
+  --kv-text-tertiary: #6d747f;
+  --kv-text-dim: #5b616c;
+  --kv-text-faint: #4f5663;
+  --kv-text-disabled: #4a505b;
+
+  /* --- 13.3 accent and semantic -------------------------------------------
+     --kv-ok carries the meaning of readiness (PRD §13.3) — never use it for
+     plain decoration. */
+  --kv-accent: #d98a3f;
+  --kv-ok: #5fb37a;
+  --kv-warn: #d9a93f;
+  --kv-error: #d9635f;
+  --kv-agent: #956fd9;
+  --kv-accent-hover: #e2a35f; /* [P], derived — see header */
+  --kv-info: #5f95d9; /* [P] in PRD §13.3 itself — an informational-mark proposal, not read from a wireframe */
+
+  /* --- 13.4 typography ----------------------------------------------------
+     Fonts load from `/src/tokens.css`'s `@fontsource` imports, already
+     pulled into this document by `main.tsx` — declared here only as named
+     tokens, not re-imported. */
+  --kv-font-mono: "IBM Plex Mono", monospace;
+  --kv-font-sans:
+    "IBM Plex Sans", system-ui, sans-serif; /* [P] in PRD §13.4 itself — every drawn wireframe string is mono; see shell.css for the ruling that Schematify's own chrome uses mono too */
+
+  /* --- 13.5 geometry -------------------------------------------------------
+     --kv-grid-dot references --kv-bg-raised rather than repeating its hex,
+     so the dot and the raised surface can never drift apart — the PRD value
+     (`radial-gradient(#22262e 1px, transparent 1px)`) is the same colour
+     either way. */
+  --kv-radius: 3px;
+  --kv-radius-chip: 2px;
+  --kv-radius-lg: 4px;
+  --kv-radius-xl: 5px;
+  --kv-radius-pill: 8px;
+  --kv-radius-dot: 50%;
+  --kv-radius-frame: 6px; /* [P] in PRD §13.5 itself — the wireframe's own screen-wrapper radius, reused by proposal for the app window frame */
+  --kv-grid-size: 22px;
+  --kv-grid-size-stack: 26px;
+  --kv-grid-dot: radial-gradient(var(--kv-bg-raised) 1px, transparent 1px);
+  --kv-panel-outline: 238px;
+  --kv-panel-inspector: 360px;
+  --kv-panel-inspector-wide: 380px;
+  --kv-dock-height: 196px;
+  --kv-titlebar-height: 34px;
+}
