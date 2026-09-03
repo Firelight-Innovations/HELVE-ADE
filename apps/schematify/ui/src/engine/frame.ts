@@ -142,7 +142,8 @@ function drawNode(
     container: !node.collapsed && kids.length > 0,
     selected: selection.has(node.id),
     collapsedCaption: node.collapsed ? `collapsed · ${childCount} children` : undefined,
-    rollUpCaption: aggregated > 0 ? `${aggregated} edges aggregated` : undefined,
+    rollUpCaption:
+      aggregated > 0 ? `${aggregated} edge${aggregated === 1 ? "" : "s"} aggregated` : undefined,
   };
 }
 

@@ -65,17 +65,23 @@ function buildNodes(): GraphNode[] {
   return nodes;
 }
 
-/** Edges by index arithmetic rather than a random source: same 260 pairs every
- *  run, on every machine. Self-edges and duplicates are skipped, and the stride
- *  is coprime with the node count so the walk visits every node before it
- *  repeats. */
+/**
+ * Edges by index arithmetic rather than a random source: the same 260 pairs
+ * every run, on every machine. The stride is coprime with the node count, so
+ * one lap of the walk visits every node exactly once; each further lap shifts
+ * the target by a second offset, which is what lets the walk reach 260 pairs
+ * across 200 nodes instead of exhausting itself after one lap.
+ */
 function buildEdges(nodes: readonly GraphNode[]): GraphEdge[] {
   const edges: GraphEdge[] = [];
   const seen = new Set<string>();
   const count = nodes.length;
+  const limit = count * count;
   for (let step = 0; edges.length < DENSE_EDGE_COUNT; step += 1) {
+    if (step > limit) throw new Error("dense fixture: cannot reach the specified edge count");
+    const lap = Math.floor(step / count);
     const from = nodes[step % count];
-    const to = nodes[(step * 37 + 11) % count];
+    const to = nodes[(step * 37 + 11 + lap * 7) % count];
     const key = `${from.id}->${to.id}`;
     if (from.id === to.id || seen.has(key)) continue;
     seen.add(key);

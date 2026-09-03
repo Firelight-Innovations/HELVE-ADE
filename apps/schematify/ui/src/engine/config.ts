@@ -6,12 +6,9 @@
  *
  * The shape is deliberately declarative. An edge kind is a row in a table
  * rather than a callback, so a refusal can name the rule it came from, and so
- * a test can enumerate what a tier accepts without running a drag.
- *
- * The `screen` node kind appears in the tier 1 and 2 vocabulary because
- * `references_ui` terminates at one (PRD §5.7, §12.5). No Schematic draws a
- * screen node's box this wave — the reference draws as a chip — but naming the
- * kind here keeps the edge table honest rather than widening that rule to `*`.
+ * a test can enumerate what a tier accepts without running a drag. The `screen`
+ * kind is here because `references_ui` terminates at one (PRD §5.7, §12.5),
+ * even though no Schematic draws a screen's box this wave.
  */
 import type { Tier } from "../graph";
 
@@ -45,9 +42,8 @@ export function isAnnotationKind(kind: string): boolean {
   return (ANNOTATION_KINDS as readonly string[]).includes(kind);
 }
 
-/** How one edge kind draws (PRD §12.5's style table). The renderer reads
- *  `line` and `arrow`; the legend chip reads `line` too, so a chip and its
- *  edges can never disagree. */
+/** How one edge kind draws (PRD §12.5's style table). The legend chip reads
+ *  the same style its edges do, so the two can never disagree. */
 export interface EdgeStyle {
   line: "solid" | "dashed" | "dotted";
   arrow: "filled" | "hollow" | "chip" | "none";
@@ -82,10 +78,9 @@ export interface EdgeKindRule {
 export type ContainmentRendering =
   { mode: "nesting" } | { mode: "nesting-and-arrows"; label: string };
 
-/** Which Schematic chrome this tier draws (PRD §12.1). The Module Schematic
- *  draws no minimap in the wireframe, but WIREFRAME-EXTRACT.md §10.3 rules
- *  that the zoom readout and the legend are added there — so this is 3 flags
- *  rather than 1. */
+/** Which Schematic chrome this tier draws (PRD §12.1). Three flags rather than
+ *  one, because WIREFRAME-EXTRACT.md §10.3 adds the readout and the legend to
+ *  the Module Schematic, which draws neither in the wireframe. */
 export interface ChromeConfig {
   minimap: boolean;
   zoomReadout: boolean;
@@ -131,17 +126,15 @@ export interface SchematicConfig {
    *  this list cannot be drawn on this tier at all. */
   edgeKinds: readonly EdgeKindRule[];
   containment: ContainmentRendering;
-  /** Whether the annotation tier (groups and comments, PRD §12.4) is
-   *  offered. Every tier says `true` today; the field exists because a
-   *  read-only Schematic is a plausible 4th configuration. */
+  /** Whether groups and comments (PRD §12.4) are offered. Every tier says
+   *  `true` today; a read-only Schematic is the plausible 4th configuration. */
   annotations: boolean;
   chrome: ChromeConfig;
   /** The note beside the legend chips, e.g.
    *  `contains = nesting · depends_on = drawn` (PRD §12.1). */
   legendFooter: string;
-  /** The default box for a node of this kind, before any layout file
-   *  overrides it. The one callback, because Wave 4 sizes a node from its
-   *  content and this engine must not care how. */
+  /** The default box for a node of this kind, before any layout file overrides
+   *  it. The one callback: Wave 4 sizes a node from its content. */
   nodeBox: (kind: SchematicNodeKind) => Size;
 }
 

@@ -16,7 +16,7 @@
 import type { SchematicConfig } from "./config";
 import type { DocIndex, SchematicDoc, SchematicNode } from "./doc";
 import { childrenOf, indexDoc } from "./doc";
-import { snap } from "./geometry";
+import { boundsOf, snap } from "./geometry";
 import type { Rect } from "./geometry";
 
 /** Space between two boxes at the same level. */
@@ -40,13 +40,40 @@ export function arrange(doc: SchematicDoc, config: SchematicConfig): Arrangement
   place(index, config, null, { x: GAP, y: GAP }, sizes, out);
 
   for (const [id, rect] of out) {
+    // A collapsed box is drawn at its own size, not at the size of the block
+    // its children needed — but those children were still laid out inside that
+    // block, so every node has a distinct position to return to on expand.
+    const node = index.byId.get(id);
+    const collapsed = node?.collapsed ? config.nodeBox(node.kind) : null;
     out.set(id, {
-      ...rect,
       x: snap(rect.x, config.grid.size),
       y: snap(rect.y, config.grid.size),
+      width: collapsed?.width ?? rect.width,
+      height: collapsed?.height ?? rect.height,
     });
   }
   return out;
+}
+
+/**
+ * The box a container needs to hold what is inside it, which is what expanding
+ * a collapsed box resizes to. Returns `null` for a node with no children.
+ */
+export function boxAroundChildren(
+  index: DocIndex,
+  config: SchematicConfig,
+  node: SchematicNode,
+): Rect | null {
+  const kids = childrenOf(index, node.id);
+  const bounds = boundsOf(kids.map((kid) => kid.rect));
+  if (!bounds) return null;
+  const own = config.nodeBox(node.kind);
+  return {
+    x: Math.min(node.rect.x, bounds.x - PAD),
+    y: Math.min(node.rect.y, bounds.y - HEADER),
+    width: Math.max(own.width, bounds.width + PAD * 2),
+    height: Math.max(own.height, bounds.height + PAD + HEADER),
+  };
 }
 
 /** Bottom-up: a leaf takes its configured box, a container takes whichever is
@@ -65,8 +92,10 @@ function measure(
 
   const node = index.byId.get(parentId) as SchematicNode;
   const own = config.nodeBox(node.kind);
+  // Collapse is deliberately ignored here: a hidden child still needs a
+  // position, so the block is measured as though every container were open.
   const size =
-    kids.length === 0 || node.collapsed
+    kids.length === 0
       ? own
       : {
           width: Math.max(own.width, block.width + PAD * 2),
@@ -126,9 +155,7 @@ function place(
       rowHeight = 0;
     }
     out.set(kid.id, { x, y, width: size.width, height: size.height });
-    if (!kid.collapsed) {
-      place(index, config, kid.id, { x: x + PAD, y: y + HEADER }, sizes, out);
-    }
+    place(index, config, kid.id, { x: x + PAD, y: y + HEADER }, sizes, out);
     x += size.width + GAP;
     rowHeight = Math.max(rowHeight, size.height);
   });

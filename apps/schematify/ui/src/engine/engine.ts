@@ -17,7 +17,7 @@ import type { Refusal, SchematicConfig } from "./config";
 import { refuse } from "./config";
 import type { DocIndex, SchematicDoc, SchematicEdge, SchematicNode } from "./doc";
 import { descendantsOf, indexDoc, isAnnotation, siblingSlugs, visibleNodes } from "./doc";
-import { autoSorted } from "./arrange";
+import { autoSorted, boxAroundChildren } from "./arrange";
 import type { Point, Rect } from "./geometry";
 import { boundsOf, rectContains, rectsOverlap, snap } from "./geometry";
 import { duplicateSlug, uuidv7 } from "./ids";
@@ -218,10 +218,22 @@ export class SchematicEngine {
     );
   }
 
-  /** Collapses or expands a box (PRD §12.3). Collapse state is cosmetic. */
+  /**
+   * Collapses or expands a box (PRD §12.3). Collapse state is cosmetic, and so
+   * is the resize that comes with it: collapsing shrinks the box to the size a
+   * node of its kind draws at, and expanding grows it back around whatever its
+   * children have since become, so an expanded container never draws smaller
+   * than what it holds.
+   */
   toggleCollapse(id: string): void {
+    const target = this.cachedIndex.byId.get(id);
+    if (!target) return;
+    const collapsed = !target.collapsed;
+    const box = collapsed
+      ? { ...target.rect, ...this.config.nodeBox(target.kind) }
+      : (boxAroundChildren(this.cachedIndex, this.config, target) ?? target.rect);
     this.commit(
-      this.mapNodes((node) => (node.id === id ? { ...node, collapsed: !node.collapsed } : node)),
+      this.mapNodes((node) => (node.id === id ? { ...node, collapsed, rect: box } : node)),
     );
   }
 
