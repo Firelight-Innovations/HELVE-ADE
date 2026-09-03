@@ -45,7 +45,6 @@ export interface AnatomyNode {
 
   signature?: string;
   returns?: string;
-  coversCount?: number;
   budgetThresholdText?: string;
   budgetProbe?: string;
   budgetValueText?: string;
@@ -558,20 +557,18 @@ export function contentBox(base: Size, content: NodeContent): Size {
  * function does not recognise (a module, a service, an annotation node) draws
  * none, which is correct: only the 5 facet kinds have card content at all.
  *
- * `contract-method`'s covers line reads the tier-3 formula PRD §16.1's own
- * numbers fix: `coversCount` is a stored count (the same style as
- * `exportsCount` elsewhere on this node — see `../graph/types.ts`'s
- * `GraphNode` comment), read directly rather than re-derived from
- * `doc.edges`, since the fixture draws only 2 of a method's covers edges as
- * their own cards and keeps the rest as this count alone.
+ * `contract-method`'s covers line takes its count as a parameter — computed
+ * by the caller from real `covers` edges (`coversCountFor`, below), never
+ * stored on the node (PRD §0.4). `0` is what a method with no such edge
+ * passes; that reads identically to omitting the argument.
  */
-export function facetContentFor(node: AnatomyNode): string[] {
+export function facetContentFor(node: AnatomyNode, coversCount = 0): string[] {
   switch (node.kind) {
     case "contract-method": {
       const call = `${node.signature ?? "()"} → ${node.returns ?? "void"}`;
       const covers =
-        (node.coversCount ?? 0) > 0
-          ? `✓ ${node.coversCount} covers · matched in code`
+        coversCount > 0
+          ? `✓ ${coversCount} covers · matched in code`
           : "▲ no covers edge from any test case";
       return [call, covers];
     }
@@ -633,12 +630,31 @@ export interface CoverageReadout {
   uncovered: readonly string[];
 }
 
-export function coverageOf(contractMethods: readonly AnatomyNode[]): CoverageReadout {
+/** A structural edge subset — `kind`/`to` are all a covers count needs, the
+ *  same narrowing `AnatomyNode` itself already applies to a node. */
+export interface CoversEdge {
+  kind: string;
+  to: string;
+}
+
+/** How many `covers` edges target `contractMethodId` — computed here, at
+ *  draw time, from the document's real edges (PRD §0.4). Wave 5 stored this
+ *  as a `coversCount` field directly on the node; Wave 6 replaces that with
+ *  this function, so the fixture now has to earn the count with a real
+ *  edge per test case rather than asserting it. */
+export function coversCountFor(contractMethodId: string, edges: readonly CoversEdge[]): number {
+  return edges.filter((edge) => edge.kind === "covers" && edge.to === contractMethodId).length;
+}
+
+export function coverageOf(
+  contractMethods: readonly { id: string; slug: string }[],
+  edges: readonly CoversEdge[],
+): CoverageReadout {
   let present = 0;
   let expected = 0;
   const uncovered: string[] = [];
   for (const method of contractMethods) {
-    const count = method.coversCount ?? 0;
+    const count = coversCountFor(method.id, edges);
     present += count;
     expected += count > 0 ? count : 1;
     if (count === 0) uncovered.push(method.slug);

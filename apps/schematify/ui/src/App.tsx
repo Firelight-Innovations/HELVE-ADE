@@ -191,10 +191,7 @@ export default function App() {
       findings={findings}
       lintError={lintError}
       onNavigate={(index) => setPath(path.slice(0, index + 1))}
-      onActivate={(drawn) => {
-        const dest = nextDrillTarget(engine.config.tier, drawn.node);
-        if (dest) setPath([...path, dest]);
-      }}
+      onDrillTo={(dest) => setPath([...path, dest])}
       onSelectFinding={handleSelectFinding}
     />
   );
@@ -202,6 +199,12 @@ export default function App() {
 
 /** The populated view, split out so the engine subscription lives where the
  *  engine is known to exist rather than behind a null check.
+ *
+ * `onDrillTo` is the 1 navigation primitive both the canvas's click-to-drill
+ * and the Inspector's `Open module canvas` footer control (PRD §12.12, §17
+ * Wave 6) push through — a click on the canvas resolves a `DrawnNode` to a
+ * `DrillTarget` first (`onActivate`, below), the footer control already
+ * holds one.
  *
  * **Wave 10c's section switch.** `section` names which of the Outline's 3
  * entries (PRD §12.1) is active. `Design` draws the Schematic + Inspector,
@@ -218,7 +221,7 @@ function Schematify({
   findings,
   lintError,
   onNavigate,
-  onActivate,
+  onDrillTo,
   onSelectFinding,
 }: {
   engine: SchematicEngine;
@@ -226,7 +229,7 @@ function Schematify({
   findings: Finding[] | null;
   lintError: string | null;
   onNavigate: (index: number) => void;
-  onActivate: (node: DrawnNode) => void;
+  onDrillTo: (target: DrillTarget) => void;
   onSelectFinding: (finding: Finding) => void;
 }) {
   const state = useSyncExternalStore(
@@ -234,6 +237,11 @@ function Schematify({
     () => engine.state,
   );
   const graph = useMemo(() => toGraph(state.doc), [state.doc]);
+
+  const onActivate = (drawn: DrawnNode) => {
+    const dest = nextDrillTarget(engine.config.tier, drawn.node);
+    if (dest) onDrillTo(dest);
+  };
 
   const [section, setSection] = useState<Section>("Design");
   const [productGraph, setProductGraph] = useState<ProductGraph | null>(null);
@@ -265,7 +273,6 @@ function Schematify({
     setSection("Product");
     if (!productGraph && !productError) loadProduct();
   }
-
   return (
     <div className="kv-shell">
       <div className="kv-chrome-row">
@@ -303,7 +310,12 @@ function Schematify({
               exports={graph.exports}
               onOpenScreen={openScreen}
             />
-            <InspectorShell graph={graph} selectionCount={state.selection.length} />
+            <InspectorShell
+              graph={graph}
+              selection={state.selection}
+              engine={engine}
+              onOpenModuleCanvas={onDrillTo}
+            />
           </>
         ) : productError ? (
           <p className="kv-shell__error">{productError}</p>

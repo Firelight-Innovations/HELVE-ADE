@@ -25,13 +25,16 @@ import { isAnnotationNodeKind } from "./types";
 import type { GraphNode, SchematicGraph, ServiceGraph, Tier } from "./types";
 
 export type {
+  ContractMethodSummary,
   ExportRow,
   FacetCounts,
   GraphEdge,
   GraphNode,
   HealthStatus,
   Layer,
+  LibraryDetail,
   Lifecycle,
+  LifecycleAuditRow,
   NodeKind,
   OutlineBadge,
   SchematicGraph,

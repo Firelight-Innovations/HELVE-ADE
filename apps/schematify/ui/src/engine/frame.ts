@@ -34,6 +34,7 @@ import {
   captionFor,
   coverageBody,
   coverageOf,
+  coversCountFor,
   countStringsFor,
   facetChipsFor,
   facetContentFor,
@@ -181,7 +182,7 @@ export function buildFrame(input: FrameInput): Frame {
   const zoomTier = zoomTierFor(viewport.zoom);
   const drawnNodes = visible
     .filter((node) => rectsOverlap(node.rect, view))
-    .map((node) => drawNode(node, index, selection, rollUp, config.tier, zoomTier));
+    .map((node) => drawNode(node, index, selection, rollUp, config.tier, zoomTier, doc.edges));
 
   return {
     nodes: drawnNodes,
@@ -208,7 +209,7 @@ export function buildFrame(input: FrameInput): Frame {
 function buildModuleReadouts(doc: SchematicDoc): Frame["moduleReadouts"] {
   const methods = doc.nodes.filter((node) => node.kind === "contract-method");
   if (methods.length === 0) return null;
-  const readout = coverageOf(methods);
+  const readout = coverageOf(methods, doc.edges);
   return {
     coverage: { heading: "COVERAGE OF DESIGN", body: coverageBody(readout) },
     satisfies: SATISFIES_CALLOUT,
@@ -232,6 +233,7 @@ function drawNode(
   rollUp: ReadonlyMap<string, number>,
   tier: SchematicConfig["tier"],
   zoomTier: ZoomTier,
+  edges: SchematicDoc["edges"],
 ): DrawnNode {
   const kids = childrenOf(index, node.id);
   const childCount = node.collapsed ? descendantsOf(index, node.id).length : kids.length;
@@ -271,7 +273,10 @@ function drawNode(
     health,
     headerOccupants: headerOccupants(node.rect, health !== "passing"),
     zoomTier,
-    facetContent: facetContentFor(node),
+    facetContent: facetContentFor(
+      node,
+      node.kind === "contract-method" ? coversCountFor(node.id, edges) : 0,
+    ),
     screenReferenceId: node.screenRef
       ? (screenReferenceId(node.screenRef) ?? undefined)
       : undefined,

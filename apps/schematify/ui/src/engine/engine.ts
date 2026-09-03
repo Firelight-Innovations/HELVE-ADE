@@ -13,7 +13,7 @@
  * `state` directly and awaits `settled()`.
  */
 import type { SchematifySeam } from "../graph";
-import type { Refusal, SchematicConfig } from "./config";
+import type { Refusal, SchematicConfig, SchematicNodeKind } from "./config";
 import { refuse } from "./config";
 import type { DocIndex, SchematicDoc, SchematicEdge, SchematicNode } from "./doc";
 import { descendantsOf, indexDoc, isAnnotation, siblingSlugs, visibleNodes } from "./doc";
@@ -295,6 +295,83 @@ export class SchematicEngine {
     this.commit(autoSorted(this.current.doc, this.config));
   }
 
+  // --- the Inspector: semantic writes, layout untouched (PRD §17 Wave 6) ---
+
+  /**
+   * Patches one node's content fields and writes exactly the 1 semantic file
+   * that changed — PRD §17 Wave 6's own acceptance condition: "The Inspector
+   * edits a node and writes 1 file. One, not two." Every other mutating
+   * method on this engine goes through `commit`, which also rewrites the
+   * layout file on every step (`applyDoc`'s own comment: "every committed
+   * change writes the layout file"); an Inspector field edit changes no
+   * geometry, so it calls `commitSemanticOnly` instead and skips that write
+   * entirely, rather than making a cosmetically-identical layout write just
+   * to stay uniform with the drag/reparent/duplicate gestures above.
+   *
+   * Refuses on an annotation node (a comment or a group has no Inspector
+   * panel at all — PRD §11.3 keeps it out of reconciliation) and on an id
+   * this Schematic does not hold.
+   */
+  editNode(id: string, patch: Partial<SchematicNode>): Refusal | null {
+    const before = this.cachedIndex.byId.get(id);
+    if (!before) return refuse("That node is not on this Schematic.");
+    if (isAnnotation(before)) return refuse("An annotation node has no Inspector panel.");
+    const after: SchematicNode = { ...before, ...patch };
+    this.commitSemanticOnly(
+      { ...this.current.doc, nodes: this.current.doc.nodes.map((n) => (n.id === id ? after : n)) },
+      [edited(nodePath(after), inspectorNodeJson(before), inspectorNodeJson(after))],
+    );
+    return null;
+  }
+
+  /**
+   * Mints a new facet under `parentId` (the Contract tab's `+ add method`,
+   * PRD §12.12) and writes its 1 new semantic file. The facet draws wherever
+   * `arrange.ts` next places an unpositioned node of its kind — no layout
+   * write happens here either, for the same reason `editNode` skips one.
+   */
+  addFacet(
+    parentId: string,
+    kind: SchematicNodeKind,
+    fields: Partial<SchematicNode>,
+  ): Refusal | null {
+    const parent = this.cachedIndex.byId.get(parentId);
+    if (!parent) return refuse("That node is not on this Schematic.");
+    const id = uuidv7();
+    const node: SchematicNode = {
+      id,
+      slug: `${kind}-${id.slice(0, 8)}`,
+      title: "",
+      kind,
+      parentId,
+      rect: { x: 0, y: 0, ...this.config.nodeBox(kind) },
+      collapsed: false,
+      ...fields,
+    };
+    this.commitSemanticOnly({ ...this.current.doc, nodes: [...this.current.doc.nodes, node] }, [
+      addedFile(nodePath(node), inspectorNodeJson(node)),
+    ]);
+    return null;
+  }
+
+  /**
+   * Drops one facet (the Budgets tab's `Drop budget`, PRD §12.12) and writes
+   * the 1 file its removal is. PRD §6.6 forbids deleting design data in
+   * general; a budget that never had a probe never entered reconciliation
+   * (PRD §17 Wave 6's own 3rd bullet — "no probe" is a lint error, not a
+   * measured claim), so dropping it is the declared exception rather than a
+   * 2nd delete path alongside the one `canDelete` refuses everywhere else.
+   */
+  dropFacet(id: string): Refusal | null {
+    const node = this.cachedIndex.byId.get(id);
+    if (!node) return refuse("That node is not on this Schematic.");
+    this.commitSemanticOnly(
+      { ...this.current.doc, nodes: this.current.doc.nodes.filter((n) => n.id !== id) },
+      [droppedFile(nodePath(node), inspectorNodeJson(node))],
+    );
+    return null;
+  }
+
   // --- the annotation tier: cosmetic writes only ---------------------------
 
   /** A titled box with its own collapse triangle (PRD §12.4). */
@@ -511,6 +588,26 @@ export class SchematicEngine {
     this.applySemantic(effects, "forward");
   }
 
+  /**
+   * The Inspector's own commit path (PRD §17 Wave 6): adopts the document,
+   * reindexes, records history, and plays the semantic effects — everything
+   * `commit`/`applyDoc` do except the layout write, which is the entire
+   * reason this method exists rather than a 3rd argument to `commit`.
+   */
+  private commitSemanticOnly(doc: SchematicDoc, effects: readonly SemanticEffect[]): void {
+    this.undoStack.push({ doc: this.current.doc, effects });
+    this.redoStack = [];
+    this.cachedIndex = indexDoc(doc);
+    const alive = new Set(doc.nodes.map((node) => node.id));
+    this.current = {
+      ...this.current,
+      doc,
+      selection: this.current.selection.filter((id) => alive.has(id)),
+    };
+    this.applySemantic(effects, "forward");
+    this.notify();
+  }
+
   /** Adopts a document, reindexes, writes the layout file, and notifies. Every
    *  committed change writes the layout file: a step that adds a node changes
    *  where things sit as well as what they are. */
@@ -600,4 +697,72 @@ function nodeJson(node: SchematicNode): unknown {
 
 function unique(ids: readonly string[]): string[] {
   return [...new Set(ids)];
+}
+
+/**
+ * What an Inspector edit writes: every content field a node carries, minus
+ * the purely cosmetic ones (`rect`, `collapsed`, `role`) that `nodeJson`
+ * above already excludes for the same reason. Unlike `nodeJson`, this
+ * function is not deliberately partial — an Inspector edit knows the node's
+ * whole current content, not only what a reparent or a duplicate can
+ * honestly infer, so it writes the full envelope PRD §5.1's schema expects.
+ * Fields listed explicitly, the same style `engine/layout.ts`'s `buildDoc`
+ * and `toGraph` already use for this exact mirroring job.
+ */
+function inspectorNodeJson(node: SchematicNode): unknown {
+  return {
+    id: node.id,
+    slug: node.slug,
+    title: node.title,
+    kind: node.kind,
+    parent: node.parentId,
+    badge: node.badge,
+    lifecycle: node.lifecycle,
+    layer: node.layer,
+    description: node.description,
+    authoredBy: node.authoredBy,
+    facets: node.facets,
+    libraries: node.libraries,
+    health: node.health,
+    exportsCount: node.exportsCount,
+    modulesCount: node.modulesCount,
+    dependentsCount: node.dependentsCount,
+    sharedAtLca: node.sharedAtLca,
+    schemasResolved: node.schemasResolved,
+    deprecatedSuccessor: node.deprecatedSuccessor,
+    staleReason: node.staleReason,
+    exported: node.exported,
+    budgetTier: node.budgetTier,
+    signature: node.signature,
+    returns: node.returns,
+    budgetThresholdText: node.budgetThresholdText,
+    budgetProbe: node.budgetProbe,
+    budgetValueText: node.budgetValueText,
+    testStatus: node.testStatus,
+    docAudience: node.docAudience,
+    docBody: node.docBody,
+    depVersion: node.depVersion,
+    depLicense: node.depLicense,
+    depRegistryOk: node.depRegistryOk,
+    screenRef: node.screenRef,
+    decisions: node.decisions,
+    runReference: node.runReference,
+    assignee: node.assignee,
+    auditRows: node.auditRows,
+    given: node.given,
+    when: node.when,
+    then: node.then,
+    markerToken: node.markerToken,
+    testLinkState: node.testLinkState,
+    lastDurationMs: node.lastDurationMs,
+    mismatch: node.mismatch,
+    semantics: node.semantics,
+    budgetSignOff: node.budgetSignOff,
+    budgetTrending: node.budgetTrending,
+    exports: node.exports,
+    resolvedMethods: node.resolvedMethods,
+    screenLinks: node.screenLinks,
+    inboundReferenceCount: node.inboundReferenceCount,
+    danglingReferences: node.danglingReferences,
+  };
 }
