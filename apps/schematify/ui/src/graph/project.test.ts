@@ -6,7 +6,7 @@
  * throw, per STANDARDS.md §8's rule that an assertion which cannot fail is
  * worse than none.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { countNodes } from "./index";
 import { projectServiceGraph, type RawGraph, type RawNode } from "./project";
 
@@ -129,6 +129,63 @@ describe("projectServiceGraph", () => {
     const badged = graph.nodes.filter((n) => n.badge !== undefined);
     expect(badged.map((n) => n.id)).toEqual(["m4"]);
     expect(badged[0].badge).toBe("STALE");
+  });
+
+  it("draws PRD §7.4's exact second caption line for a stale node with a stale mark", () => {
+    const withStale: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service", title: "Auth Service" }),
+        node({
+          id: "m2",
+          slug: "crypto-primitives",
+          kind: "module",
+          title: "Crypto Primitives",
+          parent: "svc",
+        }),
+        node({
+          id: "m4",
+          slug: "audit-emitter",
+          kind: "module",
+          title: "Audit Emitter",
+          parent: "svc",
+          lifecycle: "stale",
+          stale: { source: "m2", member: "sign", at: "2026-08-25T12:00:00Z" },
+        }),
+      ],
+      edges: [],
+    };
+    const now = Date.parse("2026-08-25T14:00:00Z");
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const result = projectServiceGraph(withStale, "auth-service");
+      const auditEmitter = result.nodes.find((n) => n.id === "m4");
+      expect(auditEmitter?.staleReason).toBe(
+        "crypto-primitives.sign changed 2h ago. Re-review required.",
+      );
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
+  it("leaves staleReason undefined for a stale node with no stale mark yet", () => {
+    // A node written `stale` before Wave 10 started setting the field, or
+    // one the CI-facing loader quarantined the reference out of — either
+    // way, no caption is better than a caption naming nothing.
+    const noMark: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service" }),
+        node({
+          id: "m4",
+          slug: "audit-emitter",
+          kind: "module",
+          parent: "svc",
+          lifecycle: "stale",
+        }),
+      ],
+      edges: [],
+    };
+    const result = projectServiceGraph(noMark, "auth-service");
+    expect(result.nodes.find((n) => n.id === "m4")?.staleReason).toBeUndefined();
   });
 
   it("keeps a depends_on edge whose ends are both in the subtree", () => {
