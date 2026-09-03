@@ -207,8 +207,7 @@ const REGISTRY: &[Registered] = &[
         description: "The design layer of OpenKaava — draws the full-scale plan agents build from.",
         // Was going to ship as two separate repositories, each installed as a
         // tool. That plan is reversed and the two are folded into one: see
-        // `apps/schematify.rs` and
-        // `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` for
+        // `apps/schematify.rs` and `docs/design/SCHEMATIFY-PRD.md` §1.3 for
         // why what it will show belongs to the orchestrator rather than to a
         // checkout beside it. This row is a skeleton — `schematify::call`
         // answers one placeholder method — registered now so the switcher, the

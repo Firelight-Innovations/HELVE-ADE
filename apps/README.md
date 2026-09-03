@@ -193,14 +193,12 @@ and the filtering is a fact about which menus offer it. `docs/tutorials.md` §8.
 **Schematify** — the design layer of OpenKaava: draws the full-scale plan,
 technical and product together, that coding agents build from. It replaces
 two predecessor applications this scaffold was built from, folded into one
-rather than two — see
-`docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` and
-`docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md` §1.3 for what each used to
-own. It used to be planned as separate repositories, installed the way a
+rather than two — see `docs/design/SCHEMATIFY-PRD.md` §1.3 for what each used
+to own. It used to be planned as separate repositories, installed the way a
 genuinely third-party tool is; it is an app instead for the same reason Home
 and Files are — what it shows is what the orchestrator already resolved, and a
 process boundary that only turns around and asks the shell for that again is
 an IPC hop with nothing of its own on the other end. It is an ordinary pane
 app — a tab in the switcher and a row in the Apps menu, like Files or the
-Viewer. Scope grows wave by wave; `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`
-§17 is where that gets filled in.
+Viewer. Scope grows wave by wave; `docs/design/SCHEMATIFY-PRD.md` §17 is
+where that gets filled in.

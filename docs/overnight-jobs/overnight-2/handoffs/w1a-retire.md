@@ -133,6 +133,54 @@ not a git repository — files saved directly, no commit):
    own application chrome from a later wave, not the orchestrator's
    `apps/mod.rs` switcher-bar order, so it had no bearing on assumption 7.
 
+## Review fixes (Opus review, relayed by the orchestrator)
+
+The review found 4 blocking issues and 3 non-blocking ones. Fixed all 7:
+
+1. **Nine comments wrongly cited `OpenKaava-naming-decision.md`** (the
+   HELVE-ADE → OpenKaava rename record, which never mentions Schematify) as
+   the source for the Forger/Journeyman retirement. Repointed all nine to
+   `docs/design/SCHEMATIFY-PRD.md` §1.3, which actually states it
+   (`apps/README.md`, `apps/schematify/ui/src/App.tsx`,
+   `src-tauri/src/apps/schematify.rs` and `mod.rs`, `catalog.toml`,
+   `TODO.md`, and the three files in the next item).
+2. **Restored the three literal design-artifact quotations** I had wrongly
+   edited (`src/shell/keys/useKeyboard.ts`, `src/shell/toolwindow/BootOverlay.tsx`,
+   `src/shell/toolwindow/toolwindow.css` ×2). "Open Forger" and "Starting
+   Forger" are captions quoted verbatim off `docs/handoffs/shell-spec.html`;
+   removing the word broke the pointer rather than retiring a name. Reverted
+   to the original text and dropped the incorrect "this app's pre-rename
+   name" framing — that file is the shell, and the shell's prior name is
+   HELVE, not Forger.
+3. **Rewrote three unparseable "predecessor applications" sentences**
+   (`apps/tutorial/ui/src/content/theStack.ts`,
+   `docs/user/tutorials/the-stack.md`, `docs/user/tutorials/the-window.md`)
+   in plain language: the array held two entries once, both are now the
+   single Schematify app.
+4. **Rewrote `apps/tutorial/ui/src/mocks/stackList.tsx`'s "both are one app
+   now"** the same way.
+5. *(non-blocking)* **Restored "a spec's boundaries"** in
+   `src-tauri/src/mcp/servers/mod.rs`, reverting my incorrect "a graph's
+   boundaries" — a `.kaava` graph is exactly the kind of thing an agent
+   could open as files, which undercut the sentence's own point.
+6. *(non-blocking)* **Re-wrapped** the ragged lines the earlier edits left
+   in `docs/user/tutorials/the-window.md` and `README.md`.
+7. **Promoted `SCHEMATIFY-PRD.md`** from `docs/overnight-jobs/overnight-2/`
+   to `docs/design/SCHEMATIFY-PRD.md` with `git mv` — its own §0.2's stated
+   canonical location — and left a one-line pointer file at the old path.
+   The other four source documents and `00-AGENT-CONTEXT.md` were left in
+   place, untouched, per the original instruction and because another wave
+   is still writing in that folder.
+
+**Ruling on the retirement exemption (orchestrator, after the review above):**
+the exemption follows the document, not the folder — a source document that
+records what Forger and Journeyman were, such as `SCHEMATIFY-PRD.md` or the
+four documents still in this job folder, keeps its own historical sections
+intact regardless of which path it lives at, because recording what was
+replaced is neither a product string nor a description of the current
+system. Later waves (CODEOWNERS, the remaining §20 decision rows) should not
+scrub those sections.
+
 ## Left undone, and why
 
 - **Wave 2 onward** (shell, tokens, Schematic engine, everything past the

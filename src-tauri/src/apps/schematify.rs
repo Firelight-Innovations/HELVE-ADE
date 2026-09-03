@@ -3,9 +3,8 @@
 //!
 //! Schematify replaces the two predecessor applications this module was
 //! scaffolded from, folded into one rather than two — see
-//! `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` and
-//! `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md` §1.3 for what each used
-//! to own and why the split closed. Like its predecessors, it is a module here,
+//! `docs/design/SCHEMATIFY-PRD.md` §1.3 for what each used to own and why the
+//! split closed. Like its predecessors, it is a module here,
 //! registered like Home and Files, rather than a separate repository installed
 //! as a tool: what it will show — the open project, the stack this
 //! orchestrator already resolved — is exactly the kind of thing

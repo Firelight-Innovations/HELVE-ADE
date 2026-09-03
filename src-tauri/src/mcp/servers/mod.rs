@@ -12,7 +12,7 @@
 //!
 //! What earns a server is something that exists only inside OpenKaava and has no
 //! filesystem equivalent — Schematify's design model is the first real case, because
-//! an agent cannot read a graph's *boundaries* by opening a file. [`debug`] is
+//! an agent cannot read a spec's *boundaries* by opening a file. [`debug`] is
 //! the second, [`design`] the third and [`ui`] the fourth. Each module's own doc
 //! says which fact about it earns its place, and — for the two that write —
 //! which fact decides its gate, because "it writes" is not on its own one.
