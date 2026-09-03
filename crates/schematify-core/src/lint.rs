@@ -233,7 +233,13 @@ static CATALOG: [CatalogRow; RULE_COUNT] = [
 /// This doubles as the click-through target of PRD section 12.14: the variant
 /// names the Schematic to open and [`Finding::subject`] names what to select
 /// on it. A panel holding only the drawn string would have to parse a
-/// breadcrumb back into an identifier before it could navigate.
+/// breadcrumb back into an identifier before it could navigate. `slug` is
+/// here for the same reason `title` is: the frontend's own tier-open seam
+/// (`apps/schematify/ui/src/engine/navigation.ts`'s `configFor`) keys a
+/// Service or Module Schematic *instance* by slug, not by id — a panel
+/// holding only `id` would have to fetch the whole graph a second time to
+/// resolve one, which is exactly the "second definition" this crate's own
+/// header comment warns against.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "surface", rename_all = "snake_case")]
 pub enum Location {
@@ -245,6 +251,8 @@ pub enum Location {
         id: Uuid,
         /// Its title, so the cell renders without the graph.
         title: String,
+        /// Its slug, so a panel can open this Schematic without the graph.
+        slug: String,
     },
     /// One Module Schematic. Drawn `› Token Verifier`.
     Module {
@@ -252,6 +260,8 @@ pub enum Location {
         id: Uuid,
         /// Its title, so the cell renders without the graph.
         title: String,
+        /// Its slug, so a panel can open this Schematic without the graph.
+        slug: String,
     },
     /// The decision log of PRD section 12.18. Drawn `Decision Log`.
     DecisionLog,
@@ -285,13 +295,19 @@ impl Location {
 /// One rule violation, carrying everything a Problems row draws.
 ///
 /// The four columns of PRD section 12.14 come from here and nowhere else:
-/// `SEVERITY` from [`Finding::severity`], `RULE` from `rule.name()`, `NODE`
-/// from [`Finding::node_cell`], and `LOCATION` from `location.cell()`. The
-/// click-through is [`Location::schematic`] plus [`Finding::subject`].
+/// `SEVERITY` from [`Finding::severity`], `RULE` from [`Finding::rule_name`],
+/// `NODE` from [`Finding::node_cell`], and `LOCATION` from `location.cell()`.
+/// The click-through is [`Location::schematic`] plus [`Finding::subject`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Finding {
-    /// Which rule fired.
+    /// Which rule fired. Serializes to its code alone (`"L02"`) — a caller
+    /// over JSON-RPC that wants the drawn `RULE` text reads
+    /// [`Finding::rule_name`] instead of holding its own copy of PRD section
+    /// 10.4's table, the same "nothing left for the panel to invent" rule
+    /// [`Finding::node_cell`] and `location.cell()` already follow.
     pub rule: RuleId,
+    /// `rule.name()`, copied here for the reason [`Finding::rule`] names.
+    pub rule_name: String,
     /// What the violation costs, copied from the rule so a caller sorts
     /// without a table lookup.
     pub severity: Severity,
@@ -318,6 +334,7 @@ impl Finding {
     ) -> Self {
         Self {
             rule,
+            rule_name: rule.name().to_owned(),
             severity: rule.severity(),
             subject,
             node_cell,
@@ -557,6 +574,12 @@ pub(crate) fn location_of(graph: &Graph, id: Uuid) -> Location {
             .node(target)
             .map_or_else(|| target.to_string(), |n| n.envelope.title.clone())
     };
+    let slug = |target: Uuid| {
+        graph.node(target).map_or_else(
+            || target.to_string(),
+            |n| n.envelope.slug.as_str().to_owned(),
+        )
+    };
     let Some(node) = graph.node(id) else {
         return Location::Stack;
     };
@@ -569,6 +592,7 @@ pub(crate) fn location_of(graph: &Graph, id: Uuid) -> Location {
                 return Location::Module {
                     id: module,
                     title: title(module),
+                    slug: slug(module),
                 };
             }
         }
@@ -585,6 +609,7 @@ pub(crate) fn location_of(graph: &Graph, id: Uuid) -> Location {
     service.map_or(Location::Stack, |service| Location::Service {
         id: service,
         title: title(service),
+        slug: slug(service),
     })
 }
 
