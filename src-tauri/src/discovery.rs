@@ -39,9 +39,8 @@ pub struct StackSnapshot {
 ///
 /// Empty today for a second reason on top of that one: kaava.toml's `[[tool]]`
 /// array is itself empty. Schematify's two predecessor applications were its
-/// two entries and are now folded into one in-repo app (`apps/README.md`,
-/// `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`), so there
-/// is currently no stack component left to enable health tracking for.
+/// two entries and are now folded into one in-repo app (`apps/README.md`), so
+/// there is currently no stack component left to enable health tracking for.
 const ENABLED_TOOLS: &[&str] = &[];
 
 pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapshot> {

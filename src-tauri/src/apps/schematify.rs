@@ -92,8 +92,7 @@ mod tests {
             project: Some(PathBuf::from("/repo")),
         };
 
-        let value =
-            dispatch(&context, "schematify/state").expect("schematify/state does not fail");
+        let value = dispatch(&context, "schematify/state").expect("schematify/state does not fail");
         assert_eq!(value["ready"], false);
         assert_eq!(value["project"], "/repo");
     }
@@ -109,8 +108,7 @@ mod tests {
     #[test]
     fn an_unknown_method_is_method_not_found() {
         let context = CallContext::default();
-        let err =
-            dispatch(&context, "schematify/nonesuch").expect_err("unknown method is refused");
+        let err = dispatch(&context, "schematify/nonesuch").expect_err("unknown method is refused");
         assert_eq!(err.code, METHOD_NOT_FOUND);
     }
 }

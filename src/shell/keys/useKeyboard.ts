@@ -18,14 +18,11 @@ import { hasPrimaryModifier } from "../accelerators";
 /**
  * Everything the shell can be asked for by keystroke.
  *
- * The first three come from `docs/handoffs/shell-spec.html` — the only
- * accelerators that document states anywhere (it draws them in Mac notation,
- * which is how to find them in it): the "Open" chip for the app now named
- * Schematify on the empty tool window (captioned under this app's pre-rename
- * name — see `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`),
- * the "Re-scan tools" chip in that same empty state, and "cancel Ctrl+." under
- * the booting-tool spinner. Everything after them is here because the menu bar
- * displays it.
+ * The first three come from `docs/handoffs/shell-spec.html` (captioned there
+ * under this app's pre-rename name, see `OpenKaava-naming-decision.md`): the
+ * "Open" chip on the empty tool window, "Re-scan tools" in that same state,
+ * and "cancel Ctrl+." under the booting-tool spinner. Everything after them
+ * is here because the menu bar displays it.
  */
 export interface KeyboardActions {
   /** Ctrl+1…Ctrl+9 — select the nth tool in this window's bar. */
