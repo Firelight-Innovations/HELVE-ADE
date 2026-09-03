@@ -375,9 +375,6 @@ function NodeBox({
         >
           {node.title}
         </span>
-        <span className="kv-node__menu" aria-hidden="true">
-          ⋯
-        </span>
       </div>
       <div className="kv-node__slug">{node.slug}</div>
       {node.kind === "comment" ? <div className="kv-node__body">{node.body}</div> : null}
@@ -436,9 +433,19 @@ function NodeBox({
         />
       ) : null}
 
-      {drawn.health !== "passing" ? (
-        <i className={`kv-node__wedge kv-node__wedge--${drawn.health}`} />
+      {drawn.headerOccupants.wedge ? (
+        <i
+          className={`kv-node__wedge kv-node__wedge--${drawn.health}`}
+          style={rectStyle(drawn.headerOccupants.wedge, zoom)}
+        />
       ) : null}
+      <span
+        className="kv-node__menu"
+        aria-hidden="true"
+        style={rectStyle(drawn.headerOccupants.menu, zoom)}
+      >
+        ⋯
+      </span>
 
       <i
         className="kv-node__port kv-node__port--in"
@@ -545,4 +552,20 @@ function RefusalToast({ engine, refusal }: { engine: SchematicEngine; refusal: C
 
 function boxStyle(rect: Rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
+}
+
+/**
+ * A world-unit rect (`anatomy.ts`'s `headerOccupants`, in the node's own
+ * local coordinates) scaled to screen pixels. The health wedge and the node
+ * menu are positioned from this rather than a fixed CSS offset, so the
+ * geometry `anatomy.test.ts` proves apart is the same geometry drawn on
+ * screen — a fixed offset kept "in step" by a comment is not a constraint.
+ */
+function rectStyle(rect: Rect, zoom: number) {
+  return {
+    left: rect.x * zoom,
+    top: rect.y * zoom,
+    width: rect.width * zoom,
+    height: rect.height * zoom,
+  };
 }

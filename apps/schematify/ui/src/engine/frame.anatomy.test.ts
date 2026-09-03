@@ -204,6 +204,16 @@ describe("Rate Limiter — agent-authored, assigned", () => {
     expect(drawn.badges).toEqual(["◇ AGENT DRAFT"]);
     expect(drawn.caption).toEqual({ primary: "Pre-filled by agent. Not reviewed." });
   });
+
+  it("draws exactly 1 diamond on the whole node — the badge, never a 2nd one from the header glyph", async () => {
+    // The end-to-end regression check for the double-diamond finding: this
+    // is the one fixture node whose lifecycle (assigned) would previously
+    // have drawn its own inline "◇" on top of the badge already drawn above.
+    const drawn = nodeById(await serviceFrame(), "rate-limiter");
+    expect(drawn.lifecycle.headerGlyph).toBe("");
+    const diamonds = drawn.badges.filter((badge) => badge.includes("◇"));
+    expect(diamonds).toHaveLength(1);
+  });
 });
 
 describe("Audit Emitter — stale, with the 2-line caption and an amber wedge", () => {
