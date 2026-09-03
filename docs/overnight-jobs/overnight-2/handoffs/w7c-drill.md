@@ -171,6 +171,19 @@ layer up: reverted `defaultSeam.loadGraph` to `() => getBackendSeam()
 the same `no service named "auth-service"` error the round-1 case did, one
 layer further out). Reverted back to the fix, reran clean.
 
+**`index.defaultSeam.test.ts`, round 3 — the direct assertion.** Same
+revert, same `defaultSeam.loadGraph` 0-argument body, reran just this file:
+```
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'module', 'token-verifier' ]
+Received:
+  1st vi.fn() call:
+- [ "module", "token-verifier" ]
++ []
+```
+The spy's own call record shows the arguments never arrived — the exact
+shape of the defect, independent of any projection logic. Reverted back to
+the fix, reran clean.
+
 **`project.test.ts`, the contract-method covers case, round 1 → replaced in
 round 2.** Round 1 hardcoded `coversCount` to `0` and watched an assertion
 on that field fail. Round 2 deleted the field along with the assertion
@@ -203,7 +216,7 @@ directly and confirmed it: `Location::Stack` is a distinct variant, and the
 
 | Condition | Result |
 |---|---|
-| `loadRealGraph` honours tier and slug for Service and Module Schematics, through the real `defaultSeam` path | **Pass.** `backend.test.ts`'s 6 cases (4 `createBackendSeam`, 2 `defaultSeam`); §5 records the deliberate-break proof against the real pre-fix code at both layers. |
+| `loadRealGraph` honours tier and slug for Service and Module Schematics, through the real `defaultSeam` path | **Pass.** `backend.test.ts`'s 6 cases (4 `createBackendSeam`, 2 `defaultSeam`) plus `index.defaultSeam.test.ts`'s 1 direct-assertion case (asserts the exact arguments the backend seam's `loadGraph` was called with, not just the returned shape); §5 records the deliberate-break proof against the real pre-fix code at all 3. |
 | The Problems-panel click-through lands on the right node | **Pass, for what a real project can serve.** `resolveClickThrough` (wave 7b, untouched) already computed the correct `NavigationTarget`/`select` id — the missing piece was 2 layers of the target Schematic drawing nothing once opened, both now fixed. Not re-verified against a live browser — see §8. |
 | The merged tree typechecks | **Pass**, `npx tsc -p tsconfig.json --noEmit` run explicitly against the tree after merging `origin/main`, as its own step — see §3. |
 
@@ -235,18 +248,18 @@ real `.kaava/` project is open in OpenKaava:
 
 | Step | Result |
 |---|---|
-| `git merge origin/main` | Clean, no conflicts in any file this branch touches |
-| `npx tsc -p tsconfig.json --noEmit` (explicit, separate from `pnpm verify`) | Pass |
-| `npx vitest run apps/schematify` | Pass — 335 tests |
+| `git merge origin/main` | 2 merges as `main` advanced during review (2c67cf6 → 8a21c79 → 16da505); 1 conflict, in `shell/Dock.tsx` against wave 9d's own independent fix for the same Dock-badges defect (§4) — resolved by keeping wave 9d's already-merged version, functionally identical to this branch's |
+| `npx tsc -p tsconfig.json --noEmit` (explicit, separate from `pnpm verify`) | Pass, on the fully merged tree |
+| `npx vitest run apps/schematify` | Pass — 361 tests |
 | `npx eslint apps/schematify/ui/src` | Pass, 0 errors |
 | `npx prettier --check apps/schematify/ui/src` | Pass |
 | `node scripts/check-comments.mjs` | Pass, 0 above limit, 0 grandfathered |
 | `pnpm verify` (full, on the merged and fixed tree) | Pass — see the PR for this run's own output |
 
-No Rust file changed this branch — every defect and fix is in
-`apps/schematify/ui/src/graph/`. `cargo test --workspace` is expected to
-show only the same pre-existing, shared-`CARGO_TARGET_DIR` false failures
-the orchestrator has already named as `sch-fix-flake`'s to own.
+No Rust file was edited by this branch's own commits — every defect and fix
+is in `apps/schematify/ui/src/graph/`. Rust files changed only via the 2
+merges above, carrying in `main`'s own work (including the atomic-rename
+flake fix, PR #97) unmodified.
 
 `pnpm baseline` was never run. No test was deleted or skipped — the 1 test
 that changed shape (§5's covers-count case) was replaced with a stronger
