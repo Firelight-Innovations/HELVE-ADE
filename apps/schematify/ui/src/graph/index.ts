@@ -9,8 +9,15 @@
  * they take whatever `ServiceGraph` they're given and compute from it, per
  * PRD §0.4's counts rule, so a real graph swapped in tomorrow keeps every
  * string and count correct.
+ *
+ * Wave 3 widened the seam from a loader to a loader *and* a writer, without
+ * widening it to two modules: `SchematifySeam` at the foot of this file is
+ * every read and every write the Schematic engine makes, and `createMemorySeam`
+ * is the one implementation a backend replaces.
  */
+import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
+import type { LayoutFile } from "./layout";
 import type { GraphNode, ServiceGraph } from "./types";
 
 export type {
@@ -22,6 +29,9 @@ export type {
   ServiceGraph,
   Tier,
 } from "./types";
+
+export type { LayoutAnnotation, LayoutFile, LayoutNode, LayoutViewport } from "./layout";
+export { emptyLayout, layoutPath } from "./layout";
 
 /**
  * Returns the Service Schematic the shell opens this wave: the hand-typed
@@ -136,3 +146,73 @@ export function buildOutlineRows(graph: ServiceGraph): OutlineRow[] {
 
   return walk(null, 0);
 }
+
+/**
+ * Every read and every write the Schematic engine makes, in one interface.
+ * PRD §17 Wave 3 persists positions "through `schematify_write_layout`", and
+ * `docs/audits/schematify-baseline.md` §11 resolves that to a JSON-RPC method
+ * on the app dispatch (`schematify/write-layout`) rather than a new Tauri
+ * command — so the wiring wave replaces the 4 bodies in `defaultSeam` below
+ * with 4 `invoke` calls and changes nothing else in this app.
+ *
+ * The split between `writeLayout` and `writeSemantic` is the enforcement
+ * point for PRD §6.2's two-layer rule, not a convenience: a gesture that only
+ * arranges the picture may call the first and may never call the second.
+ */
+export interface SchematifySeam {
+  /** `schematify/load-graph`. */
+  loadGraph(): Promise<ServiceGraph>;
+  /** The dense fixture PRD §16.2 names, the subject of the 16 ms frame
+   *  budget. One method rather than a parameter on `loadGraph`, so a caller
+   *  cannot ask for it by accident. */
+  loadDenseGraph(): Promise<ServiceGraph>;
+  /** `schematify/read-layout`. `null` when the Schematic has no layout file
+   *  yet, which is the first-run state, not an error. */
+  readLayout(slug: string): Promise<LayoutFile | null>;
+  /** `schematify/write-layout`. Writes `layout/<slug>.json` and nothing
+   *  else. */
+  writeLayout(slug: string, file: LayoutFile): Promise<void>;
+  /** Any write to the semantic layer — `nodes/`, `edges/` (PRD §6.1). Edge
+   *  creation and duplication are the gestures in Wave 3 that reach it. */
+  writeSemantic(path: string, json: unknown): Promise<void>;
+  /** Removes a semantic file. Undoing an edge creation needs it, so it is
+   *  part of the seam rather than a gap a later wave discovers. */
+  removeSemantic(path: string): Promise<void>;
+}
+
+/**
+ * The seam ahead of a backend. Layout and semantic writes are held in memory,
+ * so a position survives a tier switch inside one session and does not survive
+ * a reload — the same honesty as `loadGraph` returning a fixture. The maps are
+ * exported so a test can assert exactly which layer a gesture wrote to.
+ */
+export function createMemorySeam(): SchematifySeam & {
+  layouts: Map<string, LayoutFile>;
+  semantic: Map<string, unknown>;
+} {
+  const layouts = new Map<string, LayoutFile>();
+  const semantic = new Map<string, unknown>();
+  return {
+    layouts,
+    semantic,
+    loadGraph,
+    loadDenseGraph: () => Promise.resolve(DENSE_SERVICE_GRAPH),
+    readLayout: (slug) => Promise.resolve(layouts.get(slug) ?? null),
+    writeLayout: (slug, file) => {
+      layouts.set(slug, file);
+      return Promise.resolve();
+    },
+    writeSemantic: (path, json) => {
+      semantic.set(path, json);
+      return Promise.resolve();
+    },
+    removeSemantic: (path) => {
+      semantic.delete(path);
+      return Promise.resolve();
+    },
+  };
+}
+
+/** The seam the running application uses. One process-wide instance, so two
+ *  Schematics opened in turn see each other's positions. */
+export const defaultSeam: SchematifySeam = createMemorySeam();
