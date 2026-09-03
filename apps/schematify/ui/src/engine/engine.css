@@ -1,0 +1,236 @@
+/*
+ * The Schematic surface. Every colour is a `--kv-*` custom property from
+ * `../tokens.css` — this app holds no literal hex value, and
+ * `../noLiteralHex.test.ts` enforces that on this file too.
+ *
+ * Geometry that PRD §13.5 names as a token uses the token. The dot grid's
+ * size is set inline by the canvas instead, because it is per tier
+ * (`--kv-grid-size` at tier 2 and 3, `--kv-grid-size-stack` at tier 1) and the
+ * engine already carries that number in its config.
+ */
+
+.kv-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  outline: none;
+  background-color: var(--kv-bg-app);
+  background-image: var(--kv-grid-dot);
+  cursor: default;
+  font-family: var(--kv-font-mono);
+}
+
+.kv-canvas__edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.kv-edge__label {
+  fill: var(--kv-text-tertiary);
+  font-family: var(--kv-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.kv-edge--pending {
+  stroke: var(--kv-accent);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 3;
+}
+
+/* --- nodes ----------------------------------------------------------------
+   Wave 4 owns node anatomy (PRD §12.6). What is here is the frame a box needs
+   to be draggable and connectable, and no state rendering at all. */
+
+.kv-node {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  padding: 6px 8px;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.kv-node--container {
+  background: transparent;
+  border-style: solid;
+}
+
+.kv-node--group {
+  background: transparent;
+  border: 1px dashed var(--kv-line-draft);
+  border-radius: var(--kv-radius-lg);
+}
+
+.kv-node--comment {
+  background: var(--kv-bg-raised);
+  border: 1px solid var(--kv-line-draft);
+}
+
+.kv-node--selected {
+  border-color: var(--kv-accent);
+}
+
+.kv-node__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--kv-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kv-node__triangle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--kv-info);
+  font: inherit;
+  cursor: pointer;
+}
+
+.kv-node__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-node__slug {
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+}
+
+.kv-node__body {
+  margin-top: 4px;
+  color: var(--kv-text-secondary);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.kv-node__caption {
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.kv-node__port {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border: 1px solid var(--kv-text-faint);
+  border-radius: var(--kv-radius-dot);
+  background: var(--kv-bg-app);
+}
+
+.kv-node__port--in {
+  left: -4px;
+}
+
+.kv-node__port--out {
+  right: -4px;
+  cursor: crosshair;
+}
+
+/* --- overlays -------------------------------------------------------------- */
+
+.kv-canvas__marquee {
+  position: absolute;
+  border: 1px solid var(--kv-accent);
+  background: transparent;
+  pointer-events: none;
+}
+
+.kv-refusal {
+  position: absolute;
+  max-width: 320px;
+  padding: 7px 9px;
+  border: 1px solid var(--kv-error);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-raised);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.kv-refusal__heading {
+  color: var(--kv-error);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-refusal__reason {
+  margin-top: 3px;
+  color: var(--kv-text-near);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* --- readout, legend, minimap ---------------------------------------------- */
+
+.kv-canvas__readout {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
+.kv-canvas__zoom {
+  color: var(--kv-text-secondary);
+}
+
+.kv-canvas__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kv-canvas__rule {
+  display: inline-block;
+  width: 14px;
+  border-top-width: 1.25px;
+  border-top-style: solid;
+}
+
+.kv-canvas__rule--dashed {
+  border-top-style: dashed;
+}
+
+.kv-canvas__rule--dotted {
+  border-top-style: dotted;
+}
+
+.kv-canvas__footer {
+  color: var(--kv-text-dim);
+}
+
+.kv-canvas__minimap {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  border: 1px solid var(--kv-line);
+  background: var(--kv-bg-panel);
+  pointer-events: none;
+}
+
+.kv-canvas__minimap-node {
+  position: absolute;
+  background: var(--kv-text-faint);
+}
+
+.kv-canvas__minimap-view {
+  position: absolute;
+  border: 1px solid var(--kv-accent);
+}

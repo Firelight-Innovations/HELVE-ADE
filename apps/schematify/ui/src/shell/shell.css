@@ -199,25 +199,6 @@
   font-size: 11px;
 }
 
-/* --- Schematic host -------------------------------------------------------- */
-
-.kv-schematic-host {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--kv-bg-app);
-  background-image: var(--kv-grid-dot);
-  background-size: var(--kv-grid-size) var(--kv-grid-size);
-}
-
-.kv-schematic-host__note {
-  color: var(--kv-text-faint);
-  font-family: var(--kv-font-mono);
-  font-size: 11px;
-}
-
 /* --- Inspector shell --------------------------------------------------------- */
 
 .kv-inspector {
