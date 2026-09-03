@@ -152,8 +152,42 @@ export function buildSaasBackend() {
   addScreen(f, auth);
   addRunAndAudit(f, auth);
   addLayouts(f, stack, auth);
+  leaveOneUncoveredMethod(f);
 
   return f.write();
+}
+
+/**
+ * Cover every contract method the Problems panel does not draw a row for.
+ *
+ * PRD section 16.1 lists exactly one `Contract method with no covers edge`
+ * row, against `token-issuer.mint`. Three other methods on modules that
+ * declare test cases carried no covers edge either, so rule L11 drew four
+ * rows where the wireframe draws one. These three edges take the other three
+ * away and leave `mint` standing, which is the row the wave 7 acceptance
+ * condition names.
+ *
+ * They are appended after every other entity is built, so the seeded minter
+ * hands the same identifier to everything that came before and a regeneration
+ * adds three files rather than rewriting five thousand.
+ *
+ * The `skew-window` edge is the one that contradicts a drawn detail: section
+ * 16.1 also says that method holds 0 covers edges. The two halves of that
+ * section cannot both hold, and the wave 7a handoff records why the Problems
+ * table is the half that wins.
+ */
+function leaveOneUncoveredMethod(f) {
+  const bySlug = (slug) => f.nodes.find((n) => n.slug === slug);
+  const testsOf = (module) =>
+    f.nodes.filter((n) => n.kind === "test-case" && n.parent === module.id);
+
+  const issuerTests = testsOf(bySlug("token-issuer"));
+  const verifierTests = testsOf(bySlug("token-verifier"));
+
+  f.edge("covers", issuerTests[0], bySlug("issue-pair"));
+  f.edge("covers", issuerTests[1], bySlug("refresh-pair"));
+  // `clock-skew-at-the-boundary` is the declared case for this method.
+  f.edge("covers", verifierTests[2], bySlug("skew-window"));
 }
 
 function buildStack(f) {
@@ -412,9 +446,17 @@ function buildTokenVerifierFacets(f, tokenVerifier, lib) {
     }),
   );
 
-  // Four covers edges onto verify_signature and three onto refresh_keys, which
-  // leaves skew_window with none. Rule L11 fires on it, and the Problems panel
-  // in the wireframe draws one L11 row rather than two. The handoff records it.
+  // Four covers edges onto verify_signature and three onto refresh_keys.
+  // `skew_window` is covered as well, by `leaveOneUncoveredMethod` at the end
+  // of the build, which is where every remaining covers edge is added.
+  //
+  // Section 16.1 contradicts itself here. Its module-tier paragraph says
+  // `skew_window` holds 0 covers edges; its Problems table draws exactly one
+  // L11 row, against `token-issuer.mint`. Both cannot hold, because L11 fires
+  // on an uncovered contract method and this module declares seven test cases.
+  // The wave 7 acceptance condition names the five Problems rows as the thing
+  // a test asserts, and nothing asserts the module-tier prose, so the table is
+  // the half that wins and this method carries a covers edge.
   for (const test of tests.slice(0, 4)) {
     f.edge("covers", test, verifySignature);
   }
