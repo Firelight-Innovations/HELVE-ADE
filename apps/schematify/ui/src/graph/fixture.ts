@@ -13,6 +13,17 @@ import type { GraphEdge, GraphNode, ServiceGraph } from "./types";
  * WIREFRAME-EXTRACT.md §1.1); `session-store` draws collapsed with a
  * trailing count of 2, so its children `session-codec` and `session-index`
  * are present in the graph but draw no Outline row of their own this wave.
+ *
+ * Wave 4 adds every node-anatomy field WIREFRAME-EXTRACT.md §1.1 draws for
+ * this screen (description, facet counts, libraries, badges, captions) so
+ * `anatomy.test.ts` and `frame.anatomy.test.ts` can assert the whole pipeline
+ * against literal wireframe strings, per PRD §17 Wave 4's acceptance
+ * condition: "every badge, count, and caption that fixtures/saas-backend can
+ * produce draws from that fixture." `fixtures/saas-backend/` itself does not
+ * exist on this branch yet (Wave 3's handoff, assumption 10, records the same
+ * gap for the dense fixture) — this hand-typed stand-in is the fixture that
+ * condition refers to until a real loader lands. `[P]`, recorded in the Wave
+ * 4 handoff.
  */
 const nodes: GraphNode[] = [
   {
@@ -22,6 +33,8 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: null,
     badge: "ENTRY",
+    exportsCount: 4,
+    health: "passing",
   },
   {
     id: "token-issuer",
@@ -29,6 +42,10 @@ const nodes: GraphNode[] = [
     title: "Token Issuer",
     kind: "module",
     parentId: null,
+    description: "Mints access and refresh pairs, binds them to a session record.",
+    facets: { methods: 3, tests: 5, budgets: 2 },
+    libraries: ["jose", "zod"],
+    health: "passing",
   },
   {
     id: "token-verifier",
@@ -36,6 +53,7 @@ const nodes: GraphNode[] = [
     title: "Token Verifier",
     kind: "module",
     parentId: null,
+    health: "passing",
   },
   {
     id: "jwks-cache",
@@ -43,6 +61,8 @@ const nodes: GraphNode[] = [
     title: "JWKS Cache",
     kind: "module",
     parentId: "token-verifier",
+    facets: { methods: 2, tests: 6 },
+    health: "passing",
   },
   {
     id: "clock-skew",
@@ -51,6 +71,7 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: "token-verifier",
     lifecycle: "draft",
+    health: "no-data",
   },
   {
     id: "session-store",
@@ -59,6 +80,7 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: null,
     collapsed: true,
+    health: "passing",
   },
   {
     id: "session-codec",
@@ -81,6 +103,10 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: null,
     lifecycle: "accepted",
+    sharedAtLca: true,
+    dependentsCount: 2,
+    facets: { methods: 6, tests: 14, budgets: 1 },
+    health: "passing",
   },
   {
     id: "password-hasher",
@@ -89,6 +115,8 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: null,
     lifecycle: "reviewed",
+    description: "Argon2id hashing with per-tenant cost parameters.",
+    health: "passing",
   },
   {
     id: "rate-limiter",
@@ -97,6 +125,8 @@ const nodes: GraphNode[] = [
     kind: "module",
     parentId: null,
     lifecycle: "assigned",
+    authoredBy: "agent",
+    health: "no-data",
   },
   {
     id: "audit-emitter",
@@ -106,6 +136,8 @@ const nodes: GraphNode[] = [
     parentId: null,
     lifecycle: "stale",
     badge: "STALE",
+    staleReason: "crypto-primitives.sign changed 2h ago. Re-review required.",
+    health: "soft-fail",
   },
 ];
 

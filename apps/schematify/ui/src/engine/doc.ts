@@ -12,7 +12,7 @@
  */
 import type { EdgeKind, NodeRole, SchematicNodeKind } from "./config";
 import { isAnnotationKind } from "./config";
-import type { Lifecycle, OutlineBadge } from "../graph";
+import type { FacetCounts, HealthStatus, Layer, Lifecycle, OutlineBadge } from "../graph";
 import type { Rect } from "./geometry";
 
 /** One box on the Schematic, semantic or annotation. */
@@ -39,6 +39,26 @@ export interface SchematicNode {
    *  loses nothing the Outline draws. Neither is read by the engine. */
   badge?: OutlineBadge;
   lifecycle?: Lifecycle;
+
+  // --- PRD §12.6 node anatomy (Wave 4), projected from `GraphNode` by
+  // `./layout.ts`'s `buildDoc`. Every field mirrors `../graph/types.ts`'s
+  // `GraphNode` — see that file for what each draws. ------------------------
+
+  layer?: Layer;
+  description?: string;
+  authoredBy?: "human" | "agent";
+  facets?: FacetCounts;
+  libraries?: readonly string[];
+  health?: HealthStatus;
+  exportsCount?: number;
+  modulesCount?: number;
+  dependentsCount?: number;
+  sharedAtLca?: boolean;
+  schemasResolved?: boolean;
+  deprecatedSuccessor?: string;
+  staleReason?: string;
+  exported?: boolean;
+  budgetTier?: "hard" | "soft";
 }
 
 /** One stored semantic edge. A drawn containment line at tier 3 is not one of

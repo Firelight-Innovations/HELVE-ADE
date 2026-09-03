@@ -503,12 +503,6 @@ impl<'g> Scan<'g> {
             .map_or_else(|| id.to_string(), |n| n.envelope.slug.as_str().to_owned())
     }
 
-    fn title(&self, id: Uuid) -> String {
-        self.graph
-            .node(id)
-            .map_or_else(|| id.to_string(), |n| n.envelope.title.clone())
-    }
-
     fn depends_on(&self, id: Uuid) -> &[Uuid] {
         self.dependencies.get(&id).map_or(&[], Vec::as_slice)
     }
@@ -530,34 +524,8 @@ impl<'g> Scan<'g> {
     }
 
     /// Which surface PRD section 12.14 draws this node on.
-    ///
-    /// A facet is drawn on its module's Module Schematic, a module on its
-    /// service's Service Schematic, and a service on the Stack. An annotation
-    /// node anchored to a service has no module above it, so it falls through
-    /// to the Service Schematic, which is where the wireframe draws the
-    /// `Two caches here` comment.
     fn location(&self, id: Uuid) -> Location {
-        let Some(node) = self.graph.node(id) else {
-            return Location::Stack;
-        };
-        if *node.kind() == NodeKind::Service {
-            return Location::Stack;
-        }
-        if node.kind().is_facet() {
-            if let Some(module) = self.graph.module_root(id) {
-                if module != id {
-                    return Location::Module {
-                        id: module,
-                        title: self.title(module),
-                    };
-                }
-            }
-        }
-        self.owning_service(id)
-            .map_or(Location::Stack, |service| Location::Service {
-                id: service,
-                title: self.title(service),
-            })
+        location_of(self.graph, id)
     }
 
     /// The `NODE` cell for a facet: `token-issuer.mint`, `token-verifier · cold_start_p95`.
@@ -569,6 +537,55 @@ impl<'g> Scan<'g> {
             _ => member.to_owned(),
         }
     }
+}
+
+/// Which surface a node is drawn on, and so what a breadcrumb reads.
+///
+/// A facet is drawn on its module's Module Schematic, a module on its
+/// service's Service Schematic, and a service on the Stack. An annotation node
+/// anchored to a service has no module above it, so it falls through to the
+/// Service Schematic, which is where the wireframe draws the `Two caches here`
+/// comment.
+///
+/// This is a free function rather than a method on `Scan` because the search
+/// index of PRD section 12.16 draws the same breadcrumb to each hit. Two
+/// answers to "where is this drawn" would drift, and the Problems panel and
+/// the search results would disagree about the same node.
+pub(crate) fn location_of(graph: &Graph, id: Uuid) -> Location {
+    let title = |target: Uuid| {
+        graph
+            .node(target)
+            .map_or_else(|| target.to_string(), |n| n.envelope.title.clone())
+    };
+    let Some(node) = graph.node(id) else {
+        return Location::Stack;
+    };
+    if *node.kind() == NodeKind::Service {
+        return Location::Stack;
+    }
+    if node.kind().is_facet() {
+        if let Some(module) = graph.module_root(id) {
+            if module != id {
+                return Location::Module {
+                    id: module,
+                    title: title(module),
+                };
+            }
+        }
+    }
+    let service = if *node.kind() == NodeKind::Service {
+        Some(id)
+    } else {
+        graph.ancestors(id).into_iter().find(|a| {
+            graph
+                .node(*a)
+                .is_some_and(|n| *n.kind() == NodeKind::Service)
+        })
+    };
+    service.map_or(Location::Stack, |service| Location::Service {
+        id: service,
+        title: title(service),
+    })
 }
 
 /// Clip a body at a word boundary and mark the clip, as the `NODE` cell does.

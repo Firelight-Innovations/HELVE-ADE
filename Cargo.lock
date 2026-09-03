@@ -2976,6 +2976,7 @@ dependencies = [
  "regex-syntax",
  "rfd",
  "rmcp",
+ "schematify-core",
  "semver",
  "serde",
  "serde_json",

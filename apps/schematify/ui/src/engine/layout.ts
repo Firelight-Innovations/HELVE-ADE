@@ -13,6 +13,7 @@
 import type { GraphNode, LayoutAnnotation, LayoutFile, LayoutNode, ServiceGraph } from "../graph";
 import type { NodeRole, SchematicConfig, SchematicNodeKind } from "./config";
 import { arrange } from "./arrange";
+import { contentOf } from "./anatomy";
 import type { SchematicDoc, SchematicNode } from "./doc";
 import type { Viewport } from "./viewport";
 
@@ -33,11 +34,30 @@ export function buildDoc(
     title: node.title,
     kind: node.kind as SchematicNodeKind,
     parentId: node.parentId,
-    rect: { x: 0, y: 0, ...config.nodeBox(node.kind as SchematicNodeKind) },
+    rect: {
+      x: 0,
+      y: 0,
+      ...config.nodeBox(node.kind as SchematicNodeKind, contentOf(node)),
+    },
     collapsed: node.collapsed ?? false,
     role: roleOf(node, config),
     badge: node.badge,
     lifecycle: node.lifecycle,
+    layer: node.layer,
+    description: node.description,
+    authoredBy: node.authoredBy,
+    facets: node.facets,
+    libraries: node.libraries,
+    health: node.health,
+    exportsCount: node.exportsCount,
+    modulesCount: node.modulesCount,
+    dependentsCount: node.dependentsCount,
+    sharedAtLca: node.sharedAtLca,
+    schemasResolved: node.schemasResolved,
+    deprecatedSuccessor: node.deprecatedSuccessor,
+    staleReason: node.staleReason,
+    exported: node.exported,
+    budgetTier: node.budgetTier,
   }));
 
   const annotations: SchematicNode[] = (layout?.annotations ?? []).map(fromAnnotation);
