@@ -77,25 +77,24 @@ function asLifecycle(value: string): Lifecycle {
 }
 
 /**
- * The 2 raw kinds that belong on a Service Schematic: `module` (PRD tier 2,
- * this app's own `"module"`) and `group` (the annotation-tier containment
- * box PRD §12.4 draws, this app's own `"group"`). `service` is never a
- * member — it is the root the whole graph is drawn under, carried
- * separately as `serviceSlug`/`serviceTitle`.
+ * The one raw kind that is a *node* on a Service Schematic: `module` (PRD
+ * tier 2). `service` is never a member — it is the root the whole graph is
+ * drawn under, carried separately as `serviceSlug`/`serviceTitle`.
  *
- * Every other kind is a tier-3 facet (`contract-method`, `test-case`,
- * `budget`, `doc-block`, `external-dep`) or an annotation this app's
- * `NodeKind` cannot represent at all (`comment`, which has no member of
- * that name) — PRD's Module Schematic draws facets, not the Service one,
- * and drawing them here inflated a 12-module, 1-group real service into 70
- * nodes on first contact with real data (see the wiring handoff). Filtered
- * out entirely rather than collapsed to `"module"`, which is what an
- * earlier version of this function did and which is the exact bug that
- * discovery caught.
+ * Every other kind is a tier-3 facet the Module Schematic draws, not the
+ * Service one, or an annotation (`group`, `comment`) that PRD §11.3 puts in
+ * a separate tier: "it arranges and it annotates, it does not mean" — the
+ * owner's ruling, backed by 2 precedents (an annotation-tier box is never a
+ * node or an edge endpoint per WIREFRAME-EXTRACT.md's Resolutions section,
+ * and wave 3's review required `buildFrame`'s counts to count semantic
+ * nodes only). Facets were once collapsed to `"module"` rather than
+ * excluded, which inflated a 12-module real service into 70 nodes on first
+ * contact with real data. Both discoveries, and this ruling, are recorded
+ * in the wiring handoff.
  */
-const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module", "group"]);
+const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module"]);
 
-function asNodeKind(rawKind: "module" | "group"): NodeKind {
+function asNodeKind(rawKind: "module"): NodeKind {
   return rawKind;
 }
 
@@ -154,7 +153,7 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     id: node.id,
     slug: node.slug,
     title: node.title,
-    kind: asNodeKind(node.kind as "module" | "group"),
+    kind: asNodeKind(node.kind as "module"),
     layer: asLayer(node.layer),
     lifecycle: asLifecycle(node.lifecycle),
     parentId: node.parent === serviceNode.id ? null : (node.parent ?? null),

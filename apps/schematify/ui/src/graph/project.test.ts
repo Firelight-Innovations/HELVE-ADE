@@ -79,9 +79,9 @@ describe("projectServiceGraph", () => {
     expect(graph.tier).toBe("service");
   });
 
-  it("includes only auth-service's own modules and groups, not billing-service's", () => {
+  it("includes only auth-service's own modules, not billing-service's", () => {
     const ids = graph.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual(["g1", "m1", "m2", "m3", "m4"].sort());
+    expect(ids).toEqual(["m1", "m2", "m3", "m4"].sort());
   });
 
   it("drops every tier-3 facet under a module — the Module Schematic's content, not the Service one's", () => {
@@ -95,6 +95,10 @@ describe("projectServiceGraph", () => {
     expect(graph.nodes.map((n) => n.id)).not.toContain("c1");
   });
 
+  it("drops a group — annotation tier per PRD §11.3, never a node, per the count ruling", () => {
+    expect(graph.nodes.map((n) => n.id)).not.toContain("g1");
+  });
+
   it("maps a top-level module's parent to null, matching the fixture convention", () => {
     const httpEntry = graph.nodes.find((n) => n.id === "m1");
     expect(httpEntry?.parentId).toBeNull();
@@ -105,9 +109,8 @@ describe("projectServiceGraph", () => {
     expect(jwksCache?.parentId).toBe("m2");
   });
 
-  it("keeps the group and module kinds as-is", () => {
+  it("keeps the module kind as-is", () => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-    expect(byId.get("g1")?.kind).toBe("group");
     expect(byId.get("m1")?.kind).toBe("module");
   });
 
@@ -141,6 +144,37 @@ describe("projectServiceGraph", () => {
 
   it("throws when no service carries the requested slug", () => {
     expect(() => projectServiceGraph(RAW, "no-such-service")).toThrow(/no-such-service/);
+  });
+
+  it("yields exactly 12 nodes against auth-service's real containment shape, matching PRD §16.1", () => {
+    // `fixtures/saas-backend/`'s actual `auth-service` (real slugs, real
+    // containment — see the wiring handoff's fixture comparison): 12
+    // modules plus one real top-level group, `token-pipeline`, that first
+    // read as a 13th node before the count ruling excluded it. This test
+    // is what the ruling asked to be asserted against the real fixture's
+    // shape, not just against a synthetic `g1`/`m1` stand-in above.
+    const auth: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service", title: "Auth Service" }),
+        node({ id: "n1", slug: "http-entry", kind: "module", parent: "svc" }),
+        node({ id: "n2", slug: "token-issuer", kind: "module", parent: "svc" }),
+        node({ id: "n3", slug: "token-verifier", kind: "module", parent: "svc" }),
+        node({ id: "n4", slug: "jwks-cache", kind: "module", parent: "n3" }),
+        node({ id: "n5", slug: "clock-skew", kind: "module", parent: "n3" }),
+        node({ id: "n6", slug: "session-store", kind: "module", parent: "svc" }),
+        node({ id: "n7", slug: "session-codec", kind: "module", parent: "n6" }),
+        node({ id: "n8", slug: "session-index", kind: "module", parent: "n6" }),
+        node({ id: "n9", slug: "crypto-primitives", kind: "module", parent: "svc" }),
+        node({ id: "n10", slug: "password-hasher", kind: "module", parent: "svc" }),
+        node({ id: "n11", slug: "rate-limiter", kind: "module", parent: "svc" }),
+        node({ id: "n12", slug: "audit-emitter", kind: "module", parent: "svc" }),
+        node({ id: "n13", slug: "token-pipeline", kind: "group", parent: "svc" }),
+      ],
+      edges: [],
+    };
+    const result = projectServiceGraph(auth, "auth-service");
+    expect(result.nodes).toHaveLength(12);
+    expect(result.nodes.map((n) => n.slug)).not.toContain("token-pipeline");
   });
 
   it("does not hang on a containment cycle that never reaches the service", () => {

@@ -882,10 +882,12 @@ mod tests {
     /// of `apps/schematify/ui/src/graph/project.ts` collapsed every
     /// non-`group` kind to `"module"`, so `auth-service`'s 12 real modules
     /// plus 58 of its own facets (contract methods, test cases, budgets)
-    /// all drew as one flat 70-node service. `report.clean` and the raw
-    /// kind distribution below are what a fixed `project.ts` must agree
-    /// with; see `docs/overnight-jobs/overnight-2/handoffs/wiring.md` for
-    /// the full comparison against the wave 2 stand-in fixture.
+    /// all drew as one flat 70-node service. This test pins the raw
+    /// material — 12 modules, 1 group — not `project.ts`'s filtered output;
+    /// `project.test.ts`'s own real-shaped test pins that the 1 group is
+    /// then excluded (annotation tier, per the count ruling recorded in
+    /// `docs/overnight-jobs/overnight-2/handoffs/wiring.md`, which also
+    /// carries the full comparison against the wave 2 stand-in fixture).
     #[test]
     fn load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
