@@ -830,4 +830,20 @@ describe("the Inspector: 1 semantic file, no layout write (PRD §17 Wave 6)", ()
     const { engine } = await open(MODULE_CONFIG);
     expect(engine.dropFacet("not-a-real-id")?.reason).toBe("That node is not on this Schematic.");
   });
+
+  it("the export-list editor: editNode replaces api-gateway's exports in 1 file", async () => {
+    const { engine, seam } = await open(STACK_CONFIG);
+    const before = engine.index.byId.get("api-gateway")?.exports ?? [];
+    expect(before).toHaveLength(11);
+
+    const refusal = engine.editNode("api-gateway", {
+      exports: [...before, { method: "new_export", moduleSlug: "gateway-router" }],
+    });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.index.byId.get("api-gateway")?.exports).toHaveLength(12);
+    expect(engine.semanticWrites).toEqual(["nodes/api-gateway.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+  });
 });

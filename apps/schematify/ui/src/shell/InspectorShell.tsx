@@ -176,7 +176,7 @@ function PopulatedInspector({
         {showTab === "dependencies" ? (
           <DependenciesPanel node={selected} facets={facets} edges={edges} titleOf={titleOf} />
         ) : null}
-        {showTab === "docs" ? <DocsPanel facets={facets} /> : null}
+        {showTab === "docs" ? <DocsPanel facets={facets} engine={engine} /> : null}
         {showTab === "references" ? <ReferencesPanel node={selected} /> : null}
       </div>
 
@@ -357,6 +357,8 @@ function ContractPanel({
   engine: SchematicEngine | undefined;
 }) {
   const [openApi, setOpenApi] = useState(false);
+  const [newMethod, setNewMethod] = useState("");
+  const [newModuleSlug, setNewModuleSlug] = useState("");
   const content = contractContent(node, facets);
   const blocks = content.mode === "exports" ? content.resolvedMethods : content.methods;
 
@@ -381,13 +383,61 @@ function ContractPanel({
       </div>
 
       {content.mode === "exports" ? (
-        <ul className="kv-inspector__list">
-          {content.exportRows.map((row) => (
-            <li key={row.method}>
-              {row.method} → {row.moduleSlug}
-            </li>
-          ))}
-        </ul>
+        <>
+          {/* PRD §17 Wave 6: "Build the export-list editor on a service
+              node." Every edit replaces the whole `exports` array through 1
+              `editNode` call, so an add or a remove still writes exactly 1
+              file (this wave's own acceptance condition). */}
+          <ul className="kv-inspector__list">
+            {content.exportRows.map((row) => (
+              <li key={row.method}>
+                {row.method} → {row.moduleSlug}
+                <button
+                  type="button"
+                  className="kv-inspector__footer-button"
+                  onClick={() =>
+                    engine?.editNode(node.id, {
+                      exports: content.exportRows.filter((r) => r.method !== row.method),
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="kv-inspector__footer-controls">
+            <input
+              className="kv-inspector__copy-field"
+              placeholder="method name"
+              value={newMethod}
+              onChange={(e) => setNewMethod(e.target.value)}
+            />
+            <input
+              className="kv-inspector__copy-field"
+              placeholder="owning module"
+              value={newModuleSlug}
+              onChange={(e) => setNewModuleSlug(e.target.value)}
+            />
+            <button
+              type="button"
+              className="kv-inspector__footer-button"
+              onClick={() => {
+                if (!newMethod || !newModuleSlug) return;
+                engine?.editNode(node.id, {
+                  exports: [
+                    ...content.exportRows,
+                    { method: newMethod, moduleSlug: newModuleSlug },
+                  ],
+                });
+                setNewMethod("");
+                setNewModuleSlug("");
+              }}
+            >
+              Add export
+            </button>
+          </div>
+        </>
       ) : null}
 
       {openApi || content.mode === "exports" ? (
@@ -520,6 +570,7 @@ function BudgetsPanel({
               ) : null}
               {row.state === "no-probe" ? (
                 <>
+                  <div className="kv-inspector__method-name">{content.noProbeLabel}</div>
                   <div className="kv-inspector__body">{content.noProbeNote}</div>
                   <div className="kv-inspector__footer-controls">
                     <button
@@ -591,8 +642,15 @@ function DependenciesPanel({
 
 // --- Docs (S-10) ----------------------------------------------------------------
 
-function DocsPanel({ facets }: { facets: InspectorNode[] }) {
+function DocsPanel({
+  facets,
+  engine,
+}: {
+  facets: InspectorNode[];
+  engine: SchematicEngine | undefined;
+}) {
   const content = docsContent(facets);
+  const docNode = facets.find((facet) => facet.kind === "doc-block");
   return (
     <div className="kv-inspector__fields">
       <textarea
@@ -600,6 +658,7 @@ function DocsPanel({ facets }: { facets: InspectorNode[] }) {
         defaultValue={content.body}
         readOnly={!content.hasDoc}
         placeholder={content.hasDoc ? undefined : "No documentation yet."}
+        onBlur={(e) => docNode && engine?.editNode(docNode.id, { docBody: e.target.value })}
       />
     </div>
   );

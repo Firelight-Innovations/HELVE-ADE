@@ -390,6 +390,7 @@ export interface BudgetRow {
   probe?: string;
 }
 
+const NO_PROBE_LABEL = "No probe declared";
 const NO_PROBE_NOTE = "An unmeasurable claim is a lint error, not a warning.";
 const TRENDING_NOTE = "trending to breach · sign-off required";
 
@@ -414,6 +415,10 @@ export interface BudgetsContent {
   countLabel: string;
   runReference?: string;
   rows: BudgetRow[];
+  /** The `"no-probe"` row state's own heading (PRD §12.12: "A budget with
+   *  no probe draws `No probe declared`"), separate from `value`'s own
+   *  `—` — PRD §12.12 draws the 2 forms for 2 different reasons. */
+  noProbeLabel: string;
   noProbeNote: string;
   trendingNote: string;
 }
@@ -427,6 +432,7 @@ export function budgetsContent(
     countLabel: `${budgets.length} BUDGETS`,
     runReference: moduleNode.runReference,
     rows: budgets.map(budgetRow),
+    noProbeLabel: NO_PROBE_LABEL,
     noProbeNote: NO_PROBE_NOTE,
     trendingNote: TRENDING_NOTE,
   };

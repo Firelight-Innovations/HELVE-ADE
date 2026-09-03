@@ -150,6 +150,7 @@ describe("Contract — the module fixture's real 3 methods", () => {
     const skew = content.methods.find((m) => m.name === "skew_window");
     expect(skew?.coversLabel).toBe("▲ no covers edge from any test case");
     expect(content.addMethodLabel).toBe("+ add method");
+    expect(content.toggle).toEqual(["Signatures", "OpenAPI"]);
   });
 
   it("resolves api-gateway's 11 exports to 11 methods (PRD §17 Wave 6's own acceptance condition)", async () => {
@@ -253,6 +254,7 @@ describe("Budgets — the module fixture's real 3 budgets", () => {
     const coldStart = content.rows.find((r) => r.metric === "cold_start_p95");
     expect(coldStart?.state).toBe("no-probe");
     expect(coldStart?.value).toBe("—");
+    expect(content.noProbeLabel).toBe("No probe declared");
     expect(content.noProbeNote).toBe("An unmeasurable claim is a lint error, not a warning.");
   });
 });
