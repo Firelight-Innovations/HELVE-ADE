@@ -48,7 +48,13 @@ export function Dock({
 }: DockProps) {
   const [tab, setTab] = useState<DockTab>("Problems");
   const [collapsed, setCollapsed] = useState(false);
-  const badges = problemBadges(findings ?? []);
+  // `null`, not `problemBadges(findings ?? [])` — the latter draws a
+  // guessed `0`/`0` both while the first `schematify/lint` call is in
+  // flight and forever on failure, the exact "invented zero" shape flagged
+  // in review against wave 7b's own version of this line. Blank until real
+  // data lands, the same `findings ? … : ""` convention `StatusBar.tsx`'s
+  // cell 3 already uses.
+  const badges = findings ? problemBadges(findings) : null;
 
   return (
     <div className={`kv-dock${collapsed ? " kv-dock--collapsed" : ""}`}>
@@ -65,8 +71,10 @@ export function Dock({
             {entry}
             {entry === "Problems" ? (
               <span className="kv-dock__badges">
-                <span className="kv-dock__badge kv-dock__badge--error">{badges.errors}</span>
-                <span className="kv-dock__badge kv-dock__badge--warn">{badges.warnings}</span>
+                <span className="kv-dock__badge kv-dock__badge--error">{badges?.errors ?? ""}</span>
+                <span className="kv-dock__badge kv-dock__badge--warn">
+                  {badges?.warnings ?? ""}
+                </span>
               </span>
             ) : null}
           </button>

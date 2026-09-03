@@ -751,3 +751,194 @@ describe("one engine, three configurations", () => {
     expect(engine.index.byId.get("audit-emitter")?.rect.x).toBe((before?.x ?? 0) + 220);
   });
 });
+
+describe("the Inspector: 1 semantic file, no layout write (PRD §17 Wave 6)", () => {
+  it("editNode writes exactly 1 semantic file and 0 layout files", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const before = engine.index.byId.get("verify_signature")?.semantics;
+    expect(before).toBe("Rejects on expiry, unknown kid, or skew beyond the configured window.");
+
+    const refusal = engine.editNode("verify_signature", { semantics: "Updated for this test." });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.index.byId.get("verify_signature")?.semantics).toBe("Updated for this test.");
+    expect(engine.semanticWrites).toEqual(["nodes/verify_signature.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+    expect(seam.semantic.get("nodes/verify_signature.json")).toMatchObject({
+      id: "verify_signature",
+      semantics: "Updated for this test.",
+    });
+  });
+
+  it("refuses on an id this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.editNode("not-a-real-id", { title: "x" })?.reason).toBe(
+      "That node is not on this Schematic.",
+    );
+  });
+
+  it("refuses to edit an annotation node — it has no Inspector panel", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    const comment = engine.addComment({ x: 0, y: 0, width: 10, height: 10 }, "m.ross", "note");
+    const refusal = engine.editNode(comment.id, { title: "x" });
+    expect(refusal?.reason).toBe("An annotation node has no Inspector panel.");
+  });
+
+  it("addFacet mints exactly 1 new node and writes its real content to exactly 1 file", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const before = engine.state.doc.nodes.length;
+
+    const refusal = engine.addFacet("token-verifier", "contract-method", {
+      title: "new_method",
+      signature: "()",
+      returns: "void",
+    });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.state.doc.nodes).toHaveLength(before + 1);
+    const added = engine.state.doc.nodes.find((node) => node.title === "new_method");
+    expect(added?.parentId).toBe("token-verifier");
+    expect(added?.kind).toBe("contract-method");
+    expect(engine.semanticWrites).toEqual([`nodes/${added?.id}.json`]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+    // The content assertion a reviewer's mutation test caught missing: a
+    // write that only checked count and path passed even when `addFacet`
+    // wrote `{ mutated: "wrong content on purpose" }` instead of the real
+    // node. This reads the seam back and checks the actual fields.
+    expect(seam.semantic.get(`nodes/${added?.id}.json`)).toMatchObject({
+      id: added?.id,
+      title: "new_method",
+      kind: "contract-method",
+      parent: "token-verifier",
+      signature: "()",
+      returns: "void",
+    });
+  });
+
+  it("addFacet refuses on a parent this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.addFacet("not-a-real-id", "budget", {})?.reason).toBe(
+      "That node is not on this Schematic.",
+    );
+  });
+
+  it("addFacet's own history round-trips through undo/redo, with real content on both sides", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const refusal = engine.addFacet("token-verifier", "budget", {
+      title: "new_budget",
+      budgetTier: "hard",
+    });
+    await engine.settled();
+    expect(refusal).toBeNull();
+    const added = engine.state.doc.nodes.find((node) => node.title === "new_budget");
+    const path = `nodes/${added?.id}.json`;
+    expect(seam.semantic.get(path)).toMatchObject({ title: "new_budget", budgetTier: "hard" });
+
+    engine.undo();
+    await engine.settled();
+    expect(engine.state.doc.nodes.find((node) => node.id === added?.id)).toBeUndefined();
+    // A previous wave shipped a reparent whose undo deleted a pre-existing
+    // node file; only a round-trip through the seam catches that class of
+    // bug — a creation's undo has to actually remove the file, not merely
+    // drop the node from the document.
+    expect(seam.semantic.get(path)).toBeUndefined();
+
+    engine.redo();
+    await engine.settled();
+    expect(engine.state.doc.nodes.find((node) => node.id === added?.id)?.title).toBe("new_budget");
+    expect(seam.semantic.get(path)).toMatchObject({ title: "new_budget", budgetTier: "hard" });
+  });
+
+  it("dropFacet removes exactly 1 node and writes exactly its 1 removal", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const original = engine.index.byId.get("cold_start_p95");
+    expect(original).toBeDefined();
+
+    const refusal = engine.dropFacet("cold_start_p95");
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.state.doc.nodes.find((node) => node.id === "cold_start_p95")).toBeUndefined();
+    expect(engine.semanticWrites).toEqual(["nodes/cold_start_p95.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+    expect(engine.writes.filter((write) => write.layer === "semantic")).toHaveLength(1);
+  });
+
+  it("dropFacet refuses on an id this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.dropFacet("not-a-real-id")?.reason).toBe("That node is not on this Schematic.");
+  });
+
+  it("dropFacet's undo restores the real node content, not a placeholder", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const original = engine.index.byId.get("cold_start_p95");
+    expect(original?.budgetTier).toBe("hard");
+    expect(original?.budgetThresholdText).toBe("< 500 ms");
+
+    engine.dropFacet("cold_start_p95");
+    await engine.settled();
+    expect(engine.index.byId.get("cold_start_p95")).toBeUndefined();
+
+    engine.undo();
+    await engine.settled();
+    // The reviewer's mutation: if the removal's own recorded "before"
+    // payload were garbage rather than the real node, undo would put back
+    // garbage. This is the content check that catches it.
+    const restored = engine.index.byId.get("cold_start_p95");
+    expect(restored?.budgetTier).toBe("hard");
+    expect(restored?.budgetThresholdText).toBe("< 500 ms");
+    expect(seam.semantic.get("nodes/cold_start_p95.json")).toMatchObject({
+      id: "cold_start_p95",
+      budgetTier: "hard",
+      budgetThresholdText: "< 500 ms",
+    });
+
+    engine.redo();
+    await engine.settled();
+    expect(engine.index.byId.get("cold_start_p95")).toBeUndefined();
+    expect(seam.semantic.get("nodes/cold_start_p95.json")).toBeUndefined();
+  });
+
+  it("the export-list editor: editNode replaces api-gateway's exports in 1 file", async () => {
+    const { engine, seam } = await open(STACK_CONFIG);
+    const before = engine.index.byId.get("api-gateway")?.exports ?? [];
+    expect(before).toHaveLength(11);
+
+    const refusal = engine.editNode("api-gateway", {
+      exports: [...before, { method: "new_export", moduleSlug: "gateway-router" }],
+    });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.index.byId.get("api-gateway")?.exports).toHaveLength(12);
+    expect(engine.semanticWrites).toEqual(["nodes/api-gateway.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+  });
+
+  it("editNode's own edit round-trips through undo/redo, with real content on both sides", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const originalSemantics = engine.index.byId.get("verify_signature")?.semantics;
+
+    engine.editNode("verify_signature", { semantics: "Updated for this test." });
+    await engine.settled();
+    expect(seam.semantic.get("nodes/verify_signature.json")).toMatchObject({
+      semantics: "Updated for this test.",
+    });
+
+    engine.undo();
+    await engine.settled();
+    expect(engine.index.byId.get("verify_signature")?.semantics).toBe(originalSemantics);
+    expect(seam.semantic.get("nodes/verify_signature.json")).toMatchObject({
+      semantics: originalSemantics,
+    });
+
+    engine.redo();
+    await engine.settled();
+    expect(engine.index.byId.get("verify_signature")?.semantics).toBe("Updated for this test.");
+    expect(seam.semantic.get("nodes/verify_signature.json")).toMatchObject({
+      semantics: "Updated for this test.",
+    });
+  });
+});
