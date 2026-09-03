@@ -48,10 +48,11 @@
 #
 # ## Why this list is empty today
 #
-# Forger and Journeyman used to be the two entries here. Both have been
-# reclassified as first-party apps — compiled into the binary from `apps/`,
-# like Home and Files, rather than downloaded on first run — so neither
-# belongs in a list of things to install. See `apps/README.md`.
+# Schematify's two predecessor applications used to be the two entries here
+# (see `docs/design/SCHEMATIFY-PRD.md` §1.3). Both have been reclassified as
+# one first-party app — compiled into the binary from `apps/`, like Home and
+# Files, rather than downloaded on first run — so neither belongs in a list
+# of things to install. See `apps/README.md`.
 #
 # The mechanism above keeps working with zero rows; it did not go away with
 # the two entries. This is still where a genuinely third-party app goes, the

@@ -102,8 +102,8 @@ mod tests {
     /// id would lose every known one beside it.
     #[test]
     fn a_server_this_build_does_not_have_still_parses() {
-        let stored: Stored = serde_json::from_str(r#"{"switched":{"forger":true}}"#)
+        let stored: Stored = serde_json::from_str(r#"{"switched":{"acme":true}}"#)
             .expect("the file loads whatever JSON it holds");
-        assert!(stored.switched["forger"]);
+        assert!(stored.switched["acme"]);
     }
 }

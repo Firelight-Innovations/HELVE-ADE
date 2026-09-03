@@ -8,8 +8,8 @@ import type { Body } from "./blocks";
  * machine could, in principle, raise a warning badge over tools that are not
  * installed — which reads as breakage until you know none are meant to be
  * there yet. Today that principle is untested: `kaava.toml`'s `[[tool]]` array
- * is empty (Forger and Journeyman, its former two entries, are apps now — see
- * `apps/README.md`), so the badge has nothing to report either way.
+ * is empty (Schematify, its former two entries folded into one, is an app
+ * now — see `apps/README.md`), so the badge has nothing to report either way.
  */
 export const theStack: Body = {
   takeaway:
@@ -35,7 +35,7 @@ export const theStack: Body = {
     { kind: "heading", body: "Nothing is pinned today" },
     {
       kind: "text",
-      body: "`kaava.toml`'s `[[tool]]` array is empty right now. Forger and Journeyman used to be its two entries; both have been reclassified as apps built into the orchestrator itself rather than separate tool repositories — see `apps/README.md` at the repository root for what they are now and why.",
+      body: "`kaava.toml`'s `[[tool]]` array is empty right now. It held two entries once, and both are now the single Schematify app built into the orchestrator itself rather than separate tool repositories — see `apps/README.md` at the repository root for what it is now and why.",
     },
     {
       kind: "note",
@@ -67,7 +67,7 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "The orchestrator is usable entirely on its own regardless of what is pinned — Home, the File Explorer, the File Viewer, Tutorials, Forger and Journeyman are all in the binary and need no checkout at all. A pinned tool's checkout is a separate, additional thing to have on the machine, not a requirement for the window to open.",
+      body: "The orchestrator is usable entirely on its own regardless of what is pinned — Home, the File Explorer, the File Viewer, Tutorials, and Schematify are all in the binary and need no checkout at all. A pinned tool's checkout is a separate, additional thing to have on the machine, not a requirement for the window to open.",
     },
     {
       kind: "text",
@@ -85,7 +85,7 @@ export const theStack: Body = {
     },
     {
       kind: "text",
-      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer, this Tutorials pane, Forger and Journeyman are apps: they are compiled into the binary. That leaves no version to disagree with and no way for one to be missing — which is why none of them can ever raise the badge.",
+      body: "An **app** is code the orchestrator *is*. Home, the File Explorer, the File Viewer, this Tutorials pane, and Schematify are apps: they are compiled into the binary. That leaves no version to disagree with and no way for one to be missing — which is why none of them can ever raise the badge.",
     },
   ],
 };

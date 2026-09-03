@@ -108,7 +108,7 @@ pub struct ToolDescriptor {
 /// The `.mcp.json` key and URL path for a server id.
 ///
 /// Prefixed because that file is the user's, shared with whatever else they
-/// have configured, and an unprefixed `forger` would both read as theirs and
+/// have configured, and an unprefixed `acme` would both read as theirs and
 /// stand a real chance of colliding with it. The prefix also keeps us clear of
 /// the names Claude Code reserves for its own built-in servers — `workspace`,
 /// `computer-use` and the rest — which are rejected at load time rather than
@@ -584,7 +584,7 @@ mod tests {
         let registry = Registry::default();
         registry.register(&SERVER);
         registry.hydrate(BTreeMap::from([
-            ("forger".to_string(), true),
+            ("acme".to_string(), true),
             ("echo".to_string(), false),
         ]));
 
@@ -612,8 +612,8 @@ mod tests {
     /// user configured, or with the names Claude Code reserves for its own.
     #[test]
     fn config_keys_and_routes_are_namespaced_under_kaava() {
-        assert_eq!(config_key("forger"), "kaava-forger");
-        assert_eq!(route("forger"), "/mcp/forger");
+        assert_eq!(config_key("acme"), "kaava-acme");
+        assert_eq!(route("acme"), "/mcp/acme");
 
         for reserved in ["workspace", "computer-use", "claude-in-chrome"] {
             assert_ne!(config_key(reserved), reserved);

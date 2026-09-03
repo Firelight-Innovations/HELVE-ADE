@@ -541,12 +541,12 @@ mod tests {
 
     #[test]
     fn an_address_is_the_two_ids_joined() {
-        assert_eq!(address("forger", "specs"), "forger.specs");
+        assert_eq!(address("acme", "specs"), "acme.specs");
     }
 
     #[test]
     fn an_address_splits_back_into_its_halves() {
-        assert_eq!(split_address("forger.specs"), Some(("forger", "specs")));
+        assert_eq!(split_address("acme.specs"), Some(("acme", "specs")));
     }
 
     /// A first-party app id is not an address, and asking must not panic —

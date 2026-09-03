@@ -266,7 +266,7 @@ component of the stack is going to become a public repository. This is the open
 core model — an Apache-licensed core, proprietary first-party tools, one public
 protocol that both use — and VS Code is the exact precedent.
 
-**Forger, Journeyman, and the app download system are built by the maintainer.**
+**Schematify and the app download system are built by the maintainer.**
 Not because outside help is unwelcome, but so nobody spends a weekend on a
 foundation that is already half-written. Once each one exists, features and
 quality-of-life work on top of it are exactly where an outside change lands

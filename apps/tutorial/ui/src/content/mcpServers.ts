@@ -47,7 +47,7 @@ export const mcpServers: Body = {
     },
     {
       kind: "soon",
-      body: "One server exists today: **Echo**, with a `ping` and an `echo` tool. It exists to prove the transport end to end. Forger's is the first real one, and it is not written yet. What you are turning on right now is a working pipe with a toy on the end of it.",
+      body: "One server exists today: **Echo**, with a `ping` and an `echo` tool. It exists to prove the transport end to end. Schematify's is the first real one, and it is not written yet. What you are turning on right now is a working pipe with a toy on the end of it.",
     },
 
     { kind: "heading", body: "What lands in your project" },

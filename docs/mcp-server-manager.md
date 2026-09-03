@@ -25,10 +25,10 @@ maintenance burden, and a pile of tool descriptions competing for the model's
 attention against its own.
 
 What earns a server is the opposite: **something that exists only inside OpenKaava.**
-Forger's design model is the first real case. An agent cannot read a Forger spec
-by opening a file, because the interesting part is not the file — it is the
-model, its boundaries, and the question "does this change violate one?". That has
-no filesystem equivalent, so it is worth a tool.
+Schematify's design graph is the first real case. An agent cannot read a
+Schematify node by opening a file, because the interesting part is not the
+file — it is the model, its boundaries, and the question "does this change
+violate one?". That has no filesystem equivalent, so it is worth a tool.
 
 Apply this rule before writing any server. It is the one that keeps this feature
 from turning into a reimplementation of the harness.
@@ -50,7 +50,7 @@ Right now OpenKaava needs no MCP server at all. Nothing in the current build doe
 anything a harness cannot already do, so by section 1 nothing qualifies. This
 milestone therefore ships **infrastructure plus one echo server**, whose entire
 job is to prove a client can discover the endpoint, authenticate, list a tool and
-call it. Forger lands on top of it within days.
+call it. Schematify lands on top of it within days.
 
 ## 3. Every server lives in the orchestrator
 
@@ -58,17 +58,17 @@ This is the decision everything else follows from, and it is worth being exact
 about, because the obvious reading of "each app can have an MCP server" is wrong.
 
 An app's MCP server is not a process, and does not live in the app. It is a
-module in `src-tauri/src/mcp/servers/`, registered here, hosted here. Forger's
-server will be orchestrator code that talks to Forger — not code inside Forger's
-own repository.
+module in `src-tauri/src/mcp/servers/`, registered here, hosted here.
+Schematify's server will be orchestrator code that talks to Schematify — not
+code inside a separate Schematify repository, because there is not one.
 
 Two things follow, both of them good:
 
 **The tool broker stops being a blocker.** A tool's Rust core is a child process
 reached over transport A, and `apps/mod.rs` is explicit that the broker joining
-that process to the shell is not built yet. Had Forger been expected to serve MCP
-from its own process, this feature would have been stuck behind roadmap #10.
-Hosting it here means it is not.
+that process to the shell is not built yet. Had Schematify been expected to
+serve MCP from its own process, this feature would have been stuck behind
+roadmap #10. Hosting it here means it is not.
 
 **No app or tool ever depends on `rmcp`.** The dependency is in one crate, the
 handshake is implemented once, and a server author writes a tool descriptor and a
@@ -76,7 +76,7 @@ function rather than a protocol implementation.
 
 ## 4. One listener, one endpoint per server
 
-A single HTTP listener on loopback, routing by path: `/mcp/forger`, `/mcp/echo`.
+A single HTTP listener on loopback, routing by path: `/mcp/schematify`, `/mcp/echo`.
 Each registered server is its own MCP endpoint and its own entry in `.mcp.json`.
 
 Aggregating everything behind one endpoint was considered and rejected. It made
@@ -85,11 +85,11 @@ fanning out cost real machinery; with every server in-process, a second endpoint
 costs a route. What separate endpoints buy is worth more than that route:
 
 - **Namespacing we do not have to invent.** The client derives tool names from
-  the server name it connected to — `mcp__kaava-forger__validate` — instead of us
+  the server name it connected to — `mcp__kaava-schematify__validate` — instead of us
   hand-prefixing every tool inside one flat namespace and hoping nobody collides.
 - **A 1:1 map to the settings UI.** "Registered server" is exactly the row the
   user toggles, which is what the roadmap asked for.
-- **Scoping.** An agent working in Forger gets Forger's tools. It has no reason
+- **Scoping.** An agent working in Schematify gets Schematify's tools. It has no reason
   to see another tool's, and every tool it can see but must not use is noise in
   its context.
 
@@ -196,7 +196,7 @@ no second party.
 3. The echo server, as the thing that proves 1 and 2 end to end.
 4. Env injection in `pty.rs`, and the `.mcp.json` merge on project open.
 5. Status bar state and the settings surface.
-6. Forger's server, once Forger exists.
+6. Schematify's server, once Schematify's design graph exists.
 
 ## 10. Adding a server
 
@@ -303,8 +303,8 @@ happen at all:
 > own.
 >
 > What earns a server is something that exists only inside OpenKaava and has no
-> filesystem equivalent — Forger's design model is the first real case, because
-> an agent cannot read a spec's *boundaries* by opening a file.
+> filesystem equivalent — Schematify's design graph is the first real case,
+> because an agent cannot read a node's *boundaries* by opening a file.
 
 ## 11. Developer-only servers
 

@@ -102,10 +102,11 @@ mod tests {
     /// The build's own copy of `catalog.toml` must parse. This is the check that
     /// makes the `eprintln!` fallback in `entries` unreachable in practice.
     ///
-    /// It no longer also asserts the catalog is non-empty: Forger and
-    /// Journeyman were its only two entries, both are now in-repo apps, and an
-    /// empty `[[app]]` list is the deliberate, documented state described in
-    /// `catalog.toml`'s own header — not a fixture that decayed.
+    /// It no longer also asserts the catalog is non-empty: Schematify's two
+    /// predecessor applications were its only two entries, both are now
+    /// folded into one in-repo app, and an empty `[[app]]` list is the
+    /// deliberate, documented state described in `catalog.toml`'s own header
+    /// — not a fixture that decayed.
     #[test]
     fn catalog_parses() {
         let _doc: Document = toml::from_str(SOURCE).expect("catalog.toml parses");

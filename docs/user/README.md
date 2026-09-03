@@ -12,13 +12,13 @@ picture of the stack; the short version is that this repository — the
 **orchestrator** — is the shell, and a genuinely separate tool is its own
 project that plugs into it, pinned by version in `kaava.toml`.
 
-Forger (technical design) and Journeyman (product design) are not that kind of
-tool: both ship as apps built into the orchestrator itself, alongside Home and
-the File Explorer, rather than as separate projects — see
+Schematify (the design layer — the technical and product plan together) is not
+that kind of tool: it ships as an app built into the orchestrator itself,
+alongside Home and the File Explorer, rather than as a separate project — see
 [`apps/README.md`](../../apps/README.md) at the repository root. Today the
 orchestrator itself is what runs: the window, Home, the File Explorer, the
-File Viewer, and Tutorials, with Forger and Journeyman still unbuilt behind
-their tabs. [The stack, end to end](tutorials/the-stack.md) covers the
+File Viewer, and Tutorials, with Schematify still unbuilt behind its tab.
+[The stack, end to end](tutorials/the-stack.md) covers the
 switcher bar's health badge, for whichever tool is pinned in `kaava.toml` next.
 
 ## Getting it running

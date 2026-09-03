@@ -172,9 +172,9 @@ mod tests {
     fn a_record_survives_a_round_trip_through_the_file_format() {
         let stored = Stored {
             plugins: vec![Record {
-                id: "forger".to_string(),
+                id: "acme".to_string(),
                 source: Source::Folder {
-                    path: PathBuf::from("C:/code/kaava/forger"),
+                    path: PathBuf::from("C:/code/kaava/acme"),
                 },
                 enabled: true,
             }],
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn a_record_without_enabled_is_enabled() {
         let stored: Stored = serde_json::from_str(
-            r#"{"plugins":[{"id":"forger","source":{"kind":"folder","path":"C:/x"}}]}"#,
+            r#"{"plugins":[{"id":"acme","source":{"kind":"folder","path":"C:/x"}}]}"#,
         )
         .expect("parses");
         assert!(stored.plugins[0].enabled);

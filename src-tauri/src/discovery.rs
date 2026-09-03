@@ -38,9 +38,9 @@ pub struct StackSnapshot {
 /// a README, giving it health tracking back is exactly one id added here.
 ///
 /// Empty today for a second reason on top of that one: kaava.toml's `[[tool]]`
-/// array is itself empty. Forger and Journeyman were its two entries and are
-/// now in-repo apps (`apps/README.md`), so there is currently no stack
-/// component left to enable health tracking for.
+/// array is itself empty. Schematify's two predecessor applications were its
+/// two entries and are now folded into one in-repo app (`apps/README.md`), so
+/// there is currently no stack component left to enable health tracking for.
 const ENABLED_TOOLS: &[&str] = &[];
 
 pub fn resolve(manifest_path: &Path, manifest: &Manifest) -> Result<StackSnapshot> {
@@ -194,7 +194,7 @@ mod tests {
         let snapshot =
             resolve(&path, &manifest).expect("every pinned version should be valid semver");
 
-        // kaava.toml's `[[tool]]` array is empty today — Forger and Journeyman,
+        // kaava.toml's `[[tool]]` array is empty today — Schematify's two predecessors,
         // its only two entries, were reclassified as in-repo apps (see
         // `apps/README.md`) and nothing has taken their place yet. That is a
         // legitimate state for the manifest, not a broken fixture, so this test
