@@ -189,16 +189,24 @@ const NAMED_COLORS = [
 
 /**
  * Named colors are checked only where they sit in *value position* —
- * immediately after `:`, `(`, or `,` and immediately before `;`, `)`, `,`,
- * a quote, or whitespace, give or take whitespace of its own — rather than
- * as a bare word search. A bare search would flag this codebase's own prose
- * (a comment that says "blending `--kv-accent` toward white", or the CSS
- * property `white-space`) as if it were a color literal.
+ * immediately after whitespace, `:`, `(`, or `,`, give or take whitespace
+ * and an opening quote of its own — rather than as a bare word search. A
+ * bare search would flag this codebase's own prose (a comment that says
+ * "blending `--kv-accent` toward white") as if it were a color literal.
+ *
+ * A first version of this pattern required a colon, `(`, or `,`
+ * *immediately* before the name, which is right for a bare declaration
+ * (`color: red`) but misses the far more common shorthand this codebase's
+ * own stylesheet already uses everywhere — `border: 1px solid red`,
+ * `outline: 2px dashed blue` — where the color is not the first token after
+ * the colon. Widened to allow any whitespace as that leading separator too.
+ * That alone would flag `white-space` (`white` preceded by the line's own
+ * indentation) and a pseudo-selector like `red:hover`, so the name must also
+ * not be followed by a hyphen or a colon — the lookahead below excludes
+ * both, and every other word character, so `reds` or `red-orange` don't
+ * partially match either.
  */
-const NAMED_COLOR = new RegExp(
-  `[:(,]\\s*["']?(${NAMED_COLORS.join("|")})["']?(?=[\\s,;)'"]|$)`,
-  "i",
-);
+const NAMED_COLOR = new RegExp(`[\\s:(,]\\s*["']?(${NAMED_COLORS.join("|")})(?![-:\\w])`, "i");
 
 function collectFiles(dir: string): string[] {
   const out: string[] = [];
@@ -274,14 +282,34 @@ describe("positive control — the widened patterns actually catch what they cla
     expect(FUNCTIONAL_COLOR.test("background: color-mix(in srgb, red, blue);")).toBe(true);
   });
 
-  it("catches a named color in value position", () => {
+  it("catches a named color in value position, including shorthand where the color is not the first token after the colon", () => {
     expect(NAMED_COLOR.test("background: tomato;")).toBe(true);
     expect(NAMED_COLOR.test('style={{ color: "rebeccapurple" }}')).toBe(true);
+    // The 4 shapes a review of this file's first version found it missed —
+    // every one is the shorthand form this app's own stylesheet already
+    // uses for every border and tab underline.
+    expect(NAMED_COLOR.test("border: 1px solid red;")).toBe(true);
+    expect(NAMED_COLOR.test("box-shadow: 0 0 2px black;")).toBe(true);
+    expect(NAMED_COLOR.test("outline: 2px dashed blue;")).toBe(true);
+    expect(NAMED_COLOR.test("style={{ border: '1px solid red' }}")).toBe(true);
   });
 
-  it("does not flag transparent, or a color name inside a CSS property name or prose", () => {
+  it("does not flag transparent, or a color name inside a CSS property name or a pseudo-selector", () => {
     expect(NAMED_COLOR.test("background: transparent;")).toBe(false);
     expect(NAMED_COLOR.test("white-space: nowrap;")).toBe(false);
-    expect(NAMED_COLOR.test(" * blending --kv-accent 18% toward white.")).toBe(false);
+    // "red" sits in value position by the prefix alone (preceded by a
+    // space) — only the trailing-colon guard keeps a class name that
+    // happens to be a color word, immediately followed by a pseudo-class,
+    // from matching.
+    expect(NAMED_COLOR.test(" red:hover { text-decoration: underline; }")).toBe(false);
+  });
+
+  it("does not reach the named-color check at all for a comment line", () => {
+    // The regex alone cannot tell prose from a value — "toward white." would
+    // itself match, since a period is neither a hyphen nor a colon. What
+    // keeps this line out of `otherOffenders` is `isCommentLine` excluding
+    // it before `NAMED_COLOR` ever runs, in the scan loop above.
+    const line = " * blending --kv-accent 18% toward white.";
+    expect(isCommentLine(line, { inBlock: false })).toBe(true);
   });
 });
