@@ -1,9 +1,10 @@
 # Wave 6 handoff — the Inspector
 
-Branch `schematify/w6-inspector`, off `schematify/w5-schematics`. PRD §17
-Wave 6: PRD §12.12's Inspector — S-04 through S-11, the `More` overflow tab,
-the export-list editor, the Inspector empty state, and the 2 footer
-controls.
+Branch `schematify/w6-inspector`, cut from `schematify/w5-schematics` and
+later merged forward onto `main` (commit `facd2ed`, after waves 7b, 9b and
+10b landed there — see "The merge onto main" below). PRD §17 Wave 6: PRD
+§12.12's Inspector — S-04 through S-11, the `More` overflow tab, the
+export-list editor, the Inspector empty state, and the 2 footer controls.
 
 ## What was built
 
@@ -54,7 +55,15 @@ than computed at draw time. Both are fixed on this branch, not deferred:
   through `drawNode` so the canvas card computes it too, not only the
   Inspector. `graph/module.ts`'s `token-verifier` fixture now carries 7
   real `covers` edges (was 2) reproducing Wave 5's own 4/3/0 split by
-  construction rather than by declaration.
+  construction rather than by declaration. **This is why the fix routes
+  both readers through 1 function rather than just deleting the stored
+  field**: before, the canvas card (`facetContentFor`, reading
+  `coversCount`) and the coverage readout (`coverageOf`, also reading
+  `coversCount`) happened to agree only because they read the same stored
+  number — nothing enforced that agreement. A 3rd reader (the Inspector's
+  Contract tab, this wave's own addition) reading a 2nd independently
+  stored number would have been a 3rd place the same fact could drift.
+  `coversCountFor` is now the 1 place the fact lives; every reader calls it.
 - **`engine/inspector.ts`'s `additionalPassingTests`, this wave's own
   breach.** A stored integer on the module root, summed into `testsContent`'s
   drawn total. Removed entirely — `graph/module.ts` now carries all 7 real
@@ -73,6 +82,42 @@ round-trip test checking real content on both sides, not just presence.
 Verified by mutation twice (`inspectorNodeJson`, `coversCountFor`), each
 time confirming the new tests fail under the mutation and pass once
 reverted — see the commit that made these fixes for the exact counts.
+
+### The merge onto main
+
+Wave 7b (the Problems panel) merged to `main` first, so this branch merged
+`origin/main` and hand-resolved 1 conflict in `App.tsx` — both sides
+rewired `onActivate` and the Inspector's own props, and the resolution
+keeps both: this wave's `onDrillTo`/`InspectorShell` wiring and wave 7b's
+`findings`/`onSelectFinding`/`Dock`/`StatusBar` wiring, with `onActivate`
+derived from `onDrillTo` inside `Schematify()` exactly as it already was
+before the merge. No other file conflicted.
+
+**The real risk in this merge, and the answer: the §16.1 Problems rows
+survived.** Wave 7b's own Rust test,
+`the_wireframe_fixture_draws_the_five_rows_the_problems_panel_draws`
+(`crates/schematify-core/tests/lint.rs`), asserts PRD §16.1's exact 5
+Problems rows against `fixtures/saas-backend/`'s `token-verifier` module —
+the same fixture this wave extended with 4 new test-case nodes and 7
+`covers` edges (up from 2). That test passes on the merged tree, along
+with the other 6 in `lint.rs` and the 19 elsewhere in the crate. The
+fixture extension did not shift a Problems row.
+
+**A note for whoever reads `cargo test --workspace` tonight: it currently
+cannot reach `schematify-core` or `src-tauri` at all.** A pre-existing,
+unrelated failure in `kaava-tool-manifest`'s `reference_manifest.rs` (3
+tests, a path baked in at compile time from whichever worktree's `cargo`
+last built that binary, colliding across every worktree that shares
+tonight's `CARGO_TARGET_DIR` — confirmed against 3 different colliding
+worktree names across this wave's own reruns) stops the workspace run
+before either crate's tests execute. `sch-fix-flake` owns the real fix on
+its own branch. Until that lands, **"`cargo test --workspace` is red"
+tells you nothing about this branch** — read per-crate results instead:
+`cargo test -p schematify-core` (39 tests, 0 failed, includes the
+`lint.rs` suite above) and `cargo test -p openkaava-orchestrator` (583
+tests, 0 failed, 1 pre-existing ignored, includes all 26
+`apps::schematify::tests::` cases) were both run directly against the
+merged tree (`facd2ed`) and are clean.
 
 ## Acceptance conditions (PRD §17 Wave 6)
 
@@ -174,16 +219,20 @@ or `pnpm dev:agent`:
 
 ## Verified, and how
 
+Checked twice: once on this wave's own commits, and again on the merged
+result (`facd2ed`, `origin/main` merged in — see "The merge onto main"
+above). The table below is the merged-result run, the one that matters.
+
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass. |
-| `pnpm test:js` | Pass — 667 tests (28 in `packages/bridge`), including `engine/inspector.test.ts`'s assertions against the real `token-verifier`/`api-gateway` fixtures and `engine.test.ts`'s Inspector describe block (write-count, write-path, written-content, and undo/redo round-trip checks for `editNode`/`addFacet`/`dropFacet`). |
+| `pnpm test:js` | Pass — 692 tests (28 in `packages/bridge`), including `engine/inspector.test.ts`'s assertions against the real `token-verifier`/`api-gateway` fixtures, `engine.test.ts`'s Inspector describe block (write-count, write-path, written-content, and undo/redo round-trip checks for `editNode`/`addFacet`/`dropFacet`), and wave 7b's `problems`/`staleness` suites running clean against this wave's extended fixture. |
 | `pnpm typecheck` | Pass. |
 | `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing React-hook warnings named in earlier handoffs, none in a file this wave touched. |
 | `pnpm lint:comments` | Pass — 0 grandfathered. |
 | `pnpm lint:version` / `lint:identity` / `lint:branding` | Pass. |
-| `pnpm format:check` | Pass, after `pnpm format`. |
-| `cargo test --workspace` | **Fails, and not on this wave's diff.** 3 failures in `kaava-tool-manifest`'s `reference_manifest.rs`, on every run tried (3 so far, against 3 different colliding worktree names) — this branch touches no Rust file at all. Root cause and fix confirmed by the orchestrator: `CARGO_TARGET_DIR` is shared across every worktree tonight, that crate's test binary embeds `CARGO_MANIFEST_DIR` at compile time rather than reading it from the environment per-run, and cargo's own change-detection sees no source diff so it keeps reusing whichever worktree's binary compiled last. `sch-fix-flake` owns the fix on its own branch (not yet merged as of this handoff); not fixed here — out of this wave's scope, and it isn't this wave's crate. |
+| `pnpm format:check` | Pass, no changes needed on the merged tree. |
+| `cargo test --workspace` | **Still fails on the pre-existing, unrelated `kaava-tool-manifest` flake — see "The merge onto main" above for what to read instead.** `cargo test -p schematify-core` and `cargo test -p openkaava-orchestrator`, run directly, are both clean. |
 | `cargo clippy` | Pass — 0 warnings, at the baseline of 0. |
 | `pnpm baseline` | Never run. |
 
