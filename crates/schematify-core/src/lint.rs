@@ -1,26 +1,22 @@
 //! The Schematify graph linter: rules L01 through L13 of PRD section 10.4.
 //!
 //! Everything here is a pure function over a loaded [`Graph`]. The linter
-//! opens no file, writes nothing, and keeps no state between runs, which is
-//! what lets the Problems panel re-run it after every edit and lets a test
-//! assert PRD section 14.7's 500 ms budget without a window.
+//! opens no file and keeps no state between runs, which is what lets the
+//! Problems panel re-run it after every edit.
 //!
 //! **The rule set is a table, not a `match`.** [`CATALOG`] holds one row per
 //! rule: its identifier, the name the `RULE` column draws, its severity, and
 //! the function that finds it. [`lint`] walks that array and nothing else, so
 //! a fourteenth rule is one row and one function rather than a new arm inside
 //! an existing one. That is the shape [`crate::EdgeKind`] uses, and it is
-//! deliberate: a linter is where a list of special cases accumulates, and the
-//! only structure that survives waves 8 and 10 adding to it is one where
-//! adding is appending.
+//! deliberate: a linter is where a list of special cases accumulates.
 //!
 //! **A finding carries what the panel draws and where the row navigates.**
 //! PRD section 12.14 gives the Problems panel four columns and a click-through
 //! per row. [`Finding`] holds the severity, the rule, the `NODE` cell and the
-//! [`Location`], and the location doubles as the navigation target: it names
-//! the Schematic the offending element is drawn on. Nothing is left for the
-//! panel to invent, because a panel that invents a cell becomes a second
-//! definition of what the rule found.
+//! [`Location`], and the location doubles as the navigation target. Nothing is
+//! left for the panel to invent, because a panel that invents a cell becomes a
+//! second definition of what the rule found.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
@@ -451,7 +447,10 @@ impl<'g> Scan<'g> {
         for edge in &live {
             match edge.kind {
                 EdgeKind::DependsOn => {
-                    dependencies.entry(edge.source).or_default().push(edge.target);
+                    dependencies
+                        .entry(edge.source)
+                        .or_default()
+                        .push(edge.target);
                 }
                 EdgeKind::Covers => {
                     *inbound_covers.entry(edge.target).or_default() += 1;
@@ -554,10 +553,11 @@ impl<'g> Scan<'g> {
                 }
             }
         }
-        self.owning_service(id).map_or(Location::Stack, |service| Location::Service {
-            id: service,
-            title: self.title(service),
-        })
+        self.owning_service(id)
+            .map_or(Location::Stack, |service| Location::Service {
+                id: service,
+                title: self.title(service),
+            })
     }
 
     /// The `NODE` cell for a facet: `token-issuer.mint`, `token-verifier · cold_start_p95`.
@@ -655,7 +655,10 @@ fn containment_is_a_tree(scan: &Scan<'_>, out: &mut Vec<Finding>) {
                 Uri::node(anchor),
                 path_cell(scan, &cycle),
                 scan.location(anchor),
-                format!("The containment chain closes on itself: {}.", drawn.join(" → ")),
+                format!(
+                    "The containment chain closes on itself: {}.",
+                    drawn.join(" → ")
+                ),
             )
             .with_evidence(cycle),
         );
@@ -702,7 +705,7 @@ fn containment_cycles(graph: &Graph) -> Vec<Vec<Uuid>> {
 /// changes with the order the loader happened to read files in. The lowest
 /// slug is the choice, and it is what draws `session-codec → token-issuer → …`
 /// for the wireframe fixture.
-fn rotate_to_lowest_slug(graph: &Graph, cycle: &mut Vec<Uuid>) {
+fn rotate_to_lowest_slug(graph: &Graph, cycle: &mut [Uuid]) {
     let lead = cycle
         .iter()
         .enumerate()
@@ -942,7 +945,11 @@ fn annotation_carrying_a_semantic_edge(scan: &Scan<'_>, out: &mut Vec<Finding>) 
                 Finding::new(
                     RuleId::L05,
                     Uri::node(end),
-                    format!("{} \"{}\"", node.kind().as_str(), clipped(&body, CELL_WIDTH)),
+                    format!(
+                        "{} \"{}\"",
+                        node.kind().as_str(),
+                        clipped(&body, CELL_WIDTH)
+                    ),
                     scan.location(end),
                     format!(
                         "{} is annotation tier and carries a {} edge.",
@@ -1038,7 +1045,12 @@ fn dangling_reference(scan: &Scan<'_>, out: &mut Vec<Finding>) {
     for flow in scan.graph.flows() {
         for step in &flow.steps {
             if !resolves(scan, &step.screen) {
-                report(Uri::flow(flow.id), flow.id, "steps", step.screen.to_string());
+                report(
+                    Uri::flow(flow.id),
+                    flow.id,
+                    "steps",
+                    step.screen.to_string(),
+                );
             }
         }
     }
@@ -1049,7 +1061,12 @@ fn dangling_reference(scan: &Scan<'_>, out: &mut Vec<Finding>) {
         ] {
             if let Some(target) = target {
                 if scan.graph.decision(target).is_none() {
-                    report(Uri::decision(decision.id), decision.id, field, target.to_string());
+                    report(
+                        Uri::decision(decision.id),
+                        decision.id,
+                        field,
+                        target.to_string(),
+                    );
                 }
             }
         }
@@ -1314,10 +1331,9 @@ fn contract_method_without_covers(scan: &Scan<'_>, out: &mut Vec<Finding>) {
 /// needing attention, and a second row saying so adds nothing.
 fn reference_to_a_deprecated_node(scan: &Scan<'_>, out: &mut Vec<Finding>) {
     for edge in &scan.live {
-        let (Some(source), Some(target)) = (
-            scan.graph.node(edge.source),
-            scan.graph.node(edge.target),
-        ) else {
+        let (Some(source), Some(target)) =
+            (scan.graph.node(edge.source), scan.graph.node(edge.target))
+        else {
             continue;
         };
         if target.envelope.lifecycle != Lifecycle::Deprecated {
@@ -1351,7 +1367,13 @@ fn reference_to_a_deprecated_node(scan: &Scan<'_>, out: &mut Vec<Finding>) {
 /// A screen nothing backs is a product surface with no module behind it.
 fn screen_without_a_backing_module(scan: &Scan<'_>, out: &mut Vec<Finding>) {
     for screen in scan.graph.screens() {
-        if scan.ui_edges_by_screen.get(&screen.id).copied().unwrap_or(0) > 0 {
+        if scan
+            .ui_edges_by_screen
+            .get(&screen.id)
+            .copied()
+            .unwrap_or(0)
+            > 0
+        {
             continue;
         }
         out.push(Finding::new(
@@ -1526,7 +1548,10 @@ mod tests {
 
     #[test]
     fn a_clipped_body_stops_on_a_word_and_says_it_stopped() {
-        assert_eq!(clipped("Two caches here on purpose - the rest", 16), "Two caches here…");
+        assert_eq!(
+            clipped("Two caches here on purpose - the rest", 16),
+            "Two caches here…"
+        );
         assert_eq!(clipped("short", 16), "short");
         assert_eq!(clipped("unbrokenlongsingleword", 6), "unbrok…");
     }

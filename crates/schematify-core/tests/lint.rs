@@ -78,9 +78,7 @@ fn the_wireframe_fixture_draws_the_five_rows_the_problems_panel_draws() {
         .collect();
     let expected: Vec<(Severity, &str, &str, String)> = WIREFRAME_ROWS
         .iter()
-        .map(|(severity, rule, node, location)| {
-            (*severity, *rule, *node, (*location).to_owned())
-        })
+        .map(|(severity, rule, node, location)| (*severity, *rule, *node, (*location).to_owned()))
         .collect();
 
     assert_eq!(drawn, expected, "the five rows of PRD section 16.1");
@@ -138,7 +136,11 @@ fn every_row_names_a_surface_and_something_on_it_to_select() {
                 finding.rule.code()
             );
         }
-        assert!(!finding.detail.is_empty(), "{} states its evidence", finding.rule.code());
+        assert!(
+            !finding.detail.is_empty(),
+            "{} states its evidence",
+            finding.rule.code()
+        );
     }
 }
 
@@ -172,7 +174,11 @@ fn the_stress_fixture_lints_inside_the_wave_seven_budget() {
     // assertion against a graph that failed to load would pass on nothing.
     assert_eq!(graph.node_count(), 2000, "2000 nodes went in");
     assert_eq!(graph.edge_count(), 3000, "3000 edges went in");
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
 
     let started = Instant::now();
     let report = lint(graph);

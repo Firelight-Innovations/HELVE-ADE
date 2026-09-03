@@ -53,9 +53,7 @@ pub use lifecycle::{
     check_transition, contract_fields_changed, stale_cascade, transition_table, transitions_from,
     Actor, AuditRow, Lifecycle, LifecycleError, StaleDrop, Staleness, TransitionRule,
 };
-pub use lint::{
-    lint, Finding, LintReport, Location, RuleId, RULE_COUNT,
-};
+pub use lint::{lint, Finding, LintReport, Location, RuleId, RULE_COUNT};
 pub use load::{
     load_project, IdCollision, LoadOutcome, MisnamedFile, Quarantine, QuarantineReason,
     ReadProblem, Report,
