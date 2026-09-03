@@ -44,6 +44,18 @@ toml = "0.9"
 thiserror = "2"
 semver = "1"
 
+# Schematify's identity scheme. `uuid` carries the type, the parse and the
+# display; the minting is written out in `schematify-core` rather than taken
+# from the crate's own `v7` feature, because RFC 9562 monotonicity inside one
+# millisecond is a property that wave 1 asserts in a test and so has to be
+# visible in this repository. `getrandom` is the seed for that, and nothing
+# else pulls randomness in.
+uuid = { version = "1", features = ["serde", "std"] }
+getrandom = "0.3"
+
+# Test-only. Every storage test writes into a directory it owns and drops.
+tempfile = "3"
+
 # Lint levels are declared here and inherited by every member through
 # `lints.workspace = true`, for the same reason dependencies are: five copies of
 # a `#![warn(...)]` block in five lib.rs files drift apart, and the drift is

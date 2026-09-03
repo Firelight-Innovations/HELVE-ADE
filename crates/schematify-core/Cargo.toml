@@ -1,0 +1,21 @@
+[package]
+name = "schematify-core"
+description = "The Schematify design graph: schemas, identity, atomic storage, the loader, and the lifecycle rules"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Lint levels come from [workspace.lints] in the root Cargo.toml.
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+getrandom.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
