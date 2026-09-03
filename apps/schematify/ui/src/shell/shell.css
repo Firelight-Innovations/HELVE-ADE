@@ -321,6 +321,202 @@
   font-size: 9.5px;
 }
 
+/* --- the Inspector's own tab panels (PRD §12.12, §17 Wave 6) --------------- */
+
+/* PRD §17 Wave 6's acceptance condition: 5 flat tabs at 380px, 4 tabs plus
+   More at 360px (the default). */
+.kv-inspector--wide {
+  width: var(--kv-panel-inspector-wide);
+}
+
+.kv-inspector__more-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-inspector__panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.kv-inspector__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.kv-inspector__field-label {
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-inspector__field-value {
+  margin-top: 2px;
+  color: var(--kv-text-primary);
+  font-size: 11px;
+}
+
+/* PRD §17 Wave 6: "Draw the opaque identifier in a copy-on-click field, and
+   nowhere else." A reset `<button>` so the field reads as a value, not a
+   form control, until it is clicked. */
+.kv-inspector__copy-field {
+  display: block;
+  margin-top: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kv-inspector__copy-field:hover {
+  color: var(--kv-accent);
+}
+
+.kv-inspector__list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--kv-text-secondary);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.kv-inspector__link {
+  color: var(--kv-info);
+  font-size: 10.5px;
+}
+
+.kv-inspector__count-header {
+  color: var(--kv-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kv-inspector__toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.kv-inspector__toggle button {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+.kv-inspector__chips {
+  display: flex;
+  gap: 6px;
+}
+
+.kv-inspector__chip {
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.kv-inspector__method-blocks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kv-inspector__method-block {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  padding: 8px;
+}
+
+.kv-inspector__method-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--kv-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kv-inspector__method-signature {
+  margin-top: 3px;
+  color: var(--kv-text-near);
+  font-size: 10.5px;
+}
+
+.kv-inspector__badge {
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-accent-wash);
+  color: var(--kv-accent);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+}
+
+.kv-inspector__covers-label {
+  margin-top: 4px;
+  color: var(--kv-ok);
+  font-size: 10px;
+}
+
+.kv-inspector__marker-token {
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 9.5px;
+  word-break: break-all;
+}
+
+.kv-inspector__mismatch {
+  margin-top: 4px;
+  color: var(--kv-error);
+  font-size: 10.5px;
+}
+
+.kv-inspector__footer-controls {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-inspector__footer-button {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.kv-inspector__doc-editor {
+  width: 100%;
+  min-height: 160px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 8px;
+  resize: vertical;
+}
+
 /* --- the Module Schematic's facet palette (PRD §12.11) --------------------- */
 
 .kv-facet-palette {
@@ -374,20 +570,44 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   background: var(--kv-bg-panel);
   border-top: 1px solid var(--kv-line);
 }
 
+/* PRD §12.1: "The dock collapses to a status strip." No wireframe screen
+   draws the collapsed height, so this is this wave's own reading of "a
+   strip" — tall enough for one row of tabs and nothing else. `[P]`. */
+.kv-dock--collapsed {
+  height: 28px;
+}
+
 .kv-dock__tabs {
   display: flex;
+  align-items: center;
   gap: 12px;
   padding: 6px 12px 0;
+  flex: 0 0 auto;
+}
+
+.kv-dock--collapsed .kv-dock__tabs {
+  padding: 4px 12px;
 }
 
 .kv-dock__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--kv-text-dim);
+  background: none;
+  border: none;
+  font-family: var(--kv-font-mono);
   font-size: 11px;
   padding-bottom: 6px;
+}
+
+.kv-dock--collapsed .kv-dock__tab {
+  padding-bottom: 0;
 }
 
 .kv-dock__tab--active {
@@ -395,14 +615,128 @@
   border-bottom: 1.5px solid var(--kv-accent);
 }
 
+/* The 2 badges PRD §12.1 names on the `Problems` tab — an error count and a
+   warning count, in that order, and the whole reason this tab row is never
+   inside the block `.kv-dock--collapsed` removes. */
+.kv-dock__badges {
+  display: flex;
+  gap: 4px;
+}
+
+.kv-dock__badge {
+  min-width: 14px;
+  padding: 0 5px;
+  border-radius: var(--kv-radius-pill);
+  background: var(--kv-bg-raised);
+  font-size: 9.5px;
+  text-align: center;
+}
+
+.kv-dock__badge--error {
+  color: var(--kv-error);
+}
+
+.kv-dock__badge--warn {
+  color: var(--kv-warn);
+}
+
+.kv-dock__collapse {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--kv-text-tertiary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 0 4px 6px;
+}
+
 .kv-dock__note {
   padding: 6px 12px;
   color: var(--kv-text-tertiary);
   font-size: 10px;
+  flex: 0 0 auto;
 }
 
 .kv-dock__placeholder {
   padding: 0 12px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- Problems panel (PRD §12.14, S-13) -------------------------------------- */
+
+.kv-problems {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  text-align: left;
+}
+
+.kv-problems th {
+  position: sticky;
+  top: 0;
+  background: var(--kv-bg-panel);
+  padding: 4px 12px;
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-problems__row td {
+  padding: 3px 12px;
+  color: var(--kv-text-near);
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-problems__row--clickable {
+  cursor: pointer;
+}
+
+.kv-problems__row--clickable:hover td {
+  background: var(--kv-bg-raised);
+}
+
+.kv-problems__severity {
+  white-space: nowrap;
+}
+
+.kv-problems__row--error .kv-problems__severity {
+  color: var(--kv-error);
+}
+
+.kv-problems__row--warning .kv-problems__severity {
+  color: var(--kv-warn);
+}
+
+.kv-problems__node {
+  color: var(--kv-text-primary);
+}
+
+.kv-problems__location {
+  color: var(--kv-text-tertiary);
+}
+
+/* The 1 blank row a severity-group break draws (PRD §12.14: findings
+   "grouped by severity") — never the first row, and never a 2nd sort. */
+.kv-problems__group-break td {
+  height: 6px;
+  padding: 0;
+  border-top: none;
+}
+
+.kv-problems__error {
+  padding: 8px 12px;
+  color: var(--kv-error);
+  font-size: 11px;
+}
+
+.kv-problems__placeholder {
+  padding: 8px 12px;
   color: var(--kv-text-dim);
   font-size: 11px;
 }

@@ -12,7 +12,52 @@
  * mechanism — `engine/layout.ts`'s `toGraph` is the one place that tells the
  * 2 apart (a group with real children is kept; an empty one is not).
  */
-import type { GraphEdge, GraphNode, SchematicGraph, TechStackRow } from "./types";
+import type {
+  ContractMethodSummary,
+  ExportRow,
+  GraphEdge,
+  GraphNode,
+  SchematicGraph,
+  TechStackRow,
+} from "./types";
+
+/**
+ * `api-gateway`'s authored export list and the methods it resolves to —
+ * PRD §16.1's own table gives the counts (`11 exports`, `4 modules`) but not
+ * the content; no Service Schematic fixture exists for this service the way
+ * `./fixture.ts` exists for `auth-service`, so both the 4 module slugs and
+ * the 11 method names/signatures below are this fixture's own invention,
+ * `[P]`, recorded in the Wave 6 handoff. PRD §17 Wave 6's own acceptance
+ * condition needs exactly this: "the Contract tab draws an OpenAPI view for
+ * `api-gateway`, whose 11 exports resolve to 11 methods."
+ */
+const API_GATEWAY_EXPORTS: ExportRow[] = [
+  { method: "route_request", moduleSlug: "gateway-router" },
+  { method: "rewrite_path", moduleSlug: "gateway-router" },
+  { method: "select_backend", moduleSlug: "gateway-router" },
+  { method: "forward_token", moduleSlug: "gateway-auth-relay" },
+  { method: "strip_internal_headers", moduleSlug: "gateway-auth-relay" },
+  { method: "attach_trace_id", moduleSlug: "gateway-auth-relay" },
+  { method: "check_quota", moduleSlug: "gateway-rate-guard" },
+  { method: "record_hit", moduleSlug: "gateway-rate-guard" },
+  { method: "reset_window", moduleSlug: "gateway-rate-guard" },
+  { method: "liveness", moduleSlug: "gateway-health" },
+  { method: "readiness", moduleSlug: "gateway-health" },
+];
+
+const API_GATEWAY_RESOLVED_METHODS: ContractMethodSummary[] = [
+  { name: "route_request", signature: "(req: IncomingRequest)", returns: "RoutedRequest" },
+  { name: "rewrite_path", signature: "(path: string)", returns: "string" },
+  { name: "select_backend", signature: "(req: RoutedRequest)", returns: "Backend" },
+  { name: "forward_token", signature: "(req: RoutedRequest)", returns: "RoutedRequest" },
+  { name: "strip_internal_headers", signature: "(headers: Headers)", returns: "Headers" },
+  { name: "attach_trace_id", signature: "(req: RoutedRequest)", returns: "RoutedRequest" },
+  { name: "check_quota", signature: "(clientId: string)", returns: "QuotaState" },
+  { name: "record_hit", signature: "(clientId: string)", returns: "void" },
+  { name: "reset_window", signature: "(clientId: string)", returns: "void" },
+  { name: "liveness", signature: "()", returns: "HealthState" },
+  { name: "readiness", signature: "()", returns: "HealthState" },
+];
 
 // `ledger-store` nests inside `session-service` — a `service`-kind node with
 // a `service`-kind parent, per the same PRD sentence above. Nothing in PRD
@@ -40,6 +85,10 @@ const nodes: GraphNode[] = [
     exportsCount: 11,
     modulesCount: 4,
     health: "passing",
+    // PRD §17 Wave 6's Contract tab, service mode (PRD §12.12: "On a
+    // service node, this tab edits the authored export list.").
+    exports: API_GATEWAY_EXPORTS,
+    resolvedMethods: API_GATEWAY_RESOLVED_METHODS,
   },
   {
     id: "platform-core",

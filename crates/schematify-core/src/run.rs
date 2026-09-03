@@ -14,6 +14,9 @@
 //! The four reconciliation keys and the four strings drawn for them differ,
 //! per PRD section 9.2. The JSON key is what this module holds;
 //! [`ReconcileResult::drawn`] is the mapping to the drawn form.
+//!
+//! [`read_run_artifact`] is the probe reader itself, shared by the loader and
+//! by ingestion so both read a file's version the same way.
 
 use serde::{Deserialize, Serialize};
 
@@ -146,6 +149,53 @@ pub struct RunArtifact {
     pub reconcile: Option<ReconcileResult>,
 }
 
+/// Just enough of a run artifact to read its version.
+///
+/// [`load_project`](crate::load_project) and [`ingest_run_file`](crate::ingest_run_file)
+/// both read a version through this before touching [`RunArtifact`] itself,
+/// so the two paths cannot drift into reading the version two different ways.
+#[derive(Deserialize)]
+struct SchemaProbe {
+    schema: String,
+}
+
+/// Read a run artifact from raw bytes, probing the `schema` field before
+/// deserializing the rest.
+///
+/// `RunArtifact` denies unknown fields, and the only reason a future format
+/// bumps `schema` is to add one. Deserializing straight into `RunArtifact`
+/// would turn that file into a parse error that names no version, which is
+/// the one thing PRD section 5.10 requires a reader to report. Reading the
+/// version through [`SchemaProbe`] first keeps that report possible.
+///
+/// # Errors
+///
+/// Returns [`RunReadError::UnknownSchema`] naming the version this build
+/// does not read, without attempting the full parse. Returns
+/// [`RunReadError::Malformed`] when even the probe cannot read `schema`, or
+/// when a current-version file fails the full parse (an unknown field, most
+/// often).
+pub fn read_run_artifact(bytes: &[u8]) -> std::result::Result<RunArtifact, RunReadError> {
+    let probe: SchemaProbe = serde_json::from_slice(bytes).map_err(RunReadError::Malformed)?;
+    if probe.schema != RUN_SCHEMA_VERSION {
+        return Err(RunReadError::UnknownSchema(probe.schema));
+    }
+    serde_json::from_slice(bytes).map_err(RunReadError::Malformed)
+}
+
+/// Why [`read_run_artifact`] could not produce a [`RunArtifact`].
+#[derive(Debug, thiserror::Error)]
+pub enum RunReadError {
+    /// The probe read a `schema` this build does not know. Carries the value
+    /// so a caller can report it, per PRD section 5.10.
+    #[error("run artifact declares unknown schema {0:?}")]
+    UnknownSchema(String),
+    /// The bytes were not a run artifact at all, or a known-version one
+    /// failed its closed-schema parse.
+    #[error("run artifact could not be parsed")]
+    Malformed(#[source] serde_json::Error),
+}
+
 impl RunArtifact {
     /// Whether this build reads the schema this file declares.
     #[must_use]
@@ -249,6 +299,61 @@ mod tests {
         let keys = value.as_object().unwrap();
         assert!(!keys.contains_key("budgets_passing"));
         assert!(!keys.contains_key("tests_passing"));
+    }
+
+    #[test]
+    fn read_run_artifact_accepts_a_known_schema() {
+        let run = sample();
+        let bytes = serde_json::to_vec(&run).unwrap();
+        assert_eq!(read_run_artifact(&bytes).unwrap(), run);
+    }
+
+    #[test]
+    fn read_run_artifact_names_the_version_of_a_future_schema_rather_than_parsing() {
+        // Shaped like a later format that added a field current `RunArtifact`
+        // would refuse. Reaching `UnknownSchema` rather than `Malformed`
+        // proves the probe ran before the full deserialize.
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": "kaava-bench-v9",
+            "run": 9,
+            "at": "2026-08-25T00:00:00Z",
+            "commit": "abc",
+            "workflow": "ci/verify.yml",
+            "carbon_grams": 4.2
+        }))
+        .unwrap();
+        match read_run_artifact(&bytes) {
+            Err(RunReadError::UnknownSchema(version)) => {
+                assert_eq!(version, "kaava-bench-v9");
+            }
+            other => panic!("expected UnknownSchema, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn read_run_artifact_reports_a_current_version_with_an_unknown_field_as_malformed() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": RUN_SCHEMA_VERSION,
+            "run": 10,
+            "at": "2026-08-25T00:00:00Z",
+            "commit": "abc",
+            "workflow": "ci/verify.yml",
+            "carbon_grams": 4.2
+        }))
+        .unwrap();
+        assert!(matches!(
+            read_run_artifact(&bytes),
+            Err(RunReadError::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn read_run_artifact_reports_bytes_with_no_schema_field_as_malformed() {
+        let bytes = serde_json::to_vec(&serde_json::json!({ "run": 11 })).unwrap();
+        assert!(matches!(
+            read_run_artifact(&bytes),
+            Err(RunReadError::Malformed(_))
+        ));
     }
 
     #[test]

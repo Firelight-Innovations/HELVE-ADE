@@ -33,7 +33,13 @@ import {
   type SchematicEngine,
 } from "./engine";
 import { SchematicCanvas } from "./engine/SchematicCanvas";
-import { stackHeaderCounts } from "./graph";
+import {
+  fetchLintReport,
+  projectFindings,
+  resolveClickThrough,
+  stackHeaderCounts,
+  type Finding,
+} from "./graph";
 import { Breadcrumb } from "./shell/Breadcrumb";
 import { Dock } from "./shell/Dock";
 import { EmptyModule } from "./shell/EmptyModule";
@@ -65,12 +71,24 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const paintedRef = useRef(false);
 
+  // Wave 7b: a Problems row's click-through that lands on a Schematic other
+  // than the one already open (`resolveClickThrough`'s `navigate` case)
+  // appends to `path`, which reopens the engine below — the selection has to
+  // wait for that new engine to exist, so it is stashed in a ref (not state:
+  // nothing should re-render off it) and applied once the open settles.
+  const pendingSelectRef = useRef<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     setEngine(null);
     openSchematic(configFor(target))
       .then((opened) => {
-        if (!cancelled) setEngine(opened);
+        if (cancelled) return;
+        setEngine(opened);
+        if (pendingSelectRef.current) {
+          opened.select([pendingSelectRef.current]);
+          pendingSelectRef.current = null;
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -83,6 +101,42 @@ export default function App() {
     // stable dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target.tier, target.slug]);
+
+  // The Problems panel's own data (PRD §12.14): the whole project's lint
+  // report, independent of which tier is open — fetched once per app
+  // mount, not once per tier switch, since `schematify_core::lint` walks
+  // the whole graph regardless of which Schematic a finding's own
+  // `location` names (`crates/schematify-core/src/lint.rs`'s own `lint`).
+  const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [lintError, setLintError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLintReport()
+      .then((report) => {
+        if (!cancelled) setFindings(projectFindings(report));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLintError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** A Problems row was clicked. `resolveClickThrough` is the pure decision
+   *  (`graph/problems.ts`, unit-tested there); this is only the 2 side
+   *  effects it can call for — select now, or stash and navigate. */
+  function handleSelectFinding(finding: Finding): void {
+    const result = resolveClickThrough({ tier: target.tier, slug: target.slug }, finding);
+    if (!result) return;
+    if (result.navigate) {
+      pendingSelectRef.current = result.select;
+      setPath([...path, result.navigate]);
+    } else if (engine) {
+      engine.select([result.select]);
+    }
+  }
 
   // The condition is "the first frame is honest", the rule every app here
   // follows (`apps/home/ui/src/App.tsx` line 246, `apps/files/ui/src/App.tsx`
@@ -131,33 +185,50 @@ export default function App() {
     <Schematify
       engine={engine}
       path={path}
+      findings={findings}
+      lintError={lintError}
       onNavigate={(index) => setPath(path.slice(0, index + 1))}
-      onActivate={(drawn) => {
-        const dest = nextDrillTarget(engine.config.tier, drawn.node);
-        if (dest) setPath([...path, dest]);
-      }}
+      onDrillTo={(dest) => setPath([...path, dest])}
+      onSelectFinding={handleSelectFinding}
     />
   );
 }
 
 /** The populated view, split out so the engine subscription lives where the
- *  engine is known to exist rather than behind a null check. */
+ *  engine is known to exist rather than behind a null check.
+ *
+ * `onDrillTo` is the 1 navigation primitive both the canvas's click-to-drill
+ * and the Inspector's `Open module canvas` footer control (PRD §12.12, §17
+ * Wave 6) push through — a click on the canvas resolves a `DrawnNode` to a
+ * `DrillTarget` first (`onActivate`, below), the footer control already
+ * holds one. */
 function Schematify({
   engine,
   path,
+  findings,
+  lintError,
   onNavigate,
-  onActivate,
+  onDrillTo,
+  onSelectFinding,
 }: {
   engine: SchematicEngine;
   path: readonly DrillTarget[];
+  findings: Finding[] | null;
+  lintError: string | null;
   onNavigate: (index: number) => void;
-  onActivate: (node: DrawnNode) => void;
+  onDrillTo: (target: DrillTarget) => void;
+  onSelectFinding: (finding: Finding) => void;
 }) {
   const state = useSyncExternalStore(
     (listener) => engine.subscribe(listener),
     () => engine.state,
   );
   const graph = useMemo(() => toGraph(state.doc), [state.doc]);
+
+  const onActivate = (drawn: DrawnNode) => {
+    const dest = nextDrillTarget(engine.config.tier, drawn.node);
+    if (dest) onDrillTo(dest);
+  };
 
   return (
     <div className="kv-shell">
@@ -176,10 +247,15 @@ function Schematify({
         <Outline graph={graph} />
         {graph.tier === "module" ? <FacetPalette /> : null}
         <SchematicCanvas engine={engine} onActivate={onActivate} exports={graph.exports} />
-        <InspectorShell graph={graph} selectionCount={state.selection.length} />
+        <InspectorShell
+          graph={graph}
+          selection={state.selection}
+          engine={engine}
+          onOpenModuleCanvas={onDrillTo}
+        />
       </div>
-      <Dock />
-      <StatusBar graph={graph} layoutClean={!engine.layoutDirty} />
+      <Dock findings={findings} error={lintError} onSelectFinding={onSelectFinding} />
+      <StatusBar graph={graph} layoutClean={!engine.layoutDirty} findings={findings} />
     </div>
   );
 }

@@ -27,6 +27,7 @@ mod edge;
 mod error;
 mod graph;
 mod id;
+mod ingest;
 mod layout;
 mod lifecycle;
 mod lint;
@@ -49,6 +50,7 @@ pub use edge::{Edge, EdgeKind, EdgeTier};
 pub use error::{CoreError, Result};
 pub use graph::Graph;
 pub use id::{id_timestamp_ms, mint_id, IdMinter};
+pub use ingest::{ingest_run, ingest_run_file};
 pub use layout::{Layout, Placement};
 pub use lifecycle::{
     check_transition, contract_fields_changed, stale_cascade, transition_table, transitions_from,
@@ -70,7 +72,8 @@ pub use registry::{
     LicenseVerdict, RegistryError, Rule, RuleDocument, RuleRow, RuleSection, Severity,
 };
 pub use run::{
-    BudgetResult, LinterResult, ReconcileResult, RunArtifact, TestResult, RUN_SCHEMA_VERSION,
+    read_run_artifact, BudgetResult, LinterResult, ReconcileResult, RunArtifact, RunReadError,
+    TestResult, RUN_SCHEMA_VERSION,
 };
 pub use search::{GraphIndex, HitKind, MatchRank, SearchHit, SearchIndex, DEFAULT_LIMIT};
 pub use slug::{Slug, SlugError, SlugIndex, SlugScope};

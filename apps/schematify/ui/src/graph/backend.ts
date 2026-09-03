@@ -13,6 +13,7 @@
 import { KaavaRpcError, invoke } from "@openkaava/bridge";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
+import type { RawLintReport } from "./problems";
 import { projectServiceGraph, type RawGraph } from "./project";
 import type { ServiceGraph } from "./types";
 
@@ -64,6 +65,16 @@ function readRealLayout(slug: string): Promise<LayoutFile | null> {
  *  PRD §6.2's enforcement point, and the one write this wave makes real. */
 async function writeRealLayout(slug: string, file: LayoutFile): Promise<void> {
   await invoke("schematify/write-layout", { actor: ACTOR, slug, layout: file });
+}
+
+/** `schematify/lint`. Wave 7a's own arm (`src-tauri/src/apps/schematify.rs`),
+ *  widened this wave to carry `Location.slug` and `Finding.rule_name` — the
+ *  2 fields the Problems panel needs that a Rust-only caller (a test, a
+ *  future CLI) had no reason to want. Lints the whole project on every call,
+ *  same as the Rust side: PRD §0.4 makes the finding count computed at read
+ *  time, never stored, so there is nothing to invalidate. */
+export function fetchLintReport(): Promise<RawLintReport> {
+  return invoke<RawLintReport>("schematify/lint", { actor: ACTOR });
 }
 
 /**

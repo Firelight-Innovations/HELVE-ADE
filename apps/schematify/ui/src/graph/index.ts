@@ -18,19 +18,23 @@
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
 import { MODULE_GRAPH } from "./module";
+import type { RawLintReport } from "./problems";
 import { STACK_GRAPH } from "./stack";
 import type { LayoutFile } from "./layout";
 import { isAnnotationNodeKind } from "./types";
 import type { GraphNode, SchematicGraph, ServiceGraph, Tier } from "./types";
 
 export type {
+  ContractMethodSummary,
   ExportRow,
   FacetCounts,
   GraphEdge,
   GraphNode,
   HealthStatus,
   Layer,
+  LibraryDetail,
   Lifecycle,
+  LifecycleAuditRow,
   NodeKind,
   OutlineBadge,
   SchematicGraph,
@@ -42,6 +46,28 @@ export { ANNOTATION_NODE_KINDS, isAnnotationNodeKind } from "./types";
 
 export type { LayoutAnnotation, LayoutFile, LayoutNode, LayoutViewport } from "./layout";
 export { emptyLayout, layoutPath } from "./layout";
+
+export type {
+  ClickThrough,
+  Finding,
+  Location,
+  NavigationTarget,
+  ProblemBadges,
+  RawFinding,
+  RawLintReport,
+  Severity,
+} from "./problems";
+export {
+  drillTargetForLocation,
+  locationCell,
+  problemBadges,
+  projectFindings,
+  resolveClickThrough,
+  severityGlyph,
+  severityWord,
+  statusCell3,
+  subjectId,
+} from "./problems";
 
 /** Every service-tier fixture this stand-in loader knows, keyed by slug.
  *  Wave 5 widens this from the 1 hardcoded service Wave 2/3 opened
@@ -321,3 +347,21 @@ export const defaultSeam: SchematifySeam = {
   writeSemantic: (path, json) => getBackendSeam().then((seam) => seam.writeSemantic(path, json)),
   removeSemantic: (path) => getBackendSeam().then((seam) => seam.removeSemantic(path)),
 };
+
+/**
+ * `schematify/lint`, through the same dynamic `import("./backend")` every
+ * other real read in this file uses — not part of `SchematifySeam`, since
+ * that interface is "every read and every write the Schematic engine makes"
+ * (its own doc comment) and the Problems dock tab is not the engine: it
+ * lints the whole project, independent of which tier's Schematic happens to
+ * be open, and stays mounted across a tier switch the engine itself
+ * discards and rebuilds.
+ */
+let lintModule: Promise<typeof import("./backend")> | null = null;
+function getBackendModule(): Promise<typeof import("./backend")> {
+  lintModule ??= import("./backend");
+  return lintModule;
+}
+export function fetchLintReport(): Promise<RawLintReport> {
+  return getBackendModule().then((m) => m.fetchLintReport());
+}
