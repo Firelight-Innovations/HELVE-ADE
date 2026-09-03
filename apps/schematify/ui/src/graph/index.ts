@@ -380,7 +380,13 @@ function getBackendSeam(): Promise<SchematifySeam> {
 }
 
 export const defaultSeam: SchematifySeam = {
-  loadGraph: () => getBackendSeam().then((seam) => seam.loadGraph()),
+  // Forwards both arguments — a 0-arg arrow here silently dropped whatever
+  // tier and slug `App.tsx`'s click-through (or any other caller) actually
+  // asked for, since JavaScript never enforces arity. The same defect
+  // `backend.ts`'s own `loadRealGraph` had one layer down, fixed
+  // separately; a 0-arg wrapper at *this* layer would have re-hidden that
+  // fix from every real caller regardless.
+  loadGraph: (tier, slug) => getBackendSeam().then((seam) => seam.loadGraph(tier, slug)),
   loadDenseGraph: () => getBackendSeam().then((seam) => seam.loadDenseGraph()),
   readLayout: (slug) => getBackendSeam().then((seam) => seam.readLayout(slug)),
   writeLayout: (slug, file) => getBackendSeam().then((seam) => seam.writeLayout(slug, file)),

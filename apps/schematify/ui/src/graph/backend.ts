@@ -15,8 +15,8 @@ import type { Dashboard, RawRunsReport } from "./dashboard";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
 import type { RawLintReport } from "./problems";
-import { projectServiceGraph, type RawGraph } from "./project";
-import type { ServiceGraph } from "./types";
+import { projectModuleGraph, projectServiceGraph, type RawGraph } from "./project";
+import type { SchematicGraph, ServiceGraph, Tier } from "./types";
 
 export interface SchematifyState {
   project: string | null;
@@ -38,11 +38,9 @@ export function reasonForFailure(err: unknown): string {
  *  value sent — see the wiring handoff for the record of that choice. */
 const ACTOR = "human";
 
-/** The Service Schematic this app opens on: `engine/presets.ts`'s
- *  `SERVICE_CONFIG` hardcodes `layoutSlug: "auth-service"`, and
- *  `fixtures/saas-backend/` was built to reproduce PRD §16.1's
- *  `auth-service` exactly, so this is the one slug the rest of the app
- *  already assumes rather than an independent guess. */
+/** The default landing view: `engine/presets.ts`'s `SERVICE_CONFIG`
+ *  hardcodes `layoutSlug: "auth-service"`. Only a default now that
+ *  `loadRealGraph` honours whatever `slug` it is actually called with. */
 const DEFAULT_SERVICE_SLUG = "auth-service";
 
 interface LoadGraphResponse {
@@ -50,11 +48,27 @@ interface LoadGraphResponse {
   report: { clean: boolean };
 }
 
-/** `schematify/load-graph`, projected to the one service this app draws —
- *  see `./project.ts`. */
-async function loadRealGraph(): Promise<ServiceGraph> {
+// `schematify/load-graph`, projected to whichever tier and slug the caller
+// asked for. Previously ignored both, always returning the `auth-service`
+// Service Schematic — the bug a Module-location Problems row's
+// click-through ran into (wave 7b's handoff). `service` routes to
+// `./project.ts`'s `projectServiceGraph`, already generic across any slug.
+// `module` routes to the new `projectModuleGraph` — Stack and Module had no
+// real projector before, only `./stack.ts`/`./module.ts`'s stand-ins.
+// `stack` still has none, out of scope here and unreached by any reference
+// Problems row, so it draws the same empty graph `./index.ts`'s stand-in
+// loader returns for a slug it has no fixture for.
+async function loadRealGraph(
+  tier: Tier = "service",
+  slug: string = DEFAULT_SERVICE_SLUG,
+): Promise<SchematicGraph> {
+  if (tier === "stack") {
+    return { tier: "stack", serviceSlug: slug, serviceTitle: slug, nodes: [], edges: [] };
+  }
   const response = await invoke<LoadGraphResponse>("schematify/load-graph", { actor: ACTOR });
-  return projectServiceGraph(response.graph, DEFAULT_SERVICE_SLUG);
+  return tier === "module"
+    ? projectModuleGraph(response.graph, slug)
+    : projectServiceGraph(response.graph, slug);
 }
 
 /** `schematify/read-layout`. `null` is the first-run state, not a failure. */
@@ -135,10 +149,12 @@ export function createBackendSeam(): SchematifySeamLike {
 }
 
 /** What `createBackendSeam` returns — `./index.ts`'s `SchematifySeam`
- *  restated rather than imported, following `apps/files/ui/src/rpc.ts`'s own
- *  convention for its Rust counterpart. */
+ *  restated rather than imported, following `apps/files/ui/src/rpc.ts`'s
+ *  convention. `loadGraph`'s 2 params were the one place this had drifted:
+ *  `(): …` let `loadRealGraph` silently ignore its real callers' arguments,
+ *  since JavaScript never enforces arity. */
 interface SchematifySeamLike {
-  loadGraph(): Promise<ServiceGraph>;
+  loadGraph(tier?: Tier, slug?: string): Promise<ServiceGraph>;
   loadDenseGraph(): Promise<ServiceGraph>;
   readLayout(slug: string): Promise<LayoutFile | null>;
   writeLayout(slug: string, file: LayoutFile): Promise<void>;

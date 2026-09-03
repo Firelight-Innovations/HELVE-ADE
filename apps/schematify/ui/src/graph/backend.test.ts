@@ -1,0 +1,133 @@
+/**
+ * `schematify/load-graph`'s tier/slug routing. `backend.ts`'s
+ * `loadRealGraph` used to ignore both and always return `auth-service`.
+ * Fixing that alone wasn't enough: `./index.ts`'s `defaultSeam.loadGraph` —
+ * what `App.tsx`'s real click-through calls, 1 layer above
+ * `createBackendSeam` — had the identical 0-argument-arrow shape. Both
+ * layers are covered here; a fix at one proves nothing about the other,
+ * since TypeScript lets a function with fewer declared parameters satisfy a
+ * type requiring more.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// `@openkaava/bridge` is mocked, not imported for real — its root export
+// touches `window` at module load, which this plain-Node file has none of.
+// `./index.ts` keeps `./backend.ts` out of its own static imports for the
+// same reason; faking the one thing `backend.ts` calls covers both
+// `createBackendSeam` (imported directly) and `defaultSeam` (reached
+// through `./index.ts`'s own lazy `import("./backend")`).
+
+const invokeMock = vi.fn();
+vi.mock("@openkaava/bridge", () => ({
+  invoke: (...args: unknown[]) => invokeMock(...args),
+  KaavaRpcError: class KaavaRpcError extends Error {},
+}));
+
+// Import after the mock: `vi.mock` calls are hoisted above every import in
+// this file by vitest's transform, so `./backend`'s own static
+// `import { invoke } from "@openkaava/bridge"` resolves to the mock above,
+// never the real bridge — whether reached directly (`createBackendSeam`) or
+// through `./index.ts`'s lazy `import("./backend")` (`defaultSeam`).
+const { createBackendSeam } = await import("./backend");
+const { defaultSeam } = await import("./index");
+
+function response(nodes: Record<string, unknown>[]) {
+  return { graph: { nodes, edges: [] }, report: { clean: true } };
+}
+
+const AUTH_SERVICE = {
+  id: "svc-auth",
+  slug: "auth-service",
+  kind: "service",
+  title: "Auth Service",
+  lifecycle: "accepted",
+  parent: null,
+};
+const BILLING_SERVICE = {
+  id: "svc-billing",
+  slug: "billing-service",
+  kind: "service",
+  title: "Billing Service",
+  lifecycle: "accepted",
+  parent: null,
+};
+const TOKEN_VERIFIER = {
+  id: "mod-verifier",
+  slug: "token-verifier",
+  kind: "module",
+  title: "Token Verifier",
+  lifecycle: "accepted",
+  parent: "svc-auth",
+};
+const COLD_START_BUDGET = {
+  id: "budget-cold-start",
+  slug: "cold_start_p95",
+  kind: "budget",
+  title: "cold_start_p95",
+  lifecycle: "accepted",
+  parent: "mod-verifier",
+  metric: "cold_start_p95",
+  op: "<",
+  value: 800,
+  unit: "ms",
+  tier: "hard",
+};
+
+beforeEach(() => {
+  invokeMock.mockReset();
+});
+
+describe("createBackendSeam().loadGraph", () => {
+  it("draws the requested service, not the hardcoded auth-service default", async () => {
+    invokeMock.mockResolvedValue(response([BILLING_SERVICE]));
+    const graph = await createBackendSeam().loadGraph("service", "billing-service");
+    expect(graph.tier).toBe("service");
+    expect(graph.serviceSlug).toBe("billing-service");
+  });
+
+  it("draws the requested module and the offending node inside it, not an empty Module Schematic", async () => {
+    invokeMock.mockResolvedValue(response([AUTH_SERVICE, TOKEN_VERIFIER, COLD_START_BUDGET]));
+    const graph = await createBackendSeam().loadGraph("module", "token-verifier");
+    expect(graph.tier).toBe("module");
+    expect(graph.serviceSlug).toBe("token-verifier");
+    expect(graph.nodes.map((n) => n.slug)).toContain("cold_start_p95");
+  });
+
+  it("still defaults to the auth-service Service Schematic when called with no arguments", async () => {
+    invokeMock.mockResolvedValue(response([AUTH_SERVICE]));
+    const graph = await createBackendSeam().loadGraph();
+    expect(graph.tier).toBe("service");
+    expect(graph.serviceSlug).toBe("auth-service");
+  });
+
+  it("draws an honest empty graph for the stack tier, never a silently wrong service", async () => {
+    const graph = await createBackendSeam().loadGraph("stack", "saas-backend");
+    expect(graph.tier).toBe("stack");
+    expect(graph.nodes).toHaveLength(0);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `defaultSeam.loadGraph` — the seam `engine/index.ts`'s `openSchematic`
+ * (and so `App.tsx`'s real click-through) actually calls, one layer above
+ * `createBackendSeam`. The suite above proves `createBackendSeam().loadGraph`
+ * routes correctly; it proves nothing about whether the wrapper 1 layer up
+ * still forwards its arguments to that function — which, until this fix,
+ * it didn't.
+ */
+describe("defaultSeam.loadGraph (the real path a click-through calls)", () => {
+  it("draws the requested module through the full seam, not just through createBackendSeam directly", async () => {
+    invokeMock.mockResolvedValue(response([AUTH_SERVICE, TOKEN_VERIFIER, COLD_START_BUDGET]));
+    const graph = await defaultSeam.loadGraph("module", "token-verifier");
+    expect(graph.tier).toBe("module");
+    expect(graph.serviceSlug).toBe("token-verifier");
+  });
+
+  it("draws the requested service through the full seam", async () => {
+    invokeMock.mockResolvedValue(response([BILLING_SERVICE]));
+    const graph = await defaultSeam.loadGraph("service", "billing-service");
+    expect(graph.tier).toBe("service");
+    expect(graph.serviceSlug).toBe("billing-service");
+  });
+});
