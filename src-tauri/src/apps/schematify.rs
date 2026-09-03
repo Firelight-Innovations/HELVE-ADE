@@ -883,9 +883,10 @@ mod tests {
     /// non-`group` kind to `"module"`, so `auth-service`'s 12 real modules
     /// plus 58 of its own facets (contract methods, test cases, budgets)
     /// all drew as one flat 70-node service. This test pins the raw
-    /// material — 12 modules, 1 group — not `project.ts`'s filtered output;
-    /// `project.test.ts`'s own real-shaped test pins that the 1 group is
-    /// then excluded (annotation tier, per the count ruling recorded in
+    /// material — 12 modules, 1 group — not `project.ts`'s output;
+    /// `project.test.ts`'s own real-shaped test pins that the group is
+    /// still drawn (a real containment box) but not counted (annotation
+    /// tier, per the owner's ruling recorded in
     /// `docs/overnight-jobs/overnight-2/handoffs/wiring.md`, which also
     /// carries the full comparison against the wave 2 stand-in fixture).
     #[test]

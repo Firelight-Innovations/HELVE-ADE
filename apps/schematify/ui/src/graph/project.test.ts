@@ -7,6 +7,7 @@
  * worse than none.
  */
 import { describe, expect, it } from "vitest";
+import { countNodes } from "./index";
 import { projectServiceGraph, type RawGraph, type RawNode } from "./project";
 
 function node(partial: Partial<RawNode> & Pick<RawNode, "id" | "slug" | "kind">): RawNode {
@@ -67,6 +68,7 @@ const RAW: RawGraph = {
     { id: "e3", kind: "contains", source: "svc", target: "m1" }, // never a GraphEdge
     { id: "e4", kind: "implements", source: "m4", target: "m2" },
     { id: "e5", kind: "depends_on", source: "n1", target: "svc2" }, // wrong service entirely
+    { id: "e6", kind: "depends_on", source: "m1", target: "g1" }, // a group is drawn, never an edge endpoint
   ],
 };
 
@@ -79,9 +81,9 @@ describe("projectServiceGraph", () => {
     expect(graph.tier).toBe("service");
   });
 
-  it("includes only auth-service's own modules, not billing-service's", () => {
+  it("includes auth-service's own modules and its group, not billing-service's", () => {
     const ids = graph.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual(["m1", "m2", "m3", "m4"].sort());
+    expect(ids).toEqual(["g1", "m1", "m2", "m3", "m4"].sort());
   });
 
   it("drops every tier-3 facet under a module — the Module Schematic's content, not the Service one's", () => {
@@ -95,8 +97,13 @@ describe("projectServiceGraph", () => {
     expect(graph.nodes.map((n) => n.id)).not.toContain("c1");
   });
 
-  it("drops a group — annotation tier per PRD §11.3, never a node, per the count ruling", () => {
-    expect(graph.nodes.map((n) => n.id)).not.toContain("g1");
+  it("draws a group as a node, but see index.test.ts / index.ts for why it is not counted", () => {
+    // Per the owner's ruling: drawn and counted are different questions. A
+    // group is annotation-tier (PRD §11.3) and is excluded from
+    // `countNodes` (`./index.ts`), not from this projection — it is a real
+    // containment box the Service Schematic draws.
+    expect(graph.nodes.map((n) => n.id)).toContain("g1");
+    expect(graph.nodes.find((n) => n.id === "g1")?.kind).toBe("group");
   });
 
   it("maps a top-level module's parent to null, matching the fixture convention", () => {
@@ -137,6 +144,10 @@ describe("projectServiceGraph", () => {
     expect(graph.edges.some((e) => e.id === "e3")).toBe(false);
   });
 
+  it("drops an edge naming a group as an endpoint, even though the group itself is drawn", () => {
+    expect(graph.edges.some((e) => e.id === "e6")).toBe(false);
+  });
+
   it("keeps an implements edge, renaming source/target to from/to", () => {
     const implementsEdge = graph.edges.find((e) => e.id === "e4");
     expect(implementsEdge).toEqual({ id: "e4", kind: "implements", from: "m4", to: "m2" });
@@ -146,12 +157,12 @@ describe("projectServiceGraph", () => {
     expect(() => projectServiceGraph(RAW, "no-such-service")).toThrow(/no-such-service/);
   });
 
-  it("yields exactly 12 nodes against auth-service's real containment shape, matching PRD §16.1", () => {
+  it("draws 13 nodes but counts 12, against auth-service's real containment shape", () => {
     // `fixtures/saas-backend/`'s actual `auth-service` (real slugs, real
     // containment — see the wiring handoff's fixture comparison): 12
-    // modules plus one real top-level group, `token-pipeline`, that first
-    // read as a 13th node before the count ruling excluded it. This test
-    // is what the ruling asked to be asserted against the real fixture's
+    // modules plus one real top-level group, `token-pipeline`. Drawn and
+    // counted are different questions per the owner's ruling — this test is
+    // what the ruling asked to be asserted against the real fixture's
     // shape, not just against a synthetic `g1`/`m1` stand-in above.
     const auth: RawGraph = {
       nodes: [
@@ -173,8 +184,9 @@ describe("projectServiceGraph", () => {
       edges: [],
     };
     const result = projectServiceGraph(auth, "auth-service");
-    expect(result.nodes).toHaveLength(12);
-    expect(result.nodes.map((n) => n.slug)).not.toContain("token-pipeline");
+    expect(result.nodes).toHaveLength(13);
+    expect(result.nodes.map((n) => n.slug)).toContain("token-pipeline");
+    expect(countNodes(result)).toBe(12);
   });
 
   it("does not hang on a containment cycle that never reaches the service", () => {

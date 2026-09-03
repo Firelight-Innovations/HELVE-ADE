@@ -77,24 +77,39 @@ function asLifecycle(value: string): Lifecycle {
 }
 
 /**
- * The one raw kind that is a *node* on a Service Schematic: `module` (PRD
- * tier 2). `service` is never a member — it is the root the whole graph is
- * drawn under, carried separately as `serviceSlug`/`serviceTitle`.
+ * The 2 raw kinds this projection *draws* on a Service Schematic: `module`
+ * (PRD tier 2) and `group`, the annotation-tier containment box PRD §11.3
+ * and §12.4 both draw on the canvas. `service` is never a member — it is
+ * the root the whole graph is drawn under, carried separately as
+ * `serviceSlug`/`serviceTitle`.
  *
  * Every other kind is a tier-3 facet the Module Schematic draws, not the
- * Service one, or an annotation (`group`, `comment`) that PRD §11.3 puts in
- * a separate tier: "it arranges and it annotates, it does not mean" — the
- * owner's ruling, backed by 2 precedents (an annotation-tier box is never a
- * node or an edge endpoint per WIREFRAME-EXTRACT.md's Resolutions section,
- * and wave 3's review required `buildFrame`'s counts to count semantic
- * nodes only). Facets were once collapsed to `"module"` rather than
- * excluded, which inflated a 12-module real service into 70 nodes on first
- * contact with real data. Both discoveries, and this ruling, are recorded
- * in the wiring handoff.
+ * Service one — collapsing them to `"module"` instead of excluding them was
+ * the bug that inflated a 12-module real service into 70 nodes on first
+ * contact with real data; see the wiring handoff.
+ *
+ * A `group` is drawn but not counted — see `ANNOTATION_NODE_KINDS` in
+ * `./types.ts`, which `countNodes` reads for the status-bar figure, and
+ * `MODULE_ONLY_EDGE_ENDPOINT_KINDS` below, which keeps a group out of the
+ * edge list the same way. Drawn and counted are 2 different questions; a
+ * `comment` answers the first "nowhere" (this app's `NodeKind` has no
+ * member for it at all, a separate open gap the wiring handoff names) and
+ * a `group` answers it "yes" while still answering the second "no".
  */
-const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module"]);
+const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module", "group"]);
 
-function asNodeKind(rawKind: "module"): NodeKind {
+/**
+ * The 1 raw kind an edge may connect to on a Service Schematic: `module`.
+ * PRD §11.3's annotation tier — `group` here, `comment` never reaching this
+ * far at all — carries no semantic edge, per the same ruling
+ * `SERVICE_SCHEMATIC_KINDS` above encodes: "an annotation-tier box is never
+ * a node and never an edge endpoint" (WIREFRAME-EXTRACT.md's Resolutions
+ * section). A `group` can be drawn while still never appearing as an
+ * edge's `from`/`to`.
+ */
+const MODULE_ONLY_EDGE_ENDPOINT_KINDS: ReadonlySet<string> = new Set(["module"]);
+
+function asNodeKind(rawKind: "module" | "group"): NodeKind {
   return rawKind;
 }
 
@@ -147,13 +162,12 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
       SERVICE_SCHEMATIC_KINDS.has(node.kind) &&
       isDescendantOfService(node, serviceNode.id, byId),
   );
-  const includedIds = new Set(included.map((node) => node.id));
 
   const nodes: GraphNode[] = included.map((node) => ({
     id: node.id,
     slug: node.slug,
     title: node.title,
-    kind: asNodeKind(node.kind as "module"),
+    kind: asNodeKind(node.kind as "module" | "group"),
     layer: asLayer(node.layer),
     lifecycle: asLifecycle(node.lifecycle),
     parentId: node.parent === serviceNode.id ? null : (node.parent ?? null),
@@ -164,12 +178,19 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     badge: node.lifecycle === "stale" ? "STALE" : undefined,
   }));
 
+  // A group can be drawn (above) while never becoming an edge endpoint —
+  // `edgeEndpointIds` is module ids only, narrower than `included`, so a
+  // `depends_on` naming a group's id is dropped here rather than drawn as
+  // though a box could originate or receive a dependency.
+  const edgeEndpointIds = new Set(
+    included.filter((node) => MODULE_ONLY_EDGE_ENDPOINT_KINDS.has(node.kind)).map((n) => n.id),
+  );
   const edges: GraphEdge[] = raw.edges
     .filter(
       (edge) =>
         FRONTEND_EDGE_KINDS.has(edge.kind) &&
-        includedIds.has(edge.source) &&
-        includedIds.has(edge.target),
+        edgeEndpointIds.has(edge.source) &&
+        edgeEndpointIds.has(edge.target),
     )
     .map((edge) => ({
       id: edge.id,

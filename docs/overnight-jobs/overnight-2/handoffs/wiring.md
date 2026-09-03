@@ -154,7 +154,7 @@ inside the seam (`graph/`):
   kind descendants (facets, comments, and — per the owner's count ruling
   below — groups are all excluded rather than collapsed to `"module"`), and
   keeps only `depends_on`/`implements`/`references_ui` edges whose both ends
-  survive the filter. Fully unit-tested (`project.test.ts`, 17 assertions)
+  survive the filter. Fully unit-tested (`project.test.ts`, 18 assertions)
   against a hand-built multi-service raw graph and against `auth-service`'s
   real containment shape, including a containment-cycle case.
 - **`graph/backend.ts`** (extended). Adds `createBackendSeam()`: real
@@ -213,15 +213,16 @@ misread as precedent for this direction too. Against the real fixture,
 (contract methods, test cases, budgets, a doc block, an external dependency)
 all drew as one flat 70-node service — PRD's Module Schematic content
 leaking into the Service Schematic. Fixed: `project.ts`'s
-`SERVICE_SCHEMATIC_KINDS` now keeps only `module`, dropping facets,
-comments, *and* groups entirely rather than collapsing them — see the count
-ruling immediately below for why groups are in that list too.
+`SERVICE_SCHEMATIC_KINDS` now keeps `module` and `group` and drops every
+facet and the one comment entirely, rather than collapsing anything to
+`"module"`. A `group` is still projected and drawn — see the count ruling
+below for why it is nonetheless invisible to the status bar's arithmetic.
 `load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service`
 in `schematify.rs` pins the real fixture's raw shape (12 modules, 1 group
-under `auth-service`); `project.test.ts` pins the filter itself, both
-against synthetic data (a comment and 3 facet kinds) and against a
-real-shaped test using `auth-service`'s actual 12 module slugs plus
-`token-pipeline`.
+under `auth-service`); `project.test.ts` pins the projection itself, both
+against synthetic data (a comment and 3 facet kinds, and a `group` that is
+drawn but never an edge endpoint) and against a real-shaped test using
+`auth-service`'s actual 12 module slugs plus `token-pipeline`.
 
 ### Two gaps in the model, not just differences in data
 
@@ -251,39 +252,67 @@ all, and they belong at the top of this list rather than buried in it.
   `"service" | "group" | "module"` — there is no `"comment"` member, so a
   project that genuinely holds this content loses it the moment it is
   drawn; nothing downstream ever learns the comment exists. **What a fix
-  looks like:** widening `NodeKind` (or a sibling type — a comment is
-  explicitly not a "kind" of node under the count ruling below, so it may
-  belong on `ServiceGraph` as its own `annotations` array rather than
-  folded into `nodes`) plus deciding where it draws: an Outline row, a
+  looks like:** widening `NodeKind` to add `"comment"` (parallel to how
+  `"group"` already carries the annotation tier — see the count ruling
+  below for the shape that gives it: drawn, never counted, never an edge
+  endpoint), or a sibling type entirely — `ServiceGraph` could carry its
+  own `annotations` array rather than folding comments into `nodes` — plus
+  deciding where it draws: an Outline row, a
   canvas-only marker anchored to its target, or both. That drawing decision
   is exactly the kind of call this wiring wave was told not to make
   unilaterally. **Owner:** Wave 4 (node anatomy, badges, canvas treatments)
   is the natural home — it already owns every other per-node visual
   decision this schema drives.
 
-### Ruling: the real node count is 12, not 13 — implemented
+### Ruling: a group is drawn but not counted — implemented
 
 An earlier version of this section reported a 13th top-level element, a
 `group` node called `token-pipeline`, and concluded the real node count was
-13 against the wave 2 acceptance string's 12. **That conclusion was wrong,
-and the owner's ruling corrects it:** a `group` is annotation-tier under PRD
-§11.3 — "it arranges and it annotates, it does not mean" — the same category
-as the comment above, and two binding decisions already say an annotation is
-not a node: WIREFRAME-EXTRACT.md's Resolutions section ruled an
+13 against the wave 2 acceptance string's 12 — and a first attempt at fixing
+it dropped the group from the projection entirely, which the owner also
+corrected: a group is a real containment box the Module and Service
+Schematics draw, so removing it from what this app projects would be wrong
+in the other direction. **The actual ruling is narrower and gets both halves
+right: drawn and counted are 2 different questions.** A `group` is
+annotation-tier under PRD §11.3 — "it arranges and it annotates, it does not
+mean" — the same category as the comment above, and 2 binding decisions
+already say an annotation is not a *node* for counting purposes without
+saying it is not drawn: WIREFRAME-EXTRACT.md's Resolutions section ruled an
 annotation-tier box is never a node and never an edge endpoint when it
 settled the Stack Schematic's edge count, and wave 3's own review required
 `buildFrame`'s counts to count semantic nodes only, so that adding a comment
-leaves the count unchanged (`w3-engine.md`'s review round 2 finding — see
-that handoff's "review round 2" section). A group is the same kind of thing
-a comment is, so it is excluded the same way.
+leaves the count unchanged while the comment still appears on the canvas
+(`w3-engine.md`'s review round 2 finding).
 
-**Implemented, not just noted:** `SERVICE_SCHEMATIC_KINDS` now excludes
-`group` (see above); `project.test.ts` asserts both a synthetic group (`g1`)
-and, separately, `token-pipeline` by its real slug against `auth-service`'s
-actual 12-module containment shape are excluded and the result is exactly
-12 nodes. **Real data now yields 12 nodes, matching the wave 2 acceptance
-string exactly — `.kaava/ · 12 nodes · 9 edges` is true against reality, not
-merely against the stand-in.**
+**Implemented as 2 separate mechanisms, not 1 filter:**
+
+- `project.ts`'s `SERVICE_SCHEMATIC_KINDS` keeps `module` *and* `group` — a
+  group is projected into `ServiceGraph.nodes` and drawn, matching every
+  other node's shape (`kind: "group"`, a real `parentId`).
+- `project.ts`'s `MODULE_ONLY_EDGE_ENDPOINT_KINDS` is narrower: `module`
+  alone. A `depends_on` (or any dependency-family edge) naming a group as
+  its source or target is dropped even though the group itself is drawn —
+  the "never an edge endpoint" half of the ruling, enforced independently
+  of the node list.
+- `graph/types.ts` gains `ANNOTATION_NODE_KINDS`/`isAnnotationNodeKind`
+  (`["group"]` today, parallel to `engine/config.ts`'s own
+  `ANNOTATION_KINDS`/`isAnnotationKind` for the engine's wider vocabulary).
+  `graph/index.ts`'s `countNodes` — read by `statusCell1` and
+  `outlineFooter` alike — now filters annotation-tier kinds out before
+  taking `.length`. This is the "never counted" half, and it lives where
+  the count is computed, not where the graph is projected: a group is a
+  member of `graph.nodes` the whole time, exactly as drawn as any module,
+  and is simply not one of the numbers the arithmetic sums.
+
+`project.test.ts` asserts the full shape: a synthetic group (`g1`) is
+present in `graph.nodes` with `kind: "group"`, an edge naming it as an
+endpoint is dropped, and a real-shaped case built from `auth-service`'s
+actual 12 module slugs plus `token-pipeline` draws **13** nodes while
+`countNodes` on that same result reports **12**. **Real data now yields a
+count of 12, matching the wave 2 acceptance string exactly —
+`.kaava/ · 12 nodes · 9 edges` is true against reality, not merely against
+the stand-in — while the group itself still reaches the canvas as the
+containment box it actually is.**
 
 ### What still agrees
 
@@ -386,7 +415,7 @@ stay backend-free":
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass. `dist/assets/schematify-*.js` built. |
-| `pnpm test:js` | Pass — 507 + 28 (bridge). Includes 17 `project.test.ts` assertions on real projected content (not just "did not throw"), covering the facet, comment, and group exclusions and a real-shaped 12-node regression case; the merge from `main` also brought wave 10a's 13 `check-kaava-boundary.test.mjs` cases along, unrelated to this wave's own changes. |
+| `pnpm test:js` | Pass — 508 + 28 (bridge). Includes 18 `project.test.ts` assertions on real projected content (not just "did not throw"), covering the facet and comment exclusions, the group-is-drawn-but-not-an-edge-endpoint case, and a real-shaped 13-drawn/12-counted regression case; the merge from `main` also brought wave 10a's 13 `check-kaava-boundary.test.mjs` cases along, unrelated to this wave's own changes. |
 | `pnpm typecheck` (`tsc`) | Pass, plus re-run as `npx tsc -p tsconfig.json --noEmit --typeRoots ./__no_types__` (wave 2's technique for ruling out this machine's stray home-directory `@types/node`) — also clean. No Node builtin, no post-ES2020 API in any new file. |
 | `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing React-hook warnings named in the wave 2/3 handoffs, none in a file this wave touched. |
 | `pnpm lint:comments` | Pass after trimming 4 spots that exceeded the 20-consecutive-comment-line cap over the course of this wave (`backend.ts`, `index.ts`, and `schematify.rs`'s module doc comment twice, once after the first pass and again after adding `lint`/`reconcile-status`) — moved detail into this handoff instead of re-baselining. 0 grandfathered. |
@@ -424,10 +453,12 @@ No test was deleted or skipped.
 6. **`auth-service` is the one service slug this wave projects**, matching
    `SERVICE_CONFIG`'s hardcoded `layoutSlug` and confirmed against the real
    fixture generator, not guessed independently.
-7. **No ENTRY badge for real data**, and **only `module` kinds ever reach
-   the Outline** (`group` and `comment` both excluded, per the owner's count
-   ruling) — all confirmed, not merely assumed, against the real fixture;
-   see "The real fixture vs. the wave 2 stand-in" above.
+7. **No ENTRY badge for real data**, and **`module` and `group` kinds reach
+   the Outline while `comment` cannot reach it at all** — a group is drawn
+   but excluded from `countNodes` specifically, per the owner's count
+   ruling; a comment has no `NodeKind` member to be represented by in the
+   first place. Both confirmed, not merely assumed, against the real
+   fixture; see "The real fixture vs. the wave 2 stand-in" above.
 8. **A contains, covers, satisfies, or documents edge is dropped from the
    real-graph projection.** `./types.ts`'s `GraphEdge` union only names 3
    kinds; containment is `parentId`, and the other 2 have no drawing yet.
@@ -463,16 +494,21 @@ project with an `auth-service`):
    the partial-payload gap. If a human decides this gap should close sooner,
    it is `engine/engine.ts`'s `nodeJson`/`edgeJson` that need widening, not
    this file.
-4. Look at the Outline against `fixtures/saas-backend/`: **12 rows**, the
-   12 modules named in PRD §16.1 — `token-pipeline`, a real `group`, should
-   draw no row at all (the count ruling above), and status bar cell 1
-   should read `.kaava/ · 12 nodes · 9 edges`, matching the wave 2
-   acceptance string exactly. If it reads 13, `SERVICE_SCHEMATIC_KINDS`
-   regressed back to including groups; if it reads anything else, something
-   is leaking facets again. `http-entry` should carry no `ENTRY` badge
-   (expected — a real gap in the schema, see above), the comment
-   `two-caches-on-purpose` should draw nowhere at all (also a real gap, see
-   above), and the edge lines will not match the stand-in's shape (also
+4. Look at the Outline against `fixtures/saas-backend/`: **13 rows** — the
+   12 modules named in PRD §16.1 plus `token-pipeline`, a real `group` that
+   is drawn like any other row — but status bar cell 1 should still read
+   `.kaava/ · 12 nodes · 9 edges`, matching the wave 2 acceptance string
+   exactly, because `countNodes` excludes annotation-tier kinds from the
+   arithmetic while `graph.nodes` (what the Outline walks) still carries
+   the group. That gap between 13 rows and a count of 12 is the ruling
+   working as intended, not a bug — see "Ruling: a group is drawn but not
+   counted" above. If the Outline shows 12 rows instead of 13, the group
+   is being dropped from the projection again; if cell 1 reads 13, `graph/
+   index.ts`'s `countNodes` regressed back to a bare `.length`. `http-entry`
+   should carry no `ENTRY` badge (expected — a real gap in the schema, see
+   above), the comment `two-caches-on-purpose` should draw nowhere at all
+   (also a real gap, see above), and the edge lines will not match the
+   stand-in's shape (also
    expected — "What actually differs" above lists which 5 of 9 changed).
 
 ---

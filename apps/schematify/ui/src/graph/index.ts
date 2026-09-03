@@ -18,6 +18,7 @@
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
 import type { LayoutFile } from "./layout";
+import { isAnnotationNodeKind } from "./types";
 import type { GraphNode, ServiceGraph } from "./types";
 
 export type {
@@ -25,10 +26,12 @@ export type {
   GraphNode,
   Layer,
   Lifecycle,
+  NodeKind,
   OutlineBadge,
   ServiceGraph,
   Tier,
 } from "./types";
+export { ANNOTATION_NODE_KINDS, isAnnotationNodeKind } from "./types";
 
 export type { LayoutAnnotation, LayoutFile, LayoutNode, LayoutViewport } from "./layout";
 export { emptyLayout, layoutPath } from "./layout";
@@ -51,9 +54,16 @@ export function loadGraph(): Promise<ServiceGraph> {
  *  `.kaava/` in that cell."). */
 export const KAAVA_ROOT = ".kaava/";
 
-/** Node count, computed rather than cached on the graph — PRD §0.4. */
+/** Node count, computed rather than cached on the graph — PRD §0.4.
+ *  Excludes annotation-tier kinds (`isAnnotationNodeKind`): a `group` is
+ *  drawn on the Schematic but is not a node for counting purposes, per the
+ *  owner's ruling on the wave 2 acceptance count — "it arranges and it
+ *  annotates, it does not mean". The stand-in fixture has no group node,
+ *  so this changes no existing count; `project.ts`'s real projection does
+ *  carry one, `token-pipeline`, and this is what keeps it undrawn from the
+ *  status bar's arithmetic while still present in `graph.nodes` to draw. */
 export function countNodes(graph: ServiceGraph): number {
-  return graph.nodes.length;
+  return graph.nodes.filter((node) => !isAnnotationNodeKind(node.kind)).length;
 }
 
 /** Edge count, computed rather than cached on the graph — PRD §0.4. */
