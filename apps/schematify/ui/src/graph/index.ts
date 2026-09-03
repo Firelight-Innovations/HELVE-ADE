@@ -21,8 +21,10 @@ import type { LayoutFile } from "./layout";
 import type { GraphNode, ServiceGraph } from "./types";
 
 export type {
+  FacetCounts,
   GraphEdge,
   GraphNode,
+  HealthStatus,
   Layer,
   Lifecycle,
   OutlineBadge,

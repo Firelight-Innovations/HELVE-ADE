@@ -11,6 +11,7 @@
  * even though no Schematic draws a screen's box this wave.
  */
 import type { Tier } from "../graph";
+import type { NodeContent } from "./anatomy";
 
 /** Every edge kind in PRD §11.1. A tier's own closed set is
  *  `SchematicConfig.edgeKinds`, not this type. */
@@ -159,9 +160,9 @@ export interface SchematicConfig {
   /** The note beside the legend chips, e.g.
    *  `contains = nesting · depends_on = drawn` (PRD §12.1). */
   legendFooter: string;
-  /** The default box for a node of this kind, before any layout file overrides
-   *  it. The one callback: Wave 4 sizes a node from its content. */
-  nodeBox: (kind: SchematicNodeKind) => Size;
+  /** The default box for a node of this kind, grown by `content`. `content`
+   *  is optional: a collapsed box always shrinks to the kind's base size. */
+  nodeBox: (kind: SchematicNodeKind, content?: NodeContent) => Size;
 }
 
 /** The refusal a surface draws under `Drop refused` (PRD §11.3, §12.5),

@@ -9,9 +9,12 @@
  * and everything in the engine can be. Logic that drifts up into this
  * component leaves the test suite silently.
  *
- * Node anatomy is Wave 4's: the box below draws a title, a slug, the collapse
- * triangle, the 2 computed captions and the ports, and nothing else. No badge,
- * no lifecycle treatment, no health wedge.
+ * Node anatomy (PRD §12.6-§12.8, Wave 4) is entirely decided in
+ * `./anatomy.ts` and `./frame.ts` — every badge, count, caption, lifecycle
+ * treatment, health wedge and zoom tier arrives on `DrawnNode` already
+ * computed. `NodeBox` below only maps that data onto markup and a `--kv-*`
+ * token reference; it makes no decision `anatomy.test.ts` cannot already
+ * see.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
@@ -304,23 +307,42 @@ function NodeBox({
     x: node.rect.x + offset.x,
     y: node.rect.y + offset.y,
   });
+  const lifecycle = drawn.lifecycle;
   const classes = [
     "kv-node",
     `kv-node--${node.kind}`,
     drawn.selected ? "kv-node--selected" : "",
     drawn.container ? "kv-node--container" : "",
+    `kv-node--border-${lifecycle.borderStyle}`,
+    lifecycle.borderWidthPx === 1.5 ? "kv-node--border-heavy" : "",
+    lifecycle.overlayStripe ? "kv-node--stale-stripe" : "",
   ]
     .filter(Boolean)
     .join(" ");
+  // The 3 caption-shaped rows PRD §12.6 draws besides the state reason —
+  // `contains N`, `collapsed · N children`, and the roll-up — plus every
+  // other count string. One list, so the render order matches the anatomy
+  // diagram's own top-to-bottom reading order without 4 near-identical JSX
+  // blocks.
+  const captionLines = [
+    ...drawn.counts,
+    drawn.containsCaption,
+    drawn.collapsedCaption,
+    drawn.rollUpCaption,
+  ].filter((line): line is string => Boolean(line));
 
   return (
     <div
       className={classes}
+      data-zoom-tier={drawn.zoomTier}
       style={{
         left: origin.x,
         top: origin.y,
         width: node.rect.width * zoom,
         height: node.rect.height * zoom,
+        borderColor: `var(${lifecycle.borderToken})`,
+        borderWidth: lifecycle.borderWidthPx,
+        opacity: lifecycle.opacityPct / 100,
       }}
       onPointerDown={(event) => onDown(event, drawn)}
     >
@@ -335,14 +357,96 @@ function NodeBox({
             {node.collapsed ? "▸" : "▾"}
           </button>
         ) : null}
-        <span className="kv-node__title">{node.title}</span>
+        <i
+          className={`kv-node__dot kv-node__dot--${lifecycle.dotFill}`}
+          style={{
+            borderColor: `var(${lifecycle.dotToken})`,
+            background: lifecycle.dotFill === "filled" ? `var(${lifecycle.dotToken})` : undefined,
+            opacity: lifecycle.dotOpacityPct / 100,
+          }}
+        />
+        {lifecycle.headerGlyph ? (
+          <span className="kv-node__glyph">{lifecycle.headerGlyph}</span>
+        ) : null}
+        <span
+          className={
+            lifecycle.titleStruck ? "kv-node__title kv-node__title--struck" : "kv-node__title"
+          }
+        >
+          {node.title}
+        </span>
       </div>
       <div className="kv-node__slug">{node.slug}</div>
       {node.kind === "comment" ? <div className="kv-node__body">{node.body}</div> : null}
-      {drawn.collapsedCaption ? (
-        <div className="kv-node__caption">{drawn.collapsedCaption}</div>
+      {node.description ? <div className="kv-node__description">{node.description}</div> : null}
+
+      {drawn.badges.length > 0 ? (
+        <div className="kv-node__badges">
+          {drawn.badges.map((badge) => (
+            <span key={badge} className="kv-node__badge">
+              {badge}
+            </span>
+          ))}
+        </div>
       ) : null}
-      {drawn.rollUpCaption ? <div className="kv-node__caption">{drawn.rollUpCaption}</div> : null}
+
+      {drawn.facetChips.length > 0 ? (
+        <div className="kv-node__facets">
+          {drawn.facetChips.map((chip) => (
+            <span key={chip} className="kv-node__facet">
+              {chip}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {node.libraries && node.libraries.length > 0 ? (
+        <div className="kv-node__libraries">
+          {node.libraries.map((lib) => (
+            <span key={lib} className="kv-node__library">
+              ▸ {lib}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {captionLines.map((line, i) => (
+        <div key={`${line}-${i}`} className="kv-node__caption">
+          {line}
+        </div>
+      ))}
+
+      {drawn.caption ? (
+        <div className="kv-node__caption kv-node__caption--reason">
+          <div>{drawn.caption.primary}</div>
+          {drawn.caption.secondary ? <div>{drawn.caption.secondary}</div> : null}
+        </div>
+      ) : null}
+
+      {lifecycle.bottomFillPct > 0 ? (
+        <i
+          className="kv-node__bottom-fill"
+          style={{
+            width: `${lifecycle.bottomFillPct}%`,
+            background: `var(${lifecycle.bottomFillToken})`,
+          }}
+        />
+      ) : null}
+
+      {drawn.headerOccupants.wedge ? (
+        <i
+          className={`kv-node__wedge kv-node__wedge--${drawn.health}`}
+          style={rectStyle(drawn.headerOccupants.wedge, zoom)}
+        />
+      ) : null}
+      <span
+        className="kv-node__menu"
+        aria-hidden="true"
+        style={rectStyle(drawn.headerOccupants.menu, zoom)}
+      >
+        ⋯
+      </span>
+
       <i
         className="kv-node__port kv-node__port--in"
         onPointerDown={(event) => event.stopPropagation()}
@@ -448,4 +552,20 @@ function RefusalToast({ engine, refusal }: { engine: SchematicEngine; refusal: C
 
 function boxStyle(rect: Rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
+}
+
+/**
+ * A world-unit rect (`anatomy.ts`'s `headerOccupants`, in the node's own
+ * local coordinates) scaled to screen pixels. The health wedge and the node
+ * menu are positioned from this rather than a fixed CSS offset, so the
+ * geometry `anatomy.test.ts` proves apart is the same geometry drawn on
+ * screen — a fixed offset kept "in step" by a comment is not a constraint.
+ */
+function rectStyle(rect: Rect, zoom: number) {
+  return {
+    left: rect.x * zoom,
+    top: rect.y * zoom,
+    width: rect.width * zoom,
+    height: rect.height * zoom,
+  };
 }
