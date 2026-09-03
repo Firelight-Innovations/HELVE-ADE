@@ -4,6 +4,18 @@ Branch `schematify/w4-nodes`, stacked on `schematify/w3-engine`. Pull request
 opened with `--base schematify/w3-engine`; the orchestrator retargets it to
 `main` once Wave 3 lands.
 
+**The fixture-drawing acceptance condition is met only against a hand-typed
+stand-in, not against real data.** The genuine `fixtures/saas-backend/`
+fixture PRD §16.1 describes exists solely inside `crates/schematify-core` on
+a branch that has never merged here, and no front-end wave — this one
+included — has ever read it. Every badge, count and caption this wave built
+and tested is checked against `graph/fixture.ts`'s `AUTH_SERVICE_GRAPH`, a
+value this wave hand-typed to match WIREFRAME-EXTRACT.md §1.1's strings. Once
+the real backend is wired (another agent is doing that now), every one of
+those assertions needs re-verification against what the real fixture and a
+real loader actually produce — this wave proves the rendering rules are
+correct for the data it was given, not that the given data is real.
+
 ## 1. How a node box is composed
 
 Everything is decided in 2 files, and drawn by a 3rd:
@@ -57,15 +69,26 @@ whether a diagonal stripe overlays the card, the card's own opacity
 (100%/40%), and whether the title is struck through.
 
 `lifecycleSignature()` strips the 3 token fields and joins the rest into one
-string. `anatomy.test.ts`'s "the 8 lifecycle states are mutually
-distinguishable by geometry alone" block computes all 8 signatures and
-asserts `new Set(signatures).size === 8` — a Set-size check rather than 8
-hand-typed expected strings, so 2 states silently colliding cannot pass by
-coincidence. In 3 lines: draft is the only dashed/hollow-dot state; the 5
-states in between differ by which glyph sits in the header and how wide the
-bottom fill runs (0/64%/100%); accepted, stale and deprecated each add one
-more geometric fact on top (1.5px border, a stripe overlay, or 40%
-opacity+strikethrough) that no other state shares.
+string. **`assigned` and `specified` collide on that signature alone** — a
+review finding caught this build drawing a Rate Limiter node with 2 diamonds,
+1 from the `◇ AGENT`/`◇ AGENT DRAFT` badge `badgesFor` always draws for an
+assigned node, and a 2nd, redundant one from this treatment's own
+`headerGlyph`. The fix drops the inline glyph (`badgesFor`'s badge is the only
+diamond now) and `hasGuaranteedBadge()` records that `assigned`'s
+distinguishing mark is that guaranteed badge rather than a treatment field.
+`anatomy.test.ts`'s "the 8 lifecycle states are mutually distinguishable by
+geometry alone" block folds `hasGuaranteedBadge` into each state's
+fingerprint before computing `new Set(fingerprints).size === 8` — a Set-size
+check rather than 8 hand-typed expected strings, so 2 states silently
+colliding cannot pass by coincidence, and a `not.toBe("◇")` guard over every
+treatment plus an end-to-end single-diamond check on Rate Limiter in
+`frame.anatomy.test.ts` are this bug's own regression tests. In 3 lines:
+draft is the only dashed/hollow-dot state; assigned is marked by its
+guaranteed badge alone, and the other 4 in between differ by which header
+glyph they draw (if any) and how wide the bottom fill runs (0/64%/100%);
+accepted, stale and deprecated each add one more geometric fact on top (1.5px
+border, a stripe overlay, or 40% opacity+strikethrough) that no other state
+shares.
 
 ## 3. Acceptance conditions (PRD §17 Wave 4)
 
@@ -74,13 +97,13 @@ opacity+strikethrough) that no other state shares.
 | Node anatomy — badge set, count strings, caption strings, wedge glyphs | **Pass.** Every closed-set badge, every count string PRD §12.6 lists, the one-caption-per-state priority rule, and the header glyphs (`✓`/`◐`/`⚠`, folded into `LifecycleTreatment.headerGlyph`) are built and unit-tested in `anatomy.test.ts`; the Service Schematic fixture exercises most of them end to end in `frame.anatomy.test.ts`. |
 | 8 lifecycle treatments | **Pass.** All 8 built, table in §2 above. |
 | 4 health wedges, including the service roll-up in words | **Pass**, with a caveat. The 4 wedge treatments (none/amber/red/neutral) are built and drawn from the fixture (`clock-skew` and `rate-limiter` draw the neutral no-data wedge, `audit-emitter` draws amber). `healthRollupFor` — the "worst contained: N ... trending" words — is built and unit-tested against a synthetic document, but **not reachable through this wave's own Service Schematic fixture**: no node in `AUTH_SERVICE_GRAPH` is `service`-kind (only `module`), since the Stack Schematic that would draw a `service` node is Wave 5's. See §4 assumption 3. |
-| 3 zoom tiers | **Pass.** `zoomTierFor` and the CSS `data-zoom-tier` rules in `engine.css`. See §4 assumption 6 for where the tier boundaries sit and why. |
+| 3 zoom tiers | **Pass, with an important split in what is actually tested.** `zoomTierFor` — which zoom value maps to which tier — is a pure function, fully unit- and integration-tested (`anatomy.test.ts`, `frame.anatomy.test.ts`); see §4 assumption 6 for where the boundaries sit and why. *What each tier hides* is a CSS `[data-zoom-tier]` selector list in `engine.css`, and **this repository has no DOM/jsdom test of any kind** (Wave 3's own handoff already says why), so **that selector list is unverified by any test — visual inspection only.** A review finding caught exactly this gap in practice: moving the node menu out of `.kv-node__header` (the health-wedge/node-menu fix above) silently took it out of the `display:none` rule that used to hide it at the `geometry` tier by hiding its parent, so the `⋯` glyph was surviving at 22% zoom where PRD §12.7 says no text draws at all. Fixed with an explicit `.kv-node__menu` rule in the `geometry` tier's own selector list rather than relying on nesting; every other tier-dependent element (`__description`, `__badges`, `__facets`, `__libraries`, `__caption`, `__slug`) already had its own explicit rule and was never affected. **A human must confirm this by eye** — item 3 in §5 below. |
 | Every lifecycle state draws distinctly with colour removed — tested, not asserted | **Pass.** §2 above; the Set-size proof is in `anatomy.test.ts`. |
-| Health wedge never overlaps the node menu | **Pass.** `headerOccupants` places the 2 rects by construction (menu shifted left of the wedge by its own width plus a 4px gap) and `anatomy.test.ts` proves no overlap across 9 node widths from 54px (the smallest this app ever draws, WIREFRAME-EXTRACT.md §2.4's own 22%-tier card) up to 452px (the widest preset box). `frame.anatomy.test.ts` repeats the check over every node the fixture actually draws. |
+| Health wedge never overlaps the node menu | **Pass, and now actually the geometry that draws.** `headerOccupants` places the 2 rects by construction (menu shifted left of the wedge by its own width plus a 4px gap), and `anatomy.test.ts` proves no overlap across 9 node widths from 54px (the smallest this app ever draws, WIREFRAME-EXTRACT.md §2.4's own 22%-tier card) up to 452px (the widest preset box); `frame.anatomy.test.ts` repeats the check over every node the fixture actually draws. **A review finding caught this proof running against a function nothing rendered from** — `SchematicCanvas.tsx` positioned the wedge and menu with fixed CSS offsets, kept "in step" with `headerOccupants` only by a comment. Fixed: both are now positioned by an inline style computed from `headerOccupants` itself (scaled by zoom, `rectStyle()`), and `engine.css` no longer states a position for either — there is exactly 1 source of truth for the geometry now, and it is the tested one. |
 | Border weight and overlay geometry survive at 22% zoom | **Pass.** `frame.anatomy.test.ts`'s own block asserts every node's `borderWidthPx`, `borderStyle`, `overlayStripe`, `bottomFillPct` and `health` are identical at zoom 1 and zoom 0.22, and that every node's `zoomTier` reads `"geometry"` at 0.22. |
-| Every badge, count, and caption `fixtures/saas-backend` can produce draws from that fixture | **Pass, against this app's stand-in.** `fixtures/saas-backend/` itself does not exist on this branch — Wave 1's `crates/schematify-core/fixtures/` never landed here, the same gap Wave 3's handoff (assumption 10) records for the dense fixture. This app's own hand-typed stand-in, `graph/fixture.ts`'s `AUTH_SERVICE_GRAPH`, gained every anatomy field WIREFRAME-EXTRACT.md §1.1 draws for the auth-service screen, and `frame.anatomy.test.ts` checks each node's drawn badges/counts/captions against that section's literal strings, paired with a check on the fixture's own input field per node. |
+| Every badge, count, and caption `fixtures/saas-backend` can produce draws from that fixture | **Pass, against this app's stand-in only — see the note at the top of this handoff.** The real fixture lives solely inside `crates/schematify-core`, has never been read by any front-end wave, and is not on this branch. `graph/fixture.ts`'s `AUTH_SERVICE_GRAPH` gained every anatomy field WIREFRAME-EXTRACT.md §1.1 draws for the auth-service screen, and `frame.anatomy.test.ts` checks each node's drawn badges/counts/captions against that section's literal strings, paired with a check on the fixture's own input field per node — but every one of those checks needs re-running against real data once the real loader lands. |
 | Unit test for FRONTEND and EXTERNAL badges (fixture holds no such node) | **Pass.** `anatomy.test.ts`, "draws the FRONTEND and EXTERNAL layer badges" — builds a bare node with `layer: "frontend"`/`"external"`, asserts the input field first, then the badge. |
-| `pnpm verify` | **Pass** for every foreground piece (`build`, `test:js`, `lint:js`, `lint:comments`, `lint:version`, `lint:identity`, `lint:branding`, `format:check`). `test:rust`/`lint:rust` running in the background — no Rust file was touched this wave, so no regression is expected; this handoff will be updated if either surprises. |
+| `pnpm verify` | **Pass**, every piece: `build`, `test:js` (184 tests in this app), `lint:js`, `lint:comments`, `lint:version`, `lint:identity`, `lint:branding`, `format:check` in the foreground, `test:rust` and `lint:rust` (clippy at baseline 0) in the background. No Rust file was touched this wave. |
 
 ## 4. Assumptions, every one of them
 
@@ -145,8 +168,9 @@ look for:
 1. **The 8 lifecycle treatments, in mixed company.** `clock-skew` (draft:
    dashed border, hollow dot, no fill), `token-issuer`/`http-entry`/others
    with no `lifecycle` set (specified treatment), `rate-limiter` (assigned:
-   `◇` glyph, plus the separate `◇ AGENT DRAFT` badge chip and its caption),
-   `password-hasher` (reviewed: `◐` glyph, 100%-width neutral bottom fill),
+   exactly 1 diamond — the `◇ AGENT DRAFT` badge chip and its caption, and no
+   2nd inline glyph in the header), `password-hasher` (reviewed: `◐` glyph,
+   100%-width neutral bottom fill),
    `crypto-primitives` (accepted: 1.5px green border, `✓` glyph, saturated
    fill), `audit-emitter` (stale: 1.5px border, diagonal amber stripe, `⚠`
    glyph, 2-line caption). Nothing in the fixture is `deprecated`, so that
@@ -156,10 +180,18 @@ look for:
    `clock-skew`/`rate-limiter` (neutral no-data) — confirm it sits at the very
    top-right corner and the `[⋯]` node menu is visibly clear of it, not just
    non-overlapping by the numbers.
-3. **Wheel-zoom down to roughly 20-25%** on the whole Schematic and confirm
-   text disappears (title, slug, description, facets, captions) while every
-   border, the bottom-edge fill, and `audit-emitter`'s diagonal stripe stay
-   visible.
+3. **Wheel-zoom down to roughly 20-25% (`zoomTierFor`'s own `geometry`
+   boundary is `<= 0.22`) and specifically confirm the `⋯` node-menu glyph is
+   gone, not just the title/slug/description/facets/captions.** This is the
+   one CSS rule this wave has no test for at all — no DOM/jsdom exists in
+   this repository, so `[data-zoom-tier="geometry"]`'s hide list is verified
+   only by eye. A review finding already caught this rule missing the menu
+   once (fixed by adding an explicit `.kv-node__menu` line to that selector
+   rather than relying on it being hidden as a child of the header, which it
+   no longer is), so this is exactly the kind of regression a future CSS
+   change could reintroduce silently. Confirm at the same time that every
+   border, the bottom-edge fill, and `audit-emitter`'s diagonal stripe still
+   draw at that same zoom.
 4. **`token-verifier`'s `contains 2` caption**, on the expanded parent box
    holding `jwks-cache` and `clock-skew` — distinct wording from
    `session-store`'s `collapsed · 2 children` on its own collapsed box.

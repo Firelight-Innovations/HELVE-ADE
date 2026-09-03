@@ -1,0 +1,14 @@
+{
+  "id": "01a03637-7800-7027-a1c8-3befc1c44f19",
+  "slug": "session-store",
+  "kind": "module",
+  "title": "Session Store",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Owns the session record and its revocation.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

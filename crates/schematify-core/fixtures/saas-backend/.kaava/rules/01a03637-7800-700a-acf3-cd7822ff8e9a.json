@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700a-acf3-cd7822ff8e9a",
+  "slug": "typed-boundaries",
+  "statement": "A boundary takes an unknown and narrows it immediately.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

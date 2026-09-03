@@ -2976,6 +2976,7 @@ dependencies = [
  "regex-syntax",
  "rfd",
  "rmcp",
+ "schematify-core",
  "semver",
  "serde",
  "serde_json",
@@ -3852,6 +3853,18 @@ dependencies = [
  "quote",
  "serde_derive_internals 0.30.0",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "schematify-core"
+version = "0.3.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]

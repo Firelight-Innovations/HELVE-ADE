@@ -1,0 +1,19 @@
+{
+  "id": "01a03637-7800-704f-a271-ad2e2efd28c7",
+  "slug": "refresh-pair",
+  "kind": "contract-method",
+  "title": "refresh_pair",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7023-8714-551e625ba804",
+  "errors": [],
+  "signature": "refresh_pair(refresh: string)",
+  "params": [
+    "refresh: string"
+  ],
+  "returns": "Promise<TokenPair>",
+  "semantics": "Exchanges a refresh token for a new pair.",
+  "exported": false
+}

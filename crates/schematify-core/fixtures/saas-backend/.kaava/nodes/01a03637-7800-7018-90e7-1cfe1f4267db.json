@@ -1,0 +1,12 @@
+{
+  "id": "01a03637-7800-7018-90e7-1cfe1f4267db",
+  "slug": "notification-service",
+  "kind": "service",
+  "title": "Notification Service",
+  "lifecycle": "draft",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "exports": []
+}

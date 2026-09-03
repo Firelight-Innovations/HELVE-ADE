@@ -245,7 +245,11 @@ export const LIFECYCLE_TREATMENTS: Record<Lifecycle, LifecycleTreatment> = {
     dotFill: "filled",
     dotToken: "--kv-text-secondary",
     dotOpacityPct: 100,
-    headerGlyph: "◇",
+    // No inline glyph: WIREFRAME-EXTRACT.md §1.1's Rate Limiter draws exactly
+    // 1 diamond, and `badgesFor` already guarantees one (`◇ AGENT` or
+    // `◇ AGENT DRAFT`) for every assigned node — see `hasGuaranteedBadge`.
+    // Drawing "◇" here too would be a 2nd, redundant diamond.
+    headerGlyph: "",
     bottomFillPct: 0,
     bottomFillToken: "",
     overlayStripe: false,
@@ -345,6 +349,21 @@ export function lifecycleSignature(t: LifecycleTreatment): string {
     t.opacityPct,
     t.titleStruck,
   ].join("|");
+}
+
+/**
+ * True only for `assigned` — the one state whose distinguishing mark from
+ * `specified` is not a field on its own `LifecycleTreatment` at all, but a
+ * badge `badgesFor` guarantees: every assigned node draws `◇ AGENT`, or
+ * `◇ AGENT DRAFT` in place of it when also agent-authored (that function's
+ * own precedence rule), so the header draws no separate glyph of its own —
+ * see the `assigned` row's comment above. `lifecycleSignature` alone cannot
+ * tell `assigned` and `specified` apart any more, since every other field the
+ * 2 states carry is now identical; a distinctness test combines this flag
+ * with the signature rather than dropping the guarantee silently.
+ */
+export function hasGuaranteedBadge(state: Lifecycle): boolean {
+  return state === "assigned";
 }
 
 // --- health rendering (PRD §12.8) -------------------------------------------

@@ -45,7 +45,7 @@ export {
 } from "./anatomy";
 export type { DrillableNode, DrillTarget } from "./navigation";
 export { configFor, nextDrillTarget } from "./navigation";
-export type { Clipboard, EngineState, SemanticWrite, WriteLayer } from "./engine";
+export type { Clipboard, EngineState, SemanticEffect, WriteLayer } from "./engine";
 export { SchematicEngine } from "./engine";
 export type { EdgeDraft } from "./rules";
 export {

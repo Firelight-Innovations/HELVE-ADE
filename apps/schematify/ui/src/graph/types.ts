@@ -28,6 +28,20 @@ export type NodeKind =
   | "external-dep"
   | "comment";
 
+/** The `NodeKind` values PRD §11.3 puts in the annotation tier: drawn, per
+ *  `../engine/config.ts`'s own `ANNOTATION_KINDS` for the engine's wider
+ *  vocabulary, but never counted as a node and never an edge endpoint (the
+ *  owner's ruling on the wave 2 acceptance count — "it arranges and it
+ *  annotates, it does not mean"). `"comment"` is not a member: this app's
+ *  `NodeKind` has no member of that name at all, a separate gap the wiring
+ *  handoff names rather than papers over here. */
+export const ANNOTATION_NODE_KINDS: readonly NodeKind[] = ["group"];
+
+/** Whether `kind` is annotation-tier — see `ANNOTATION_NODE_KINDS`. */
+export function isAnnotationNodeKind(kind: NodeKind): boolean {
+  return (ANNOTATION_NODE_KINDS as readonly string[]).includes(kind);
+}
+
 /** PRD §5's `layer` values. `frontend` and `external` are `[P]` (PRD §12.6),
  *  drawn by no wireframe — Wave 4's job, not this one. */
 export type Layer = "edge" | "backend" | "data" | "frontend" | "external";

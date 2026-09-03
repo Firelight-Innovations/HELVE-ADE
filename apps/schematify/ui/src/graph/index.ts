@@ -20,6 +20,7 @@ import { AUTH_SERVICE_GRAPH } from "./fixture";
 import { MODULE_GRAPH } from "./module";
 import { STACK_GRAPH } from "./stack";
 import type { LayoutFile } from "./layout";
+import { isAnnotationNodeKind } from "./types";
 import type { GraphNode, SchematicGraph, ServiceGraph, Tier } from "./types";
 
 export type {
@@ -30,12 +31,14 @@ export type {
   HealthStatus,
   Layer,
   Lifecycle,
+  NodeKind,
   OutlineBadge,
   SchematicGraph,
   ServiceGraph,
   TechStackRow,
   Tier,
 } from "./types";
+export { ANNOTATION_NODE_KINDS, isAnnotationNodeKind } from "./types";
 
 export type { LayoutAnnotation, LayoutFile, LayoutNode, LayoutViewport } from "./layout";
 export { emptyLayout, layoutPath } from "./layout";
@@ -94,9 +97,16 @@ export function loadGraph(
  *  `.kaava/` in that cell."). */
 export const KAAVA_ROOT = ".kaava/";
 
-/** Node count, computed rather than cached on the graph — PRD §0.4. */
-export function countNodes(graph: SchematicGraph): number {
-  return graph.nodes.length;
+/** Node count, computed rather than cached on the graph — PRD §0.4.
+ *  Excludes annotation-tier kinds (`isAnnotationNodeKind`): a `group` is
+ *  drawn on the Schematic but is not a node for counting purposes, per the
+ *  owner's ruling on the wave 2 acceptance count — "it arranges and it
+ *  annotates, it does not mean". The stand-in fixture has no group node,
+ *  so this changes no existing count; `project.ts`'s real projection does
+ *  carry one, `token-pipeline`, and this is what keeps it undrawn from the
+ *  status bar's arithmetic while still present in `graph.nodes` to draw. */
+export function countNodes(graph: ServiceGraph): number {
+  return graph.nodes.filter((node) => !isAnnotationNodeKind(node.kind)).length;
 }
 
 /** Edge count, computed rather than cached on the graph — PRD §0.4. */
@@ -288,6 +298,26 @@ export function createMemorySeam(): SchematifySeam & {
   };
 }
 
-/** The seam the running application uses. One process-wide instance, so two
- *  Schematics opened in turn see each other's positions. */
-export const defaultSeam: SchematifySeam = createMemorySeam();
+/**
+ * The seam the running application uses, backed by `./backend.ts` (the real
+ * `schematify/*` methods) through a dynamic `import()` rather than a static
+ * one — a static import here would pull `@openkaava/bridge`'s `window`
+ * access into the plain-Node `index.test.ts` (see `w2-shell.md`'s fix for
+ * the same failure). Memoized so `createBackendSeam`'s in-memory maps
+ * persist across calls. `loadGraph()` and `createMemorySeam()` above are
+ * untouched — every test that wants the fixture still gets it directly.
+ */
+let backendSeam: Promise<SchematifySeam> | null = null;
+function getBackendSeam(): Promise<SchematifySeam> {
+  backendSeam ??= import("./backend").then((m) => m.createBackendSeam());
+  return backendSeam;
+}
+
+export const defaultSeam: SchematifySeam = {
+  loadGraph: () => getBackendSeam().then((seam) => seam.loadGraph()),
+  loadDenseGraph: () => getBackendSeam().then((seam) => seam.loadDenseGraph()),
+  readLayout: (slug) => getBackendSeam().then((seam) => seam.readLayout(slug)),
+  writeLayout: (slug, file) => getBackendSeam().then((seam) => seam.writeLayout(slug, file)),
+  writeSemantic: (path, json) => getBackendSeam().then((seam) => seam.writeSemantic(path, json)),
+  removeSemantic: (path) => getBackendSeam().then((seam) => seam.removeSemantic(path)),
+};

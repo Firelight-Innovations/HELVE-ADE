@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-72bc-b509-b2b4a05bcfea",
+  "slug": "stress-module-7-87",
+  "kind": "module",
+  "title": "Stress module 7.87",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-72bb-991d-2bb08c4e0ee9",
+  "layer": "backend",
+  "description": "Module 87 of stress service 7.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

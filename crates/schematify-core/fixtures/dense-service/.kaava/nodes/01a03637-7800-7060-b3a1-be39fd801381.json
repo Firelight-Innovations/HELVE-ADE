@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7060-b3a1-be39fd801381",
+  "slug": "dense-module-96",
+  "kind": "module",
+  "title": "Dense module 96",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-705f-971a-6bf0b314ae7b",
+  "layer": "backend",
+  "description": "Module 96 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

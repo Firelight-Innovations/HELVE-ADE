@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7009-ac01-73f0fa3213fa",
+  "slug": "no-commented-code",
+  "statement": "Commented-out code is deleted rather than kept.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

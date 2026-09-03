@@ -1,0 +1,27 @@
+{
+  "id": "01a03637-7800-7013-8f28-175e47272c69",
+  "slug": "api-gateway",
+  "kind": "service",
+  "title": "API Gateway",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "layer": "edge",
+  "entry_point": "Listens on :8443 behind the load balancer, one process per node.",
+  "exports": [
+    "01a03637-7800-7091-b0ba-706a09f9808d",
+    "01a03637-7800-7092-a849-91c8073d9956",
+    "01a03637-7800-7093-a359-62fd073eb409",
+    "01a03637-7800-7094-9e27-aca14a81e59e",
+    "01a03637-7800-7095-b9c8-a11f9f763e86",
+    "01a03637-7800-7096-8392-f35abe0b4883",
+    "01a03637-7800-7097-a558-067b34f6512a",
+    "01a03637-7800-7098-ac92-983985ea806b",
+    "01a03637-7800-7099-a2c0-b0ad206935d1",
+    "01a03637-7800-709a-8338-d4cefbebb4e1",
+    "01a03637-7800-709b-8ba6-c960a3b7c9c3"
+  ],
+  "schemas": null
+}

@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700e-8f1f-ff6dc28749b1",
+  "slug": "tokens-not-hex",
+  "statement": "A colour is a token reference, never a literal hex value.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

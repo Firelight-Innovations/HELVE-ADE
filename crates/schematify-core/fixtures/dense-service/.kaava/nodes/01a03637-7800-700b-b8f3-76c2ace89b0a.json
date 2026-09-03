@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-700b-b8f3-76c2ace89b0a",
+  "slug": "dense-module-11",
+  "kind": "module",
+  "title": "Dense module 11",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-700a-ac3c-2678f5f3f915",
+  "layer": "backend",
+  "description": "Module 11 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

@@ -37,19 +37,23 @@ export interface EngineState {
  *  inferred, because the layer split is the acceptance condition. */
 export type WriteLayer = "layout" | "semantic";
 
-/** One semantic file and its content. The engine writes whole files, the way
- *  PRD §6.1's one-node-per-file storage does. */
-export interface SemanticWrite {
+/**
+ * What one step did to one semantic file. Both sides are held, so an undo puts
+ * back what was there rather than guessing: `before: null` is a creation,
+ * `after: null` is a removal, and 2 payloads is an edit. A reparent is the
+ * third kind — the file existed before the step and exists after it — and
+ * recording it as a creation would make undo delete a file it never made.
+ */
+export interface SemanticEffect {
   path: string;
-  json: unknown;
+  before: unknown | null;
+  after: unknown | null;
 }
 
-/** What one undoable step changed, held so undo can invert the semantic half
- *  as well as the cosmetic one. `doc` is the document to restore. */
+/** What one undoable step changed. `doc` is the document to restore. */
 interface HistoryStep {
   doc: SchematicDoc;
-  created: readonly SemanticWrite[];
-  removed: readonly SemanticWrite[];
+  effects: readonly SemanticEffect[];
 }
 
 /** A clipboard payload. Held in the engine rather than the platform clipboard:
@@ -254,9 +258,7 @@ export class SchematicEngine {
     const after = { ...before, parentId };
     this.commit(
       this.mapNodes((node) => (node.id === id ? after : node)),
-      {
-        created: isAnnotation(after) ? [] : [nodeFile(after)],
-      },
+      isAnnotation(after) ? [] : [edited(nodePath(after), nodeJson(before), nodeJson(after))],
     );
     return null;
   }
@@ -359,12 +361,9 @@ export class SchematicEngine {
     const refusal = validateEdge(this.current.doc, this.cachedIndex, this.config, draft);
     if (refusal) return refusal;
     const edge: SchematicEdge = { id: uuidv7(), ...draft };
-    this.commit(
-      { ...this.current.doc, edges: [...this.current.doc.edges, edge] },
-      {
-        created: [edgeFile(edge)],
-      },
-    );
+    this.commit({ ...this.current.doc, edges: [...this.current.doc.edges, edge] }, [
+      addedFile(edgePath(edge), edgeJson(edge)),
+    ]);
     return null;
   }
 
@@ -373,7 +372,7 @@ export class SchematicEngine {
     if (!edge) return;
     this.commit(
       { ...this.current.doc, edges: this.current.doc.edges.filter((other) => other.id !== id) },
-      { removed: [edgeFile(edge)] },
+      [droppedFile(edgePath(edge), edgeJson(edge))],
     );
   }
 
@@ -441,12 +440,12 @@ export class SchematicEngine {
         nodes: [...this.current.doc.nodes, ...copies],
         edges: [...this.current.doc.edges, ...edges],
       },
-      {
-        created: [
-          ...copies.filter((node) => !isAnnotation(node)).map(nodeFile),
-          ...edges.map(edgeFile),
-        ],
-      },
+      [
+        ...copies
+          .filter((node) => !isAnnotation(node))
+          .map((node) => addedFile(nodePath(node), nodeJson(node))),
+        ...edges.map((edge) => addedFile(edgePath(edge), edgeJson(edge))),
+      ],
     );
     this.select(copies.map((node) => node.id));
     return copies;
@@ -466,8 +465,8 @@ export class SchematicEngine {
     if (!step) return;
     const forward = this.current.doc;
     this.applyDoc(step.doc);
-    this.applySemantic({ created: step.removed, removed: step.created });
-    this.redoStack.push({ doc: forward, created: step.created, removed: step.removed });
+    this.applySemantic(step.effects, "back");
+    this.redoStack.push({ doc: forward, effects: step.effects });
   }
 
   redo(): void {
@@ -475,8 +474,8 @@ export class SchematicEngine {
     if (!step) return;
     const backward = this.current.doc;
     this.applyDoc(step.doc);
-    this.applySemantic({ created: step.created, removed: step.removed });
-    this.undoStack.push({ doc: backward, created: step.created, removed: step.removed });
+    this.applySemantic(step.effects, "forward");
+    this.undoStack.push({ doc: backward, effects: step.effects });
   }
 
   get canUndo(): boolean {
@@ -505,18 +504,11 @@ export class SchematicEngine {
   }
 
   /** One undoable step: push history, adopt the document, persist. */
-  private commit(
-    doc: SchematicDoc,
-    effects: { created?: readonly SemanticWrite[]; removed?: readonly SemanticWrite[] } = {},
-  ): void {
-    this.undoStack.push({
-      doc: this.current.doc,
-      created: effects.created ?? [],
-      removed: effects.removed ?? [],
-    });
+  private commit(doc: SchematicDoc, effects: readonly SemanticEffect[] = []): void {
+    this.undoStack.push({ doc: this.current.doc, effects });
     this.redoStack = [];
     this.applyDoc(doc);
-    this.applySemantic(effects);
+    this.applySemantic(effects, "forward");
   }
 
   /** Adopts a document, reindexes, writes the layout file, and notifies. Every
@@ -535,17 +527,18 @@ export class SchematicEngine {
     this.notify();
   }
 
-  private applySemantic(effects: {
-    created?: readonly SemanticWrite[];
-    removed?: readonly SemanticWrite[];
-  }): void {
-    for (const write of effects.created ?? []) {
-      this.writes.push({ layer: "semantic", path: write.path });
-      this.enqueue(() => this.seam.writeSemantic(write.path, write.json));
-    }
-    for (const write of effects.removed ?? []) {
-      this.writes.push({ layer: "semantic", path: write.path });
-      this.enqueue(() => this.seam.removeSemantic(write.path));
+  /** Plays a step's file effects in one direction. Going back writes each
+   *  file's `before` and going forward writes its `after`; a `null` on the
+   *  side being applied means the file should not exist at that point. */
+  private applySemantic(effects: readonly SemanticEffect[], direction: "forward" | "back"): void {
+    for (const effect of effects) {
+      const target = direction === "forward" ? effect.after : effect.before;
+      this.writes.push({ layer: "semantic", path: effect.path });
+      this.enqueue(() =>
+        target === null
+          ? this.seam.removeSemantic(effect.path)
+          : this.seam.writeSemantic(effect.path, target),
+      );
     }
   }
 
@@ -563,27 +556,45 @@ export class SchematicEngine {
   }
 }
 
-/** The semantic file one edge occupies (PRD §5.6, §6.1). */
-function edgeFile(edge: SchematicEdge): SemanticWrite {
-  return {
-    path: `edges/${edge.id}.json`,
-    json: { id: edge.id, kind: edge.kind, from: edge.from, to: edge.to },
-  };
+/** A file this step brought into being. */
+function addedFile(path: string, json: unknown): SemanticEffect {
+  return { path, before: null, after: json };
 }
 
-/** The semantic file one node occupies (PRD §5.1, §6.1). The envelope is
- *  deliberately partial: Wave 1's schemas own the full shape, and this engine
- *  writes only what a duplicate can honestly know. */
-function nodeFile(node: SchematicNode): SemanticWrite {
+/** A file this step took away. */
+function droppedFile(path: string, json: unknown): SemanticEffect {
+  return { path, before: json, after: null };
+}
+
+/** A file this step rewrote, carrying both payloads so undo restores it rather
+ *  than removing it. */
+function edited(path: string, before: unknown, after: unknown): SemanticEffect {
+  return { path, before, after };
+}
+
+function edgePath(edge: SchematicEdge): string {
+  return `edges/${edge.id}.json`;
+}
+
+function nodePath(node: SchematicNode): string {
+  return `nodes/${node.id}.json`;
+}
+
+/** What one edge's file holds (PRD §5.6, §6.1). */
+function edgeJson(edge: SchematicEdge): unknown {
+  return { id: edge.id, kind: edge.kind, from: edge.from, to: edge.to };
+}
+
+/** What one node's file holds (PRD §5.1, §6.1). Deliberately partial: Wave 1's
+ *  schemas own the full shape, and this engine writes only what a duplicate or
+ *  a reparent can honestly know. */
+function nodeJson(node: SchematicNode): unknown {
   return {
-    path: `nodes/${node.id}.json`,
-    json: {
-      id: node.id,
-      slug: node.slug,
-      title: node.title,
-      kind: node.kind,
-      parent: node.parentId,
-    },
+    id: node.id,
+    slug: node.slug,
+    title: node.title,
+    kind: node.kind,
+    parent: node.parentId,
   };
 }
 

@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-70a3-bc3f-a2319173cc85",
+  "slug": "dense-module-163",
+  "kind": "module",
+  "title": "Dense module 163",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-70a2-a488-6880a036f0f0",
+  "layer": "backend",
+  "description": "Module 163 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

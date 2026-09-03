@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70b8-a946-f0f2e90e9375",
+  "slug": "notification-service-module-1",
+  "kind": "module",
+  "title": "Notification Service module 1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7018-90e7-1cfe1f4267db",
+  "description": "One module of Notification Service.",
+  "layer": null,
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

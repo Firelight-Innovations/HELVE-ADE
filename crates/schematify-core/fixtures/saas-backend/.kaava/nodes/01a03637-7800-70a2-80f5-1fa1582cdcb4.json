@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70a2-80f5-1fa1582cdcb4",
+  "slug": "session-service-export-1",
+  "kind": "contract-method",
+  "title": "session_service_export_1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-709c-99eb-852d7cf1c30e",
+  "errors": [],
+  "signature": "session_service_1()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Published across the service boundary.",
+  "exported": true
+}

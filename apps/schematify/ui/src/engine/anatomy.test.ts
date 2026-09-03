@@ -23,6 +23,7 @@ import {
   contentOf,
   countStringsFor,
   facetChipsFor,
+  hasGuaranteedBadge,
   headerOccupants,
   healthRollupFor,
   healthWedgeFor,
@@ -223,14 +224,56 @@ describe("the 8 lifecycle states are mutually distinguishable by geometry alone"
     expect(Object.keys(LIFECYCLE_TREATMENTS).sort()).toEqual([...LIFECYCLES].sort());
   });
 
-  it("produces 8 distinct colour-blind signatures — proved, not asserted by inspection", () => {
+  it("produces 8 distinct colour-blind fingerprints — proved, not asserted by inspection", () => {
     // The property under test: no 2 of the 8 states collapse to the same
-    // signature once colour (the `*Token` fields) is removed. A test that
+    // fingerprint once colour (the `*Token` fields) is removed. A test that
     // just listed 8 hand-picked expected strings could pass by coincidence if
     // 2 states actually matched; a Set-size check cannot.
-    const signatures = LIFECYCLES.map((state) => lifecycleSignature(LIFECYCLE_TREATMENTS[state]));
-    expect(signatures).toHaveLength(8);
-    expect(new Set(signatures).size).toBe(8);
+    //
+    // `assigned` and `specified` now share an identical `lifecycleSignature`
+    // — `assigned` draws no header glyph of its own, since `badgesFor`
+    // already guarantees a diamond badge for every assigned node and a 2nd,
+    // inline glyph would duplicate it (a review finding on this build: a
+    // Rate Limiter node was drawing 2 diamonds, 1 from the badge and 1 from
+    // this treatment's own `headerGlyph`). `hasGuaranteedBadge` is
+    // `assigned`'s real distinguishing mark once the duplicate is removed, so
+    // the fingerprint below folds it in rather than silently losing 1 of the
+    // 8 states this test proves apart.
+    const fingerprints = LIFECYCLES.map(
+      (state) =>
+        `${lifecycleSignature(LIFECYCLE_TREATMENTS[state])}|badge:${hasGuaranteedBadge(state)}`,
+    );
+    expect(fingerprints).toHaveLength(8);
+    expect(new Set(fingerprints).size).toBe(8);
+  });
+
+  it("draws assigned's diamond from the badge only — no duplicate inline header glyph", () => {
+    // The regression test for the double-diamond finding: `assigned`'s own
+    // treatment carries no glyph, and `badgesFor` draws exactly 1 diamond
+    // badge for an assigned node, whether or not it is also agent-authored.
+    expect(LIFECYCLE_TREATMENTS.assigned.headerGlyph).toBe("");
+    expect(hasGuaranteedBadge("assigned")).toBe(true);
+    expect(hasGuaranteedBadge("specified")).toBe(false);
+
+    const humanAssigned = bareNode({ lifecycle: "assigned" });
+    const agentAssigned = bareNode({ lifecycle: "assigned", authoredBy: "agent" });
+    expect(humanAssigned.lifecycle).toBe("assigned");
+    expect(agentAssigned.authoredBy).toBe("agent");
+
+    for (const node of [humanAssigned, agentAssigned]) {
+      const badges = badgesFor(node, "service");
+      const diamonds = badges.filter((badge) => badge.includes("◇"));
+      expect(diamonds).toHaveLength(1);
+    }
+  });
+
+  it("draws no state's own header glyph as a diamond, so a badge is never duplicated", () => {
+    // A broader guard than the single `assigned` check above: no treatment
+    // in the whole table should ever carry "◇" as its `headerGlyph`, because
+    // every diamond this app draws comes from `badgesFor`.
+    for (const state of LIFECYCLES) {
+      expect(LIFECYCLE_TREATMENTS[state].headerGlyph).not.toBe("◇");
+    }
   });
 
   it("keeps every legend caption distinct too, matching WIREFRAME-EXTRACT.md §2.2", () => {

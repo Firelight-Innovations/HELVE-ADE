@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700b-b294-0864787b26e0",
+  "slug": "no-any",
+  "statement": "No any in application code.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

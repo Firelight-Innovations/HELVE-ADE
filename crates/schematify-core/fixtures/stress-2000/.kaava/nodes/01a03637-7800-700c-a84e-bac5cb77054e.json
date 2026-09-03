@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-700c-a84e-bac5cb77054e",
+  "slug": "stress-service-13",
+  "kind": "service",
+  "title": "Stress service 13",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "layer": "backend",
+  "entry_point": "Started by the supervisor.",
+  "exports": [],
+  "schemas": null
+}

@@ -1,0 +1,21 @@
+{
+  "id": "01a03637-7800-7024-8962-cc11fce89708",
+  "slug": "token-verifier",
+  "kind": "module",
+  "title": "Token Verifier",
+  "lifecycle": "accepted",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Verifies JWT signatures against the rotating key set.",
+  "decisions": [
+    "schematify://decision/01a03637-7800-7004-a945-64b198e7155f"
+  ],
+  "allowed_libraries": [
+    "01a03637-7800-7000-a6d7-fdea42cbbcac"
+  ],
+  "ui_refs": [
+    "schematify://screen/01a03637-7800-70bc-a2fa-1315c6f74cd3"
+  ]
+}

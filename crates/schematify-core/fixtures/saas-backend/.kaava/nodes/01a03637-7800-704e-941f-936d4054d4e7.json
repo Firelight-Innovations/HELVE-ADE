@@ -1,0 +1,19 @@
+{
+  "id": "01a03637-7800-704e-941f-936d4054d4e7",
+  "slug": "mint",
+  "kind": "contract-method",
+  "title": "mint",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7023-8714-551e625ba804",
+  "errors": [],
+  "signature": "mint(claims: Claims)",
+  "params": [
+    "claims: Claims"
+  ],
+  "returns": "Promise<string>",
+  "semantics": "Signs one token.",
+  "exported": false
+}

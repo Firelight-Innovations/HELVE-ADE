@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700f-acd5-48de1d9b2f02",
+  "slug": "one-node-per-file",
+  "statement": "Design data is one node per file, written atomically.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

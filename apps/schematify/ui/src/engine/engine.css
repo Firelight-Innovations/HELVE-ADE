@@ -41,11 +41,11 @@
 }
 
 /* --- nodes ----------------------------------------------------------------
-   Node anatomy (PRD §12.6-§12.8, Wave 4). Every value the JSX did not already
-   compute in `frame.ts`/`anatomy.ts` (border colour and width, the dot's
-   fill and colour, the bottom-edge fill's width and colour, opacity) arrives
-   as an inline style already resolved to a `--kv-*` token; the rules below
-   are geometry and layout only. */
+   Node anatomy (PRD §12.6-§12.8, Wave 4). Every value `frame.ts`/`anatomy.ts`
+   already computed (border colour and width, the dot's fill and colour, the
+   bottom-edge fill's width and colour, opacity, and the health wedge's and
+   node menu's own position) arrives as an inline style; the rules below are
+   cosmetic and structural only, never the source of a computed number. */
 
 .kv-node {
   position: absolute;
@@ -108,7 +108,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-right: 22px; /* keeps the title clear of the node menu and wedge */
+  /* Reserves visual space for the wedge/menu that sit atop this row; their
+     own position is `headerOccupants`, not this padding. */
+  padding-right: 22px;
   color: var(--kv-text-primary);
   font-size: 11px;
   font-weight: 600;
@@ -155,13 +157,16 @@
   color: var(--kv-text-dim);
 }
 
-/* The `[⋯]` node menu (PRD §12.6). Anatomy.ts's `headerOccupants` proves this
-   never reaches the health wedge; `NODE_MENU_INSET`/`HEALTH_WEDGE_SIZE` there
-   are this rule's own numbers, restated so the 2 stay in step. */
+/* The `[⋯]` node menu (PRD §12.6). Position (`left`/`top`/`width`/`height`)
+   arrives inline from `anatomy.ts`'s `headerOccupants`, scaled by zoom
+   (`SchematicCanvas.tsx`'s `rectStyle`) — the same computation
+   `anatomy.test.ts` proves never overlaps the health wedge, not a fixed
+   offset kept in step by a comment. */
 .kv-node__menu {
   position: absolute;
-  top: 0;
-  right: 18px; /* HEALTH_WEDGE_SIZE (14px) + NODE_MENU_INSET (4px) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--kv-text-secondary);
   font-size: 10px;
   line-height: 1;
@@ -280,15 +285,13 @@
   height: 2.5px;
 }
 
-/* The health wedge (PRD §12.8): the wireframe's 14px corner triangle, pinned
-   to the one corner PRD §12.6 reserves for it. `clip-path` draws the
-   triangle; the colour is the status token. */
+/* The health wedge (PRD §12.8): the wireframe's corner triangle, pinned to
+   the one corner PRD §12.6 reserves for it. Position and size arrive inline
+   from `headerOccupants`, the same rect `anatomy.test.ts` proves never
+   overlaps the node menu; `clip-path` draws the triangle shape, the colour
+   is the status token. */
 .kv-node__wedge {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 14px; /* HEALTH_WEDGE_SIZE in anatomy.ts */
-  height: 14px;
   clip-path: polygon(100% 0, 100% 100%, 0 0);
 }
 
@@ -328,6 +331,16 @@
 .kv-node[data-zoom-tier="geometry"] .kv-node__caption,
 .kv-node[data-zoom-tier="geometry"] .kv-node__facet-content,
 .kv-node[data-zoom-tier="geometry"] .kv-node__draft-controls {
+  display: none;
+}
+
+/* The node menu is no longer a DOM descendant of `.kv-node__header` — it
+   moved out so its position could come from `headerOccupants` (the
+   health-wedge/node-menu overlap fix above) — so hiding the header alone no
+   longer reaches it. Named here explicitly rather than relying on nesting a
+   2nd time. The health wedge is deliberately absent from every rule in this
+   block: it is the one occupant of this corner that survives every tier. */
+.kv-node[data-zoom-tier="geometry"] .kv-node__menu {
   display: none;
 }
 

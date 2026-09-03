@@ -1,0 +1,22 @@
+{
+  "id": "01a03637-7800-7017-8b4d-83bf1beacc83",
+  "slug": "billing-service",
+  "kind": "service",
+  "title": "Billing Service",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "layer": "backend",
+  "entry_point": "Started by the platform supervisor.",
+  "exports": [
+    "01a03637-7800-70ad-a5b7-eeda48b56d37",
+    "01a03637-7800-70ae-93bb-ec06d80d8a27",
+    "01a03637-7800-70af-842f-1daac346a475",
+    "01a03637-7800-70b0-9173-9b4bd793fa95",
+    "01a03637-7800-70b1-a551-f346a528079f",
+    "01a03637-7800-70b2-bae8-37c6defe08a4"
+  ],
+  "schemas": null
+}

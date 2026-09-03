@@ -1,0 +1,18 @@
+{
+  "id": "01a03637-7800-704a-bc54-e451debd63f3",
+  "slug": "cold-start-p95",
+  "kind": "budget",
+  "title": "cold_start_p95",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "metric": "cold_start_p95",
+  "op": "<",
+  "value": 800,
+  "unit": "ms",
+  "tier": "hard",
+  "probe": null,
+  "sign_off": null
+}

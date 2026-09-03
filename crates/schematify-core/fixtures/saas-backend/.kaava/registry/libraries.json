@@ -1,0 +1,36 @@
+{
+  "libraries": [
+    {
+      "id": "01a03637-7800-7000-a6d7-fdea42cbbcac",
+      "name": "jose",
+      "version": "5.2.4",
+      "license": "MIT",
+      "rationale": "Approved for 6 modules of this stack.",
+      "decision": null
+    },
+    {
+      "id": "01a03637-7800-7001-b6cf-1e9594432dae",
+      "name": "zod",
+      "version": "3.23.8",
+      "license": "MIT",
+      "rationale": "Approved for 14 modules of this stack.",
+      "decision": null
+    },
+    {
+      "id": "01a03637-7800-7002-87ee-b7a3875d4a27",
+      "name": "argon2",
+      "version": "0.31",
+      "license": "Apache-2.0",
+      "rationale": "Approved for 2 modules of this stack.",
+      "decision": null
+    },
+    {
+      "id": "01a03637-7800-7003-80e8-057e002d552a",
+      "name": "postgres",
+      "version": "3.4",
+      "license": "Unlicense",
+      "rationale": "Approved for 9 modules of this stack.",
+      "decision": null
+    }
+  ]
+}

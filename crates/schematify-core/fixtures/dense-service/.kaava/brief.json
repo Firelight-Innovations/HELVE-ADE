@@ -1,0 +1,21 @@
+{
+  "product_name": "dense-service",
+  "problem": "A service large enough to measure a frame time against.",
+  "users": [
+    "The wave 3 frame budget"
+  ],
+  "goals": [
+    "200 modules at containment depth 5"
+  ],
+  "non_goals": [
+    "Readable content"
+  ],
+  "constraints": [],
+  "success_metrics": [
+    {
+      "name": "frame_time",
+      "value": 16,
+      "unit": "ms"
+    }
+  ]
+}
