@@ -52,3 +52,42 @@
 # configuration change's clothes.
 /STANDARDS.md @braden-seaborn
 /.github/ @braden-seaborn
+
+# Schematify's design/audit split (docs/design/SCHEMATIFY-PRD.md §14.6, §6.2).
+# `nodes/`, `edges/`, `rules/`, `screens/`, `flows/`, `decisions/`, `registry/`
+# and `brief.json` are semantic — human-authored design, the thing an agent
+# "shall not change" per §6.2. `runs/` and `layout/` are the two trees a machine
+# writes instead: a CI job appends a benchmark result under `runs/`, and a node
+# drag rewrites `layout/`. §14.6 is explicit that those two carry no owner "because
+# a CI job and a node drag write them" — assigning a human owner to a tree only
+# automation touches would make every routine write wait on a review it does not
+# need. Section 6.3's one exception, the lifecycle pair, is a human-triggered
+# transition and is still `nodes/` + `runs/`; it is `nodes/` that carries the
+# owner in that pair, same as any other write there, and `runs/` still does not.
+#
+# No leading slash on any of the lines below, deliberately — unlike every rule
+# above. `.kaava/` is a *project's* root, not a fixed location in this repository:
+# today it exists three times, under
+# `crates/schematify-core/fixtures/{dense-service,saas-backend,stress-2000}/`,
+# and a project opened elsewhere in a checkout (including at the repository
+# root, if this repository is ever opened as a Schematify project itself) would
+# add another. An unanchored pattern matches `.kaava/nodes/` at any depth, the
+# same way `apps/ @octocat` in GitHub's own CODEOWNERS documentation matches an
+# `apps` directory anywhere rather than only at the root — so this does not need
+# updating every time a fixture is added or renamed.
+#
+# The lines below come after `/crates/` above on purpose: CODEOWNERS resolves
+# a path against the *last* matching line in the file, and `/crates/` alone
+# would hand every one of these fixture trees to the owner, `runs/` and
+# `layout/` included. Placing the two unowned lines last gives them the final
+# word for the paths they name.
+.kaava/brief.json @braden-seaborn
+.kaava/nodes/ @braden-seaborn
+.kaava/edges/ @braden-seaborn
+.kaava/rules/ @braden-seaborn
+.kaava/screens/ @braden-seaborn
+.kaava/flows/ @braden-seaborn
+.kaava/decisions/ @braden-seaborn
+.kaava/registry/ @braden-seaborn
+.kaava/runs/
+.kaava/layout/
