@@ -1,13 +1,38 @@
 # Wave 10c handoff — the product layer
 
-Branch `schematify/w10c-product`, off `main` at `61e4ba2`. Scope: the
-Project brief, the Screen registry, the Flow editor, and the Decision log
-(PRD `docs/design/SCHEMATIFY-PRD.md` §5.7, §5.8, §5.9, §5.12, §12.17,
-§12.18), plus the screen chip, the module-root screen path, their
-click-through to the Screen registry, and the `◈ NOT HERE` rewrite.
-Lifecycle enforcement, the staleness cascade, the review queue, S-25, the
-Problems panel, the Runs dock tab, the Module dashboard, and CODEOWNERS are
-other agents' scope and are not touched here.
+Branch `schematify/w10c-product`, off `main` at `61e4ba2`, merged forward
+once with `origin/main` at `e23fe4e` (after wave 7b's Problems panel, wave
+9b's runs, and wave 10b's lifecycle enforcement all landed) to pick up 4
+merge conflicts — `App.tsx`, `graph/backend.ts`, `graph/project.ts`, and
+`src-tauri/src/apps/schematify.rs` — resolved by keeping both sides' work
+side by side; see "The merge with wave 10b" below. Scope: the Project
+brief, the Screen registry, the Flow editor, and the Decision log (PRD
+`docs/design/SCHEMATIFY-PRD.md` §5.7, §5.8, §5.9, §5.12, §12.17, §12.18),
+plus the screen chip, the module-root screen path, their click-through to
+the Screen registry, and the `◈ NOT HERE` rewrite. Lifecycle enforcement,
+the staleness cascade, the review queue, S-25, the Problems panel, the Runs
+dock tab, the Module dashboard, and CODEOWNERS are other agents' scope and
+are not touched here.
+
+## The merge with wave 10b
+
+`src-tauri/src/apps/schematify.rs` was edited concurrently by wave 10b
+(lifecycle enforcement, PR #94, merged first) — both waves added match arms
+to the same `dispatch` function and touched the same module doc comment,
+`actor_param` doc comment, and `use schematify_core::{...}` import list.
+Resolved by keeping both sides: the combined `use` list carries every item
+either wave needed, the module doc comment states both wave 10b's and wave
+10c's additions in 2 short paragraphs (trimmed afterward to clear the
+20-line comment-density cap), and every dispatch arm from both waves is
+present (`transition` alongside `write-screen`/`write-flow`/`write-brief`/
+`write-decision`/`supersede-decision`). Neither wave's tests needed
+changing — `core_rpc`'s new `CoreError::Lifecycle` branch (wave 10b) and
+this wave's decision-boundary checks are independent code paths that never
+call each other. `apps/schematify/ui/src/graph/project.ts` and
+`graph/backend.ts`/`App.tsx` had the same shape of conflict (2 waves adding
+independent imports/exports to the same file) and merged the same way.
+Full verification after the merge: see the table below — everything was
+re-run against the merged tree, not just the pre-merge one.
 
 ## What was built
 
@@ -222,16 +247,30 @@ No browser was available (`00-AGENT-CONTEXT.md` forbids `pnpm dev:agent`/
 
 | Step | Result |
 |---|---|
-| `pnpm build` | Pass |
-| `pnpm test:js` | Pass — 656 + 28 (bridge) |
-| `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing `react-hooks/exhaustive-deps` warnings named in prior waves' handoffs |
-| `pnpm lint:comments` | Pass — 0 grandfathered, after trimming 2 spots that briefly exceeded the 20-consecutive-comment-line cap (`EmptyModule.tsx`, `schematify.rs`'s module doc comment) |
+| `pnpm build` | Pass — `dist/assets/schematify-*.js` built |
+| `pnpm test:js` | Pass — 681 + 28 (bridge), run against the post-merge tree |
+| `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing `react-hooks/exhaustive-deps` warnings named in prior waves' handoffs, none in a file this wave touched |
+| `pnpm lint:comments` | Pass — 0 grandfathered, after trimming `schematify.rs`'s module doc comment twice (once pre-merge, once again once wave 10b's own paragraph landed alongside it) and `EmptyModule.tsx` once |
 | `pnpm lint:version`/`lint:identity`/`lint:branding` | Pass |
-| `pnpm format:check` | Pass |
-| `cargo test --workspace` | See below |
-| `cargo clippy` | See below |
+| `pnpm format:check` (prettier + `cargo fmt --all -- --check`) | Pass |
+| `cargo test --workspace` | Pass — every crate green, 0 failed (`schematify-core` lib: 186; `schematify.rs`'s own suite: part of the workspace's `openkaava-orchestrator` binary tests). Run with an isolated `CARGO_TARGET_DIR`, not the shared one — see the note below |
+| `cargo clippy` (`node scripts/clippy-baseline.mjs`) | Pass — 0 warnings, at the baseline of 0 |
 
-<!-- verification-pending -->
+**A shared-`CARGO_TARGET_DIR` false failure, not this wave's bug.** Two
+separate `cargo test --workspace` runs against the shared target dir this
+job's instructions point at failed to compile with
+`error[E0599]: no method named `write_brief` found for struct `Store``,
+even though `grep -n "pub fn write_brief" crates/schematify-core/src/store.rs`
+confirms the method is right there. A `cargo check -p schematify-core`
+run alone against the same shared dir succeeded moments earlier. Re-running
+both the check and the full test suite with the shared target-dir variable
+unset (an isolated, private target dir) passed cleanly both times, before
+and after the merge — this is the same class of defect
+`docs/overnight-jobs/overnight-2/handoffs/w10a-gates.md`'s "known false
+failure" note describes for `kaava-tool-manifest`, just manifesting as a
+compile error instead of 3 named test failures. If a reviewer sees this
+error against the shared target dir, retry with `CARGO_TARGET_DIR` unset
+before concluding the code is wrong.
 
 No test was deleted or skipped.
 
