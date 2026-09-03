@@ -628,6 +628,66 @@ confirmed `[W]` match) or reproduces a known conflict (flagged).
 
 ---
 
+## 10. Resolutions
+
+Binding rulings, so waves 1 through 10 act instead of re-deriving. Per PRD
+0.2, a wireframe-vs-PRD-section-12/13 contradiction resolves to the
+wireframe's value mechanically — that is not re-argued below. The three
+items the owner asked for reasoning on (10.2 row 3, and 10.1 rows 1 and 3)
+get a full argument, not just the mechanical rule, because each one touches
+the data model (sections 4 and 11), not just rendering copy.
+
+Status legend: **Ruled** = later waves act on this now, no owner needed.
+**Open** = the owner should confirm, but a stated default unblocks every
+wave in the meantime.
+
+### 10.1 The six divergences (§7)
+
+| # | Ruling | Reason | Wave(s) | Status |
+|---|---|---|---|---|
+| 7.1 `contains` drawn as a labelled edge on the Module Schematic | **Not an exception.** PRD's edge-style table stands: tier 3 never draws `contains` as a line. Render root-to-facet attachment purely by layout (facets fanning outward from the pinned root, per 12.11), never as a styled/labelled edge. | Section 11.1's edge-kind list for tier 3 is closed to `covers`, `satisfies`, `documents` — `contains` isn't a legal tier-3 edge kind at all, so the wireframe's line can't be a modelled edge; it can only be a drawing error or an unlabelled positional aid, and the PRD's own "contains = nesting" footer (drawn in 1a itself) already contradicts 1d's own line. | 3, 5 | Ruled |
+| 7.2 `Copy marker token` drawn on only 1 of 3 test cases | **Wireframe wins, and it resolves to a coherent rule.** Draw the control only on a case with no linked marker (declared/unlinked state). A linked case's marker is already embedded in its own source file — nothing to copy back — so the affordance is conditional, not universal. | The two linked cases in 1c show the token inline as read-only metadata (`@forger:… · linked · 41ms`); only the unlinked case needs a copyable token to go paste into code. PRD 12.12's "sits on every case" is the defect. | 6 | Ruled |
+| 7.3a `--kv-bg-root` `#0e1013` marked [W] | **Demote to [P].** Derive the value instead: `--kv-bg-app` (#14161a), `--kv-bg-panel` (#1b1e24), and `--kv-bg-raised` (#22262e) step by a constant `(+7,+8,+10)` per RGB channel going lighter. Extending that ladder one step *darker* than `--kv-bg-app` gives `#0d0e10`. Use `#0d0e10` for `--kv-bg-root`. | Neither `#0e1013` nor any other value for the window backdrop appears inside the 6 product screens — only in the wireframe tool's own `body{background:…}` chrome, ahead of the first screen's byte offset. `[W]` requires wireframe-screen evidence, which this value has none of. | 2 | Ruled |
+| 7.3b `--kv-accent-hover` `#e8a862` marked [W] | **Demote to [P].** Derive the value instead: blend `--kv-accent` (`#d98a3f`) 18% toward white. That gives `#e2a35f`. Use `#e2a35f` for `--kv-accent-hover`. | Same defect as 7.3a: `#e8a862` occurs only in the wireframe tool's own `a:hover{color:…}` chrome rule, never inside any of the 6 screens. A systematic lighten-toward-white of the one accent token every screen actually uses gives a value in the same family without citing unsupported evidence. | 2 | Ruled |
+| 7.4 `· 3 uncommitted` shown/hidden by tier | Confirmed — wireframe and PRD agree exactly (1a draws the count, 1e does not). No defect, no action beyond building it as PRD 12.1 already describes. | — | 2 | Ruled (no change) |
+| 7.5 `7 dependency edges` vs. 8 SVG paths, 2 pointing at a callout box | **Not a numeric conflict once annotation boxes are excluded from edge counting** — see the full argument and ruling at 10.2 row 3. | See 10.2 row 3. | 1, 3 | Ruled |
+| 7.6 `#5f95d9` "appears once, as text" | Confirmed — found exactly once, in 1a's group-collapse triangle glyph, exactly as PRD 13.3 claims. No defect. | — | 2 | Ruled (no change) |
+
+### 10.2 The three count conflicts (§9)
+
+| # | Ruling | Reason | Wave(s) | Status |
+|---|---|---|---|---|
+| `6 services` (1e header, Inspector empty state, status bar) vs. 7 `service`-kind nodes | **Computed value (7) is the truth**, per PRD 0.4. Draw `6` nowhere; draw the live count. Also: the Outline in 1e omits `ledger-store` entirely even though it's drawn on canvas and is `service`-kind per the fixture table — the Outline must list it. | PRD 16.4 already flags this exact conflict (row 1, open item 19.11) and section 0.4 states the computed count, not the drawn one, is truth. The Outline omission is the same undercount surfacing a second way. | 1 (fixture), 2 (draws computed counts) | Ruled |
+| `layer backend · 4 facets` (1d module root) vs. 7 facet cards drawn on the same canvas | **Computed value (7) is the truth**, same rule as above. Draw the live facet count on the root face. | PRD 16.4 row 2, same section-0.4 mechanism. | 1, 5 | Ruled |
+| `7 dependency edges` (1e) vs. 8 raw SVG `<path>` elements, 2 of which point at the `WHY EVENT-BUS SITS HERE` callout rather than a node | **Ruled: not a conflict.** An annotation-tier node (`comment`, `group`) or a system-generated explanatory callout is never a node and never a valid edge endpoint, so a leader line into one is not a `depends_on` edge and is excluded from any count. Once excluded, the wireframe's pixel geometry stops being the relevant evidence at all: Wave 1 builds the fixture's edges from PRD 16.1's prose ("Seven dependency edges join them"), not from tracing SVG coordinates, so the built graph computes `7` regardless of how the mock's lines resolve pixel-by-pixel. | Section 11.3 excludes the annotation tier from reconciliation and forbids it from carrying any semantic edge; the callout is the same device PRD 4.3 already names and quotes verbatim as non-graph explanatory text, not a node. Section 0.4 makes the *computed* graph value the truth in any case, and PRD 16.1 (prose, not a wireframe drawing) is what Wave 1 builds the fixture from. | 1, 3, 7 | Ruled |
+
+### 10.3 The ten silences (§8)
+
+**8.1 — PRD describes, no wireframe shows (stays [P], build unless a wireframe later contradicts):**
+
+| Item | Ruling | Wave |
+|---|---|---|
+| Inspector Lifecycle / Dependencies / Docs / References tabs | Build per PRD 12.12 (S-05, S-09, S-10, S-11). No wireframe evidence to override. | 6 |
+| Global search, Library/Rule registries, Screen registry, Flow editor, Project brief, Decision log, Review queue, node-kind registration | Build per PRD 12.14-12.19, S-15 through S-25. | 8, 10 |
+| Minimap | Build per PRD 12.3, already explicitly marked [P] there. | 3 |
+| `Design` / `Product` / `Decisions` section switcher above the Outline | Build per PRD 12.1, already explicitly marked [P] there. | 2, 10 |
+| `FRONTEND`, `EXTERNAL` layer badges | Build per PRD 12.6; Wave 4's own acceptance condition already mandates a unit test for both, since the fixture holds no such node. | 4 |
+
+**8.2 — wireframe shows, PRD section 12 never mentions (truth the PRD omitted):**
+
+| Item | Ruling | Wave |
+|---|---|---|
+| No `skew_window` contract-method card on the Module Schematic (1d), though it's one of the module's 3 methods | **Ruled: draw it anyway.** The wireframe's card set is a mock's incompleteness, not a "skip uncovered methods" rule — PRD 12.11 describes facets fanning outward with no carve-out, and the same screen's own `COVERAGE OF DESIGN` callout depends on `skew_window` existing as a countable method. | 5 |
+| No zoom readout / no edge-kind legend chip on the Module Schematic (1d), unlike 1a and 1e | **Ruled: add both**, consistent with the other two tiers. PRD 12.1 already asserts the Module Schematic legend "reads `contains`, `covers`, `satisfies`" (correct the edge-kind list per 10.1 row 1 — drop `contains`, keep `covers`, `satisfies`) — that assertion only makes sense if a legend chip exists, so build one. | 3, 5 |
+| Header-dot fill colour varies per lifecycle-state example in 1b (grey / amber / green-dim / green-full / dim-grey) | **Open.** Could encode health, could be incidental colour variety in the reference sheet. Default in the meantime: dot colour carries no meaning; use one neutral dot fill for every state and let border/fill/overlay geometry carry the signal, per PRD 12.7's explicit "colour alone carries no signal" rule. Revisit only if the owner says the dot is meaningful. | 4 |
+| Unlabelled thumbnail/diagram, lower-right of 1a | **Open, defaulting to ignore.** Not captioned, not described anywhere in the PRD, doesn't match the [P] minimap's own spec (no error/health marks). Build nothing from it; if it turns out to matter the owner will say so. | 3 |
+| 1.5px port-ring borders on Session Store (1a) and Platform Core (1e) vs. 1px on ordinary nodes | **Ruled: adopt as [P].** Use the heavier 1.5px port ring specifically on collapsed/group-type nodes, as a visual echo of their already-heavier 1.5px border treatment, for consistency rather than as an isolated one-off. | 4 |
+
+No item above is Open in a way that blocks a wave: every Open row states the
+default a wave should build to right now.
+
+---
+
 *Extraction performed against `Forger Wireframes.html` (672,641 bytes) by byte-range
 extraction of each `data-screen-label` region, cross-checked against
 `SCHEMATIFY-PRD.md` sections 0.3, 0.4, 12, 13, 15, and 16.*
