@@ -3,6 +3,44 @@
 Branch `schematify/w2-shell`. PR #81, retargeted from `schematify/w1a-retire`
 to `main` once Wave 1a merged; `main` has since been merged into this branch.
 
+## CI verify failure — local `pnpm verify` is not proof for `apps/schematify/`
+
+CI failed 5 TypeScript errors in `noLiteralHex.test.ts` that never appeared
+locally: `node:fs`, `node:path`, and `__dirname` unresolved, plus 2 downstream
+implicit-`any` parameters. Cause: `C:/Users/bjsea/node_modules/@types/node`
+— a stray package in the user's home directory, several levels above this
+checkout — is on the ambient-types search path every local `tsc` run walks,
+and this repo's own `tsconfig.json` (`apps/schematify/ui/` included) declares
+no Node types at all, correctly, since every first-party app is browser-only.
+CI's checkout has no such stray directory, so it saw the truth.
+
+**No existing file under any other first-party app's `ui/src/` used
+`node:fs`, `node:path`, or `__dirname`** — searched before picking a fix, per
+instruction; there was no precedent to copy. Fixed by removing the Node
+dependency entirely rather than adding `@types/node` anywhere: the file now
+reads every candidate through `import.meta.glob("./**/*.{ts,tsx,css}", {
+query: "?raw", import: "default", eager: true })`, a Vite feature that
+inlines each matched file's raw text at transform time. No Node builtin is
+imported, and the typing comes free from `vite/client`
+(`src/vite-env.d.ts`, already part of the program) — nothing about
+`tsconfig.json` changed, so no other app's checking loosened. The 2
+implicit-`any` parameters (a downstream consequence of `readFileSync`
+resolving to `any` once `node:fs` failed to resolve) are now explicitly
+typed (`line: string, index: number`) regardless.
+
+**Verified the way CI does, not the way local `pnpm verify` does**: local
+`tsc` still has the stray home-directory types available and would pass
+either version of this file, proof or not. To reproduce CI's clean state
+without touching anything outside the repo, ran
+`npx tsc -p tsconfig.json --noEmit --typeRoots ./__no_types__` (a
+nonexistent directory, which makes TypeScript skip its default ambient-types
+walk entirely). Confirmed the technique first: checked out this file's
+pre-fix version from commit `646c77e` and reran the same command — it
+reproduced the exact 5 errors CI reported, byte for byte. Then confirmed the
+fixed version passes it clean (exit 0), alongside the full `pnpm build`,
+`pnpm test:js` (387 + 28 passing), `pnpm lint:js`, `pnpm lint:comments`,
+`pnpm lint:version`/`lint:identity`/`lint:branding`, and `pnpm format:check`.
+
 ## Review round 2 — an Opus review of PR #81 came back APPROVE-WITH-FIXES
 
 Three findings blocked the merge; all 3 are fixed:

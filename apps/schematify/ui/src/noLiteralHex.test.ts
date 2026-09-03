@@ -15,19 +15,34 @@
  * written in `rgba(...)`, so a later wave reaching for that form is a real
  * risk, not a hypothetical one. All 3 shapes are checked below.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const APP_ROOT = join(__dirname, "..");
+/**
+ * Reads every candidate file through `import.meta.glob`, not `node:fs`.
+ * `node:fs`/`node:path`/`__dirname` type-check locally on this machine (a
+ * stray `node_modules` above the repo hands `tsc` ambient Node types no
+ * other checkout has) but not in CI, where this app's own `tsconfig.json`
+ * — correctly — declares no Node types at all: every other first-party app
+ * is browser-only, and adding `@types/node` there to fix 1 test would loosen
+ * type-checking for all of them. `import.meta.glob` sidesteps the question
+ * instead of answering it: Vite resolves the glob and inlines each match's
+ * raw text at transform time, so no Node builtin is ever imported, and the
+ * typing comes free from `vite/client` (`src/vite-env.d.ts`, already in this
+ * program). No file under any other first-party app's `ui/src/` used
+ * `node:fs` before this file, so there was no existing pattern to follow
+ * instead.
+ */
+const files = import.meta.glob("./**/*.{ts,tsx,css}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 // tokens.css is the 1 documented color-literal exception (its own header
 // says why). This file is the 2nd: its own positive-control tests below
 // necessarily contain literal color strings as test fixtures, or the scan
-// would flag itself.
-const EXEMPT = new Set([
-  join(APP_ROOT, "src", "tokens.css"),
-  join(APP_ROOT, "src", "noLiteralHex.test.ts"),
-]);
+// would flag itself. Keys match `import.meta.glob`'s own relative form.
+const EXEMPT = new Set(["./tokens.css", "./noLiteralHex.test.ts"]);
 
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/;
 const FUNCTIONAL_COLOR = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix)\s*\(/i;
@@ -208,20 +223,6 @@ const NAMED_COLORS = [
  */
 const NAMED_COLOR = new RegExp(`[\\s:(,]\\s*["']?(${NAMED_COLORS.join("|")})(?![-:\\w])`, "i");
 
-function collectFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
-    const info = statSync(path);
-    if (info.isDirectory()) {
-      out.push(...collectFiles(path));
-    } else if (/\.(tsx?|css)$/.test(entry)) {
-      out.push(path);
-    }
-  }
-  return out;
-}
-
 /**
  * True for a line that is, or is part of, a comment — `//`, a block
  * comment's opener, or a continuation line inside one. Mutates `state` to
@@ -250,11 +251,11 @@ describe("no literal color in Schematify's UI", () => {
   const hexOffenders: Array<{ file: string; line: number; text: string }> = [];
   const otherOffenders: Array<{ file: string; line: number; text: string }> = [];
 
-  for (const file of collectFiles(join(APP_ROOT, "src"))) {
+  for (const [file, content] of Object.entries(files)) {
     if (EXEMPT.has(file)) continue;
-    const lines = readFileSync(file, "utf8").split("\n");
+    const lines = content.split("\n");
     const commentState = { inBlock: false };
-    lines.forEach((line, index) => {
+    lines.forEach((line: string, index: number) => {
       if (HEX_COLOR.test(line)) {
         hexOffenders.push({ file, line: index + 1, text: line.trim() });
       }
