@@ -219,12 +219,18 @@ fn search_returns_a_first_result_inside_the_wave_eight_budget() {
         first.breadcrumb
     );
 
+    // Reported in microseconds, not whole milliseconds. The budget is 100 ms
+    // and this query costs a small fraction of one, so at millisecond
+    // resolution a regression to forty milliseconds and a healthy run both
+    // print `0` and a later reader learns nothing about the margin they are
+    // spending. The comparison below is nanosecond-precise either way; it is
+    // the message that has to stay informative.
     assert!(
-        elapsed.as_millis() < 100,
+        elapsed.as_micros() < 100_000,
         "PRD section 14.7 gives search 100 ms to a first result over \
-         fixtures/stress-2000/, and this query took {} ms over {} indexed \
+         fixtures/stress-2000/, and this query took {} µs over {} indexed \
          entries, returning {} hits",
-        elapsed.as_millis(),
+        elapsed.as_micros(),
         index.entry_count(),
         hits.len()
     );

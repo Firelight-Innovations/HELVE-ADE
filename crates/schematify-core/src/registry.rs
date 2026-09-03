@@ -323,24 +323,45 @@ impl LicensePolicy {
     }
 }
 
-/// Whether an SPDX identifier belongs to a licence family.
+/// Whether a licence identifier belongs to a licence family.
 ///
-/// Exact, or the family followed by a separator. `GPL` therefore matches
-/// `GPL-3.0-only` and `GPL+`, and does not match `LGPL-3.0` or `GPLish`.
+/// Three shapes count, and the third is the one that matters. The name on its
+/// own, `GPL`. The name and a separator, which is canonical SPDX:
+/// `GPL-3.0-only`, `GPL+`, `GPL 2.0`. And the name with the version written
+/// straight onto it, which is how people who are not reading SPDX spell it:
+/// `GPLv2`, `GPL2`, `AGPLv3`.
+///
+/// Without that third shape the gate does half a job. A registry that blocks
+/// `GPL-2.0` and admits `GPLv2` blocks a spelling rather than a licence, and
+/// the entry a person is most likely to type by hand is the one that gets in.
+/// Every fixture and every canonical identifier uses a separator, which is
+/// exactly why nothing here caught it.
+///
+/// A version suffix is a digit, optionally behind a `v`. That is what keeps
+/// `GPLish-1.0` out: `i` is neither. A different family stays out on the
+/// prefix alone, since `LGPL-3.0` does not begin with `GPL`, and `LGPL` has
+/// its own entry in the default policy.
 fn matches_family(license: &str, pattern: &str) -> bool {
     if license.eq_ignore_ascii_case(pattern) {
         return true;
     }
-    let Some(rest) = license.get(..pattern.len()) else {
+    let Some(head) = license.get(..pattern.len()) else {
         return false;
     };
-    if !rest.eq_ignore_ascii_case(pattern) {
+    if !head.eq_ignore_ascii_case(pattern) {
         return false;
     }
-    license[pattern.len()..]
-        .chars()
-        .next()
-        .is_some_and(|c| !c.is_ascii_alphanumeric())
+    let mut tail = license[pattern.len()..].chars();
+    let Some(next) = tail.next() else {
+        return false;
+    };
+    if !next.is_ascii_alphanumeric() {
+        return true;
+    }
+    if next.is_ascii_digit() {
+        return true;
+    }
+    next.eq_ignore_ascii_case(&'v') && tail.next().is_some_and(|c| c.is_ascii_digit())
 }
 
 /// Whitelist a library on a module, or refuse it and say why.
@@ -704,6 +725,44 @@ mod tests {
         ));
         assert_eq!(policy.verdict("GPLish-1.0"), LicenseVerdict::Allowed);
         assert_eq!(policy.verdict("MIT"), LicenseVerdict::Allowed);
+    }
+
+    #[test]
+    fn a_version_written_straight_onto_the_family_name_is_still_that_family() {
+        let policy = LicensePolicy::default();
+        // The spellings a person types by hand. Blocking `GPL-2.0` and
+        // admitting `GPLv2` would block a spelling rather than a licence.
+        for blocked in [
+            "GPLv2", "GPLv3", "GPL2", "GPL3", "gplv2", "AGPLv3", "LGPLv2", "LGPL3",
+        ] {
+            assert!(
+                matches!(policy.verdict(blocked), LicenseVerdict::Blocked { .. }),
+                "{blocked} is the same licence as its SPDX spelling"
+            );
+        }
+        // And the boundary still holds: a longer word is a different name.
+        for allowed in ["GPLish", "GPLish-1.0", "GPLv", "AGPLish2"] {
+            assert_eq!(
+                policy.verdict(allowed),
+                LicenseVerdict::Allowed,
+                "{allowed} is not a copyleft family"
+            );
+        }
+    }
+
+    #[test]
+    fn a_separatorless_spelling_is_refused_at_the_add_like_any_other() {
+        let mut registry = LibraryRegistry::default();
+        let mut entry = gpl();
+        entry.license = "GPLv2".to_owned();
+
+        let error = registry
+            .add(entry, &LicensePolicy::default())
+            .expect_err("GPLv2 is GPL");
+        let drawn = error.to_string();
+        assert!(drawn.contains("GPLv2"), "{drawn}");
+        assert!(drawn.contains("copyleft"), "{drawn}");
+        assert!(registry.libraries.is_empty(), "nothing was added");
     }
 
     #[test]

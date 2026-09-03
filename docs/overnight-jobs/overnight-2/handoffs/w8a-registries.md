@@ -49,10 +49,22 @@ an optional `allowed` list that switches it to allow-list mode. `Default` is
 the three copyleft families, GPL, AGPL and LGPL, each with its own reason.
 `LicensePolicy::permissive()` blocks nothing.
 
-Matching is by family: `GPL` matches `GPL-3.0-or-later` and `GPL-2.0`, and does
-not match `LGPL-3.0` or `GPLish-1.0`. That is why the default names the three
-families separately rather than relying on one prefix; SPDX spells `AGPL` and
-`LGPL` as identifiers no prefix of `GPL` reaches.
+Matching is by family, and it takes three spellings. The bare name, `GPL`. The
+name and a separator, which is canonical SPDX: `GPL-3.0-or-later`, `GPL+`,
+`GPL 2.0`. And the name with the version written straight onto it, which is how
+somebody not reading SPDX writes it: `GPLv2`, `GPL2`, `AGPLv3`.
+
+**The third spelling was missing until review caught it, and it was a hole
+rather than a tidiness point.** A registry that blocks `GPL-2.0` and admits
+`GPLv2` blocks a spelling rather than a licence, and the hand-typed spelling is
+the one most likely to get in. Every fixture and every canonical identifier
+uses a separator, which is exactly why the first round of tests did not catch
+it. Two tests cover it now, one on the policy and one on the add.
+
+A version suffix is a digit, optionally behind a `v`, which is what keeps
+`GPLish-1.0` and `GPLv` out. A different family stays out on the prefix alone,
+since `LGPL-3.0` does not begin with `GPL`. That is also why the default names
+the three families separately rather than relying on one prefix.
 
 **The default is a deny-list, and this repository's own `deny.toml` argues for
 an allow-list.** That argument is sound where the set of licences is knowable,
@@ -198,7 +210,7 @@ and the keyboard selection does not move under the user.
 |---|---|---|
 | A library with a blocked licence is refused with a stated reason | **Pass** | `tests/registries.rs::a_blocked_licence_is_refused_against_the_real_registry_and_states_why`, which asserts the drawn message names the library, the licence and the reason, and that nothing was added |
 | A module cannot whitelist a library missing from the registry | **Pass** | `tests/registries.rs::a_module_cannot_whitelist_a_library_the_registry_does_not_hold`, which also asserts the same call succeeds for a registered library, so the refusal is the registry check and not the function failing outright |
-| Search returns a first result in under 100 ms on `fixtures/stress-2000/` | **Pass** | `tests/registries.rs::search_returns_a_first_result_inside_the_wave_eight_budget`. The query reports **0 ms** at millisecond resolution, so under 1 ms against a 100 ms hard budget, in the unoptimised `cargo test` build |
+| Search returns a first result in under 100 ms on `fixtures/stress-2000/` | **Pass** | `tests/registries.rs::search_returns_a_first_result_inside_the_wave_eight_budget`. **543 µs** measured against a 100 ms hard budget, in the unoptimised `cargo test` build, so about 0.5% of the budget |
 | The rule registry is renderable as a document | **Pass** | `tests/registries.rs::the_rule_registry_reads_as_a_document_of_the_fourteen_rows` |
 | `pnpm verify` passes | **Pass** | Section 5 |
 
@@ -215,7 +227,14 @@ it times anything:
   node the query asked for, at rank `ExactSlug`, of kind module, with a
   breadcrumb that starts `Stack › `.
 
-Only then is the elapsed time asserted. A second test,
+Only then is the elapsed time asserted, and the message reports **microseconds
+rather than whole milliseconds**. The query costs 543 µs against a 100 ms
+budget, so at millisecond resolution a healthy run and a regression to forty
+milliseconds both print `0` and a later reader learns nothing about the margin
+they are spending. The comparison was nanosecond-precise either way; it was the
+message that was uninformative.
+
+A second test,
 `the_stress_index_really_searches_rather_than_answering_from_one_lucky_row`,
 closes the remaining gap: a query no entry satisfies comes back empty, a broad
 query is truncated at the limit with every hit at the substring rank, and a
