@@ -321,6 +321,52 @@
   font-size: 9.5px;
 }
 
+/* --- the Module Schematic's facet palette (PRD §12.11) --------------------- */
+
+.kv-facet-palette {
+  width: 172px;
+  flex: 0 0 auto;
+  padding: 10px;
+  background: var(--kv-bg-app);
+  border-right: 1px solid var(--kv-line);
+  overflow-y: auto;
+}
+
+.kv-facet-palette__header {
+  margin-top: 10px;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-facet-palette__header:first-child {
+  margin-top: 0;
+}
+
+.kv-facet-palette__list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-facet-palette__entry {
+  padding: 4px 6px;
+  margin-bottom: 3px;
+  border: 1px dashed var(--kv-line-draft);
+  border-radius: var(--kv-radius-chip);
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  cursor: grab;
+}
+
+.kv-facet-palette__footer {
+  margin-top: 14px;
+  color: var(--kv-text-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 /* --- dock ------------------------------------------------------------------ */
 
 .kv-dock {

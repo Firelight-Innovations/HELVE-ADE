@@ -4,11 +4,9 @@
  * builds the Stack, Service and Module Schematics. Nothing below draws; every
  * value here is read by `engine.ts`, `rules.ts`, `routing.ts` or `frame.ts`.
  *
- * The shape is deliberately declarative. An edge kind is a row in a table
- * rather than a callback, so a refusal can name the rule it came from, and so
- * a test can enumerate what a tier accepts without running a drag. The `screen`
- * kind is here because `references_ui` terminates at one (PRD §5.7, §12.5),
- * even though no Schematic draws a screen's box this wave.
+ * The shape is deliberately declarative: an edge kind is a row in a table
+ * rather than a callback, so a refusal can name the rule it came from and a
+ * test can enumerate what a tier accepts without running a drag.
  */
 import type { Tier } from "../graph";
 import type { NodeContent } from "./anatomy";
@@ -160,6 +158,11 @@ export interface SchematicConfig {
   /** The note beside the legend chips, e.g.
    *  `contains = nesting · depends_on = drawn` (PRD §12.1). */
   legendFooter: string;
+  /** Which free-floating annotation box this tier draws, if any: the coverage/
+   *  `SATISFIES` pair (PRD §12.11) or the shared-node callout (PRD §4.3).
+   *  `"none"` at the Service Schematic — its own shared-node fixture is
+   *  deliberately misplaced, earning the badge but no callout. */
+  calloutKind: "module-readouts" | "shared-node" | "none";
   /** The default box for a node of this kind, grown by `content`. `content`
    *  is optional: a collapsed box always shrinks to the kind's base size. */
   nodeBox: (kind: SchematicNodeKind, content?: NodeContent) => Size;

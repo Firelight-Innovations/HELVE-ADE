@@ -113,6 +113,9 @@ export const STACK_CONFIG: SchematicConfig = {
   nodePolicy: { pinned: { roles: ["entry-point"], edge: "left" }, undeletable: [] },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "click a service to drill into its modules",
+  // PRD §4.3: the Stack Schematic draws the `WHY … SITS HERE` callout for
+  // whichever node sits correctly at its dependents' LCA.
+  calloutKind: "shared-node",
   nodeBox: boxFor(
     { service: { width: 240, height: 104 }, group: { width: 260, height: 290 } },
     {
@@ -136,6 +139,11 @@ export const SERVICE_CONFIG: SchematicConfig = {
   nodePolicy: { pinned: { roles: ["entry-point"], edge: "left" }, undeletable: [] },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "contains = nesting · depends_on = drawn",
+  // The Service Schematic's own shared-node fixture (crypto-primitives) is
+  // deliberately misplaced — the linter's WARN example, not a
+  // correctly-at-LCA node — so this tier draws the badge every shared node
+  // gets, but no callout.
+  calloutKind: "none",
   nodeBox: boxFor(
     {
       module: { width: 204, height: 118 },
@@ -172,6 +180,8 @@ export const MODULE_CONFIG: SchematicConfig = {
   },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "contains · covers · satisfies",
+  // PRD §12.11: the coverage readout and the `SATISFIES` callout.
+  calloutKind: "module-readouts",
   nodeBox: boxFor(
     {
       module: { width: 238, height: 128 },

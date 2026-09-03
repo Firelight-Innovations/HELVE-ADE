@@ -189,8 +189,8 @@ export function buildFrame(input: FrameInput): Frame {
       nodes: doc.nodes.filter((node) => !isAnnotation(node)).length,
       edges: doc.edges.length,
     },
-    moduleReadouts: config.tier === "module" ? buildModuleReadouts(doc) : null,
-    sharedNodeCallout: config.tier === "stack" ? buildSharedNodeCallout(doc) : null,
+    moduleReadouts: config.calloutKind === "module-readouts" ? buildModuleReadouts(doc) : null,
+    sharedNodeCallout: config.calloutKind === "shared-node" ? buildSharedNodeCallout(doc) : null,
   };
 }
 

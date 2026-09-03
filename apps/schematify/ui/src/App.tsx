@@ -38,6 +38,7 @@ import { Breadcrumb } from "./shell/Breadcrumb";
 import { Dock } from "./shell/Dock";
 import { EmptyModule } from "./shell/EmptyModule";
 import { EmptyStack } from "./shell/EmptyStack";
+import { FacetPalette } from "./shell/FacetPalette";
 import { InspectorShell } from "./shell/InspectorShell";
 import { Outline } from "./shell/Outline";
 import { StatusBar } from "./shell/StatusBar";
@@ -173,6 +174,7 @@ function Schematify({
       </div>
       <div className="kv-shell__body">
         <Outline graph={graph} />
+        {graph.tier === "module" ? <FacetPalette /> : null}
         <SchematicCanvas engine={engine} onActivate={onActivate} exports={graph.exports} />
         <InspectorShell graph={graph} selectionCount={state.selection.length} />
       </div>

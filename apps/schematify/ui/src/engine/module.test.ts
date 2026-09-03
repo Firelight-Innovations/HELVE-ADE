@@ -111,6 +111,12 @@ describe("the coverage readout formula", () => {
   });
 });
 
+describe("MODULE_CONFIG.calloutKind", () => {
+  it("is configured, not a tier check inside buildFrame", () => {
+    expect(MODULE_CONFIG.calloutKind).toBe("module-readouts");
+  });
+});
+
 describe("the SATISFIES callout", () => {
   it("draws PRD §11.1's exact wording", () => {
     expect(SATISFIES_CALLOUT).toEqual({

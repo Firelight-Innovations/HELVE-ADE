@@ -59,6 +59,13 @@ describe("the shared-node callout", () => {
   });
 });
 
+describe("calloutKind is configuration, not a tier check in buildFrame", () => {
+  it("is set once per preset, matching each tier's own callout", () => {
+    expect(STACK_CONFIG.calloutKind).toBe("shared-node");
+    expect(SERVICE_CONFIG.calloutKind).toBe("none");
+  });
+});
+
 describe("opening the Stack Schematic", () => {
   it("goes through the same openSchematic path every tier uses", async () => {
     const seam = createMemorySeam();
