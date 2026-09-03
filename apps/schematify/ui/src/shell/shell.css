@@ -321,6 +321,202 @@
   font-size: 9.5px;
 }
 
+/* --- the Inspector's own tab panels (PRD §12.12, §17 Wave 6) --------------- */
+
+/* PRD §17 Wave 6's acceptance condition: 5 flat tabs at 380px, 4 tabs plus
+   More at 360px (the default). */
+.kv-inspector--wide {
+  width: var(--kv-panel-inspector-wide);
+}
+
+.kv-inspector__more-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-inspector__panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.kv-inspector__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.kv-inspector__field-label {
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-inspector__field-value {
+  margin-top: 2px;
+  color: var(--kv-text-primary);
+  font-size: 11px;
+}
+
+/* PRD §17 Wave 6: "Draw the opaque identifier in a copy-on-click field, and
+   nowhere else." A reset `<button>` so the field reads as a value, not a
+   form control, until it is clicked. */
+.kv-inspector__copy-field {
+  display: block;
+  margin-top: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kv-inspector__copy-field:hover {
+  color: var(--kv-accent);
+}
+
+.kv-inspector__list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--kv-text-secondary);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.kv-inspector__link {
+  color: var(--kv-info);
+  font-size: 10.5px;
+}
+
+.kv-inspector__count-header {
+  color: var(--kv-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kv-inspector__toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.kv-inspector__toggle button {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+.kv-inspector__chips {
+  display: flex;
+  gap: 6px;
+}
+
+.kv-inspector__chip {
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.kv-inspector__method-blocks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kv-inspector__method-block {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  padding: 8px;
+}
+
+.kv-inspector__method-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--kv-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kv-inspector__method-signature {
+  margin-top: 3px;
+  color: var(--kv-text-near);
+  font-size: 10.5px;
+}
+
+.kv-inspector__badge {
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-accent-wash);
+  color: var(--kv-accent);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+}
+
+.kv-inspector__covers-label {
+  margin-top: 4px;
+  color: var(--kv-ok);
+  font-size: 10px;
+}
+
+.kv-inspector__marker-token {
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 9.5px;
+  word-break: break-all;
+}
+
+.kv-inspector__mismatch {
+  margin-top: 4px;
+  color: var(--kv-error);
+  font-size: 10.5px;
+}
+
+.kv-inspector__footer-controls {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-inspector__footer-button {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.kv-inspector__doc-editor {
+  width: 100%;
+  min-height: 160px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 8px;
+  resize: vertical;
+}
+
 /* --- the Module Schematic's facet palette (PRD §12.11) --------------------- */
 
 .kv-facet-palette {

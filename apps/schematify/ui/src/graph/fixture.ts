@@ -52,7 +52,14 @@ const nodes: GraphNode[] = [
     slug: "token-verifier",
     title: "Token Verifier",
     kind: "module",
+    layer: "backend",
     parentId: null,
+    // WIREFRAME-EXTRACT.md §1.1's own Inspector Identity exhibit, drawn
+    // against this exact node (screen 1a) — PRD §17 Wave 6's Identity tab
+    // reads these 2 fields straight off the fixture.
+    description:
+      "Verifies JWT signatures against the rotating key set, tolerating bounded clock skew between issuer and verifier.",
+    decisions: ["DEC-TEC-AUTH-004"],
     health: "passing",
   },
   {
