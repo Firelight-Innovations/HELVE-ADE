@@ -35,7 +35,7 @@ export const theStack: Body = {
     { kind: "heading", body: "Nothing is pinned today" },
     {
       kind: "text",
-      body: "`kaava.toml`'s `[[tool]]` array is empty right now. Schematify's two predecessor applications used to be its two entries; both have been folded into one app built into the orchestrator itself rather than separate tool repositories — see `apps/README.md` at the repository root for what it is now and why.",
+      body: "`kaava.toml`'s `[[tool]]` array is empty right now. It held two entries once, and both are now the single Schematify app built into the orchestrator itself rather than separate tool repositories — see `apps/README.md` at the repository root for what it is now and why.",
     },
     {
       kind: "note",

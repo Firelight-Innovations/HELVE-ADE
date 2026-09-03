@@ -27,12 +27,11 @@ repository's branch tip happens to be today.
 
 ## Nothing is pinned today
 
-`kaava.toml`'s `[[tool]]` array is empty right now. Schematify's two
-predecessor applications used to be its two entries; both have been folded
-into one app built into the orchestrator itself rather than separate tool
-repositories — see `apps/README.md` at the repository root for what it is now
-and why. The
-mechanism below still runs, with nothing to say about: an empty list reads
+`kaava.toml`'s `[[tool]]` array is empty right now. It held two entries once,
+and both are now the single Schematify app built into the orchestrator itself
+rather than separate tool repositories — see `apps/README.md` at the
+repository root for what it is now and why. The mechanism below still runs,
+with nothing to say about: an empty list reads
 exactly like a stack where every pinned tool matches its version, because
 that is what it is — a stack with nothing unwell in it.
 

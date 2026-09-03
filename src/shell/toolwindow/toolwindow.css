@@ -2,10 +2,8 @@
  * The tool window: the mount surface for docked tools, plus its boot and
  * empty states.
  *
- * Measured against SCREEN 01, SCREEN 02, and the "Starting…" boot crop in
- * REGION DETAIL (docs/handoffs/shell-spec.html) — captioned there under this
- * app's pre-rename name, see `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`.
- * This renders into
+ * Measured against SCREEN 01, SCREEN 02, and the "Starting Forger" crop in
+ * REGION DETAIL (docs/handoffs/shell-spec.html). This renders into
  * `.frame__toolwindow`, which already carries the box's background and
  * `position: relative` (src/shell/frame/frame.css) — nothing here repeats
  * that.
@@ -108,9 +106,9 @@
 }
 
 /* --- boot overlay -------------------------------------------------------
-   Laid over a mounting or still-resolving tool. Measured from the "Starting…"
-   boot crop (see the file header above); its dashed inset border is unique to
-   this state — screen 02 (no tool active) draws no such border. */
+   Laid over a mounting or still-resolving tool. Measured from the "Starting
+   Forger" crop; its dashed inset border is unique to this state — screen 02
+   (no tool active) draws no such border. */
 
 .boot {
   position: absolute;

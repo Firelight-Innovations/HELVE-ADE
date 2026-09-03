@@ -12,10 +12,8 @@ export interface BootProgress {
 
 /**
  * The boot overlay: laid over the tool window while a tool is starting.
- * Measured from the "Starting…" boot crop (docs/handoffs/shell-spec.html,
- * REGION DETAIL — "Panel, search, warnings, booting"), captioned there under
- * this app's pre-rename name — see
- * `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`.
+ * Measured from the "Starting Forger" crop (docs/handoffs/shell-spec.html,
+ * REGION DETAIL — "Panel, search, warnings, booting").
  *
  * Determinate when `progress` is supplied, indeterminate otherwise — no step
  * source exists yet, so every caller today gets the indeterminate form.
