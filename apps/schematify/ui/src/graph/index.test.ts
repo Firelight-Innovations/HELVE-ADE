@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
+import type { GraphNode } from "./types";
 import {
   buildOutlineRows,
   computeDepth,
@@ -37,6 +38,21 @@ describe("computed counts", () => {
 
   it("computes containment depth 3", () => {
     expect(computeDepth(AUTH_SERVICE_GRAPH.nodes)).toBe(3);
+  });
+
+  it("throws rather than looping forever on a containment cycle", () => {
+    const cyclic: GraphNode[] = [
+      { id: "a", slug: "a", title: "A", kind: "module", parentId: "b" },
+      { id: "b", slug: "b", title: "B", kind: "module", parentId: "a" },
+    ];
+    expect(() => computeDepth(cyclic)).toThrow(/cycle/);
+  });
+
+  it("treats a dangling parentId as top-level rather than throwing", () => {
+    const dangling: GraphNode[] = [
+      { id: "a", slug: "a", title: "A", kind: "module", parentId: "no-such-node" },
+    ];
+    expect(computeDepth(dangling)).toBe(2);
   });
 });
 

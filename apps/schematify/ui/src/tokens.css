@@ -3,20 +3,25 @@
  * is a separate iframe document from the shell, so a `:root` here reaches
  * nothing outside it and collides with nothing in `/src/tokens.css`).
  *
- * Every value below is `[W]`, read straight off PRD §13's tables, with 2
- * exceptions the wireframe extraction demoted from `[W]` to `[P]`
- * (`docs/overnight-jobs/overnight-2/WIREFRAME-EXTRACT.md`, Resolutions
- * 7.3a/7.3b): `--kv-bg-root` and `--kv-accent-hover` never occur inside any
+ * Most values below are `[W]`, read straight off PRD §13's tables — but not
+ * all: PRD §13 itself already marks `--kv-info`, `--kv-font-sans`, and
+ * `--kv-radius-frame` `[P]` (proposals, never claimed as read from a
+ * wireframe), and this file's own header used to claim the whole table was
+ * `[W]` but 2, which was wrong about these 3. `--kv-bg-root` and
+ * `--kv-accent-hover` are a 4th and 5th `[P]` pair, but for a different
+ * reason: the wireframe extraction demoted both from PRD §13's original
+ * `[W]` claim (`docs/overnight-jobs/overnight-2/WIREFRAME-EXTRACT.md`,
+ * Resolutions 7.3a/7.3b) once it found neither hex value occurs inside any
  * of the 6 product screens, only in the wireframe *tool's own* page chrome.
- * Both are derived here instead, exactly as that document's ruling states —
- * `--kv-bg-root` by extending the existing 3-step surface ladder one step
- * darker than `--kv-bg-app`, `--kv-accent-hover` by blending `--kv-accent`
- * 18% toward white. Neither is a free choice; both are one documented step
- * from a `[W]` value.
+ * Both are derived here instead — `--kv-bg-root` by extending the existing
+ * 3-step surface ladder one step darker than `--kv-bg-app`,
+ * `--kv-accent-hover` by blending `--kv-accent` 18% toward white — so
+ * neither is a free choice, each is one documented step from a `[W]` value.
+ * Every `[P]` token below is marked at its own line.
  *
  * PRD §17 Wave 2's acceptance condition is "no literal hex value" in this
  * app's own code — this file is the one place that trades, once, so every
- * other file under `apps/schematify/ui/` can hold none. `index.test.ts`
+ * other file under `apps/schematify/ui/` can hold none. `noLiteralHex.test.ts`
  * proves that for every file but this one and `main.tsx`'s import of it.
  */
 
@@ -47,14 +52,15 @@
   --kv-error: #d9635f;
   --kv-agent: #956fd9;
   --kv-accent-hover: #e2a35f; /* [P], derived — see header */
-  --kv-info: #5f95d9;
+  --kv-info: #5f95d9; /* [P] in PRD §13.3 itself — an informational-mark proposal, not read from a wireframe */
 
   /* --- 13.4 typography ----------------------------------------------------
      Fonts load from `/src/tokens.css`'s `@fontsource` imports, already
      pulled into this document by `main.tsx` — declared here only as named
      tokens, not re-imported. */
   --kv-font-mono: "IBM Plex Mono", monospace;
-  --kv-font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --kv-font-sans:
+    "IBM Plex Sans", system-ui, sans-serif; /* [P] in PRD §13.4 itself — every drawn wireframe string is mono; see shell.css for the ruling that Schematify's own chrome uses mono too */
 
   /* --- 13.5 geometry -------------------------------------------------------
      --kv-grid-dot references --kv-bg-raised rather than repeating its hex,
@@ -67,7 +73,7 @@
   --kv-radius-xl: 5px;
   --kv-radius-pill: 8px;
   --kv-radius-dot: 50%;
-  --kv-radius-frame: 6px;
+  --kv-radius-frame: 6px; /* [P] in PRD §13.5 itself — the wireframe's own screen-wrapper radius, reused by proposal for the app window frame */
   --kv-grid-size: 22px;
   --kv-grid-size-stack: 26px;
   --kv-grid-dot: radial-gradient(var(--kv-bg-raised) 1px, transparent 1px);

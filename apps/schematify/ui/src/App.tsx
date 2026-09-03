@@ -33,29 +33,46 @@ const SHOW_EMPTY_STACK =
 
 export default function App() {
   const [graph, setGraph] = useState<ServiceGraph | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadGraph().then((result) => {
-      if (!cancelled) setGraph(result);
-    });
+    loadGraph()
+      .then((result) => {
+        if (!cancelled) setGraph(result);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   // The condition is "the first frame is honest", the rule every app here
-  // follows (`apps/README.md`, `apps/schematify/ui/src/rpc.ts`'s own
-  // precedent) — the empty-stack view has nothing to load, so it paints
-  // immediately; the populated view paints once the graph resolves.
+  // follows (`apps/home/ui/src/App.tsx` line 246, `apps/files/ui/src/App.tsx`
+  // line 78) — the empty-stack view has nothing to load, so it paints
+  // immediately; the populated view paints once `loadGraph()` settles,
+  // whether it resolved or rejected. `loadGraph()` cannot reject today (it
+  // resolves a local fixture), but the seam it will become
+  // (`./graph/index.ts`'s doc comment) can, and a rejection that never
+  // reports painted would hang the splash screen rather than show an error.
   useEffect(() => {
-    if (SHOW_EMPTY_STACK || graph !== null) reportPainted();
-  }, [graph]);
+    if (SHOW_EMPTY_STACK || graph !== null || error !== null) reportPainted();
+  }, [graph, error]);
 
   if (SHOW_EMPTY_STACK) {
     return (
       <div className="kv-shell">
         <EmptyStack />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="kv-shell">
+        <p className="kv-shell__error">{error}</p>
       </div>
     );
   }

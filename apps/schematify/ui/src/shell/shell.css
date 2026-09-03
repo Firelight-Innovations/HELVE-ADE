@@ -17,7 +17,19 @@
   min-height: 0;
   background: var(--kv-bg-root);
   color: var(--kv-text-primary);
-  font-family: var(--kv-font-sans);
+  /* Mono, not sans: every drawn string in the wireframe is IBM Plex Mono,
+     nowhere sans (WIREFRAME-EXTRACT.md §13.4). PRD §13.4 reserves sans for
+     titles, descriptions, and prose Wave 4 draws from the graph; this wave
+     draws none of that, so nothing here needs the sans override. See the
+     handoff doc — this is a ruled but owner-overridable choice, and
+     reverting it is this one token swap. */
+  font-family: var(--kv-font-mono);
+  font-size: 12px;
+}
+
+.kv-shell__error {
+  margin: auto;
+  color: var(--kv-error);
   font-size: 12px;
 }
 
@@ -69,6 +81,7 @@
   border: 1px solid var(--kv-line);
   border-radius: var(--kv-radius);
   color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
   font-size: 11px;
   padding: 4px 10px;
 }
@@ -102,6 +115,9 @@
   flex: 1;
   padding: 6px 0;
   color: var(--kv-text-dim);
+  /* A <button>, so it needs its own font-family: form controls don't
+     inherit one from an ancestor by default. */
+  font-family: var(--kv-font-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -147,28 +163,6 @@
 .kv-outline__triangle {
   width: 10px;
   color: var(--kv-text-tertiary);
-}
-
-.kv-outline__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--kv-radius-dot);
-  background: var(--kv-text-faint);
-  flex: 0 0 auto;
-}
-
-.kv-outline__dot--accepted,
-.kv-outline__dot--reviewed {
-  background: var(--kv-ok);
-}
-
-.kv-outline__dot--stale {
-  background: var(--kv-warn);
-}
-
-.kv-outline__dot--draft {
-  background: transparent;
-  border: 1px solid var(--kv-text-faint);
 }
 
 .kv-outline__title {
@@ -333,6 +327,7 @@
   border: none;
   border-radius: var(--kv-radius);
   padding: 6px 14px;
+  font-family: var(--kv-font-mono);
   font-weight: 500;
 }
 

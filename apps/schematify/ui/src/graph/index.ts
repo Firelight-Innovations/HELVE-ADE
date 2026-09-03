@@ -5,6 +5,13 @@
  * a sibling branch that has not merged, and `00-AGENT-CONTEXT.md` forbids
  * this wave from importing or creating that crate.
  *
+ * Deliberately pure: nothing here imports `@openkaava/bridge`, so this
+ * module can be unit-tested under plain Node (`index.test.ts`) without a
+ * `window` to talk to. `./backend.ts` is this app's other half — the file
+ * that actually calls Rust — kept separate for exactly that reason, not out
+ * of an aversion to one big file. It is this app's only door to Rust: see
+ * its own doc comment.
+ *
  * The functions below `loadGraph` are pure and read no fixture themselves —
  * they take whatever `ServiceGraph` they're given and compute from it, per
  * PRD §0.4's counts rule, so a real graph swapped in tomorrow keeps every
@@ -27,10 +34,10 @@ export type {
  * Returns the Service Schematic the shell opens this wave: the hand-typed
  * fixture in `./fixture.ts`, shaped exactly like the eventual real answer
  * and returned as a `Promise` so a later `invoke("schematify/load-graph")`
- * call is a drop-in. **A later wiring wave replaces only this function's
- * body** — every caller reads the graph through this module and never
- * imports `./fixture` directly, so nothing else changes when a real loader
- * lands.
+ * call (through `./backend.ts`) is a drop-in. **A later wiring wave replaces
+ * only this function's body** — every caller reads the graph through this
+ * module and never imports `./fixture` directly, so nothing else changes
+ * when a real loader lands.
  */
 export function loadGraph(): Promise<ServiceGraph> {
   return Promise.resolve(AUTH_SERVICE_GRAPH);
@@ -69,21 +76,32 @@ export function statusCell2(graph: ServiceGraph, clean = true): string {
  *  top-level module is level 2 and a module nested one level deeper is level
  *  3 — matching PRD §16.1's "Twelve module nodes, containment depth 3" for a
  *  service whose deepest nodes (`jwks-cache`, `session-codec`, …) sit exactly
- *  1 level under a top-level module. */
+ *  1 level under a top-level module.
+ *
+ *  Throws rather than looping forever if `parentId` describes a cycle — a
+ *  hand-typed or malformed fixture should fail loudly here, not hang the
+ *  tab. An unknown `parentId` (no node with that id) is treated as top-level
+ *  rather than an error, since a real loader's quarantine (PRD §6.4) is the
+ *  place a dangling reference gets handled, not this function. */
 export function computeDepth(nodes: GraphNode[]): number {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const memo = new Map<string, number>();
 
-  function levelOf(node: GraphNode): number {
+  function levelOf(node: GraphNode, visiting: Set<string>): number {
     const cached = memo.get(node.id);
     if (cached !== undefined) return cached;
+    if (visiting.has(node.id)) {
+      throw new Error(`containment cycle at node ${node.id}`);
+    }
+    visiting.add(node.id);
     const parent = node.parentId === null ? null : byId.get(node.parentId);
-    const level = parent ? levelOf(parent) + 1 : 2;
+    const level = parent ? levelOf(parent, visiting) + 1 : 2;
+    visiting.delete(node.id);
     memo.set(node.id, level);
     return level;
   }
 
-  return nodes.reduce((max, node) => Math.max(max, levelOf(node)), 1);
+  return nodes.reduce((max, node) => Math.max(max, levelOf(node, new Set())), 1);
 }
 
 /** The Outline footer string, e.g. `12 nodes · depth 3` (PRD §12.1). */

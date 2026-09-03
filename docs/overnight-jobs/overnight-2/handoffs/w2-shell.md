@@ -1,8 +1,78 @@
 # Wave 2 handoff — shell, tokens, status bar
 
-Branch `schematify/w2-shell`, stacked on `schematify/w1a-retire` (which itself
-carries `main` and the Wave 0 audit and wireframe extraction). PR opened
-against `schematify/w1a-retire` per the task brief.
+Branch `schematify/w2-shell`. PR #81, retargeted from `schematify/w1a-retire`
+to `main` once Wave 1a merged; `main` has since been merged into this branch.
+
+## Review round 2 — an Opus review of PR #81 came back APPROVE-WITH-FIXES
+
+Three findings blocked the merge; all 3 are fixed:
+
+1. **The Outline drew titles where the wireframe draws slugs.** Fixed:
+   `Outline.tsx` now renders `graph.serviceSlug` for the root row and
+   `node.slug` for every tree row, matching WIREFRAME-EXTRACT.md §1.1's
+   Outline listings (`auth-service`, `http-entry`, `token-verifier`, …).
+2. **The lifecycle dots were invented and belong to Wave 4.** Fixed: removed
+   the dot `<span>` from `Outline.tsx` and its 5 `.kv-outline__dot*` rules
+   from `shell.css`. No wireframe Outline row carries a lifecycle dot; the
+   wireframe extraction's own ruling assigns dot rendering to Wave 4, and
+   `graph/types.ts`'s comment on `Lifecycle` already said as much.
+3. **`loadGraph()` had no rejection path.** Fixed: `App.tsx` now catches a
+   rejected `loadGraph()`, stores the message in an `error` state, renders
+   it (`.kv-shell__error`), and calls `reportPainted()` either way — the same
+   shape as `apps/home/ui/src/App.tsx` line 246 and `apps/files/ui/src/App.tsx`
+   line 78. Harmless today (`loadGraph()` always resolves a local fixture) but
+   would have hung the splash screen the moment the seam becomes a real
+   `invoke` call, which is exactly the change the wiring wave makes.
+
+Four more, all addressed:
+
+- **Widened the hex regression test.** `noLiteralHex.test.ts` now also
+  catches `rgb()`/`rgba()`/`hsl()`/`hsla()`/`color-mix()` and CSS named
+  colors (in value position only, to avoid flagging this file's own prose —
+  see the test's header comment), plus a positive-control suite proving the
+  new patterns actually catch each form and don't flag `transparent` or
+  `white-space`. Still exactly 1 file exempt (`tokens.css`).
+- **`computeDepth()` now has a cycle guard.** `graph/index.ts`: an in-progress
+  visiting set throws `containment cycle at node <id>` instead of recursing
+  forever; a dangling `parentId` (no such node) is still treated as
+  top-level, which is a separate, intentional choice documented at the
+  function. Both paths are unit-tested in `graph/index.test.ts`.
+- **`EmptyStack.tsx`'s lead string is recorded as an invention** — see
+  assumption 9 below, alongside the 9 invented edges.
+- **`tokens.css`'s provenance header was wrong.** It claimed every value but
+  2 was `[W]`; in fact PRD §13 itself already marks `--kv-info`,
+  `--kv-font-sans`, and `--kv-radius-frame` `[P]` (proposals, never claimed
+  as read from a wireframe) — 3 more than the header said. Fixed: the header
+  now names all 5 `[P]` tokens and why, and each is marked at its own line.
+
+**`rpc.ts` is resolved: replaced by `graph/backend.ts`, under the `graph/`
+seam rather than a sibling of it.** `fetchState`/`reasonForFailure` (wrapping
+the one Tauri command this app has, `schematify/state`) moved there, unused
+by any component yet. This is **not** the same file as `graph/index.ts`: an
+initial attempt folded them into `index.ts` directly and broke
+`index.test.ts` (`ReferenceError: window is not defined` — `@openkaava/bridge`'s
+root export touches `window` at module load, and `index.ts` is imported by a
+plain-Node vitest suite that has none). Splitting them keeps `index.ts` pure
+and testable while `backend.ts` stays the one file in this app that calls
+`invoke`. There is exactly 1 path from this app to Rust:
+`apps/schematify/ui/src/graph/backend.ts`. `index.ts`'s `loadGraph()` names it
+as the file its real `invoke` call will go through once wired; a future file
+making its own separate `invoke` call would be a second door.
+
+**One ruling, on the sans-vs-mono question the reviewer left open.**
+`shell.css` set a sans face across the whole shell; WIREFRAME-EXTRACT.md
+§13.4 records mono throughout the wireframe and sans nowhere inside a
+screen. The team lead ruled: the wireframe wins on this visual question, so
+`.kv-shell`'s base `font-family` is now `--kv-font-mono`, reaching the tabs,
+buttons, labels, the Outline, the breadcrumb, and the status bar by
+inheritance (3 `<button>` elements needed an explicit override added
+alongside it — `.kv-outline__switcher-tab`, `.kv-toolbar__button`,
+`.kv-empty-stack__action` — since form controls don't inherit `font-family`
+from an ancestor by default). Sans stays reserved for PRD §13.4's own
+carve-out — titles, descriptions, and prose Wave 4 draws from the graph —
+which this wave draws none of. **This is PRD open item 13; the owner may
+overrule it, and doing so is the 1-line token swap back to
+`var(--kv-font-sans)` in `shell.css`'s `.kv-shell` rule.**
 
 ## What was built
 
@@ -30,7 +100,10 @@ All under `apps/schematify/ui/src/`:
   `invoke("schematify/load-graph", …)` call once `crates/schematify-core`
   merges is the entire wiring change; nothing else in `apps/schematify/ui/`
   needs to move. All counts are computed from the graph at call time (PRD
-  §0.4) — none is stored.
+  §0.4) — none is stored. `graph/backend.ts` now carries `fetchState` and
+  `reasonForFailure`, replacing the deleted `rpc.ts` (see the review round 2
+  section below) — this app's one existing Tauri call and its error
+  formatter, unused by any component yet.
 - **`shell/`** — `Breadcrumb`, `Toolbar`, `Outline` (with its 3-entry
   `Design`/`Product`/`Decisions` section switcher), `SchematicHost` (an
   empty frame — Wave 3 builds the engine inside it), `InspectorShell` (the
@@ -76,8 +149,8 @@ function's return type (`ServiceGraph`) and is unaffected by the swap.
 
 | Condition | Result |
 |---|---|
-| No literal hex value in the Schematify UI | **Pass.** `src/noLiteralHex.test.ts` scans every `.ts`/`.tsx`/`.css` file under `apps/schematify/ui/src/` except `tokens.css` (the one documented exception) for `#[hex]`; 0 offenders, enforced as a regression test, not just a one-time grep. |
-| The shell opens the fixture and draws the Outline tree with its header, badges, triangles, and footer | **Pass.** `App.tsx` calls `loadGraph()` and renders `Outline`, which draws `OUTLINE — CONTAINMENT`, the `ENTRY` badge on `http-entry`, the `STALE` badge on `audit-emitter`, `▾`/`▸` triangles, and the footer. `graph/index.test.ts` asserts the row shape (10 rows drawn, `session-store`'s 2 children hidden with a trailing count of 2, `token-verifier`'s 2 children drawn in full) since no DOM renderer is wired into this repo's Vitest config (`environment: "node"`, no jsdom — see `vitest.config.ts`'s own header). A human needs to look at the actual pixels; see below. |
+| No literal hex value in the Schematify UI | **Pass.** `src/noLiteralHex.test.ts` scans every `.ts`/`.tsx`/`.css` file under `apps/schematify/ui/src/` except `tokens.css` (the one documented exception) for a literal color — hex, `rgb()`/`rgba()`/`hsl()`/`hsla()`/`color-mix()`, and CSS named colors in value position; 0 offenders, enforced as a regression test with a positive-control suite proving the patterns actually catch each form. |
+| The shell opens the fixture and draws the Outline tree with its header, badges, triangles, and footer | **Pass.** `App.tsx` calls `loadGraph()` and renders `Outline`, which draws `OUTLINE — CONTAINMENT`, each row's slug (not its title — fixed in review round 2), the `ENTRY` badge on `http-entry`, the `STALE` badge on `audit-emitter`, `▾`/`▸` triangles, and the footer. `graph/index.test.ts` asserts the row shape (10 rows drawn, `session-store`'s 2 children hidden with a trailing count of 2, `token-verifier`'s 2 children drawn in full) since no DOM renderer is wired into this repo's Vitest config (`environment: "node"`, no jsdom — see `vitest.config.ts`'s own header). A human needs to look at the actual pixels; see below. |
 | Status bar cell 1 reads exactly `.kaava/ · 12 nodes · 9 edges` | **Pass**, asserted in `graph/index.test.ts`. |
 | Status bar cell 2 reads exactly `layout/auth-service.json clean` | **Pass**, asserted in `graph/index.test.ts`. |
 | `pnpm verify` passes | **Pass.** `pnpm build`, `pnpm test:js`, `pnpm lint:js`, `pnpm lint:comments`, `pnpm lint:version`, `pnpm lint:identity`, `pnpm lint:branding`, and `pnpm format:check` all ran clean in the foreground. `pnpm test:rust` and `pnpm lint:rust` ran in the background (no Rust file touched this wave) — see the PR for their result if this line was written before they finished. |
@@ -130,6 +203,16 @@ function's return type (`ServiceGraph`) and is unaffected by the swap.
    condition this wave names (Outline tree, status bar cells) is about that
    view. Building the tier switch that would show `EmptyStack` on an actually
    empty project is Wave 5 scope ("click-to-drill and breadcrumb walk-up").
+9. **`EmptyStack.tsx`'s lead string, `"A new project. Nothing is drawn yet."`,
+   is invented, not read from any source.** PRD §12.20 states only "A new
+   project opens on an empty Stack Schematic with 1 action: create the first
+   service" — it names the 1 action (`EMPTY_STACK_ACTION`, `"Create the first
+   service"`, itself lifted verbatim from that sentence) but supplies no lead
+   copy. No wireframe screen draws this state either (WIREFRAME-EXTRACT.md
+   covers 6 screens, none of them the Stack Schematic's true empty state — the
+   closest, §4.7, is the Module Schematic's first-run state, a different
+   surface). A later wave should treat `EMPTY_STACK_LEAD` as a placeholder a
+   human or a wireframe should replace, not as specified copy.
 
 ## What a human should look at in the morning
 
@@ -149,6 +232,11 @@ render-adjacent check run). Once safe to do so:
    styling (search field, `Auto-sort`, `Fit`, tab labels) against the
    wireframe screenshots in `Forger Wireframes.html` / `WIREFRAME-EXTRACT.md`
    §1 — this wave verified strings and counts by unit test, never by eye.
+4. Confirm the whole shell now reads in IBM Plex Mono, not IBM Plex Sans —
+   the mono ruling above — and decide whether that stands (PRD open item 13).
+5. The Outline tree now draws each row's slug, with no lifecycle dot beside
+   it — confirm that reads correctly against WIREFRAME-EXTRACT.md §1.1's
+   Outline listing.
 
 ## Left undone, on purpose
 
