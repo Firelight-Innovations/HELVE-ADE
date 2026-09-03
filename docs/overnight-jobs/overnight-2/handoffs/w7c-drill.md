@@ -23,7 +23,7 @@ with the implementation — the interface never disagreed with the bug.
 - **`graph/backend.ts`** — `loadRealGraph(tier?, slug?)` now routes by tier:
   `service` → `projectServiceGraph` (already generic across any slug, just
   never called with the real one); `module` → the new
-  `projectModuleGraph`; `stack` → an honest empty graph (see §4).
+  `projectModuleGraph`; `stack` → an honest empty graph (see §5).
   `SchematifySeamLike.loadGraph` widened to match the real interface it was
   supposed to restate.
 - **`graph/project.ts`** — `projectModuleGraph(raw, moduleSlug)`, the tier-3
@@ -57,7 +57,31 @@ with the implementation — the interface never disagreed with the bug.
   `cold_start_p95` budget with no probe — the exact node an L03 Problems
   row has to land on).
 
-## 3. Made to fail on purpose
+## 3. A second, unrelated fix folded in: the Dock badges' loading state
+
+Caught in post-merge review of wave 7b, not by this branch's own tests.
+`shell/Dock.tsx` computed `problemBadges(findings ?? [])` and rendered
+`{badges.errors}`/`{badges.warnings}` unconditionally. `findings` is `null`
+from mount until `schematify/lint` resolves, and stays `null` forever on a
+failed call (`error` is set instead) — either way `findings ?? []` collapsed
+to `[]`, so the tab drew `Problems 0 0`: a placeholder claiming the project
+is clean when it is really "not loaded yet" or "failed to load".
+`StatusBar.tsx`'s cell 3 already handled this correctly
+(`{findings ? statusCell3(findings) : ""}`) — the Dock badges just never got
+the same treatment when wave 7b built both in the same PR.
+
+Fixed to match: `badges` is now `findings === null ? null : problemBadges(findings)`,
+and each badge span renders `{badges?.errors ?? ""}` / `{badges?.warnings ?? ""}`
+— blank while loading or on failure, the 2 real numbers once `findings`
+resolves.
+
+**Read-verified only.** This app's vitest suite runs `environment: "node"`
+with no rendering library (a repo-wide, pre-existing limit, not one this fix
+introduces), so nothing here exercises `Dock.tsx`'s JSX directly. The change
+was checked by reading the render tree, the same standard the file's own
+"badges stay visible on the collapsed strip" claim already rested on.
+
+## 4. Made to fail on purpose
 
 **`backend.test.ts`, all 4 cases, against the real defect.** Reverted
 `loadRealGraph` to its pre-fix, 0-argument body (`git diff` of the exact
@@ -77,7 +101,7 @@ reran clean.
 "draws a contract method's signature, returns, exported, and covers count"
 failed (`expected +0 to be 2`). Reverted.
 
-## 4. The stack tier, deliberately left out
+## 5. The stack tier, deliberately left out
 
 The task named "opening a Service or Module Schematic" — not Stack. No rule
 in `crates/schematify-core/src/lint.rs` produces a `Location::Stack` finding
@@ -92,14 +116,14 @@ fixture for, rather than silently drawing the wrong service (the exact
 defect this branch fixes) or crashing. Flagged here rather than worked
 around quietly, the same way the wave 7b handoff flagged the original gap.
 
-## 5. Acceptance
+## 6. Acceptance
 
 | Condition | Result |
 |---|---|
-| `loadRealGraph` honours tier and slug for Service and Module Schematics | **Pass.** `backend.test.ts`'s 4 cases; §3 records the deliberate-break proof against the real pre-fix code. |
-| The Problems-panel click-through lands on the right node | **Pass, for what a real project can serve.** `resolveClickThrough` (wave 7b, untouched) already computed the correct `NavigationTarget`/`select` id — the missing piece was that the target Schematic drew nothing once opened. Now it draws the requested module's real facets, `cold_start_p95` included, so `engine.select([id])` (`App.tsx`, wave 7b) has a real node to find. Not re-verified against a live browser — see §6. |
+| `loadRealGraph` honours tier and slug for Service and Module Schematics | **Pass.** `backend.test.ts`'s 4 cases; §4 records the deliberate-break proof against the real pre-fix code. |
+| The Problems-panel click-through lands on the right node | **Pass, for what a real project can serve.** `resolveClickThrough` (wave 7b, untouched) already computed the correct `NavigationTarget`/`select` id — the missing piece was that the target Schematic drew nothing once opened. Now it draws the requested module's real facets, `cold_start_p95` included, so `engine.select([id])` (`App.tsx`, wave 7b) has a real node to find. Not re-verified against a live browser — see §7. |
 
-## 6. What a human must check by eye
+## 7. What a human must check by eye
 
 No browser was available (`00-AGENT-CONTEXT.md`'s standing limit). Once a
 real `.kaava/` project is open in OpenKaava:
@@ -120,7 +144,7 @@ real `.kaava/` project is open in OpenKaava:
    canonical one) — confirm its "last value" line draws `—`, not a stale
    placeholder.
 
-## 7. Verification
+## 8. Verification
 
 | Step | Result |
 |---|---|
@@ -139,7 +163,7 @@ branch's.
 
 `pnpm baseline` was never run. No test was deleted or skipped.
 
-## 8. Left undone
+## 9. Left undone
 
 - A real Stack Schematic projector (§4) — separately scoped, not this
   branch's.

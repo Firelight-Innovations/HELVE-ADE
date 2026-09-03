@@ -33,7 +33,12 @@ export interface DockProps {
 export function Dock({ findings = null, error = null, onSelectFinding }: DockProps) {
   const [tab, setTab] = useState<DockTab>("Problems");
   const [collapsed, setCollapsed] = useState(false);
-  const badges = problemBadges(findings ?? []);
+  // `findings` is `null` from mount until the lint call resolves, and stays
+  // `null` forever if it fails (`error` is set instead) — `null`, not `[]`,
+  // is the honest input to `problemBadges` for either case, or the tab draws
+  // `Problems 0 0` and misreports "not loaded yet" as "clean". Same rule
+  // `StatusBar.tsx`'s cell 3 already follows.
+  const badges = findings === null ? null : problemBadges(findings);
 
   return (
     <div className={`kv-dock${collapsed ? " kv-dock--collapsed" : ""}`}>
@@ -50,8 +55,10 @@ export function Dock({ findings = null, error = null, onSelectFinding }: DockPro
             {entry}
             {entry === "Problems" ? (
               <span className="kv-dock__badges">
-                <span className="kv-dock__badge kv-dock__badge--error">{badges.errors}</span>
-                <span className="kv-dock__badge kv-dock__badge--warn">{badges.warnings}</span>
+                <span className="kv-dock__badge kv-dock__badge--error">{badges?.errors ?? ""}</span>
+                <span className="kv-dock__badge kv-dock__badge--warn">
+                  {badges?.warnings ?? ""}
+                </span>
               </span>
             ) : null}
           </button>
