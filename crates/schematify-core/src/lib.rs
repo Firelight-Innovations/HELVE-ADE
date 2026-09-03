@@ -37,6 +37,7 @@ mod node;
 mod product;
 mod registry;
 mod run;
+mod search;
 mod slug;
 mod store;
 mod uri;
@@ -64,10 +65,14 @@ pub use node::{
     NodeKind, Probe, ServiceFields, TestCaseFields, TestStatus,
 };
 pub use product::{Flow, FlowKind, FlowStep, Screen, ScreenKind};
-pub use registry::{LibraryEntry, LibraryRegistry, Rule, Severity};
+pub use registry::{
+    whitelist_library, BlockedLicense, LibraryEntry, LibraryRegistry, LicensePolicy,
+    LicenseVerdict, RegistryError, Rule, RuleDocument, RuleRow, RuleSection, Severity,
+};
 pub use run::{
     BudgetResult, LinterResult, ReconcileResult, RunArtifact, TestResult, RUN_SCHEMA_VERSION,
 };
+pub use search::{GraphIndex, HitKind, MatchRank, SearchHit, SearchIndex, DEFAULT_LIMIT};
 pub use slug::{Slug, SlugError, SlugIndex, SlugScope};
 pub use store::{allowed_together, layer_of, Store, WriteLayer};
 pub use uri::{Uri, UriError, UriKind};
