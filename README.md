@@ -290,10 +290,10 @@ cadence, and its own checkout beside this one, pinned to an exact version in
 `kaava.toml` and `catalog.toml` both keep working with zero rows rather than
 being deleted (see their headers).
 
-Schematify is not that kind of tool, though. It lives in this
-repository, under `apps/`, and ships in the same binary as Home and the File
-Explorer rather than as a separate checkout — see
-[`apps/README.md`](apps/README.md) for what that distinction means. That
+Schematify is not that kind of tool, though. It lives in this repository,
+under `apps/`, and ships in the same binary as Home and the File Explorer
+rather than as a separate checkout — see [`apps/README.md`](apps/README.md)
+for what that distinction means. That
 leaves `kaava.toml`'s `[[tool]]` array empty today: there is nothing pinned,
 and nothing for the switcher bar's health badge to report on, which is the
 badge's normal silent state rather than a sign that something failed to load.

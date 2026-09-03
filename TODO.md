@@ -198,9 +198,9 @@ and turn on "Require review from Code Owners".
 **No longer vague.** This item used to track two separate, undefined
 placeholders — one for the technical design tool, one for the product design
 tool, each planned as its own repository installed like any other tool. The
-overnight Schematify build (`docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`)
-replaced both with one specced application, folded into one rather than two —
-see `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` for why.
+overnight Schematify build (`docs/design/SCHEMATIFY-PRD.md`) replaced both
+with one specced application, folded into one rather than two — see that
+document's §1.3 for why.
 
 **No longer blocked on #10b.** It is an in-repo app under `apps/schematify/`,
 alongside Home, Files and the rest, whose frontend pulls `@openkaava/bridge`
@@ -216,8 +216,8 @@ issues are coming to say where. This is stated in `CONTRIBUTING.md` and in the
 "What should we build next?" discussion, and the two places should keep
 agreeing.
 
-Scope is no longer undefined: `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`
-§17 lays out the build waves, from the rename and scaffold through the
+Scope is no longer undefined: `docs/design/SCHEMATIFY-PRD.md` §17 lays out
+the build waves, from the rename and scaffold through the
 Schematic engine, the linter, and reconciliation with running code. One idea
 carries over from the old placeholder text: the architecture linter and
 Schematify's own editor are the same boundary model, one checking it and one

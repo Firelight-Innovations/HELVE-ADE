@@ -2,14 +2,13 @@
  * Schematify: the design layer of OpenKaava, today an empty shell.
  *
  * Schematify replaces the two predecessor applications this scaffold was
- * built from (`docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`),
- * folded into one app rather than two — see
- * `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md` §1.3 for the layers it
- * now holds. There is no product surface yet: this wave is the rename and the
- * scaffold, and the Schematic engine arrives in a later wave. What this
- * component owes today is the same thing every app owes: draw something
- * honest and report `reportPainted()` once it has, whether `schematify/state`
- * answered or failed.
+ * built from, folded into one app rather than two — see
+ * `docs/design/SCHEMATIFY-PRD.md` §1.3 for the layers it now holds. There is
+ * no product surface yet: this wave is the rename and the scaffold, and the
+ * Schematic engine arrives in a later wave. What this component owes today
+ * is the same thing every app owes: draw something honest and report
+ * `reportPainted()` once it has, whether `schematify/state` answered or
+ * failed.
  */
 import { useEffect, useState } from "react";
 import { reportPainted } from "@openkaava/bridge";

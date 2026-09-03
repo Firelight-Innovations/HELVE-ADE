@@ -15,11 +15,10 @@ import { Chip, Col, Row } from "./chrome";
 
 /** One row per unwell tool, in the order `kaava.toml` pins them.
  *
- *  Illustrative names, not real ones. Schematify's two predecessor
- *  applications were the two entries that used to make this screen real;
- *  both are one app now (see `apps/README.md`) and `kaava.toml`'s `[[tool]]`
- *  array is empty, so this mocks a hypothetical third-party tool pair rather
- *  than a live state. */
+ *  Illustrative names, not real ones. Two real entries used to make this
+ *  screen real; both are now the single Schematify app (see
+ *  `apps/README.md`), and `kaava.toml`'s `[[tool]]` array is empty, so this
+ *  mocks a hypothetical third-party tool pair rather than a live state. */
 const UNWELL: { name: string; tone: "warn" | "err"; label: string }[] = [
   { name: "Example Tool", tone: "err", label: "not installed" },
   { name: "Another Tool", tone: "warn", label: "needs update" },
