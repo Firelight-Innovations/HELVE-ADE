@@ -230,6 +230,33 @@ impl Graph {
         self.runs.get(&node).map_or(&[], Vec::as_slice)
     }
 
+    /// Every run that reports a result for this budget node.
+    ///
+    /// PRD section 6.1 keys `runs/` by one node per directory, and one CI
+    /// workflow answers several budgets at once (PRD section 8), so a run is
+    /// stored under the budget's containing module or service, never under
+    /// the budget itself. Finding a budget's runs by walking that
+    /// containment and matching `metric` strings by hand is the "path
+    /// convention" the wave 9b handoff calls out; this method is the
+    /// explicit link instead, so a caller never has to know the storage
+    /// fact to ask the question.
+    #[must_use]
+    pub fn runs_for_budget(&self, budget: Uuid) -> Vec<&RunArtifact> {
+        let Some(node) = self.node(budget) else {
+            return Vec::new();
+        };
+        let Ok(fields) = node.budget() else {
+            return Vec::new();
+        };
+        let Some(scope) = node.envelope.parent else {
+            return Vec::new();
+        };
+        self.runs(scope)
+            .iter()
+            .filter(|run| run.budgets.iter().any(|b| b.metric == fields.metric))
+            .collect()
+    }
+
     /// The audit history of a node.
     #[must_use]
     pub fn audit(&self, node: Uuid) -> &[AuditRow] {
