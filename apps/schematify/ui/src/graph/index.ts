@@ -17,10 +17,13 @@
  */
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
+import { MODULE_GRAPH } from "./module";
+import { STACK_GRAPH } from "./stack";
 import type { LayoutFile } from "./layout";
-import type { GraphNode, ServiceGraph } from "./types";
+import type { GraphNode, SchematicGraph, ServiceGraph, Tier } from "./types";
 
 export type {
+  ExportRow,
   FacetCounts,
   GraphEdge,
   GraphNode,
@@ -28,24 +31,59 @@ export type {
   Layer,
   Lifecycle,
   OutlineBadge,
+  SchematicGraph,
   ServiceGraph,
+  TechStackRow,
   Tier,
 } from "./types";
 
 export type { LayoutAnnotation, LayoutFile, LayoutNode, LayoutViewport } from "./layout";
 export { emptyLayout, layoutPath } from "./layout";
 
+/** Every service-tier fixture this stand-in loader knows, keyed by slug.
+ *  Wave 5 widens this from the 1 hardcoded service Wave 2/3 opened
+ *  unconditionally to a lookup, so a drill-down from the Stack Schematic to a
+ *  service this fixture has no content for still opens (empty) instead of
+ *  throwing. Real content exists only for `auth-service`, the one the
+ *  wireframe draws in full. */
+const SERVICE_GRAPHS: Readonly<Record<string, SchematicGraph>> = {
+  "auth-service": AUTH_SERVICE_GRAPH,
+};
+
+/** Every module-tier fixture this stand-in loader knows, keyed by slug. Real
+ *  content exists only for `token-verifier`, the one WIREFRAME-EXTRACT.md §4
+ *  draws. */
+const MODULE_GRAPHS: Readonly<Record<string, SchematicGraph>> = {
+  "token-verifier": MODULE_GRAPH,
+};
+
+/** What a slug this loader has no fixture for opens to: a Schematic with a
+ *  root and nothing else, rather than a crash. A real loader's quarantine
+ *  (PRD §6.4) is where an unknown slug gets handled properly; this stand-in
+ *  only has to not throw. */
+function emptyGraph(tier: Tier, slug: string): SchematicGraph {
+  return { tier, serviceSlug: slug, serviceTitle: slug, nodes: [], edges: [] };
+}
+
 /**
- * Returns the Service Schematic the shell opens this wave: the hand-typed
- * fixture in `./fixture.ts`, shaped exactly like the eventual real answer
- * and returned as a `Promise` so a later `invoke("schematify/load-graph")`
- * call (through `./backend.ts`) is a drop-in. **A later wiring wave replaces
- * only this function's body** — every caller reads the graph through this
- * module and never imports `./fixture` directly, so nothing else changes
- * when a real loader lands.
+ * Returns one Schematic's graph, by tier and slug: the hand-typed fixture in
+ * `./stack.ts`, `./fixture.ts` or `./module.ts`, shaped exactly like the
+ * eventual real answer and returned as a `Promise` so a later
+ * `invoke("schematify/load-graph", { tier, slug })` call (through
+ * `./backend.ts`) is a drop-in. **A later wiring wave replaces only this
+ * function's body** — every caller reads the graph through this module and
+ * never imports a fixture file directly, so nothing else changes when a real
+ * loader lands.
+ *
+ * Both parameters default to Wave 2/3's original single fixture
+ * (`service`/`auth-service`), so every call site written before Wave 5 —
+ * `seam.loadGraph()` with no arguments, all across this app's test suite —
+ * keeps reading exactly what it always has.
  */
-export function loadGraph(): Promise<ServiceGraph> {
-  return Promise.resolve(AUTH_SERVICE_GRAPH);
+export function loadGraph(tier: Tier = "service", slug: string = "auth-service"): Promise<SchematicGraph> {
+  if (tier === "stack") return Promise.resolve(STACK_GRAPH);
+  if (tier === "module") return Promise.resolve(MODULE_GRAPHS[slug] ?? emptyGraph("module", slug));
+  return Promise.resolve(SERVICE_GRAPHS[slug] ?? emptyGraph("service", slug));
 }
 
 /** The `.kaava/` storage root every tier's status-bar cell 1 names (PRD
@@ -54,18 +92,34 @@ export function loadGraph(): Promise<ServiceGraph> {
 export const KAAVA_ROOT = ".kaava/";
 
 /** Node count, computed rather than cached on the graph — PRD §0.4. */
-export function countNodes(graph: ServiceGraph): number {
+export function countNodes(graph: SchematicGraph): number {
   return graph.nodes.length;
 }
 
 /** Edge count, computed rather than cached on the graph — PRD §0.4. */
-export function countEdges(graph: ServiceGraph): number {
+export function countEdges(graph: SchematicGraph): number {
   return graph.edges.length;
 }
 
+/** How many `service`-kind nodes a Stack Schematic's graph holds (PRD §12.9).
+ *  Computed rather than drawn, per WIREFRAME-EXTRACT.md Resolution 10.2's
+ *  ruling on the wireframe's own undercounted `6 services` string. */
+export function countServices(graph: SchematicGraph): number {
+  return graph.nodes.filter((node) => node.kind === "service").length;
+}
+
+/** The Stack Schematic's own header line (PRD §12.9): `6 services · 7
+ *  dependency edges`, both numbers computed. Wave 5. */
+export function stackHeaderCounts(graph: SchematicGraph): string {
+  return `${countServices(graph)} services · ${countEdges(graph)} dependency edges`;
+}
+
 /** Status bar cell 1: the storage root and the counts that suit the tier
- *  (PRD §12.1). The Service Schematic counts nodes and edges. */
-export function statusCell1(graph: ServiceGraph): string {
+ *  (PRD §12.1). The Stack Schematic counts services only, matching its own
+ *  header (WIREFRAME-EXTRACT.md §5.1: `sdd/ · 6 services`, no edge count in
+ *  that cell); the Service and Module Schematics count nodes and edges. */
+export function statusCell1(graph: SchematicGraph): string {
+  if (graph.tier === "stack") return `${KAAVA_ROOT} · ${countServices(graph)} services`;
   return `${KAAVA_ROOT} · ${countNodes(graph)} nodes · ${countEdges(graph)} edges`;
 }
 
@@ -73,7 +127,7 @@ export function statusCell1(graph: ServiceGraph): string {
  *  (PRD §12.3), and its git status. Nothing writes a layout file yet this
  *  wave (that lands in Wave 3 behind `schematify_write_layout`), so "clean"
  *  is the only honest reading — there is no dirty state to report. */
-export function statusCell2(graph: ServiceGraph, clean = true): string {
+export function statusCell2(graph: SchematicGraph, clean = true): string {
   return `layout/${graph.serviceSlug}.json ${clean ? "clean" : "modified"}`;
 }
 
@@ -110,7 +164,7 @@ export function computeDepth(nodes: GraphNode[]): number {
 }
 
 /** The Outline footer string, e.g. `12 nodes · depth 3` (PRD §12.1). */
-export function outlineFooter(graph: ServiceGraph): string {
+export function outlineFooter(graph: SchematicGraph): string {
   return `${countNodes(graph)} nodes · depth ${computeDepth(graph.nodes)}`;
 }
 
@@ -173,12 +227,17 @@ export function buildOutlineRows(graph: ServiceGraph): OutlineRow[] {
  * arranges the picture may call the first and may never call the second.
  */
 export interface SchematifySeam {
-  /** `schematify/load-graph`. */
-  loadGraph(): Promise<ServiceGraph>;
+  /** `schematify/load-graph`, with `{ tier, slug }` as its params. Both
+   *  parameters are optional and default to Wave 2/3's original single
+   *  fixture (`service`/`auth-service`), so the many call sites written
+   *  before Wave 5 gave 3 tiers to open — `seam.loadGraph()` with no
+   *  arguments, all across this app's test suite — keep reading exactly what
+   *  they always have. */
+  loadGraph(tier?: Tier, slug?: string): Promise<SchematicGraph>;
   /** The dense fixture PRD §16.2 names, the subject of the 16 ms frame
    *  budget. One method rather than a parameter on `loadGraph`, so a caller
    *  cannot ask for it by accident. */
-  loadDenseGraph(): Promise<ServiceGraph>;
+  loadDenseGraph(): Promise<SchematicGraph>;
   /** `schematify/read-layout`. `null` when the Schematic has no layout file
    *  yet, which is the first-run state, not an error. */
   readLayout(slug: string): Promise<LayoutFile | null>;

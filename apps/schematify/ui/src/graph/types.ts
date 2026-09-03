@@ -7,12 +7,32 @@
  * wave replaces once a real loader exists.
  */
 
-/** The 3 tiers a Schematic can draw. Only "service" is built this wave. */
+/** The 3 tiers a Schematic can draw. Wave 5 builds all 3. */
 export type Tier = "stack" | "service" | "module";
 
-/** A node's containment kind. PRD §16.1 draws no "module" label on the wire,
- *  but the value exists so a real loader has somewhere to put it later. */
-export type NodeKind = "service" | "group" | "module";
+/** A node's containment kind. Widened by Wave 5 to match `engine/config.ts`'s
+ *  `SchematicNodeKind`: the Module Schematic's 5 facet kinds (PRD §12.11) and
+ *  the `screen` kind `references_ui` terminates at. Restated here rather than
+ *  imported from the engine layer — `../engine` imports from `../graph`,
+ *  never the other way, the same direction this file's own header comment
+ *  already commits to. `"group"` covers 2 different things that happen to
+ *  share a kind string: PRD §16.1's `platform-core` is a real containment
+ *  parent loaded from the graph (Wave 5's stack fixture), while PRD §11.3's
+ *  annotation-tier group is a cosmetic overlay a gesture adds to the layout
+ *  file (`engine/engine.ts`'s `addGroup`). Nothing here or in the engine
+ *  needs to tell the 2 apart by kind alone — see `engine/layout.ts`'s
+ *  `toGraph` for the one place that does, and why. */
+export type NodeKind =
+  | "service"
+  | "group"
+  | "module"
+  | "screen"
+  | "contract-method"
+  | "test-case"
+  | "budget"
+  | "doc-block"
+  | "external-dep"
+  | "comment";
 
 /** PRD §5's `layer` values. `frontend` and `external` are `[P]` (PRD §12.6),
  *  drawn by no wireframe — Wave 4's job, not this one. */
@@ -50,8 +70,9 @@ export interface FacetCounts {
   budgets?: number;
 }
 
-/** One node in a service's containment tree. `parentId: null` sits directly
- *  under the service root named by `ServiceGraph.serviceSlug`. */
+/** One node in a Schematic's containment tree. `parentId: null` sits directly
+ *  under the Schematic's own root, named by `SchematicGraph.serviceSlug`
+ *  regardless of tier — see that field's own comment. */
 export interface GraphNode {
   id: string;
   slug: string;
@@ -92,28 +113,100 @@ export interface GraphNode {
   deprecatedSuccessor?: string;
   /** `stale` only: PRD §7.4's second caption line. */
   staleReason?: string;
-  /** A `contract-method` facet's `exported` (PRD §5.5) — draws `EXPORTED`.
-   *  Forward-carried; no facet kind exists in `NodeKind` yet. */
+  /** A `contract-method` facet's `exported` (PRD §5.5) — draws `EXPORTED`. */
   exported?: boolean;
   /** A `budget` facet's `tier` (PRD §5.5) — draws `HARD` or `SOFT`. */
   budgetTier?: "hard" | "soft";
+
+  // --- PRD §12.11 facet content (Wave 5), tier 3 only -----------------------
+
+  /** `contract-method`: the parameter list, e.g. `(token: string, jwks: KeySet)`. */
+  signature?: string;
+  /** `contract-method`: the return type, e.g. `Result<Claims, VerifyError>`. */
+  returns?: string;
+  /** `contract-method`: how many `covers` edges reach this method. Read off
+   *  `doc.edges` at draw time by `engine/anatomy.ts`'s `coverageOf` in the
+   *  document that actually holds the edges; carried here only for the
+   *  hand-typed fixture, which has no separate edge-authored covers list. */
+  coversCount?: number;
+  /** `budget`: the threshold text, e.g. `< 3 ms`. */
+  budgetThresholdText?: string;
+  /** `budget`: the probe command, e.g. `pnpm bench:verify`. */
+  budgetProbe?: string;
+  /** `budget`: the latest measured value, e.g. `1.8 ms` plus a run reference.
+   *  `undefined` draws `—` (PRD §12.12: "A budget with no value draws `—`."). */
+  budgetValueText?: string;
+  /** `test-case`: the status word PRD §12.11 draws on a Module Schematic card. */
+  testStatus?: "passing" | "failing";
+  /** `doc-block`: PRD §12.11's `audience: agent` line. */
+  docAudience?: string;
+  /** `doc-block`: the drafted body text. */
+  docBody?: string;
+  /** `external-dep`: the pinned version, e.g. `5.2.4` (draws `jose@5.2.4`). */
+  depVersion?: string;
+  /** `external-dep`: the license name, e.g. `MIT`. */
+  depLicense?: string;
+  /** `external-dep`: whether the registry resolved it — draws `registry ✓`. */
+  depRegistryOk?: boolean;
+  /** A module root only: PRD §12.5's tier-3 screen-reference path,
+   *  `schematify://screen/<slug>`. */
+  screenRef?: string;
 }
 
-/** One dependency-family edge. `contains` is deliberately absent —
- *  containment is `GraphNode.parentId`, never an edge (PRD §4.1). */
+/** One typed edge. `contains` is deliberately absent as a storable kind —
+ *  containment is `GraphNode.parentId`, never an edge (PRD §4.1); tier 3's
+ *  *drawing* of a containment arrow is synthesised at draw time by
+ *  `engine/frame.ts` and is never one of these (PRD §11.1, WIREFRAME-EXTRACT.md
+ *  Resolution 10.1 row 7.1). Tiers 1 and 2 use the first 3 kinds; tier 3 uses
+ *  the last 3 (PRD §11.1's table). */
 export interface GraphEdge {
   id: string;
-  kind: "depends_on" | "implements" | "references_ui";
+  kind: "depends_on" | "implements" | "references_ui" | "covers" | "satisfies" | "documents";
   from: string;
   to: string;
 }
 
-/** The whole Service Schematic for one service. What `loadGraph()` in
- *  `./index.ts` returns. */
-export interface ServiceGraph {
-  tier: "service";
+/** One row of the Service Schematic's export strip (PRD §12.10): an authored
+ *  method and the module that owns it. */
+export interface ExportRow {
+  method: string;
+  moduleSlug: string;
+}
+
+/** One row of the Stack Schematic's derived tech stack (PRD §12.9). */
+export interface TechStackRow {
+  name: string;
+  version: string;
+  license: string;
+  moduleCount: number;
+}
+
+/**
+ * One open Schematic's whole graph, at any of the 3 tiers. Named `SchematicGraph`
+ * since Wave 5 widened it off the service-only original; `ServiceGraph` stays as
+ * an alias below so a caller that only ever meant the service tier keeps reading
+ * that way.
+ *
+ * `serviceSlug`/`serviceTitle` name the Schematic's own root regardless of
+ * tier — the stack itself at tier 1, the service at tier 2, the module at
+ * tier 3 — kept under their original names rather than renamed, since every
+ * existing caller (`Outline`, `StatusBar`, `App`) already reads them that
+ * way and a tier-generic name would touch every one of those call sites for
+ * no behavioural change. `[P]`, recorded in the Wave 5 handoff.
+ */
+export interface SchematicGraph {
+  tier: Tier;
   serviceSlug: string;
   serviceTitle: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** Service tier only (PRD §12.10). */
+  exports?: readonly ExportRow[];
+  /** Stack tier only (PRD §12.9). */
+  techStack?: readonly TechStackRow[];
 }
+
+/** @deprecated Use `SchematicGraph` — kept so a caller that only ever meant
+ *  the service tier still reads naturally. Wave 5 widened the type this
+ *  alias points at; nothing about the alias itself changed. */
+export type ServiceGraph = SchematicGraph;

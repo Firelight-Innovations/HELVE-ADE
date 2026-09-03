@@ -39,7 +39,15 @@ export function Outline({ graph }: OutlineProps) {
 
       {section === "Design" ? (
         <>
-          <div className="kv-outline__header">OUTLINE — CONTAINMENT</div>
+          {/* WIREFRAME-EXTRACT.md §1.1 draws `OUTLINE — CONTAINMENT` at
+              tier 2; §5.1 draws `OUTLINE — SERVICES` at tier 1. Neither
+              screen 1d nor any other source draws tier 3's own header text,
+              so the tier-2 wording carries over there too — it is still a
+              containment tree, just of facets rather than modules. `[P]`,
+              recorded in the Wave 5 handoff. */}
+          <div className="kv-outline__header">
+            {graph.tier === "stack" ? "OUTLINE — SERVICES" : "OUTLINE — CONTAINMENT"}
+          </div>
           <div className="kv-outline__root">{graph.serviceSlug}</div>
           <ul className="kv-outline__tree">
             {rows.map(({ node, depth, hasChildren, hiddenChildCount }) => (

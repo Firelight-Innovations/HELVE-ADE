@@ -40,6 +40,22 @@ export interface AnatomyNode {
   health?: HealthStatus;
   exported?: boolean;
   budgetTier?: "hard" | "soft";
+
+  // --- PRD §12.11 facet content (Wave 5), tier 3 only -----------------------
+
+  signature?: string;
+  returns?: string;
+  coversCount?: number;
+  budgetThresholdText?: string;
+  budgetProbe?: string;
+  budgetValueText?: string;
+  testStatus?: "passing" | "failing";
+  docAudience?: string;
+  docBody?: string;
+  depVersion?: string;
+  depLicense?: string;
+  depRegistryOk?: boolean;
+  screenRef?: string;
 }
 
 const LAYER_BADGE: Record<Layer, string> = {
@@ -486,6 +502,145 @@ export function contentBox(base: Size, content: NodeContent): Size {
   if (content.hasLibraries) height += ROW_GROWTH.libraries;
   if (content.hasCaption) height += ROW_GROWTH.caption;
   return { width: base.width, height };
+}
+
+// --- facet card content (PRD §12.11), tier 3 only ---------------------------
+
+/**
+ * The content lines one facet card draws, in the node's own reading order —
+ * PRD §12.11's per-kind sentence, quoted almost verbatim. A kind this
+ * function does not recognise (a module, a service, an annotation node) draws
+ * none, which is correct: only the 5 facet kinds have card content at all.
+ *
+ * `contract-method`'s covers line reads the tier-3 formula PRD §16.1's own
+ * numbers fix: `coversCount` is a stored count (the same style as
+ * `exportsCount` elsewhere on this node — see `../graph/types.ts`'s
+ * `GraphNode` comment), read directly rather than re-derived from
+ * `doc.edges`, since the fixture draws only 2 of a method's covers edges as
+ * their own cards and keeps the rest as this count alone.
+ */
+export function facetContentFor(node: AnatomyNode): string[] {
+  switch (node.kind) {
+    case "contract-method": {
+      const call = `${node.signature ?? "()"} → ${node.returns ?? "void"}`;
+      const covers =
+        (node.coversCount ?? 0) > 0
+          ? `✓ ${node.coversCount} covers · matched in code`
+          : "▲ no covers edge from any test case";
+      return [call, covers];
+    }
+    case "budget": {
+      const lines: string[] = [];
+      if (node.budgetThresholdText) lines.push(`${node.slug} ${node.budgetThresholdText}`);
+      if (node.budgetProbe) lines.push(`probe: ${node.budgetProbe}`);
+      lines.push(node.budgetValueText ?? "—");
+      return lines;
+    }
+    case "test-case":
+      return node.testStatus ? [node.testStatus] : [];
+    case "doc-block": {
+      const lines: string[] = [];
+      if (node.docAudience) lines.push(`audience: ${node.docAudience}`);
+      if (node.docBody) lines.push(node.docBody);
+      return lines;
+    }
+    case "external-dep": {
+      const name = node.depVersion ? `${node.slug}@${node.depVersion}` : node.slug;
+      if (!node.depLicense) return [name];
+      return [name, `${node.depLicense} · registry ${node.depRegistryOk ? "✓" : "✗"}`];
+    }
+    default:
+      return [];
+  }
+}
+
+// --- the coverage readout and the SATISFIES callout (PRD §12.11) -----------
+
+export interface Callout {
+  heading: string;
+  body: string;
+}
+
+/** Both numbers PRD §17 Wave 5's own acceptance condition names: "the
+ *  coverage readout computes `7 of 8` on the fixture." Both are computed
+ *  here, every frame, from whatever contract-methods the module actually
+ *  holds — never stored (PRD §0.4).
+ *
+ *  **The formula.** A method with at least 1 covers edge contributes its own
+ *  count to both `present` and `expected` — fully satisfied, no gap. A
+ *  method with 0 contributes `0` to `present` and `1` to `expected`: PRD
+ *  §11.1's own sentence, "a test-case joined by covers to a contract-method
+ *  yields coverage of design," reads a covers-less method as owing at least
+ *  1 covering edge, so it counts as exactly 1 missing slot rather than 0
+ *  (which would make it invisible to the ratio) or its sibling methods'
+ *  count (which no source suggests). Against PRD §16.1's own numbers
+ *  (`verify_signature` 4, `refresh_keys` 3, `skew_window` 0) this gives
+ *  `present = 4 + 3 + 0 = 7` and `expected = 4 + 3 + 1 = 8` — the wireframe's
+ *  drawn `7 of 8` exactly, reached by computation rather than transcription.
+ *  `[P]`, since no source states the formula itself; recorded in the Wave 5
+ *  handoff as the one number a human should re-derive independently. */
+export interface CoverageReadout {
+  present: number;
+  expected: number;
+  /** Slugs of every contract-method with 0 covers edges, in document order —
+   *  what the body sentence names. */
+  uncovered: readonly string[];
+}
+
+export function coverageOf(contractMethods: readonly AnatomyNode[]): CoverageReadout {
+  let present = 0;
+  let expected = 0;
+  const uncovered: string[] = [];
+  for (const method of contractMethods) {
+    const count = method.coversCount ?? 0;
+    present += count;
+    expected += count > 0 ? count : 1;
+    if (count === 0) uncovered.push(method.slug);
+  }
+  return { present, expected, uncovered };
+}
+
+/** PRD §12.11's exact body sentence, generalised from its 1 drawn example
+ *  (`skew_window has none — the number line coverage never reports.`) to
+ *  however many (0, 1, or several) methods carry 0 covers edges. `[P]`,
+ *  recorded in the Wave 5 handoff. */
+export function coverageBody(readout: CoverageReadout): string {
+  const lead = `${readout.present} of ${readout.expected} covers edges present.`;
+  if (readout.uncovered.length === 0) return lead;
+  return `${lead} ${readout.uncovered.join(", ")} ${readout.uncovered.length === 1 ? "has" : "have"} none — the number line coverage never reports.`;
+}
+
+/** PRD §11.1, quoted exactly — a fixed explanation of the tier's closed edge
+ *  vocabulary, not a computed value, so it needs no formula and no per-module
+ *  input. */
+export const SATISFIES_CALLOUT: Callout = {
+  heading: "SATISFIES",
+  body: "A dep can satisfy a budget. Edge types at tier 3 are closed: covers, satisfies, documents.",
+};
+
+// --- the shared-node callout (PRD §4.3), stack tier ------------------------
+
+const DEPENDENT_WORDS: Record<number, string> = {
+  1: "One",
+  2: "Two",
+  3: "Three",
+  4: "Four",
+  5: "Five",
+  6: "Six",
+};
+
+/** PRD §4.3's callout, generalised off its 1 drawn example (`event-bus`,
+ *  4 dependents) to any shared node's own dependent count and title. Reduces
+ *  to the wireframe's exact literal string when `title` is `Event Bus` and
+ *  `dependentsCount` is 4. `[P]`: the numeral-to-word table and the heading
+ *  template are this wave's own generalisation, not a second wireframe
+ *  example to copy from; recorded in the Wave 5 handoff. */
+export function sharedNodeCallout(title: string, dependentsCount: number): Callout {
+  const word = DEPENDENT_WORDS[dependentsCount] ?? String(dependentsCount);
+  return {
+    heading: `WHY ${title.toUpperCase()} SITS HERE`,
+    body: `${word} consumers, so its containment parent is their lowest common ancestor — the stack root — not any one of them. Same rule at tier 2.`,
+  };
 }
 
 /** Reads the content flags straight off an `AnatomyNode`, so a caller does

@@ -12,7 +12,7 @@
  */
 import type { EdgeKind, NodeRole, SchematicNodeKind } from "./config";
 import { isAnnotationKind } from "./config";
-import type { FacetCounts, HealthStatus, Layer, Lifecycle, OutlineBadge } from "../graph";
+import type { FacetCounts, HealthStatus, Layer, Lifecycle, OutlineBadge, Tier } from "../graph";
 import type { Rect } from "./geometry";
 
 /** One box on the Schematic, semantic or annotation. */
@@ -59,6 +59,23 @@ export interface SchematicNode {
   staleReason?: string;
   exported?: boolean;
   budgetTier?: "hard" | "soft";
+
+  // --- PRD §12.11 facet content (Wave 5), tier 3 only. Mirrors
+  // `../graph/types.ts`'s `GraphNode` — see that file for what each draws. --
+
+  signature?: string;
+  returns?: string;
+  coversCount?: number;
+  budgetThresholdText?: string;
+  budgetProbe?: string;
+  budgetValueText?: string;
+  testStatus?: "passing" | "failing";
+  docAudience?: string;
+  docBody?: string;
+  depVersion?: string;
+  depLicense?: string;
+  depRegistryOk?: boolean;
+  screenRef?: string;
 }
 
 /** One stored semantic edge. A drawn containment line at tier 3 is not one of
@@ -71,10 +88,18 @@ export interface SchematicEdge {
 }
 
 /** A whole open Schematic. `slug` names the layout file it persists to, and
- *  `title` is what the breadcrumb draws for it. */
+ *  `title` is what the breadcrumb draws for it. `tier` is Wave 5's addition,
+ *  optional so the hand-built documents `engine.test.ts` and
+ *  `routing.test.ts` already construct keep compiling; `engine/layout.ts`'s
+ *  `buildDoc` always sets it on a document opened through `openSchematic`,
+ *  and `toGraph` reads it (defaulting to `"service"`, matching every
+ *  pre-Wave-5 caller's only tier) to decide what an annotation-tier `group`
+ *  node's presence in the projected Outline means at each tier (see that
+ *  function's own comment). */
 export interface SchematicDoc {
   slug: string;
   title: string;
+  tier?: Tier;
   nodes: readonly SchematicNode[];
   edges: readonly SchematicEdge[];
 }
