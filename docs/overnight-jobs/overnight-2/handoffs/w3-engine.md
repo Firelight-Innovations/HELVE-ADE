@@ -43,6 +43,7 @@ interface EdgeKindRule {
   to: readonly (SchematicNodeKind | "*")[];
   acyclic: boolean;                            // refuse an edge that closes a loop
   style: EdgeStyle;                            // line, arrowhead, --kv-* token, width
+  inLegend: boolean;                           // whether the legend advertises it
   refusal: string;                             // drawn at the cursor on a kind mismatch
 }
 ```
@@ -211,11 +212,15 @@ wave made alone, and each is cheap to reverse.
 7. **A port drag creates the tier's first edge kind** (`depends_on` at tiers 1
    and 2, `covers` at tier 3). No kind picker exists yet; that is Wave 5 or 6
    surface, and the engine takes the kind as an argument already.
-8. **The legend draws one chip per configured edge kind.** PRD §12.1 says the
-   Module Schematic legend "reads `contains`, `covers`, `satisfies`" — 3 items
-   — but §11.1's tier-3 vocabulary also holds `documents`, so the chip row
-   drawn is 4 wide. Trimming it is a one-line change in the preset if the owner
-   wants the PRD's exact 3.
+8. **The Module Schematic legend reads `contains`, `covers` and `satisfies`,
+   and does not advertise `documents`** — ruled by the orchestrator, on the
+   grounds that what a tier allows and what its legend draws are different
+   questions: §11.1 is the model's vocabulary, while §12.1 and
+   WIREFRAME-EXTRACT.md §10.3 both name 3 chips, and a legend is a drawing.
+   `documents` stays legal at tier 3 and is simply not drawn in the legend.
+   **Wave 5 should not add it back when it builds the Module Schematic.** It is
+   one field on one row of `MODULE_CONFIG` (`inLegend`) if the owner disagrees
+   in the morning.
 9. **The roll-up caption pluralises.** The wireframe draws `3 edges
    aggregated`; a count of 1 draws `1 edge aggregated` rather than the
    ungrammatical singular of the drawn string.
@@ -246,29 +251,36 @@ wave made alone, and each is cheap to reverse.
 
 ## 7. What a human must look at, because no test covers it
 
-Vitest here runs on `node` with no jsdom (`vitest.config.ts` states why), and
-no browser was available to this wave. So **every pixel below is unverified**,
-and the component that draws them (`engine/SchematicCanvas.tsx`) has no test at
-all. Everything it delegates to is tested; nothing it does itself is.
+Vitest here runs on `node` with no jsdom (`vitest.config.ts` states why), and no
+browser was available to any agent in this run. So **every pixel below is
+unverified**, and the component that draws them
+(`apps/schematify/ui/src/engine/SchematicCanvas.tsx`) has no test at all.
+Everything it delegates to is tested; nothing it does itself is. This list
+stands in for that missing test, so each row names the surface, what to look
+for, and what wrong would look like.
 
-1. **That the Schematic draws at all**, inside the shell's own frame: boxes on
-   the dot grid, edges between them, the zoom readout and legend chips at the
-   lower left, the minimap at the lower right.
-2. **Every pointer gesture.** Wheel to zoom about the cursor, alt-drag or
-   middle-drag to pan, drag on empty space to box-select, drag a box to move
-   it, drag from a right-edge port to another box to create an edge.
-   Ctrl+Z / Ctrl+Shift+Z / Ctrl+C / Ctrl+V / Ctrl+D, and Escape.
-3. **The refusal toast**: drop an edge on a comment and confirm the reason
-   appears at the cursor, reads the §11.3 sentence, and appears *before* the
-   drop rather than after it.
-4. **Whether the arranged picture is any good.** The nested row-major flow is
-   deterministic and legible in the abstract; nobody has seen it. It is the
-   most likely thing to want redoing, and it is 1 file (`engine/arrange.ts`).
-5. **Whether routing looks right at 68% zoom** with the fixture's real
-   geometry, particularly edges that leave a nested box.
-6. **Whether a node box at the default sizes reads** at all. Sizes come from
-   the wireframe's drawn geometry, but node anatomy is Wave 4's, so what draws
-   inside them today is a title, a slug and 2 captions.
+Open Schematify's tab on the `auth-service` Service Schematic — the default
+view, no query parameter.
+
+| # | Surface | Look for | Wrong looks like |
+|---|---|---|---|
+| 1 | The Schematic, between the Outline and the Inspector | 10 boxes on the dot grid, edges between them, a `68%` readout and 3 legend chips at the lower left, a minimap at the lower right | An empty grid, or boxes stacked on the origin. Both mean the engine opened and the component did not draw the frame |
+| 2 | Any box | Title, slug beneath it, ports as small circles on the left and right edges at mid-height | A port drawn at a corner, or ports missing: the edge drag has no handle |
+| 3 | `session-store` | Drawn collapsed, with `collapsed · 2 children` and `1 edge aggregated` | Either caption missing, or a count that is not 2 and 1. The counts are computed each frame, so a wrong number is a real defect, not stale data |
+| 4 | `session-store`'s `▸` triangle | Click expands it, the box grows to hold both children, and the children draw inside its border | Children drawing outside the parent's border, or the box not growing |
+| 5 | `token-verifier` | Drawn as a container with `jwks-cache` and `clock-skew` nested inside it, edges leaving the child crossing the parent's border | An edge routed around the parent, or a child overlapping its parent's header row |
+| 6 | Wheel over a box | The box under the cursor stays under the cursor as the zoom changes, and the readout tracks it | The picture sliding out from under the pointer, which is the disorientation PRD §12.3 warns about |
+| 7 | Alt-drag or middle-drag on empty space | The whole Schematic pans, edges and boxes together | Edges lagging behind boxes, or the drag box-selecting instead |
+| 8 | Drag on empty space | A marquee, and every box it wholly covers selected on release, with an accent border | A box partly covered getting selected. Wholly is deliberate, so a drag across a container does not sweep up the parent |
+| 9 | Drag a box | It moves under the pointer, snaps to the 22 px grid on release, and its children come with it | Children left behind, or the box jumping on release by more than one grid step |
+| 10 | Drag a box, then look at the status bar | Cell 2 changes from `layout/auth-service.json clean` to `… modified` | The cell not changing. That is the visible proof the layout file was written |
+| 11 | Drag from a right-edge port onto another box | A dashed pending line follows the pointer, and the edge appears on release | A pending line that does not follow, or an edge that appears somewhere other than between the 2 ports |
+| 12 | Drag from `token-issuer`'s port onto `http-entry` | The refusal appears at the cursor **while still dragging**, reading `Drop refused` above `A dependency edge here would create a cycle.`, and no edge is created on release | The refusal appearing only after release. PRD §12.5 requires the answer at drag time |
+| 13 | Drag any port onto a comment box | The same toast, reading `A comment is annotation tier. It cannot carry covers or any semantic edge.` No comment exists on first run, so add one first, or defer this to Wave 5's palette | Anything other than that exact sentence |
+| 14 | `Auto-sort`, then `Fit` | Sort rearranges everything at once and Ctrl+Z puts it back in one step; Fit frames the whole Schematic | Undo taking several presses to reverse one sort, or Fit cutting rather than framing — the animation §12.3 asks for is not built (section 9) |
+| 15 | Ctrl+C, Ctrl+V, Ctrl+D on a selected box | A copy appears 2 grid steps down and right, selected, with a slug ending `-copy` | The copy landing exactly on the original, which reads as nothing happening |
+| 16 | The arranged picture as a whole | Whether the nested row-major flow is legible at all | This is the most likely thing to want redoing, and it is 1 file (`engine/arrange.ts`). Nobody has seen it |
+| 17 | Routing at the default 68% zoom | Edges that read as deliberate: no line passing through a box that is not one of its 2 ends | A line crossing a box it does not belong to. The test asserts this on the arranged geometry, so a failure here means the drawn geometry differs from what the engine routed |
 
 ## 8. Verification
 

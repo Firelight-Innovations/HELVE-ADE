@@ -49,10 +49,16 @@ describe("the edge legend", () => {
     expect(frame.legendFooter).toBe("contains = nesting · depends_on = drawn");
   });
 
-  it("leads the Module Schematic's legend with the containment chip", async () => {
+  it("reads contains, covers and satisfies on the Module Schematic, and no more", async () => {
+    // PRD §12.1 names these 3, and WIREFRAME-EXTRACT.md §10.3 reaches the same
+    // 3 when it rules the chip in. `documents` stays legal in the tier-3
+    // vocabulary (PRD §11.1) and is simply not advertised.
     const frame = await frameFor(MODULE_CONFIG);
-    expect(frame.legend[0].kind).toBe("contains");
-    expect(frame.legend.map((chip) => chip.kind)).toContain("covers");
+    expect(frame.legend.map((chip) => chip.kind)).toEqual(["contains", "covers", "satisfies"]);
+  });
+
+  it("still allows the kind it does not advertise", () => {
+    expect(MODULE_CONFIG.edgeKinds.map((rule) => rule.kind)).toContain("documents");
   });
 
   it("carries each kind's own line style, so a chip cannot disagree with its edges", async () => {

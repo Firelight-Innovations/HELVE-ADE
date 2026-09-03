@@ -24,6 +24,7 @@ const CONTAINMENT_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["service", "module"],
     acyclic: true,
     style: { line: "solid", arrow: "filled", strokeToken: NEUTRAL_STROKE, widthPx: 1.25 },
+    inLegend: true,
     refusal: "A depends_on edge joins two services or two modules.",
   },
   {
@@ -32,6 +33,7 @@ const CONTAINMENT_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["service", "module"],
     acyclic: true,
     style: { line: "dashed", arrow: "hollow", strokeToken: NEUTRAL_STROKE, widthPx: 1.25 },
+    inLegend: true,
     refusal: "An implements edge joins two services or two modules.",
   },
   {
@@ -40,6 +42,7 @@ const CONTAINMENT_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["screen"],
     acyclic: false,
     style: { line: "dotted", arrow: "chip", strokeToken: "--kv-agent", widthPx: 1.25 },
+    inLegend: true,
     refusal: "A references_ui edge points at a screen.",
   },
 ];
@@ -53,6 +56,7 @@ const FACET_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["contract-method"],
     acyclic: false,
     style: { line: "solid", arrow: "filled", strokeToken: "--kv-ok", widthPx: 1 },
+    inLegend: true,
     refusal: "A covers edge runs from a test case to a contract method.",
   },
   {
@@ -61,6 +65,7 @@ const FACET_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["budget"],
     acyclic: false,
     style: { line: "solid", arrow: "filled", strokeToken: "--kv-ok", widthPx: 1 },
+    inLegend: true,
     refusal: "A satisfies edge ends at a budget.",
   },
   {
@@ -69,6 +74,11 @@ const FACET_TIER_EDGES: readonly EdgeKindRule[] = [
     to: ["module", "contract-method", "test-case", "budget", "external-dep"],
     acyclic: false,
     style: { line: "dotted", arrow: "none", strokeToken: NEUTRAL_STROKE, widthPx: 1 },
+    // The one kind a tier allows but does not advertise: PRD §12.1 names the
+    // Module Schematic's legend as `contains`, `covers`, `satisfies`, and
+    // WIREFRAME-EXTRACT.md §10.3 reaches the same 3 when it rules the chip in.
+    // A legend is a drawing, so the drawing sources win over §11.1's list.
+    inLegend: false,
     refusal: "A documents edge runs from a doc block to what it documents.",
   },
 ];

@@ -63,6 +63,11 @@ export interface EdgeKindRule {
    *  refused (PRD §12.5). `depends_on` carries it; `covers` does not. */
   acyclic: boolean;
   style: EdgeStyle;
+  /** Whether this kind gets a chip beside the zoom readout. Separate from the
+   *  vocabulary because what a tier allows and what its legend advertises are
+   *  different questions — PRD §12.1 names 3 chips for the Module Schematic
+   *  where §11.1 allows 4 kinds. */
+  inLegend: boolean;
   /** Drawn at the cursor when a drag's ends do not match `from`/`to`. The
    *  heading `Drop refused` is added by the engine, never by this string. */
   refusal: string;

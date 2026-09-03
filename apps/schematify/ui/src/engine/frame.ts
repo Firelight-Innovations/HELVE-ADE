@@ -275,10 +275,9 @@ function containmentRenderings(
 }
 
 function buildLegend(config: SchematicConfig): LegendChip[] {
-  const chips: LegendChip[] = config.edgeKinds.map((rule) => ({
-    kind: rule.kind,
-    style: rule.style,
-  }));
+  const chips: LegendChip[] = config.edgeKinds
+    .filter((rule) => rule.inLegend)
+    .map((rule) => ({ kind: rule.kind, style: rule.style }));
   if (config.containment.mode === "nesting-and-arrows") {
     chips.unshift({
       kind: "contains",
