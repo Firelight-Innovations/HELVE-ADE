@@ -15,6 +15,7 @@
  * 16 names the same seam on the engine's side of the join).
  */
 import type { GraphEdge, GraphNode, Layer, Lifecycle, NodeKind, ServiceGraph } from "./types";
+import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
 
 /**
  * One node exactly as `schematify_core::Node` serializes it: the envelope
@@ -44,13 +45,19 @@ export interface RawEdge {
   target: string;
 }
 
-/** The `graph` half of `schematify/load-graph`'s response. Only the two
- *  collections this projection reads are declared — `screens`, `flows`,
- *  `decisions`, `rules`, `libraries` and `brief` all come back too, and no
- *  view this wave draws reads any of them. */
+/** The `graph` half of `schematify/load-graph`'s response. `rules` and
+ *  `libraries` are not declared — no view any wave has built yet reads
+ *  either. `screens`, `flows`, `decisions` and `brief` are declared as
+ *  optional so a caller built against an older, narrower fixture object
+ *  (every test file that predates wave 10c) keeps compiling unchanged; the
+ *  product layer (`../product/`) is what actually reads them. */
 export interface RawGraph {
   nodes: RawNode[];
   edges: RawEdge[];
+  screens?: RawScreen[];
+  flows?: RawFlow[];
+  decisions?: RawDecision[];
+  brief?: RawProjectBrief | null;
 }
 
 /** The 3 dependency-family edge kinds `./types.ts`'s `GraphEdge` can hold.

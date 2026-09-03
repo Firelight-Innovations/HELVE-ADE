@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::atomic::write_json_atomic;
+use crate::brief::ProjectBrief;
 use crate::decision::Decision;
 use crate::edge::Edge;
 use crate::error::{CoreError, Result};
@@ -319,6 +320,18 @@ impl Store {
     /// Returns [`CoreError::AtomicWrite`] when the write fails.
     pub fn write_libraries(&self, registry: &LibraryRegistry) -> Result<()> {
         write_json_atomic(&self.libraries_path(), registry)?;
+        Ok(())
+    }
+
+    /// Write the project brief. PRD section 5.12: one file, no UUID of its
+    /// own, freely rewritable — unlike a decision row, a brief carries no
+    /// append-only rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::AtomicWrite`] when the write fails.
+    pub fn write_brief(&self, brief: &ProjectBrief) -> Result<()> {
+        write_json_atomic(&self.brief_path(), brief)?;
         Ok(())
     }
 
@@ -846,5 +859,58 @@ mod tests {
         ] {
             assert!(store.kaava_dir().join(name).is_dir(), "{name}");
         }
+    }
+
+    #[test]
+    fn write_brief_writes_the_content_a_reader_gets_back() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let brief = ProjectBrief {
+            product_name: "saas-backend".to_owned(),
+            problem: "Teams rebuild the same account layer each time.".to_owned(),
+            users: vec!["Platform engineers".to_owned()],
+            goals: vec!["One auth path".to_owned()],
+            non_goals: Vec::new(),
+            constraints: Vec::new(),
+            success_metrics: Vec::new(),
+        };
+
+        store.write_brief(&brief).unwrap();
+
+        let written: ProjectBrief =
+            serde_json::from_str(&fs::read_to_string(store.brief_path()).unwrap()).unwrap();
+        assert_eq!(written, brief);
+    }
+
+    #[test]
+    fn write_brief_overwrites_a_prior_brief_in_place() {
+        // Unlike a decision row, the brief carries no append-only rule (PRD
+        // §5.12 states no such constraint, and §5.9's rule is written on
+        // `Decision` alone) — a second write replaces the first rather than
+        // being refused.
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let first = ProjectBrief {
+            product_name: "saas-backend".to_owned(),
+            problem: "First draft.".to_owned(),
+            users: Vec::new(),
+            goals: Vec::new(),
+            non_goals: Vec::new(),
+            constraints: Vec::new(),
+            success_metrics: Vec::new(),
+        };
+        let second = ProjectBrief {
+            problem: "Revised.".to_owned(),
+            ..first.clone()
+        };
+
+        store.write_brief(&first).unwrap();
+        store.write_brief(&second).unwrap();
+
+        let written: ProjectBrief =
+            serde_json::from_str(&fs::read_to_string(store.brief_path()).unwrap()).unwrap();
+        assert_eq!(written, second);
     }
 }

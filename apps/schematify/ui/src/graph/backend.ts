@@ -5,12 +5,19 @@
  * `./index.ts`'s `defaultSeam` reaches everything below through a dynamic
  * `import("./backend")` for the same reason.
  *
- * Wraps 5 of the 6 methods `src-tauri/src/apps/schematify.rs` answers as of
- * this wave (`schematify/state` was Wave 1a's). `open-project`,
- * `write-node` and `write-edge` are not called from here — see
- * `createBackendSeam`'s doc comment and `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+ * Wraps the methods `src-tauri/src/apps/schematify.rs` answers as of this
+ * wave, plus wave 10c's five product-layer writes (`write-screen`,
+ * `write-flow`, `write-brief`, `write-decision`, `supersede-decision`) and
+ * `loadProductGraph`, which reads `schematify/load-graph`'s `screens`,
+ * `flows`, `decisions` and `brief` fields — the ones `loadRealGraph` below
+ * discards on its way to a `ServiceGraph`. `open-project` and `write-node`/
+ * `write-edge` are not called from here — see `createBackendSeam`'s doc
+ * comment and `docs/overnight-jobs/overnight-2/handoffs/wiring.md`. Per
+ * `CLAUDE.md`, this file stays the only one in this app that contains
+ * `invoke` — a new operation gets a new function here, never a new file.
  */
 import { KaavaRpcError, invoke } from "@openkaava/bridge";
+import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
 import { projectServiceGraph, type RawGraph } from "./project";
