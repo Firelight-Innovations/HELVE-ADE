@@ -75,7 +75,6 @@ export interface SchematicNode {
 
   signature?: string;
   returns?: string;
-  coversCount?: number;
   budgetThresholdText?: string;
   budgetProbe?: string;
   budgetValueText?: string;
@@ -92,7 +91,6 @@ export interface SchematicNode {
 
   decisions?: readonly string[];
   runReference?: string;
-  additionalPassingTests?: number;
   assignee?: string;
   auditRows?: readonly LifecycleAuditRow[];
   given?: string;

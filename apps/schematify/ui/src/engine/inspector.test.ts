@@ -132,12 +132,15 @@ describe("Lifecycle — PRD §7.2's transition table", () => {
 });
 
 describe("Contract — the module fixture's real 3 methods", () => {
-  it("computes 3 METHODS and both wireframe covers forms", async () => {
+  it("computes 3 METHODS and both wireframe covers forms, from real covers edges", async () => {
     const graph = await moduleGraph();
     const root = graph.nodes.find((n) => n.slug === "token-verifier");
     expect(root).toBeDefined();
     const children = childrenOf(graph, root?.id ?? "");
-    const content = contractContent(root as InspectorNode, children);
+    // The count this test proves comes from real edges, not a stored field
+    // (PRD §0.4) — pin the input before trusting the output.
+    expect(graph.edges.filter((e) => e.kind === "covers")).toHaveLength(7);
+    const content = contractContent(root as InspectorNode, children, graph.edges);
     expect(content.mode).toBe("methods");
     expect(content.countLabel).toBe("3 METHODS");
     const verify = content.methods.find((m) => m.name === "verify_signature");
@@ -147,6 +150,8 @@ describe("Contract — the module fixture's real 3 methods", () => {
       "Rejects on expiry, unknown kid, or skew beyond the configured window.",
     );
     expect(verify?.coversLabel).toBe("✓ 4 covers edges");
+    const refresh = content.methods.find((m) => m.name === "refresh_keys");
+    expect(refresh?.coversLabel).toBe("✓ 3 covers edges");
     const skew = content.methods.find((m) => m.name === "skew_window");
     expect(skew?.coversLabel).toBe("▲ no covers edge from any test case");
     expect(content.addMethodLabel).toBe("+ add method");
@@ -166,23 +171,25 @@ describe("Contract — the module fixture's real 3 methods", () => {
   });
 });
 
-describe("Tests — the module fixture's real cases plus the rollup", () => {
-  it("computes 7 CASES, 5 passing, 1 failing, 1 unlinked (PRD §12.12's exact forms)", async () => {
+describe("Tests — the module fixture's real 7 cases", () => {
+  it("computes 7 CASES, 5 passing, 1 failing, 1 unlinked, from 7 real nodes", async () => {
     const graph = await moduleGraph();
     const root = graph.nodes.find((n) => n.slug === "token-verifier");
-    expect(root?.additionalPassingTests).toBe(4);
     const children = childrenOf(graph, root?.id ?? "");
-    expect(children.filter((c) => c.kind === "test-case")).toHaveLength(3);
-    const content = testsContent(root as InspectorNode, children);
+    // Pin the input: 7 CASES has to come from 7 real test-case nodes, not
+    // a stored rollup (PRD §0.4) — this is exactly what a reviewer's
+    // mutation should be able to break.
+    expect(children.filter((c) => c.kind === "test-case")).toHaveLength(7);
+    const content = testsContent(children);
     expect(content.countLabel).toBe("7 CASES");
     expect(content.chips).toEqual(["5 passing", "1 failing", "1 unlinked"]);
   });
 
-  it("draws the linked-passing, linked-failing and unlinked forms, on the real 3 cases", async () => {
+  it("draws the linked-passing, linked-failing and unlinked forms, on the 3 named cases", async () => {
     const graph = await moduleGraph();
     const root = graph.nodes.find((n) => n.slug === "token-verifier");
     const children = childrenOf(graph, root?.id ?? "");
-    const content = testsContent(root as InspectorNode, children);
+    const content = testsContent(children);
     const expired = content.cases.find((c) => c.title === "expired token is rejected");
     expect(expired?.statusLine).toBe("linked · 41ms");
     expect(expired?.showCopyMarkerControl).toBe(false);
@@ -198,8 +205,29 @@ describe("Tests — the module fixture's real cases plus the rollup", () => {
     expect(skew?.markerToken).toBeUndefined();
   });
 
-  it("computes exactly from children when a fixture sets no rollup", () => {
-    const content = testsContent({ id: "m", slug: "m", title: "M", kind: "module" }, [
+  it("draws the 4 further invented cases as ordinary linked-passing rows", async () => {
+    const graph = await moduleGraph();
+    const root = graph.nodes.find((n) => n.slug === "token-verifier");
+    const children = childrenOf(graph, root?.id ?? "");
+    const content = testsContent(children);
+    const invented = content.cases.filter((c) =>
+      [
+        "valid signature with matching kid is accepted",
+        "token issued in the future is rejected",
+        "concurrent refresh calls dedupe to a single fetch",
+        "force refresh always refetches the key set",
+      ].includes(c.title),
+    );
+    expect(invented).toHaveLength(4);
+    for (const testCase of invented) {
+      expect(testCase.statusLine.startsWith("linked · ")).toBe(true);
+      expect(testCase.markerToken).toBeDefined();
+      expect(testCase.showCopyMarkerControl).toBe(false);
+    }
+  });
+
+  it("computes exactly from its input, with no 2nd argument to derive a rollup from", () => {
+    const content = testsContent([
       { id: "t1", slug: "t1", title: "t1", kind: "test-case", testStatus: "passing" },
     ]);
     expect(content.countLabel).toBe("1 CASES");

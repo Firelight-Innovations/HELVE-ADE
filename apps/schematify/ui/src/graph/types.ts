@@ -132,11 +132,6 @@ export interface GraphNode {
   signature?: string;
   /** `contract-method`: the return type, e.g. `Result<Claims, VerifyError>`. */
   returns?: string;
-  /** `contract-method`: how many `covers` edges reach this method. Read off
-   *  `doc.edges` at draw time by `engine/anatomy.ts`'s `coverageOf` in the
-   *  document that actually holds the edges; carried here only for the
-   *  hand-typed fixture, which has no separate edge-authored covers list. */
-  coversCount?: number;
   /** `budget`: the threshold text, e.g. `< 3 ms`. */
   budgetThresholdText?: string;
   /** `budget`: the probe command, e.g. `pnpm bench:verify`. */
@@ -168,11 +163,6 @@ export interface GraphNode {
   /** A module facet's parent only: the Budgets tab's run reference, e.g.
    *  `run #<N> · <age>`. */
   runReference?: string;
-  /** A module root only: further passing `test-case` facets not modelled as
-   *  their own nodes — the same curation `coversCount` already applies to a
-   *  method's untracked covers edges. `testsContent` folds this into the
-   *  passing count and the total. */
-  additionalPassingTests?: number;
   /** The Lifecycle tab's assignee, and the field `Assign` writes. */
   assignee?: string;
   /** The Lifecycle tab's last-3 audit rows, newest first. */

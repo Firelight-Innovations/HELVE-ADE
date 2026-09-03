@@ -167,9 +167,9 @@ function PopulatedInspector({
         {showTab === "identity" ? <IdentityPanel node={selected} /> : null}
         {showTab === "lifecycle" ? <LifecyclePanel node={selected} /> : null}
         {showTab === "contract" ? (
-          <ContractPanel node={selected} facets={facets} engine={engine} />
+          <ContractPanel node={selected} facets={facets} edges={edges} engine={engine} />
         ) : null}
-        {showTab === "tests" ? <TestsPanel node={selected} facets={facets} /> : null}
+        {showTab === "tests" ? <TestsPanel facets={facets} /> : null}
         {showTab === "budgets" ? (
           <BudgetsPanel node={selected} facets={facets} engine={engine} />
         ) : null}
@@ -350,16 +350,18 @@ function LifecyclePanel({ node }: { node: InspectorNode }) {
 function ContractPanel({
   node,
   facets,
+  edges,
   engine,
 }: {
   node: InspectorNode;
   facets: InspectorNode[];
+  edges: readonly { kind: string; from: string; to: string }[];
   engine: SchematicEngine | undefined;
 }) {
   const [openApi, setOpenApi] = useState(false);
   const [newMethod, setNewMethod] = useState("");
   const [newModuleSlug, setNewModuleSlug] = useState("");
-  const content = contractContent(node, facets);
+  const content = contractContent(node, facets, edges);
   const blocks = content.mode === "exports" ? content.resolvedMethods : content.methods;
 
   return (
@@ -481,8 +483,8 @@ function ContractPanel({
 
 // --- Tests (S-07) -------------------------------------------------------------
 
-function TestsPanel({ node, facets }: { node: InspectorNode; facets: InspectorNode[] }) {
-  const content = testsContent(node, facets);
+function TestsPanel({ facets }: { facets: InspectorNode[] }) {
+  const content = testsContent(facets);
   return (
     <div className="kv-inspector__fields">
       <div className="kv-inspector__count-header">{content.countLabel}</div>

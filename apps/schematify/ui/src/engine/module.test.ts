@@ -31,16 +31,16 @@ async function moduleFrame() {
 }
 
 describe("the module fixture", () => {
-  it("loads token-verifier with a root and 11 facets", async () => {
-    // 3 contract-methods, 3 budgets, 1 doc-block, 3 test-cases and 1
-    // external-dep — Wave 6 completed the budget and test-case sets `../graph/
-    // module.ts`'s own header comment flagged as curated (1 of 3 budgets, 2
-    // of the wireframe's own 3 named test cases).
+  it("loads token-verifier with a root and 15 facets", async () => {
+    // 3 contract-methods, 3 budgets, 1 doc-block, 7 test-cases and 1
+    // external-dep — Wave 6 completed the budget set and the full 7-case
+    // test set (3 named by PRD §16.1, 4 more `[P]`, each with its own real
+    // `covers` edge) `../graph/module.ts`'s own header comment records.
     const doc = await moduleDoc();
-    expect(doc.nodes).toHaveLength(12);
+    expect(doc.nodes).toHaveLength(16);
     const root = doc.nodes.find((node) => node.role === "schematic-root");
     expect(root?.slug).toBe("token-verifier");
-    expect(doc.nodes.filter((node) => node.parentId === root?.id)).toHaveLength(11);
+    expect(doc.nodes.filter((node) => node.parentId === root?.id)).toHaveLength(15);
   });
 
   it("carries all 3 contract-methods, including skew_window", () => {
@@ -59,35 +59,72 @@ describe("the module fixture", () => {
 });
 
 describe("the coverage readout formula", () => {
-  it("computes 7 of 8 on the real per-method counts", () => {
-    // PRD §16.1: verify_signature 4 covers edges, refresh_keys 3, skew_window
-    // 0. present = 4 + 3 + 0 = 7. expected sums each method's own count when
-    // it has any, and exactly 1 for a method with none (skew_window), so
-    // expected = 4 + 3 + 1 = 8.
-    const readout = coverageOf([
-      { slug: "verify_signature", kind: "contract-method", coversCount: 4 },
-      { slug: "refresh_keys", kind: "contract-method", coversCount: 3 },
-      { slug: "skew_window", kind: "contract-method", coversCount: 0 },
-    ]);
+  it("computes 7 of 8 from real covers edges, on synthetic input", () => {
+    // present = 4 + 3 + 0 = 7. expected sums each method's own count when it
+    // has any, and exactly 1 for a method with none (c), so expected =
+    // 4 + 3 + 1 = 8. The 7 edges below are the input, not a stored count.
+    const edges = [
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "b" },
+      { kind: "covers", to: "b" },
+      { kind: "covers", to: "b" },
+    ];
+    const readout = coverageOf(
+      [
+        { id: "a", slug: "verify_signature" },
+        { id: "b", slug: "refresh_keys" },
+        { id: "c", slug: "skew_window" },
+      ],
+      edges,
+    );
     expect(readout.present).toBe(7);
     expect(readout.expected).toBe(8);
     expect(readout.uncovered).toEqual(["skew_window"]);
   });
 
-  it("draws the wireframe's exact body sentence for the fixture's own numbers", () => {
-    const readout = coverageOf([
-      { slug: "verify_signature", kind: "contract-method", coversCount: 4 },
-      { slug: "refresh_keys", kind: "contract-method", coversCount: 3 },
-      { slug: "skew_window", kind: "contract-method", coversCount: 0 },
-    ]);
+  it("draws the wireframe's exact body sentence for the same input", () => {
+    const edges = [
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "b" },
+      { kind: "covers", to: "b" },
+      { kind: "covers", to: "b" },
+    ];
+    const readout = coverageOf(
+      [
+        { id: "a", slug: "verify_signature" },
+        { id: "b", slug: "refresh_keys" },
+        { id: "c", slug: "skew_window" },
+      ],
+      edges,
+    );
     expect(coverageBody(readout)).toBe(
       "7 of 8 covers edges present. skew_window has none — the number line coverage never reports.",
     );
   });
 
   it("draws no uncovered clause when every method has at least 1 covers edge", () => {
-    const readout = coverageOf([{ slug: "a", kind: "contract-method", coversCount: 2 }]);
+    const edges = [
+      { kind: "covers", to: "a" },
+      { kind: "covers", to: "a" },
+    ];
+    const readout = coverageOf([{ id: "a", slug: "a" }], edges);
     expect(coverageBody(readout)).toBe("2 of 2 covers edges present.");
+  });
+
+  it("computes 4/3/0 from the real fixture's own edges, matching the synthetic case above", async () => {
+    const doc = await moduleDoc();
+    const methods = doc.nodes.filter((node) => node.kind === "contract-method");
+    const readout = coverageOf(methods, doc.edges);
+    expect(readout.present).toBe(7);
+    expect(readout.expected).toBe(8);
+    expect(readout.uncovered).toEqual(["skew_window"]);
+    expect(doc.edges.filter((edge) => edge.kind === "covers")).toHaveLength(7);
   });
 
   it("computes the frame's own moduleReadouts from the live document", async () => {
@@ -138,29 +175,33 @@ describe("the SATISFIES callout", () => {
 describe("facet card content", () => {
   it("draws a contract-method's signature, return, and matched-covers line", () => {
     expect(
-      facetContentFor({
-        slug: "verify_signature",
-        kind: "contract-method",
-        signature: "(token: string, jwks: KeySet)",
-        returns: "Result<Claims, VerifyError>",
-        coversCount: 4,
-      }),
+      facetContentFor(
+        {
+          slug: "verify_signature",
+          kind: "contract-method",
+          signature: "(token: string, jwks: KeySet)",
+          returns: "Result<Claims, VerifyError>",
+        },
+        4,
+      ),
     ).toEqual([
       "(token: string, jwks: KeySet) → Result<Claims, VerifyError>",
       "✓ 4 covers · matched in code",
     ]);
   });
 
-  it("draws the no-covers line for a method with 0 covers edges", () => {
-    expect(
-      facetContentFor({
-        slug: "skew_window",
-        kind: "contract-method",
-        signature: "()",
-        returns: "Duration",
-        coversCount: 0,
-      }),
-    ).toEqual(["() → Duration", "▲ no covers edge from any test case"]);
+  it("draws the no-covers line for a method with 0 (or no) covers edges", () => {
+    const node = {
+      slug: "skew_window",
+      kind: "contract-method",
+      signature: "()",
+      returns: "Duration",
+    };
+    expect(facetContentFor(node, 0)).toEqual([
+      "() → Duration",
+      "▲ no covers edge from any test case",
+    ]);
+    expect(facetContentFor(node)).toEqual(["() → Duration", "▲ no covers edge from any test case"]);
   });
 
   it("draws a budget's threshold, probe, and value", () => {
@@ -231,7 +272,7 @@ describe("the module root", () => {
   it("draws its own computed facet count and screen reference", async () => {
     const frame = await moduleFrame();
     const root = frame.nodes.find((node) => node.node.role === "schematic-root");
-    expect(root?.counts).toContain("layer backend · 11 facets");
+    expect(root?.counts).toContain("layer backend · 15 facets");
     expect(root?.counts).toContain("schematify://screen/login-form");
   });
 });

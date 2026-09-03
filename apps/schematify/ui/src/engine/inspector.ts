@@ -11,6 +11,7 @@
  * a test can compare literally — the same convention `anatomy.ts` states for
  * PRD §12.6/§12.7.
  */
+import { coversCountFor } from "./anatomy";
 import type {
   ContractMethodSummary,
   ExportRow,
@@ -34,7 +35,6 @@ export interface InspectorNode {
   assignee?: string;
   auditRows?: readonly LifecycleAuditRow[];
   runReference?: string;
-  additionalPassingTests?: number;
 
   given?: string;
   when?: string;
@@ -49,7 +49,6 @@ export interface InspectorNode {
   returns?: string;
   semantics?: string;
   exported?: boolean;
-  coversCount?: number;
 
   budgetTier?: "hard" | "soft";
   budgetThresholdText?: string;
@@ -236,19 +235,20 @@ export interface ContractMethodBlock {
   coversLabel: string;
 }
 
-function coversLabelFor(coversCount: number | undefined): string {
-  const count = coversCount ?? 0;
-  return count > 0 ? `✓ ${count} covers edges` : "▲ no covers edge from any test case";
+function coversLabelFor(coversCount: number): string {
+  return coversCount > 0 ? `✓ ${coversCount} covers edges` : "▲ no covers edge from any test case";
 }
 
-function methodBlock(method: InspectorNode): ContractMethodBlock {
+/** `coversCount` is computed by the caller from real `covers` edges
+ *  (`anatomy.ts`'s `coversCountFor`), never read off the node — PRD §0.4. */
+function methodBlock(method: InspectorNode, coversCount: number): ContractMethodBlock {
   return {
     name: method.title,
     signature: method.signature ?? "()",
     returns: method.returns ?? "void",
     semantics: method.semantics,
     exported: method.exported ?? false,
-    coversLabel: coversLabelFor(method.coversCount),
+    coversLabel: coversLabelFor(coversCount),
   };
 }
 
@@ -270,9 +270,16 @@ export interface ContractContent {
   resolvedMethods: ContractMethodBlock[];
 }
 
+/** `edges` is the whole Schematic's edges, not just this node's own — a
+ *  `covers` edge is a sibling relation among the module's facets, so the
+ *  count has to be computed against the same set `coverageOf` reads. An
+ *  `api-gateway`-style service in `"exports"` mode has no real facet nodes
+ *  to draw covers edges to at all, so its resolved blocks always read `▲ no
+ *  covers edge from any test case` — an honest gap, not a stand-in count. */
 export function contractContent(
   node: InspectorNode,
   children: readonly InspectorNode[],
+  edges: readonly InspectorEdge[] = [],
 ): ContractContent {
   if (node.kind === "service") {
     const exportRows = node.exports ?? [];
@@ -282,7 +289,7 @@ export function contractContent(
       returns: m.returns,
       semantics: m.semantics,
       exported: true,
-      coversLabel: coversLabelFor(undefined),
+      coversLabel: coversLabelFor(0),
     }));
     return {
       mode: "exports",
@@ -299,7 +306,7 @@ export function contractContent(
     mode: "methods",
     countLabel: `${methods.length} METHODS`,
     toggle: ["Signatures", "OpenAPI"],
-    methods: methods.map(methodBlock),
+    methods: methods.map((method) => methodBlock(method, coversCountFor(method.id, edges))),
     addMethodLabel: "+ add method",
     exportRows: [],
     resolvedMethods: [],
@@ -353,25 +360,17 @@ export interface TestsContent {
   cases: TestCaseRow[];
 }
 
-/**
- * `moduleNode.additionalPassingTests` folds into both the passing chip and
- * the total: the same curation `coversCount` already applies to a
- * contract-method's own untracked covers edges (`../graph/module.ts`'s own
- * comment), read here rather than duplicated into a stored summary string.
- * `0`/`undefined` changes nothing — every fixture that models every one of
- * its cases as a real node computes this function exactly from `children`.
- */
-export function testsContent(
-  moduleNode: InspectorNode,
-  children: readonly InspectorNode[],
-): TestsContent {
+/** Every count computed straight from `children` — PRD §0.4 admits no
+ *  rollup here. `7 CASES` on the real fixture holds because
+ *  `graph/module.ts` now carries 7 real `test-case` nodes, not because this
+ *  function adds anything to their count. */
+export function testsContent(children: readonly InspectorNode[]): TestsContent {
   const cases = children.filter((child) => child.kind === "test-case");
-  const rollup = moduleNode.additionalPassingTests ?? 0;
-  const passing = cases.filter((c) => c.testStatus === "passing").length + rollup;
+  const passing = cases.filter((c) => c.testStatus === "passing").length;
   const failing = cases.filter((c) => c.testStatus === "failing").length;
   const unlinked = cases.filter((c) => c.testLinkState === "declared").length;
   return {
-    countLabel: `${cases.length + rollup} CASES`,
+    countLabel: `${cases.length} CASES`,
     chips: [`${passing} passing`, `${failing} failing`, `${unlinked} unlinked`],
     cases: cases.map(testCaseRow),
   };
