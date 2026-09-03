@@ -1,26 +1,19 @@
 //! The atomic JSON writer: temporary file, fsync, rename.
 //!
-//! Every semantic file in `.kaava/` is written through here. The sequence is
-//! the standard one and each step earns its place:
+//! Every semantic file in `.kaava/` is written through here, and the three
+//! steps each earn their place. The temporary file sits **in the same
+//! directory**, so the rename is inside one filesystem and cannot silently
+//! become a copy. `sync_all` runs before it, so the bytes are on the device
+//! before anything points at them: without it a crash leaves a correctly
+//! named file full of zeroes, which is worse than a half-written one because
+//! it parses as absent rather than as damaged. The rename over the target is
+//! atomic on every filesystem Schematify runs on.
 //!
-//! 1. Write to a temporary file **in the same directory**, so the rename is
-//!    inside one filesystem and so cannot silently become a copy.
-//! 2. `sync_all`, so the bytes are on the device before anything points at
-//!    them. Without it a crash leaves a correctly named file full of zeroes,
-//!    which is worse than a half-written one because it parses as absent
-//!    rather than as damaged.
-//! 3. Rename over the target, which is atomic on NTFS and on every filesystem
-//!    Schematify runs on.
-//!
-//! The directory itself is not fsynced. On Windows a directory handle cannot
-//! be flushed the way a file can, and the guarantee that matters here is that
-//! a reader never sees a partial file rather than that a rename survives a
-//! power cut. A design file lost to a power cut is recovered from git; a
-//! design file truncated in place is not.
-//!
-//! The temporary name carries the process id and a counter rather than a
-//! fixed suffix, so two Schematify windows writing the same node at the same
-//! moment do not write into one temporary file and rename each other's bytes.
+//! The directory itself is not fsynced. A directory handle cannot be flushed
+//! on Windows the way a file can, and the guarantee that matters is that a
+//! reader never sees a partial file, not that a rename survives a power cut.
+//! A design file lost to a power cut is recovered from git. A design file
+//! truncated in place is not.
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -91,6 +84,11 @@ fn write_and_sync(temporary: &Path, bytes: &[u8]) -> Result<(), AtomicWriteError
     })
 }
 
+/// A temporary name nothing else will pick.
+///
+/// It carries the process id and a counter rather than a fixed suffix, so two
+/// Schematify windows writing the same node at the same moment do not write
+/// into one temporary file and rename each other's bytes.
 fn temporary_path(path: &Path) -> PathBuf {
     let name = path
         .file_name()

@@ -136,9 +136,11 @@ impl Uri {
             }
         }
 
-        let rest = text.strip_prefix(SCHEME).ok_or_else(|| UriError::NotSchematify {
-            text: text.to_owned(),
-        })?;
+        let rest = text
+            .strip_prefix(SCHEME)
+            .ok_or_else(|| UriError::NotSchematify {
+                text: text.to_owned(),
+            })?;
 
         let (word, id) = rest.split_once('/').ok_or_else(|| UriError::NoKind {
             text: text.to_owned(),

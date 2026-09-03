@@ -254,7 +254,9 @@ mod tests {
         let mut index = SlugIndex::new();
         let first = Uuid::from_u128(1);
         let second = Uuid::from_u128(2);
-        index.claim(SlugScope::ProjectRoot, &slug("cache"), first).unwrap();
+        index
+            .claim(SlugScope::ProjectRoot, &slug("cache"), first)
+            .unwrap();
         let err = index
             .claim(SlugScope::ProjectRoot, &slug("cache"), second)
             .unwrap_err();
@@ -267,10 +269,18 @@ mod tests {
         let parent_a = Uuid::from_u128(10);
         let parent_b = Uuid::from_u128(11);
         index
-            .claim(SlugScope::ContainmentParent(parent_a), &slug("cache"), Uuid::from_u128(1))
+            .claim(
+                SlugScope::ContainmentParent(parent_a),
+                &slug("cache"),
+                Uuid::from_u128(1),
+            )
             .unwrap();
         index
-            .claim(SlugScope::ContainmentParent(parent_b), &slug("cache"), Uuid::from_u128(2))
+            .claim(
+                SlugScope::ContainmentParent(parent_b),
+                &slug("cache"),
+                Uuid::from_u128(2),
+            )
             .unwrap();
         assert_eq!(index.len(), 2);
     }
@@ -279,8 +289,12 @@ mod tests {
     fn re_claiming_a_slug_for_the_same_id_is_not_a_collision() {
         let mut index = SlugIndex::new();
         let id = Uuid::from_u128(1);
-        index.claim(SlugScope::ScreenCollection, &slug("login-form"), id).unwrap();
-        index.claim(SlugScope::ScreenCollection, &slug("login-form"), id).unwrap();
+        index
+            .claim(SlugScope::ScreenCollection, &slug("login-form"), id)
+            .unwrap();
+        index
+            .claim(SlugScope::ScreenCollection, &slug("login-form"), id)
+            .unwrap();
         assert_eq!(index.len(), 1);
     }
 

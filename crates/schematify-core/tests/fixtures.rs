@@ -18,7 +18,9 @@ use schematify_core::{
 };
 
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures")
+        .join(name)
 }
 
 /// Every node named in PRD section 16.1, by slug.
@@ -112,7 +114,11 @@ fn the_stack_tier_computes_the_counts_the_wireframe_draws() {
     ];
     for (slug, modules, exports) in counts {
         let id = by_slug(graph, slug);
-        assert_eq!(graph.modules_of_service(id).len(), modules, "{slug} module count");
+        assert_eq!(
+            graph.modules_of_service(id).len(),
+            modules,
+            "{slug} module count"
+        );
         let service = graph.node(id).unwrap().service().unwrap();
         assert_eq!(service.exports.len(), exports, "{slug} export count");
         for export in &service.exports {
@@ -292,7 +298,11 @@ fn the_slug_index_scopes_a_facet_to_its_module() {
 fn the_dense_fixture_holds_two_hundred_modules_at_depth_five() {
     let outcome = load_project(&fixture("dense-service")).unwrap();
     let graph = &outcome.graph;
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
 
     let modules = graph.nodes_of_kind(&NodeKind::Module);
     assert_eq!(modules.len(), 200);
@@ -313,7 +323,11 @@ fn the_stress_fixture_holds_two_thousand_nodes_and_three_thousand_edges() {
     assert_eq!(outcome.graph.node_count(), 2000);
     assert_eq!(outcome.graph.edge_count(), 3000);
     assert_eq!(outcome.graph.nodes_of_kind(&NodeKind::Service).len(), 20);
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
 }
 
 /// PRD section 14.7: the stress fixture loads in under 1000 ms.

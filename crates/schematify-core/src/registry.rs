@@ -161,7 +161,10 @@ mod tests {
         };
         assert!(registry.contains(Uuid::from_u128(1)));
         assert!(!registry.contains(Uuid::from_u128(99)));
-        assert_eq!(registry.by_name("jose").map(|e| e.version.as_str()), Some("5.2.4"));
+        assert_eq!(
+            registry.by_name("jose").map(|e| e.version.as_str()),
+            Some("5.2.4")
+        );
         assert!(registry.by_name("left-pad").is_none());
     }
 
@@ -173,7 +176,10 @@ mod tests {
 
     #[test]
     fn every_severity_writes_its_word() {
-        assert_eq!(serde_json::to_string(&Severity::Error).unwrap(), "\"error\"");
+        assert_eq!(
+            serde_json::to_string(&Severity::Error).unwrap(),
+            "\"error\""
+        );
         assert_eq!(
             serde_json::to_string(&Severity::Warning).unwrap(),
             "\"warning\""

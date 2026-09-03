@@ -431,7 +431,11 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
 
         if let Some(parent) = node.envelope.parent {
             if graph.node(parent).is_none() {
-                problems.push(("parent", parent.to_string(), QuarantineReason::MissingParent));
+                problems.push((
+                    "parent",
+                    parent.to_string(),
+                    QuarantineReason::MissingParent,
+                ));
             }
         }
         if let Some(successor) = node.envelope.superseded_by {
@@ -472,11 +476,7 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
         if let Ok(service) = node.service() {
             for export in &service.exports {
                 if graph.node(*export).is_none() {
-                    problems.push((
-                        "exports",
-                        export.to_string(),
-                        QuarantineReason::MissingNode,
-                    ));
+                    problems.push(("exports", export.to_string(), QuarantineReason::MissingNode));
                 }
             }
         }
@@ -616,4 +616,3 @@ fn endpoint_exists(graph: &Graph, kind: EdgeKind, field: &str, id: Uuid) -> bool
     }
     graph.node(id).is_some()
 }
-

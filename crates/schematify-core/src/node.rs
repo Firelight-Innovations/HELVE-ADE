@@ -570,7 +570,10 @@ mod tests {
         let map = value.as_object().unwrap();
         assert_eq!(map["kind"], "module");
         assert_eq!(map["slug"], "token-verifier");
-        assert_eq!(map["decisions"][0], "schematify://decision/00000000-0000-0000-0000-000000000003");
+        assert_eq!(
+            map["decisions"][0],
+            "schematify://decision/00000000-0000-0000-0000-000000000003"
+        );
         assert!(!map.contains_key("facet_count"), "counts are never stored");
     }
 
@@ -676,27 +679,43 @@ mod tests {
             collapsed: false,
         };
         assert_eq!(
-            round_trip(&Node::new(envelope(NodeKind::DocBlock)).with_fields(&doc).unwrap())
-                .doc_block()
-                .unwrap(),
+            round_trip(
+                &Node::new(envelope(NodeKind::DocBlock))
+                    .with_fields(&doc)
+                    .unwrap()
+            )
+            .doc_block()
+            .unwrap(),
             doc
         );
         assert_eq!(
-            round_trip(&Node::new(envelope(NodeKind::ExternalDep)).with_fields(&dep).unwrap())
-                .external_dep()
-                .unwrap(),
+            round_trip(
+                &Node::new(envelope(NodeKind::ExternalDep))
+                    .with_fields(&dep)
+                    .unwrap()
+            )
+            .external_dep()
+            .unwrap(),
             dep
         );
         assert_eq!(
-            round_trip(&Node::new(envelope(NodeKind::Comment)).with_fields(&comment).unwrap())
-                .comment()
-                .unwrap(),
+            round_trip(
+                &Node::new(envelope(NodeKind::Comment))
+                    .with_fields(&comment)
+                    .unwrap()
+            )
+            .comment()
+            .unwrap(),
             comment
         );
         assert_eq!(
-            round_trip(&Node::new(envelope(NodeKind::Group)).with_fields(&group).unwrap())
-                .group()
-                .unwrap(),
+            round_trip(
+                &Node::new(envelope(NodeKind::Group))
+                    .with_fields(&group)
+                    .unwrap()
+            )
+            .group()
+            .unwrap(),
             group
         );
     }
@@ -704,7 +723,8 @@ mod tests {
     #[test]
     fn an_unknown_kind_survives_a_round_trip_intact() {
         let mut node = Node::new(envelope(NodeKind::Custom("risk-register".to_owned())));
-        node.fields.insert("severity".to_owned(), Value::from("high"));
+        node.fields
+            .insert("severity".to_owned(), Value::from("high"));
         let back = round_trip(&node);
         assert_eq!(back, node);
         assert_eq!(back.kind().as_str(), "risk-register");

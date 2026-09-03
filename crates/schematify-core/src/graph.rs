@@ -143,8 +143,14 @@ impl Graph {
             if edge.kind != EdgeKind::DependsOn || !edge.is_live() {
                 continue;
             }
-            self.outgoing.entry(edge.source).or_default().push(edge.target);
-            self.incoming.entry(edge.target).or_default().push(edge.source);
+            self.outgoing
+                .entry(edge.source)
+                .or_default()
+                .push(edge.target);
+            self.incoming
+                .entry(edge.target)
+                .or_default()
+                .push(edge.source);
         }
         for list in self.outgoing.values_mut().chain(self.incoming.values_mut()) {
             list.sort_unstable();
@@ -396,10 +402,7 @@ impl Graph {
     pub fn facet_count(&self, module: Uuid) -> usize {
         self.children(module)
             .iter()
-            .filter(|id| {
-                self.node(**id)
-                    .is_some_and(|n| n.kind().is_facet())
-            })
+            .filter(|id| self.node(**id).is_some_and(|n| n.kind().is_facet()))
             .count()
     }
 
@@ -416,7 +419,9 @@ impl Graph {
         let mut queue = vec![service];
         while let Some(current) = queue.pop() {
             for child in self.children(current) {
-                let Some(node) = self.node(*child) else { continue };
+                let Some(node) = self.node(*child) else {
+                    continue;
+                };
                 if *node.kind() == NodeKind::Service {
                     continue;
                 }
@@ -453,7 +458,8 @@ impl Graph {
         for start in self.nodes.keys() {
             let mut path = Vec::new();
             let mut on_path = HashSet::new();
-            if let Some(cycle) = self.walk_for_cycle(*start, &mut settled, &mut path, &mut on_path) {
+            if let Some(cycle) = self.walk_for_cycle(*start, &mut settled, &mut path, &mut on_path)
+            {
                 return Some(cycle);
             }
         }

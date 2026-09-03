@@ -4,26 +4,19 @@
 //! node per file, with no index. This crate is that model and nothing above
 //! it: the schemas of PRD section 5, the identity scheme of section 3, the
 //! storage layout of section 6, the loader of section 6.4, and the lifecycle
-//! rules of section 7 as pure functions. No Tauri command lives here. Wave 2
-//! wires the commands, and it wires them to these types.
+//! rules of section 7 as pure functions. No Tauri command lives here, and
+//! wave 2 wires the commands to these types.
 //!
-//! Two decisions shape everything below.
+//! **A node is an envelope plus an open map.** The tagged-enum alternative
+//! was tried and rejected: PRD section 11.2 lets a user register a node kind
+//! this crate has never heard of, and a closed enum turns that file into a
+//! parse failure at load. `node.rs` carries the rest of that argument.
 //!
-//! **A node is an envelope plus an open map.** The tagged-enum alternative was
-//! tried and rejected: PRD section 11.2 lets a user register a node kind this
-//! crate has never heard of, and a closed enum turns that into a parse failure
-//! at load time. The open map round-trips an unknown kind byte for byte, and
-//! [`Node::service`] and its siblings hand back the typed view when the kind
-//! is one of the nine this crate knows.
-//!
-//! **No count is ever stored.** PRD section 0.4 is a storage rule as much as a
-//! drawing rule, so `facet_count` is [`Graph::facet_count`] and not a field.
+//! **No count is ever stored.** PRD section 0.4 is a storage rule as much as
+//! a drawing rule, so `facet_count` is [`Graph::facet_count`] and not a field.
 
-// This crate is the foundation every later Schematify wave calls, so its public
-// surface is the part they read. STANDARDS.md section 4.1 asks every module to
-// say what it is for, and section 5 asks for private modules with flat public
-// re-exports. Both are set here rather than in [workspace.lints] for the reason
-// the root Cargo.toml gives: they describe a library, not an application.
+// A published library surface, which `src-tauri` is not. The root Cargo.toml
+// says why these two sit here rather than in [workspace.lints].
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 

@@ -136,17 +136,72 @@ pub struct TransitionRule {
 /// Today no explicit row targets `deprecated`, and the ordering keeps that
 /// true if one is ever added.
 const TRANSITIONS: &[TransitionRule] = &[
-    rule(Lifecycle::Draft, Lifecycle::Specified, Actor::Human, "The author completes the node"),
-    rule(Lifecycle::Specified, Lifecycle::Assigned, Actor::Human, "The author hands the node to an agent"),
-    rule(Lifecycle::Assigned, Lifecycle::Implemented, Actor::Agent, "The agent links every declared test"),
-    rule(Lifecycle::Assigned, Lifecycle::Specified, Actor::Human, "The author withdraws the assignment"),
-    rule(Lifecycle::Implemented, Lifecycle::Reviewed, Actor::Human, "The reviewer opens the node"),
-    rule(Lifecycle::Implemented, Lifecycle::Specified, Actor::Human, "The reviewer returns the node before review"),
-    rule(Lifecycle::Reviewed, Lifecycle::Accepted, Actor::Human, "The reviewer accepts the node"),
-    rule(Lifecycle::Reviewed, Lifecycle::Specified, Actor::Human, "The reviewer returns the node with a reason"),
-    rule(Lifecycle::Accepted, Lifecycle::Stale, Actor::System, "An upstream contract changes"),
-    rule(Lifecycle::Stale, Lifecycle::Accepted, Actor::Human, "The reviewer re-reviews the node"),
-    rule(Lifecycle::Stale, Lifecycle::Specified, Actor::Human, "The reviewer returns the node with a reason"),
+    rule(
+        Lifecycle::Draft,
+        Lifecycle::Specified,
+        Actor::Human,
+        "The author completes the node",
+    ),
+    rule(
+        Lifecycle::Specified,
+        Lifecycle::Assigned,
+        Actor::Human,
+        "The author hands the node to an agent",
+    ),
+    rule(
+        Lifecycle::Assigned,
+        Lifecycle::Implemented,
+        Actor::Agent,
+        "The agent links every declared test",
+    ),
+    rule(
+        Lifecycle::Assigned,
+        Lifecycle::Specified,
+        Actor::Human,
+        "The author withdraws the assignment",
+    ),
+    rule(
+        Lifecycle::Implemented,
+        Lifecycle::Reviewed,
+        Actor::Human,
+        "The reviewer opens the node",
+    ),
+    rule(
+        Lifecycle::Implemented,
+        Lifecycle::Specified,
+        Actor::Human,
+        "The reviewer returns the node before review",
+    ),
+    rule(
+        Lifecycle::Reviewed,
+        Lifecycle::Accepted,
+        Actor::Human,
+        "The reviewer accepts the node",
+    ),
+    rule(
+        Lifecycle::Reviewed,
+        Lifecycle::Specified,
+        Actor::Human,
+        "The reviewer returns the node with a reason",
+    ),
+    rule(
+        Lifecycle::Accepted,
+        Lifecycle::Stale,
+        Actor::System,
+        "An upstream contract changes",
+    ),
+    rule(
+        Lifecycle::Stale,
+        Lifecycle::Accepted,
+        Actor::Human,
+        "The reviewer re-reviews the node",
+    ),
+    rule(
+        Lifecycle::Stale,
+        Lifecycle::Specified,
+        Actor::Human,
+        "The reviewer returns the node with a reason",
+    ),
     TransitionRule {
         from: None,
         to: Lifecycle::Deprecated,
@@ -199,7 +254,9 @@ pub fn check_transition(
     to: Lifecycle,
     actor: Actor,
 ) -> Result<&'static TransitionRule, LifecycleError> {
-    let explicit = TRANSITIONS.iter().find(|r| r.to == to && r.from == Some(from));
+    let explicit = TRANSITIONS
+        .iter()
+        .find(|r| r.to == to && r.from == Some(from));
     let wildcard = TRANSITIONS.iter().find(|r| r.to == to && r.from.is_none());
 
     let Some(rule) = explicit.or(wildcard) else {
@@ -393,7 +450,8 @@ mod tests {
 
     #[test]
     fn an_agent_cannot_reach_accepted() {
-        let err = check_transition(Lifecycle::Reviewed, Lifecycle::Accepted, Actor::Agent).unwrap_err();
+        let err =
+            check_transition(Lifecycle::Reviewed, Lifecycle::Accepted, Actor::Agent).unwrap_err();
         assert!(matches!(err, LifecycleError::HumanOnly { .. }));
         let from_stale =
             check_transition(Lifecycle::Stale, Lifecycle::Accepted, Actor::Agent).unwrap_err();
@@ -410,8 +468,8 @@ mod tests {
 
     #[test]
     fn a_human_cannot_make_the_two_moves_a_human_does_not_own() {
-        let implement =
-            check_transition(Lifecycle::Assigned, Lifecycle::Implemented, Actor::Human).unwrap_err();
+        let implement = check_transition(Lifecycle::Assigned, Lifecycle::Implemented, Actor::Human)
+            .unwrap_err();
         assert!(matches!(implement, LifecycleError::WrongActor { .. }));
         let stale =
             check_transition(Lifecycle::Accepted, Lifecycle::Stale, Actor::Human).unwrap_err();

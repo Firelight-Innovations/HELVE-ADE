@@ -118,10 +118,7 @@ pub fn allowed_together(paths: &[PathBuf]) -> bool {
             .parent()
             .and_then(Path::file_name)
             .is_some_and(|n| n == "nodes");
-    let one_audit = audit.len() == 1
-        && audit[0]
-            .file_name()
-            .is_some_and(|n| n == "audit.json");
+    let one_audit = audit.len() == 1 && audit[0].file_name().is_some_and(|n| n == "audit.json");
     one_node && one_audit
 }
 
@@ -179,7 +176,9 @@ impl Store {
     /// Where a decision file lives.
     #[must_use]
     pub fn decision_path(&self, id: Uuid) -> PathBuf {
-        self.kaava_dir().join("decisions").join(format!("{id}.json"))
+        self.kaava_dir()
+            .join("decisions")
+            .join(format!("{id}.json"))
     }
 
     /// Where a rule file lives.
@@ -233,7 +232,14 @@ impl Store {
     /// Returns [`CoreError::Io`] when a directory cannot be created.
     pub fn init(&self) -> Result<()> {
         for directory in [
-            "nodes", "edges", "screens", "flows", "decisions", "rules", "registry", "runs",
+            "nodes",
+            "edges",
+            "screens",
+            "flows",
+            "decisions",
+            "rules",
+            "registry",
+            "runs",
             "layout",
         ] {
             let path = self.kaava_dir().join(directory);
@@ -492,11 +498,14 @@ mod tests {
         let store = Store::open("C:/work/saas-backend");
         let id = Uuid::from_u128(1);
         let ends = |p: PathBuf| p.to_string_lossy().replace('\\', "/");
-        assert!(ends(store.node_path(id)).ends_with(".kaava/nodes/00000000-0000-0000-0000-000000000001.json"));
+        assert!(ends(store.node_path(id))
+            .ends_with(".kaava/nodes/00000000-0000-0000-0000-000000000001.json"));
         assert!(ends(store.edge_path(id)).contains(".kaava/edges/"));
         assert!(ends(store.libraries_path()).ends_with(".kaava/registry/libraries.json"));
         assert!(ends(store.brief_path()).ends_with(".kaava/brief.json"));
-        assert!(ends(store.layout_path("auth-service")).ends_with(".kaava/layout/auth-service.json"));
+        assert!(
+            ends(store.layout_path("auth-service")).ends_with(".kaava/layout/auth-service.json")
+        );
         assert!(ends(store.run_path(id, 1184)).ends_with("/run-1184.json"));
         assert!(ends(store.audit_path(id)).ends_with("/audit.json"));
     }
@@ -508,10 +517,16 @@ mod tests {
         assert_eq!(layer_of(&store.node_path(id)), Some(WriteLayer::Semantic));
         assert_eq!(layer_of(&store.edge_path(id)), Some(WriteLayer::Semantic));
         assert_eq!(layer_of(&store.brief_path()), Some(WriteLayer::Semantic));
-        assert_eq!(layer_of(&store.libraries_path()), Some(WriteLayer::Semantic));
+        assert_eq!(
+            layer_of(&store.libraries_path()),
+            Some(WriteLayer::Semantic)
+        );
         assert_eq!(layer_of(&store.run_path(id, 1)), Some(WriteLayer::Audit));
         assert_eq!(layer_of(&store.audit_path(id)), Some(WriteLayer::Audit));
-        assert_eq!(layer_of(&store.layout_path("s")), Some(WriteLayer::Cosmetic));
+        assert_eq!(
+            layer_of(&store.layout_path("s")),
+            Some(WriteLayer::Cosmetic)
+        );
         assert_eq!(layer_of(Path::new("/p/src/main.rs")), None);
     }
 
@@ -528,9 +543,15 @@ mod tests {
         let id = Uuid::from_u128(1);
         let other = Uuid::from_u128(2);
 
-        assert!(allowed_together(&[store.node_path(id), store.audit_path(id)]));
+        assert!(allowed_together(&[
+            store.node_path(id),
+            store.audit_path(id)
+        ]));
         assert!(allowed_together(&[store.node_path(id)]));
-        assert!(allowed_together(&[store.run_path(id, 1), store.run_path(id, 2)]));
+        assert!(allowed_together(&[
+            store.run_path(id, 1),
+            store.run_path(id, 2)
+        ]));
         assert!(!allowed_together(&[
             store.node_path(id),
             store.node_path(other),
@@ -566,7 +587,8 @@ mod tests {
 
         assert_eq!(value.envelope.lifecycle, Lifecycle::Accepted);
         let written: Node =
-            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap()).unwrap();
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
         assert_eq!(written.envelope.lifecycle, Lifecycle::Accepted);
         let history = store.read_audit(value.id()).unwrap();
         assert_eq!(history.len(), 1);
@@ -658,7 +680,9 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         store.write_layout(&Layout::new("auth-service")).unwrap();
-        assert!(store.rename_layout("auth-service", "identity-service").unwrap());
+        assert!(store
+            .rename_layout("auth-service", "identity-service")
+            .unwrap());
         assert!(!store.layout_path("auth-service").exists());
         assert!(store.layout_path("identity-service").exists());
         assert!(!store.rename_layout("never-drawn", "elsewhere").unwrap());
@@ -700,7 +724,14 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         for name in [
-            "nodes", "edges", "screens", "flows", "decisions", "rules", "registry", "runs",
+            "nodes",
+            "edges",
+            "screens",
+            "flows",
+            "decisions",
+            "rules",
+            "registry",
+            "runs",
             "layout",
         ] {
             assert!(store.kaava_dir().join(name).is_dir(), "{name}");

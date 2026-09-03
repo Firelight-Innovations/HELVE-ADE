@@ -66,7 +66,9 @@ fn an_empty_project_loads_clean() {
 #[test]
 fn a_project_round_trips_through_the_store_and_the_loader() {
     let (directory, store) = project();
-    store.write_node(&node(1, "auth-service", NodeKind::Service, None)).unwrap();
+    store
+        .write_node(&node(1, "auth-service", NodeKind::Service, None))
+        .unwrap();
     store
         .write_node(&node(2, "token-verifier", NodeKind::Module, Some(1)))
         .unwrap();
@@ -81,10 +83,20 @@ fn a_project_round_trips_through_the_store_and_the_loader() {
         .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
     assert_eq!(outcome.graph.node_count(), 2);
-    assert_eq!(outcome.graph.children(Uuid::from_u128(1)), [Uuid::from_u128(2)]);
-    assert_eq!(outcome.graph.dependents(Uuid::from_u128(1)), [Uuid::from_u128(2)]);
+    assert_eq!(
+        outcome.graph.children(Uuid::from_u128(1)),
+        [Uuid::from_u128(2)]
+    );
+    assert_eq!(
+        outcome.graph.dependents(Uuid::from_u128(1)),
+        [Uuid::from_u128(2)]
+    );
     assert_eq!(
         outcome
             .report
@@ -113,7 +125,9 @@ fn a_dangling_parent_quarantines_the_child_and_does_not_crash() {
 #[test]
 fn a_dangling_edge_endpoint_quarantines_the_edge() {
     let (directory, store) = project();
-    store.write_node(&node(1, "a", NodeKind::Module, None)).unwrap();
+    store
+        .write_node(&node(1, "a", NodeKind::Module, None))
+        .unwrap();
     store
         .write_edge(&Edge::new(
             Uuid::from_u128(10),
@@ -248,14 +262,22 @@ fn a_references_ui_edge_resolves_its_target_against_the_screens() {
         .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
 }
 
 #[test]
 fn a_slug_collision_inside_one_scope_is_reported_and_the_graph_still_loads() {
     let (directory, store) = project();
-    store.write_node(&node(1, "cache", NodeKind::Service, None)).unwrap();
-    store.write_node(&node(2, "cache", NodeKind::Service, None)).unwrap();
+    store
+        .write_node(&node(1, "cache", NodeKind::Service, None))
+        .unwrap();
+    store
+        .write_node(&node(2, "cache", NodeKind::Service, None))
+        .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
     assert_eq!(outcome.report.slug_collisions.len(), 1);
@@ -265,10 +287,18 @@ fn a_slug_collision_inside_one_scope_is_reported_and_the_graph_still_loads() {
 #[test]
 fn the_same_slug_under_two_parents_is_not_a_collision() {
     let (directory, store) = project();
-    store.write_node(&node(1, "auth-service", NodeKind::Service, None)).unwrap();
-    store.write_node(&node(2, "billing-service", NodeKind::Service, None)).unwrap();
-    store.write_node(&node(3, "cache", NodeKind::Module, Some(1))).unwrap();
-    store.write_node(&node(4, "cache", NodeKind::Module, Some(2))).unwrap();
+    store
+        .write_node(&node(1, "auth-service", NodeKind::Service, None))
+        .unwrap();
+    store
+        .write_node(&node(2, "billing-service", NodeKind::Service, None))
+        .unwrap();
+    store
+        .write_node(&node(3, "cache", NodeKind::Module, Some(1)))
+        .unwrap();
+    store
+        .write_node(&node(4, "cache", NodeKind::Module, Some(2)))
+        .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
     assert!(outcome.report.slug_collisions.is_empty());
@@ -277,8 +307,14 @@ fn the_same_slug_under_two_parents_is_not_a_collision() {
 #[test]
 fn a_file_that_is_not_json_is_reported_and_the_rest_of_the_project_loads() {
     let (directory, store) = project();
-    store.write_node(&node(1, "auth-service", NodeKind::Service, None)).unwrap();
-    fs::write(store.kaava_dir().join("nodes").join("broken.json"), "{ not json").unwrap();
+    store
+        .write_node(&node(1, "auth-service", NodeKind::Service, None))
+        .unwrap();
+    fs::write(
+        store.kaava_dir().join("nodes").join("broken.json"),
+        "{ not json",
+    )
+    .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
     assert_eq!(outcome.report.unreadable.len(), 1);
@@ -321,13 +357,19 @@ fn a_run_and_its_audit_history_load_beside_the_node() {
     let outcome = load_project(directory.path()).unwrap();
     assert_eq!(outcome.graph.runs(Uuid::from_u128(1)).len(), 1);
     assert_eq!(outcome.graph.audit(Uuid::from_u128(1)).len(), 1);
-    assert!(outcome.report.is_clean(), "{:?}", outcome.report.quarantined);
+    assert!(
+        outcome.report.is_clean(),
+        "{:?}",
+        outcome.report.quarantined
+    );
 }
 
 #[test]
 fn a_run_with_an_unknown_schema_is_quarantined_rather_than_read() {
     let (directory, store) = project();
-    store.write_node(&node(1, "token-verifier", NodeKind::Module, None)).unwrap();
+    store
+        .write_node(&node(1, "token-verifier", NodeKind::Module, None))
+        .unwrap();
     let path = store.run_path(Uuid::from_u128(1), 9);
     write_json_atomic(
         &path,
@@ -397,7 +439,9 @@ fn a_quarantine_reason_carries_the_words_a_problems_row_draws() {
 #[test]
 fn the_loader_reads_a_project_written_anywhere_on_disk() {
     let (directory, store) = project();
-    store.write_node(&node(1, "a", NodeKind::Service, None)).unwrap();
+    store
+        .write_node(&node(1, "a", NodeKind::Service, None))
+        .unwrap();
     let elsewhere: &Path = directory.path();
     assert_eq!(load_project(elsewhere).unwrap().graph.node_count(), 1);
 }

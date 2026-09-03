@@ -45,14 +45,7 @@ const RULE_STATEMENTS = [
 const AUDIT_ROWS = [
   ["2026-08-19T10:00:00Z", "draft", "specified", "human", "j.okonkwo", "Written up."],
   ["2026-08-21T15:31:00Z", "specified", "assigned", "human", "j.okonkwo", "Handed to agent."],
-  [
-    "2026-08-22T11:00:00Z",
-    "assigned",
-    "implemented",
-    "agent",
-    "claude-sdd",
-    "First pass linked.",
-  ],
+  ["2026-08-22T11:00:00Z", "assigned", "implemented", "agent", "claude-sdd", "First pass linked."],
   ["2026-08-23T14:00:00Z", "implemented", "reviewed", "human", "j.okonkwo", "Opened for review."],
   [
     "2026-08-24T09:05:00Z",
@@ -689,7 +682,10 @@ function addScreen(f, auth) {
     title: "First-run signup",
     trigger: "A visitor opens the product with no account.",
     steps: [
-      { screen: `schematify://screen/${screen.id}`, action: "The visitor enters an email address." },
+      {
+        screen: `schematify://screen/${screen.id}`,
+        action: "The visitor enters an email address.",
+      },
       { screen: `schematify://screen/${screen.id}`, action: "The visitor sets a password." },
     ],
     outcome: "The visitor holds an active session.",
