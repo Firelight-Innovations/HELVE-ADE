@@ -343,6 +343,9 @@ fn the_stress_fixture_loads_inside_the_wave_one_budget() {
 
     let outcome = load_project(&root).unwrap();
     assert_eq!(outcome.graph.node_count(), 2000);
+    // Printed rather than only asserted, so `cargo test -- --nocapture` says
+    // how much headroom is left rather than only that some was.
+    println!("stress-2000 loaded in {} ms", outcome.report.duration_ms);
     assert!(
         outcome.report.duration_ms < 1000,
         "the stress fixture loaded in {} ms, over the 1000 ms budget",

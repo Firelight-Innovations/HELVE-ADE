@@ -103,7 +103,7 @@ differ.
 | Condition | Result | Evidence |
 |---|---|---|
 | `pnpm verify` passes | **Pass** | Section 6 below lists each step and its result. |
-| The loader reads `fixtures/stress-2000/` in under 1000 ms, asserted from a test | **Pass** | `tests/fixtures.rs::the_stress_fixture_loads_inside_the_wave_one_budget`. The measured load is roughly 60 ms on this machine, against a 1000 ms budget. |
+| The loader reads `fixtures/stress-2000/` in under 1000 ms, asserted from a test | **Pass** | `tests/fixtures.rs::the_stress_fixture_loads_inside_the_wave_one_budget`. The measured load is 71 ms on this machine, against a 1000 ms budget. |
 | A dangling reference produces a quarantine record and no crash | **Pass** | Nine reasons in `QuarantineReason`, covered by `load_tests.rs`. `every_kind_of_dangling_reference_is_reported_rather_than_dropped` exercises seven at once. |
 | Every named node in PRD 16.1 exists in `fixtures/saas-backend/` | **Pass** | `tests/fixtures.rs::every_node_named_in_the_wireframe_fixture_exists`, against a 32-slug list. |
 
@@ -116,7 +116,7 @@ dangling reference; every legal and every illegal cell of the PRD 7.2 table
 rule at both tiers, including a node above and a node below the lowest common
 ancestor.
 
-**133 tests**: 115 unit, 17 integration, one doc-test target with none.
+**132 tests**: 115 unit and 17 integration. The whole workspace is 737 and all pass.
 
 ---
 
@@ -237,7 +237,7 @@ on its entry-point module, and the fixture computes it from `auth-service`.
 |---|---|
 | `pnpm build` | Pass |
 | `pnpm test:js` | Pass, unchanged by this wave |
-| `pnpm test:rust` | Pass, 133 new tests in `schematify-core` |
+| `pnpm test:rust` | Pass, 737 across the workspace, 132 of them new |
 | `pnpm lint:js` | Pass, 0 errors and the 8 pre-existing React hook warnings |
 | `pnpm lint:rust` | Pass, no new clippy findings and no baseline change |
 | `pnpm lint:comments` | Pass, 0 grandfathered |
