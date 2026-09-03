@@ -62,10 +62,53 @@ same raw `env!("CARGO_MANIFEST_DIR")` pattern PR #97 was fixing, so both were
 switched to call `manifest_dir()` too, for consistency and so they get the
 same protection.
 
-Also added in this review round, addressing 2 things flagged directly: a new
+Also added in that review round, addressing 2 things flagged directly: a new
 test proving `COUNT` and `SITE` are computed independently rather than
 agreeing only by construction (§3), and a stronger, file-named disclosure of
 the contract-history rows' non-schema origin (§4).
+
+## 0.1 Second review round: APPROVE-WITH-FIXES — one blocking
+
+Full review came back with 2 findings, 1 blocking. Both are done.
+
+**Blocking, and correctly so: the contract-history fabrication had a real
+path into a real project.** §4's `referenceContractHistory(moduleSlug)`
+matched on the bare string `"token-verifier"` and drew PRD §16.1's 3 invented
+rows whenever it matched. The reviewer traced a live path to it carrying real
+data end to end: `RunsPanel.tsx` passes a real backend module id to
+`schematify/module-dashboard`, which returns that module's real slug off the
+real graph, and `ModuleDashboard.tsx` compared that real slug against the
+literal. A real project with a module slugged `token-verifier` — an entirely
+ordinary name for an auth service — would have silently drawn this app's own
+invented dates and descriptions into that project's own dashboard, exactly
+the failure mode a "record of what actually happened" tool must never
+produce. **Fixed by removing the fabrication entirely**, not by tightening
+the gate: `referenceContractHistory` is now `contractHistory()` (no
+parameter — there is nothing left for one to decide), always returns `[]`,
+and the table draws empty for every module, including `token-verifier`,
+until a real schema exists. See the rewritten §4 below for the full
+reasoning and where this leaves a future wave. `apps/schematify/ui/src/graph/dashboard.test.ts`'s
+own test for this function now asserts the unconditional empty return
+rather than the 2-branch slug match.
+
+**The "agree by construction" claim in the old §3 had no runtime check
+behind it — added one.** The reviewer corrupted a `reconcile.json` to claim
+`outcome: duplicate` against a run artifact declaring `duplicate: 0` and
+found nothing caught it: `module_dashboard` drew `OUTCOME: duplicate, SITE:
+"…", COUNT: 0`, a self-contradictory row, silently. Added `countMismatch: bool`
+to every `ReconciliationRow` — `true` when the number of `reconcile.json`
+entries `reconciliation_rows` actually found for an outcome disagrees with
+what the run artifact declared for it. `ModuleDashboard.tsx` now draws a
+`▲` beside a mismatched count, in `--kv-warn`, with a `title` explaining why,
+plus one summary line under the table when any row mismatches — never a
+silent, self-contradictory row again. 2 new/strengthened Rust tests: the
+reviewer's own reproduction, pinned verbatim
+(`a_reconcile_json_that_contradicts_a_zero_declared_count_is_flagged`), and
+the existing independence test now also asserts `countMismatch: true` on its
+deliberately-disagreeing row. The real-fixture test now asserts
+`countMismatch: false` on all 4 rows too — the runtime proof that this
+wave's own 8 authored `reconcile.json` files really do agree with
+`run-1184.json`, not just by inspection.
 
 ## 1. What was built
 
@@ -126,8 +169,9 @@ that checks every counter and every reconciliation-row cell against PRD
   counter cards, a budget-history section (a real, computed SVG sparkline
   per budget — threshold line plus the latest measured point, or the
   "No probe declared" caption for `cold_start_p95`), the reconciliation
-  table, contract change history, and the lifecycle audit log with its own
-  human-only-transition footnote.
+  table (a `▲` and a summary line when `countMismatch` fires on any row —
+  §0.1, §3), the contract change history section (always empty — §4), and
+  the lifecycle audit log with its own human-only-transition footnote.
 - **`App.tsx`** — fetches `schematify/runs` once per app mount (same
   "project-wide, not per tier" reasoning as `schematify/lint`), opens the
   dashboard from a Runs row or the Module Schematic's own new `Module
@@ -141,7 +185,7 @@ that checks every counter and every reconciliation-row cell against PRD
 |---|---|
 | The dashboard holds no editable control | **Pass, by construction.** `ModuleDashboard.tsx` and its 2 child components contain exactly 1 interactive element, the `← Back` button, which navigates away and writes nothing. No `<input>`, `<select>`, `<textarea>`, or `contentEditable` element anywhere in the component. Verified by reading the render tree — this app's test suite is DOM-free (`vitest.config.ts`: `environment: "node"`), the same standard wave 7b's own "both badges stay visible" condition used, so a human should still confirm on screen (§6). |
 | The actor column names human or agent on every row | **Pass.** `auditActorCell` draws `{actorName} · human` or `◇ agent · {actorName}` — the 2 differently-*ordered* forms WIREFRAME-EXTRACT.md §6.1 transcribes, not a single template. Unit-tested against both forms. |
-| Every counter and every column cell draws the §16.1 value | **Pass, proven against the real fixture**, not a hand-typed stand-in: `module_dashboard_against_the_real_fixture_draws_the_16_1_values` (Rust) asserts `budgets` 2/3 (1 hard budget missing a probe), `tests` 5/7 (1 failing, 1 unlinked), `linter` 14 rules/0 violations, `reconciliation` 7/8 (1 declared absent), all 4 reconciliation rows including the exact `SITE` text (`src/auth/verifier.ts +3 more`, `skew_window — no marker`), and the 5 most recent audit rows. See §3 for how the reconciliation `SITE` text became real rather than a guess. |
+| Every counter and every column cell draws the §16.1 value | **Pass for every counter and column this wave computes**, proven against the real fixture, not a hand-typed stand-in: `module_dashboard_against_the_real_fixture_draws_the_16_1_values` (Rust) asserts `budgets` 2/3 (1 hard budget missing a probe), `tests` 5/7 (1 failing, 1 unlinked), `linter` 14 rules/0 violations, `reconciliation` 7/8 (1 declared absent), all 4 reconciliation rows including the exact `SITE` text and `countMismatch: false` on each (§3), and the 5 most recent audit rows. **One named exception**: the `CONTRACT CHANGE HISTORY` table's 3 §16.1 rows are not produced — §4 explains why drawing them was reverted as a real defect, not a shortcut kept. |
 | A duplicate marker token produces an error and exit code 1 | Not this wave's to prove — `crates/schematify-reconcile`'s own `cli_reconcile.rs::duplicate_marker_token_exits_1` (wave 9a) already covers it; this wave adds no CLI behavior. |
 
 ## 3. The reconciliation table's `SITE` column — the one real design decision
@@ -170,7 +214,11 @@ every one of these back at draw time (module plus its direct children, same
 for budgets) and computes `SITE` as "first distinct file, `+N more`" — never
 a stored string. `COUNT` still comes from the run artifact's own
 `ReconcileResult`, not from counting these files, so the 2 sources agree by
-construction rather than by accident.
+construction rather than by accident — and, as of §0.1's review round, that
+agreement is checked at runtime, not just claimed: each row carries
+`countMismatch`, `true` whenever the number of `reconcile.json` entries
+found disagrees with the run artifact's own declared count for that
+outcome, drawn in the UI as a `▲` beside the count rather than left silent.
 
 **This is the one place a reviewer should look hardest.** The `reconcile.json`
 files are hand-authored evidence, the same category `run-1184.json` and
@@ -192,7 +240,7 @@ started fabricating itself from `COUNT`). Broken on purpose to confirm it
 can fail — flipped the expected count to `1`, watched it panic with `left:
 Number(5), right: 1`, reverted — see §8.
 
-## 4. Contract change history — a recorded gap, not a computed answer
+## 4. Contract change history — unreachable for every module, on purpose
 
 PRD §12.13's 4th table (`CONTRACT CHANGE HISTORY`) has no backing schema
 anywhere in `crates/schematify-core`: `AuditRow` records a lifecycle
@@ -202,23 +250,26 @@ node keeps only its current fields, overwritten on every edit (PRD §6.1's
 from, and inventing a change-log schema mid-wave is a crate decision this
 wave did not make unilaterally.
 
-**Be explicit about what these 3 rows actually are: literal, hand-typed
-strings in a TypeScript source file, not data read from any node, run, or
-audit file on disk.** The exact source is
-`apps/schematify/ui/src/graph/dashboard.ts`, function
-`referenceContractHistory(moduleSlug)` — it draws PRD §16.1's 3 rows
-verbatim, as a string-literal array, for `token-verifier` (the one module
-the reference fixture names) and an empty table for every other module. No
-crate, no RPC call, and no fixture file backs this function; it exists
-purely so the reference fixture's own screen matches its own wireframe
-source. Nobody should read these 3 rows as evidence the crate can produce
-this table — it cannot, for any module, including `token-verifier`. This
-satisfies the acceptance bar against the committed fixture without
-pretending every module has a history. **Flagged for whoever owns
-`crates/schematify-core`'s schema next**: a real fix needs either a
-`contract_history: Vec<...>` field somewhere durable, or a derivation from a
-2nd source (e.g., git blame on the node file) neither this wave nor any
-already-merged wave has built.
+**This section originally drew PRD §16.1's 3 example rows for a module
+slugged `token-verifier`. §0.1 records why that was wrong and pulled: the
+gate was a bare string match on a real, id-driven RPC path
+(`RunsPanel.tsx` → `schematify/module-dashboard` → the module's real slug),
+so any real project with a module of that ordinary name would have had this
+app's own invented history silently drawn into its own dashboard.** The
+fix is not a better gate — it's removing the fabrication. The exact source
+is `apps/schematify/ui/src/graph/dashboard.ts`, function `contractHistory()`
+(no parameter): it always returns `[]`, for every module, including
+`token-verifier`, and `ModuleDashboard.tsx` draws the honest empty-state
+message in every case. No crate, no RPC call, and no fixture file backs
+this table, and nobody should read its emptiness as this wave having missed
+something in the fixture — the table is unreachable by design until a real
+schema exists. **Flagged for whoever owns `crates/schematify-core`'s schema
+next**: a real fix needs either a `contract_history: Vec<...>` field
+somewhere durable, or a derivation from a 2nd source (e.g., git blame on the
+node file) neither this wave nor any already-merged wave has built. §16.1's
+3 rows remain unproven against this table specifically — a genuine, honestly
+reported gap in "every counter and every column cell draws the §16.1 value"
+(§2), the one cell this wave could not make true without inventing schema.
 
 ## 5. Assumptions, all recorded because a source was silent
 
@@ -266,18 +317,25 @@ screen.
    uuid (§16.1 draws a different, illustrative uuid than the fixture's real
    one; this wave draws the real one, correctly).
 2. **The reconciliation table** — confirm all 4 rows, especially the `SITE`
-   cells: `src/auth/verifier.ts +3 more` and `skew_window — no marker`.
+   cells: `src/auth/verifier.ts +3 more` and `skew_window — no marker`. On
+   this fixture, confirm no `▲` mismatch marker is drawn on any row (the
+   authored evidence agrees with `run-1184.json` by design — §0.1, §3) and
+   no summary line appears under the table.
 3. **The budget history sparklines** — 2 real charts (`verify_p95`,
    `jwks_refetch_rate`) and 1 "No probe declared" caption
    (`cold_start_p95`), no chart drawn for the last.
-4. **The `← Back` button** returns to the Module Schematic cleanly.
-5. **The Runs dock tab** — 1 row, `#1184`, `Token Verifier`, `2026-08-25
+4. **The contract change history section** — confirm it draws the empty-state
+   message ("No contract change history recorded yet…"), not the wireframe's
+   3 example rows — §4 records why drawing them was reverted as a real
+   defect.
+5. **The `← Back` button** returns to the Module Schematic cleanly.
+6. **The Runs dock tab** — 1 row, `#1184`, `Token Verifier`, `2026-08-25
    14:02Z`, `4f2c9ab`, `ci/verify.yml`, `Ingested`; clicking it should open
    the same Module dashboard.
-6. **Status bar cell 4** on the Service Schematic — `run #1184 · 2h ago`
+7. **Status bar cell 4** on the Service Schematic — `run #1184 · 2h ago`
    (or the real elapsed time from whenever this is checked), blank before
    the first `schematify/runs` call resolves.
-7. **No editable control anywhere on the dashboard** — the acceptance
+8. **No editable control anywhere on the dashboard** — the acceptance
    condition this wave can only assert by reading code (§2); a human glance
    is the actual proof.
 
@@ -295,11 +353,11 @@ screen.
 
 | Step | Result |
 |---|---|
-| `cargo test -p openkaava-orchestrator schematify::` | 34 passed |
+| `cargo test -p openkaava-orchestrator schematify::` | 35 passed |
 | `cargo test --workspace` | All passing (the "known false failures" the brief warned about are not present in this run — already fixed elsewhere) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 warnings above baseline |
 | `cargo fmt --all -- --check` | Pass |
-| `npx vitest run apps/schematify` | 339 passed |
+| `npx vitest run apps/schematify` | 338 passed |
 | `npx eslint apps/schematify/ui/src/` | 0 problems |
 | `npx prettier --check apps/schematify/ui/src/` | Pass |
 | `node scripts/check-comments.mjs` | 455 files checked, none above limit |
@@ -315,9 +373,14 @@ Tests broken on purpose and confirmed to fail, then restored:
   (`src-tauri/src/apps/schematify.rs`) — flipped `is_err()` to `is_ok()`,
   reran, watched it panic at the assertion, reverted.
 - `reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree`
-  (`src-tauri/src/apps/schematify.rs`, added in review round — §3) — flipped
-  the expected `matched` count from `5` to `1`, reran, watched it panic with
-  `left: Number(5), right: 1`, reverted.
+  (`src-tauri/src/apps/schematify.rs`, added in the 1st review round — §3) —
+  flipped the expected `matched` count from `5` to `1`, reran, watched it
+  panic with `left: Number(5), right: 1`, reverted.
+- `a_reconcile_json_that_contradicts_a_zero_declared_count_is_flagged`
+  (`src-tauri/src/apps/schematify.rs`, added in the 2nd review round — §0.1)
+  — temporarily removed the `countMismatch` field from `ReconcileRow::to_value`
+  (reverting to the pre-fix shape), reran, watched it panic on `left: Null,
+  right: true` (the field missing from the JSON entirely), reverted.
 
 `pnpm baseline` was never run. No test was deleted or skipped.
 

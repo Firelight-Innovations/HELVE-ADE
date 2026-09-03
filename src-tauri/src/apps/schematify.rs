@@ -838,16 +838,32 @@ fn elide_uuid(id: Uuid) -> String {
 }
 
 /// One row of the Reconciliation table: PRD §9.2's drawn outcome name, a
-/// `SITE` cell, and the count.
+/// `SITE` cell, the count, and whether the 2 independent sources behind
+/// them disagree.
+///
+/// `count` and `site` are never reconciled against each other — §3 of the
+/// wave 9d handoff explains why (a run can legitimately land before
+/// `kaava reconcile` has caught up, or the reverse) — but a caller still
+/// needs to *see* a disagreement rather than have it pass silently, per PRD
+/// §12.1's "Errors first · never hidden." `count_mismatch` is that signal:
+/// `true` when the number of `reconcile.json` entries this scope's own
+/// `outcome_kind` walk actually found disagrees with what the run artifact
+/// declared for it.
 struct ReconcileRow {
     outcome: &'static str,
     site: String,
     count: u32,
+    count_mismatch: bool,
 }
 
 impl ReconcileRow {
     fn to_value(&self) -> Value {
-        json!({ "outcome": self.outcome, "site": self.site, "count": self.count })
+        json!({
+            "outcome": self.outcome,
+            "site": self.site,
+            "count": self.count,
+            "countMismatch": self.count_mismatch,
+        })
     }
 }
 
@@ -936,24 +952,28 @@ fn reconciliation_rows(
             outcome: "matched",
             site: first_and_overflow(&matched_sites),
             count: counts.matched,
+            count_mismatch: matched_sites.len() as u32 != counts.matched,
         }
         .to_value(),
         ReconcileRow {
             outcome: "declared, absent",
             site: first_and_overflow(&absent_sites),
             count: counts.declared_absent,
+            count_mismatch: absent_sites.len() as u32 != counts.declared_absent,
         }
         .to_value(),
         ReconcileRow {
             outcome: "present, unknown",
             site: first_and_overflow(&unknown_sites),
             count: counts.present_unknown,
+            count_mismatch: unknown_sites.len() as u32 != counts.present_unknown,
         }
         .to_value(),
         ReconcileRow {
             outcome: "duplicate",
             site: first_and_overflow(&duplicate_sites),
             count: counts.duplicate,
+            count_mismatch: duplicate_sites.len() as u32 != counts.duplicate,
         }
         .to_value(),
     ]
@@ -2183,6 +2203,18 @@ mod tests {
         assert_eq!(rows[1]["site"], "skew_window — no marker");
         assert_eq!(rows[2]["site"], "—");
         assert_eq!(rows[3]["site"], "—");
+        // The 8 hand-authored `reconcile.json` files (§3 of the wave 9d
+        // handoff) were written to agree with the run artifact's own
+        // counts; this asserts that agreement actually holds at runtime,
+        // not just "by construction" — the safeguard
+        // `reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree`
+        // proves would fire on all 4 rows here if it did not.
+        for row in rows {
+            assert_eq!(
+                row["countMismatch"], false,
+                "the authored fixture evidence should agree with run-1184.json: {row:?}"
+            );
+        }
 
         let audit = value["auditLog"].as_array().expect("auditLog is an array");
         assert_eq!(audit.len(), 5);
@@ -2216,6 +2248,10 @@ mod tests {
         for row in rows {
             assert_eq!(row["site"], "—");
             assert_eq!(row["count"], 0);
+            assert_eq!(
+                row["countMismatch"], false,
+                "0 evidence against 0 declared agrees"
+            );
         }
     }
 
@@ -2304,6 +2340,90 @@ mod tests {
         assert_eq!(
             value["reconciliationRows"][0]["site"],
             "src/only_evidence_this_test_wrote.rs"
+        );
+        // The 2 sources disagreeing must not pass silently: this is the
+        // safeguard itself, not just proof the 2 numbers are independent.
+        assert_eq!(
+            value["reconciliationRows"][0]["countMismatch"], true,
+            "1 real matched entry against a declared count of 5 must be flagged"
+        );
+    }
+
+    /// The reviewer's own reproduction, verbatim: a run artifact declares
+    /// `duplicate: 0`, but a `reconcile.json` on disk carries `outcome:
+    /// duplicate` anyway (a corrupted or stale file). Before
+    /// `count_mismatch` existed, `module_dashboard` drew `OUTCOME:
+    /// duplicate, SITE: "…", COUNT: 0` — a self-contradictory row with
+    /// nothing marking it as one. This test pins that the row is now
+    /// flagged rather than drawn as if nothing were wrong.
+    #[test]
+    fn a_reconcile_json_that_contradicts_a_zero_declared_count_is_flagged() {
+        use schematify_core::{RunArtifact, RUN_SCHEMA_VERSION};
+
+        let dir = TempDir::new("reconciliation-corrupted-duplicate");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope = sample_service_node();
+        store.write_node(&scope).expect("seed write succeeds");
+        let scope_id = scope.id();
+
+        let run = RunArtifact {
+            schema: RUN_SCHEMA_VERSION.to_string(),
+            run: 1,
+            at: "2026-09-03T00:00:00Z".to_string(),
+            commit: "abc1234".to_string(),
+            workflow: "ci/verify.yml".to_string(),
+            budgets: Vec::new(),
+            tests: Vec::new(),
+            linter: None,
+            reconcile: Some(schematify_core::ReconcileResult {
+                matched: 0,
+                declared_absent: 0,
+                present_unknown: 0,
+                duplicate: 0,
+            }),
+        };
+        store.write_run(scope_id, &run).expect("seed run write");
+
+        let runs_dir = dir
+            .path()
+            .join(".kaava")
+            .join("runs")
+            .join(scope_id.to_string());
+        fs::write(
+            runs_dir.join("reconcile.json"),
+            json!({
+                "schema": "kaava-reconcile-v1",
+                "at": "2026-09-03T00:00:00Z",
+                "outcome": "duplicate",
+                "node_id": scope_id.to_string(),
+                "sites": [
+                    { "file": "src/a.rs", "line": 1 },
+                    { "file": "src/b.rs", "line": 4 },
+                ],
+            })
+            .to_string(),
+        )
+        .expect("seed the contradicting reconcile.json");
+
+        let value = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": scope_id.to_string() })),
+        )
+        .expect("module-dashboard succeeds even over contradictory evidence");
+
+        let duplicate_row = &value["reconciliationRows"][3];
+        assert_eq!(duplicate_row["outcome"], "duplicate");
+        assert_eq!(
+            duplicate_row["count"], 0,
+            "count still reads the run artifact's own declared 0"
+        );
+        assert_eq!(
+            duplicate_row["countMismatch"], true,
+            "1 real duplicate entry against a declared count of 0 must be flagged, not silently drawn as agreement"
         );
     }
 

@@ -63,11 +63,17 @@ export interface DashboardReconciliationCounter {
 }
 
 /** One row of `schematify/module-dashboard`'s `reconciliationRows` — always
- *  4, one per PRD §9.2 outcome, in that table's own order. */
+ *  4, one per PRD §9.2 outcome, in that table's own order. `count` (the run
+ *  artifact's own declared number) and `site` (the `reconcile.json` evidence
+ *  found on disk) are read from 2 independent sources and never reconciled
+ *  against each other — `countMismatch` is `true` when they disagree, so a
+ *  caller can surface that rather than draw a silently self-contradictory
+ *  row (PRD §12.1: "Errors first · never hidden"). */
 export interface ReconciliationRow {
   outcome: string;
   site: string;
   count: number;
+  countMismatch: boolean;
 }
 
 /** One row of `schematify/module-dashboard`'s `budgetHistory` — one per
@@ -307,38 +313,31 @@ export function runsPathLine(dashboard: Dashboard): string {
 }
 
 /** One row of the `CONTRACT CHANGE HISTORY` table (PRD §12.13): a date and
- *  the change. */
+ *  the change. Never produced today — see `contractHistory`'s own doc
+ *  comment. Kept typed so a later wave that does add a real source has a
+ *  shape to fill in without touching `ModuleDashboard.tsx`. */
 export interface ContractHistoryRow {
   when: string;
   change: string;
 }
 
 /**
- * `referenceContractHistory` — **a recorded gap, not a computed answer.**
+ * `contractHistory` — **always empty. This table is unreachable, for every
+ * module, until a real schema backs it.**
  *
  * No schema in `crates/schematify-core` records a per-method contract change
  * log: `AuditRow` records a lifecycle *transition*, never the edit that
  * motivated one, and a `contract-method` node keeps only its current
- * `signature`/`params`/`returns`/`errors`, overwritten on every edit (PRD
- * §6.1's "one node per file"). Nothing on the graph computes this table.
+ * fields, overwritten on every edit (PRD §6.1's "one node per file").
  *
- * Rather than invent unreviewed schema mid-wave, this draws the 3 rows PRD
- * §16.1 states verbatim, for the one module the reference fixture names, and
- * an empty table for every other module — never fabricated for a project
- * this app has never seen. See the wave 9d handoff for the full reasoning.
+ * An earlier version drew PRD §16.1's 3 example rows when `moduleSlug ===
+ * "token-verifier"` — review correctly rejected that: `RunsPanel.tsx` →
+ * `schematify/module-dashboard` is a real, id-driven path, so a real
+ * project with a module of that ordinary name would have had this app's
+ * own invented history silently drawn into its own dashboard. This
+ * function takes no parameter and returns `[]` unconditionally instead.
+ * See the wave 9d handoff §4 for the full history.
  */
-export function referenceContractHistory(moduleSlug: string): readonly ContractHistoryRow[] {
-  if (moduleSlug !== "token-verifier") return [];
-  return [
-    { when: "2026-08-25T11:40:00Z", change: "verify_signature returns Result, was throw" },
-    { when: "2026-08-19T09:12:00Z", change: "skew_window added" },
-    { when: "2026-08-02T16:55:00Z", change: "refresh_keys force flag added" },
-  ];
+export function contractHistory(): readonly ContractHistoryRow[] {
+  return [];
 }
-
-/** The footnote under `CONTRACT CHANGE HISTORY`, drawn only when
- *  `referenceContractHistory` has rows — PRD §16.1's own literal string,
- *  quoted rather than paraphrased per WIREFRAME-EXTRACT.md §6.1's own note
- *  that PRD §12.13 only paraphrases it. */
-export const CONTRACT_HISTORY_FOOTNOTE =
-  "The 25 Aug change dropped audit-emitter from accepted to stale. Resolved only by human re-review.";

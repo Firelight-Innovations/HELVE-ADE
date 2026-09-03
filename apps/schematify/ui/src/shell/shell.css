@@ -1088,6 +1088,15 @@
   text-align: right;
 }
 
+/* A reconciliation row whose declared count disagrees with its own
+   reconcile.json evidence (`countMismatch`, `src-tauri/src/apps/schematify.rs`'s
+   `reconciliation_rows`) — never hidden, per PRD §12.1's "Errors first ·
+   never hidden". */
+.kv-dashboard__count--mismatch {
+  color: var(--kv-warn);
+  font-weight: 600;
+}
+
 .kv-dashboard__when {
   color: var(--kv-text-tertiary);
   white-space: nowrap;

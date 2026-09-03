@@ -21,14 +21,13 @@ import {
   budgetsCounter,
   budgetsNote,
   budgetThreshold,
-  CONTRACT_HISTORY_FOOTNOTE,
+  contractHistory,
   latestRunLine,
   linterCounter,
   linterNote,
   noProbeCaption,
   reconciliationCounter,
   reconciliationNote,
-  referenceContractHistory,
   runsPathLine,
   shortDate,
   signOffCaption,
@@ -70,7 +69,10 @@ export function ModuleDashboard({ dashboard, error, onClose }: ModuleDashboardPr
 }
 
 function ModuleDashboardBody({ dashboard }: { dashboard: Dashboard }) {
-  const contractHistory = referenceContractHistory(dashboard.module.slug);
+  // Always `[]` today — see `contractHistory`'s own doc comment for why no
+  // module, including the reference fixture's own `token-verifier`, can
+  // populate this table until a real schema backs it.
+  const history = contractHistory();
 
   return (
     <div className="kv-dashboard__body">
@@ -157,31 +159,50 @@ function ModuleDashboardBody({ dashboard }: { dashboard: Dashboard }) {
                 <tr key={row.outcome}>
                   <td>{row.outcome}</td>
                   <td className="kv-dashboard__site">{row.site}</td>
-                  <td className="kv-dashboard__count">{row.count}</td>
+                  <td
+                    className={
+                      row.countMismatch
+                        ? "kv-dashboard__count kv-dashboard__count--mismatch"
+                        : "kv-dashboard__count"
+                    }
+                    title={
+                      row.countMismatch
+                        ? "The declared count disagrees with the reconcile.json evidence found for this outcome."
+                        : undefined
+                    }
+                  >
+                    {row.count}
+                    {row.countMismatch ? " ▲" : ""}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {dashboard.reconciliationRows.some((row) => row.countMismatch) ? (
+            <p className="kv-dashboard__footnote">
+              ▲ Some outcomes' declared count disagrees with the reconcile.json evidence on disk.
+            </p>
+          ) : null}
         </section>
 
         <section className="kv-dashboard__section">
           <h3>CONTRACT CHANGE HISTORY — WHAT TRIGGERS STALENESS DOWNSTREAM</h3>
-          {contractHistory.length === 0 ? (
-            <p className="kv-dashboard__placeholder">No contract change history recorded yet.</p>
+          {history.length === 0 ? (
+            <p className="kv-dashboard__placeholder">
+              No contract change history recorded yet — no schema in this project tracks a
+              per-method change log.
+            </p>
           ) : (
-            <>
-              <table className="kv-dashboard__table">
-                <tbody>
-                  {contractHistory.map((row) => (
-                    <tr key={row.when}>
-                      <td className="kv-dashboard__when">{shortDate(row.when)}</td>
-                      <td>{row.change}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="kv-dashboard__footnote">{CONTRACT_HISTORY_FOOTNOTE}</p>
-            </>
+            <table className="kv-dashboard__table">
+              <tbody>
+                {history.map((row) => (
+                  <tr key={row.when}>
+                    <td className="kv-dashboard__when">{shortDate(row.when)}</td>
+                    <td>{row.change}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </section>
       </div>

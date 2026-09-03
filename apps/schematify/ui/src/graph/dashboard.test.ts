@@ -6,6 +6,7 @@ import {
   budgetsCounter,
   budgetsNote,
   budgetThreshold,
+  contractHistory,
   formatRunAt,
   latestRunLine,
   linterCounter,
@@ -13,7 +14,6 @@ import {
   noProbeCaption,
   reconciliationCounter,
   reconciliationNote,
-  referenceContractHistory,
   relativeTime,
   shortDate,
   signOffCaption,
@@ -262,14 +262,13 @@ describe("signOffCaption and noProbeCaption", () => {
   });
 });
 
-describe("referenceContractHistory", () => {
-  it("draws the §16.1 rows only for the module the reference fixture names", () => {
-    const rows = referenceContractHistory("token-verifier");
-    expect(rows).toHaveLength(3);
-    expect(rows[0].change).toBe("verify_signature returns Result, was throw");
-  });
-
-  it("draws nothing for a module this app has no reference content for", () => {
-    expect(referenceContractHistory("password-hasher")).toEqual([]);
+describe("contractHistory", () => {
+  it("is always empty — no schema backs this table for any module", () => {
+    // A real project can hold a module slugged `token-verifier` (an
+    // ordinary name for an auth service); a slug-gated stand-in would have
+    // drawn this app's own invented rows into that project's real
+    // dashboard. See the wave 9d handoff §4 for the review finding this
+    // fixes.
+    expect(contractHistory()).toEqual([]);
   });
 });
