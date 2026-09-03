@@ -7,11 +7,13 @@
 //! dispatch function rather than one `#[tauri::command]` per operation,
 //! matching `home.rs` and `files.rs` (`docs/audits/schematify-baseline.md` §11).
 //!
-//! PRD §14.5 lists ten operations. This file wires seven: open a project,
+//! PRD §14.5 lists ten operations. This file wires nine: open a project,
 //! load the whole graph and its report, write one node, write one edge,
-//! read/write one layout, run the linter, and read one reconcile status —
-//! plus `schematify/state` from wave 1a. `transition`, `ingest-run` and
-//! `search` stay unwired — see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+//! read/write one layout, run the linter, read one reconcile status, and
+//! ingest a CI run artifact — plus `schematify/state` from wave 1a and
+//! `schematify/module-dashboard` (wave 9d's own addition, feeding PRD
+//! §12.13). `transition` and `search` stay unwired — see
+//! `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
 //!
 //! Decision SCH-API-003 puts an `actor` (`"human"` or `"agent"`) on every
 //! operation, so wave 10's human-only gate has something honest to read.
@@ -22,7 +24,10 @@ use std::path::Path;
 
 use crate::apps::CallContext;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
-use schematify_core::{lint, load_project, CoreError, Edge, Node, Store, Uuid};
+use schematify_core::{
+    ingest_run_file, lint, load_project, BudgetTier, CoreError, Edge, Node, NodeKind, Store,
+    TestStatus, Uuid,
+};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
@@ -70,6 +75,9 @@ fn dispatch(context: &CallContext, method: &str, params: Option<Value>) -> Resul
         "schematify/read-layout" => read_layout(context, params.as_ref()),
         "schematify/lint" => lint_graph(context, params.as_ref()),
         "schematify/reconcile-status" => reconcile_status(context, params.as_ref()),
+        "schematify/ingest-run" => ingest_run(context, params.as_ref()),
+        "schematify/module-dashboard" => module_dashboard(context, params.as_ref()),
+        "schematify/runs" => list_runs(context, params.as_ref()),
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no such method: {method}"),
@@ -434,6 +442,404 @@ fn reconcile_status(context: &CallContext, params: Option<&Value>) -> Result<Val
     read_json_object_or_null(&path)
 }
 
+/// `schematify/ingest-run`. The Tauri wiring for wave 9b's
+/// `schematify_core::ingest_run_file` (`crates/schematify-core/src/ingest.rs`;
+/// see `docs/overnight-jobs/overnight-2/handoffs/w9b-runs.md`), and PRD §8's
+/// "Schematify ingests the artifact into `runs/` and draws it." `module` is
+/// the scope wave 9b's own doc comment names: the node whose CI workflow
+/// produced the run, not a budget node itself, since one workflow answers
+/// several budgets in one file. `path` is wherever CI dropped the
+/// `kaava-bench-v1` artifact, outside `.kaava/` — Schematify never invokes
+/// the probe that produced it, only reads what it wrote.
+fn ingest_run(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let module = string_param(params, "module")?;
+    let scope = Uuid::parse_str(&module)
+        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("module must be a UUID: {e}")))?;
+    let path = string_param(params, "path")?;
+
+    let outcome = load_project(root).map_err(core_rpc)?;
+    let store = Store::open(root);
+    ingest_run_file(&outcome.graph, &store, scope, Path::new(&path)).map_err(core_rpc)?;
+
+    Ok(json!({ "module": scope, "ingested": true }))
+}
+
+/// `schematify/runs`. S-14, PRD §12.2: "Run number, timestamp, commit,
+/// workflow file, ingest state" for the Runs dock tab. Undrawn by any
+/// wireframe screen, so this reads the simplest project-wide shape: every
+/// run under every node, newest first — the same "whole project, not one
+/// tier" scope the Problems panel already draws (wave 7b). A run's presence
+/// here is its ingest state: `ingest_run_file` refuses anything that fails
+/// its checks before it ever reaches disk, so every row this call returns
+/// already reads `Ingested` — there is no "pending" state this crate models.
+fn list_runs(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let outcome = load_project(root).map_err(core_rpc)?;
+    let graph = &outcome.graph;
+
+    let mut rows: Vec<Value> = Vec::new();
+    for node in graph.nodes() {
+        for run in graph.runs(node.id()) {
+            rows.push(json!({
+                "module": {
+                    "id": node.id(),
+                    "title": node.envelope.title,
+                    "slug": node.envelope.slug.as_str(),
+                },
+                "run": run.run,
+                "at": run.at,
+                "commit": run.commit,
+                "workflow": run.workflow,
+            }));
+        }
+    }
+    rows.sort_by(|a, b| {
+        let a_at = a["at"].as_str().unwrap_or_default();
+        let b_at = b["at"].as_str().unwrap_or_default();
+        b_at.cmp(a_at)
+    });
+
+    Ok(json!({ "runs": rows }))
+}
+
+/// `schematify/module-dashboard`. Shapes PRD §12.13's Module dashboard: 5
+/// counters, the budget history, the reconciliation table, and the lifecycle
+/// audit log. `module` is a module node's id, the same value `load-graph`
+/// hands back on `nodes[].id`. Every field below is read fresh off the graph
+/// and the module's own run/audit history on each call — PRD §0.4 forbids
+/// storing a count, and this function is where that rule is kept for the
+/// dashboard specifically, the same way `lint_graph` keeps it for Problems.
+///
+/// Contract change history (the dashboard's 4th table) is not shaped here.
+/// No schema in this crate records a per-method change log — `AuditRow`
+/// records a lifecycle *transition*, not the contract edit that motivated
+/// one — so there is nothing on the graph for this function to compute from.
+/// See the wave 9d handoff for the recorded gap.
+fn module_dashboard(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let module = string_param(params, "module")?;
+
+    let outcome = load_project(root).map_err(core_rpc)?;
+    let graph = &outcome.graph;
+
+    // `module` accepts either a node id or a slug. A UUID is what
+    // `load-graph` hands back on `nodes[].id`, the ordinary case once the
+    // Module Schematic loads real graph data; a slug is what the Module
+    // Schematic's own stand-in engine (`apps/schematify/ui/src/graph/module.ts`
+    // — the pre-existing gap wave 7b's handoff §6 item 3 already recorded)
+    // can offer today, since it never learned the real backend's uuids. Both
+    // resolve to the same node here rather than making the frontend carry a
+    // 2nd lookup call before it can even open the dashboard.
+    let module_id = match Uuid::parse_str(&module) {
+        Ok(id) => id,
+        Err(_) => graph
+            .nodes()
+            .find(|n| *n.kind() == NodeKind::Module && n.envelope.slug.as_str() == module)
+            .map(Node::id)
+            .ok_or_else(|| {
+                RpcError::new(
+                    INVALID_PARAMS,
+                    format!("no module node with slug {module:?}"),
+                )
+            })?,
+    };
+    let node = graph
+        .node(module_id)
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no node with id {module_id}")))?;
+    let store = Store::open(root);
+
+    // Budgets and tests are graph state — a probe declaration or a linked
+    // test status does not wait for a run to be true, so neither is read off
+    // `latest_run` below.
+    let children: Vec<&Node> = graph
+        .children(module_id)
+        .iter()
+        .filter_map(|&id| graph.node(id))
+        .collect();
+
+    let budgets: Vec<(&Node, schematify_core::BudgetFields)> = children
+        .iter()
+        .filter(|n| *n.kind() == NodeKind::Budget)
+        .filter_map(|n| n.budget().ok().map(|fields| (*n, fields)))
+        .collect();
+    let budgets_with_probe = budgets.iter().filter(|(_, f)| f.probe.is_some()).count();
+    let hard_missing_probe = budgets
+        .iter()
+        .filter(|(_, f)| f.probe.is_none() && f.tier == BudgetTier::Hard)
+        .count();
+
+    let tests: Vec<schematify_core::TestCaseFields> = children
+        .iter()
+        .filter(|n| *n.kind() == NodeKind::TestCase)
+        .filter_map(|n| n.test_case().ok())
+        .collect();
+    let tests_passing = tests
+        .iter()
+        .filter(|t| t.status == TestStatus::Passing)
+        .count();
+    let tests_failing = tests
+        .iter()
+        .filter(|t| t.status == TestStatus::Failing)
+        .count();
+    let tests_unlinked = tests
+        .iter()
+        .filter(|t| t.status == TestStatus::Declared)
+        .count();
+
+    // `LATEST RUN` per PRD §12.13: the highest run number ingested under this
+    // module. `Graph::runs` is empty on a module CI has never run.
+    let latest_run = graph.runs(module_id).iter().max_by_key(|run| run.run);
+
+    let budget_history: Vec<Value> = budgets
+        .iter()
+        .map(|(_, fields)| {
+            let measured =
+                latest_run.and_then(|run| run.budgets.iter().find(|b| b.metric == fields.metric));
+            json!({
+                "metric": fields.metric,
+                "tier": fields.tier,
+                "op": fields.op,
+                "threshold": fields.value,
+                "unit": fields.unit,
+                "hasProbe": fields.probe.is_some(),
+                "probeCommand": fields.probe.as_ref().map(|p| p.command.clone()),
+                "latestValue": measured.map(|m| m.value),
+                "pass": measured.map(|m| m.pass),
+                "signOff": fields.sign_off,
+            })
+        })
+        .collect();
+
+    // The reconciliation counters are the latest run's own summary (PRD
+    // §5.10, §9.2) — a run artifact is the one place those 4 numbers are
+    // recorded. The `SITE` cell is not: no run field carries where a marker
+    // was found, only how many, so `reconciliation_sites` reads the
+    // `reconcile.json` `kaava reconcile` writes per node (PRD §9.3) for the
+    // module and its direct facet children — the same "direct children of
+    // scope" boundary wave 9b's own `ingest_run` drew for budgets.
+    let reconcile_scope: Vec<Uuid> = std::iter::once(module_id)
+        .chain(children.iter().map(|n| n.id()))
+        .collect();
+    let titles: std::collections::HashMap<Uuid, &str> = std::iter::once(node)
+        .chain(children.iter().copied())
+        .map(|n| (n.id(), n.envelope.title.as_str()))
+        .collect();
+    let reconciliation_rows = reconciliation_rows(
+        &store,
+        &reconcile_scope,
+        &titles,
+        latest_run.and_then(|run| run.reconcile),
+    );
+
+    let audit_log: Vec<Value> = graph
+        .audit(module_id)
+        .iter()
+        .rev()
+        .take(5)
+        .map(|row| {
+            json!({
+                "when": row.at,
+                "from": row.from,
+                "to": row.to,
+                "actor": row.actor.as_str(),
+                "actorName": row.actor_name,
+                "reason": row.reason,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "module": {
+            "id": node.id(),
+            "title": node.envelope.title,
+            "slug": node.envelope.slug.as_str(),
+        },
+        "runsPath": format!("runs/{}/", elide_uuid(module_id)),
+        "latestRun": latest_run.map(|run| json!({
+            "run": run.run,
+            "at": run.at,
+            "commit": run.commit,
+            "workflow": run.workflow,
+        })),
+        "budgets": {
+            "withProbe": budgets_with_probe,
+            "total": budgets.len(),
+            "hardMissingProbe": hard_missing_probe,
+        },
+        "tests": {
+            "passing": tests_passing,
+            "total": tests.len(),
+            "failing": tests_failing,
+            "unlinked": tests_unlinked,
+        },
+        "linter": latest_run.and_then(|run| run.linter).map(|l| json!({
+            "rules": l.rules,
+            "violations": l.violations,
+        })),
+        "reconciliation": latest_run.and_then(|run| run.reconcile).map(|r| json!({
+            "matched": r.matched,
+            "declaredAbsent": r.declared_absent,
+            "presentUnknown": r.present_unknown,
+            "duplicate": r.duplicate,
+        })),
+        "reconciliationRows": reconciliation_rows,
+        "budgetHistory": budget_history,
+        "auditLog": audit_log,
+    }))
+}
+
+/// `0192f4a1-…-a7b8` from a full uuid — PRD §12.13's own elision, for the
+/// `runsPath` header line.
+fn elide_uuid(id: Uuid) -> String {
+    let text = id.to_string();
+    let (first, rest) = text.split_once('-').unwrap_or((text.as_str(), ""));
+    let last = rest.rsplit('-').next().unwrap_or(rest);
+    format!("{first}-\u{2026}-{last}")
+}
+
+/// One row of the Reconciliation table: PRD §9.2's drawn outcome name, a
+/// `SITE` cell, and the count.
+struct ReconcileRow {
+    outcome: &'static str,
+    site: String,
+    count: u32,
+}
+
+impl ReconcileRow {
+    fn to_value(&self) -> Value {
+        json!({ "outcome": self.outcome, "site": self.site, "count": self.count })
+    }
+}
+
+/// Reads `runs/<id>/reconcile.json` for every id in `scope` (raw JSON, same
+/// convention `reconcile_status` uses — see `read_json_object_or_null`'s own
+/// doc comment for why this crate does not type it against
+/// `schematify-reconcile`'s shape), groups the outcomes it finds by kind, and
+/// builds the 4 rows PRD §12.13 draws. `counts` is the latest run's own
+/// summary — see `module_dashboard`'s doc comment for why the count and the
+/// site text come from two different sources. A count with nothing behind it
+/// (no `reconcile.json` on disk yet, the ordinary state for a project that
+/// has never run `kaava reconcile`) draws `—`, not a guess.
+fn reconciliation_rows(
+    store: &Store,
+    scope: &[Uuid],
+    titles: &std::collections::HashMap<Uuid, &str>,
+    counts: Option<schematify_core::ReconcileResult>,
+) -> Vec<Value> {
+    let mut matched_sites: Vec<String> = Vec::new();
+    let mut absent_sites: Vec<String> = Vec::new();
+    let mut unknown_sites: Vec<String> = Vec::new();
+    let mut duplicate_sites: Vec<String> = Vec::new();
+
+    // The reconciled node's own title, not `reconcile.json`'s own `slug`
+    // field — a contract method's slug is kebab-case
+    // (`schematify_core::Slug`'s own rule) but PRD §16.1's drawn form
+    // (`skew_window — no marker`) is the method's call name, which is what
+    // `NodeEnvelope::title` holds for a `contract-method` node. Falls back to
+    // the file's own `slug` for a node this dashboard's own graph walk never
+    // loaded (should not happen for `scope`, built from the same graph).
+    let title_of = |value: &Value| -> String {
+        value
+            .get("node_id")
+            .and_then(Value::as_str)
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .and_then(|id| titles.get(&id).copied())
+            .map(str::to_owned)
+            .or_else(|| value.get("slug").and_then(Value::as_str).map(str::to_owned))
+            .unwrap_or_default()
+    };
+
+    for &id in scope {
+        let path = store
+            .kaava_dir()
+            .join("runs")
+            .join(id.to_string())
+            .join("reconcile.json");
+        let Ok(value) = read_json_object_or_null(&path) else {
+            continue;
+        };
+        if value.is_null() {
+            continue;
+        }
+        match value.get("outcome").and_then(Value::as_str) {
+            Some("matched") => {
+                if let Some(file) = value
+                    .get("site")
+                    .and_then(|s| s.get("file"))
+                    .and_then(Value::as_str)
+                {
+                    matched_sites.push(file.to_owned());
+                }
+            }
+            Some("declared_absent") => {
+                absent_sites.push(format!("{} — no marker", title_of(&value)));
+            }
+            Some("present_unknown") => {
+                if let Some(file) = value
+                    .get("site")
+                    .and_then(|s| s.get("file"))
+                    .and_then(Value::as_str)
+                {
+                    unknown_sites.push(file.to_owned());
+                }
+            }
+            Some("duplicate") => {
+                duplicate_sites.push(title_of(&value));
+            }
+            _ => {}
+        }
+    }
+
+    let counts = counts.unwrap_or_default();
+    vec![
+        ReconcileRow {
+            outcome: "matched",
+            site: first_and_overflow(&matched_sites),
+            count: counts.matched,
+        }
+        .to_value(),
+        ReconcileRow {
+            outcome: "declared, absent",
+            site: first_and_overflow(&absent_sites),
+            count: counts.declared_absent,
+        }
+        .to_value(),
+        ReconcileRow {
+            outcome: "present, unknown",
+            site: first_and_overflow(&unknown_sites),
+            count: counts.present_unknown,
+        }
+        .to_value(),
+        ReconcileRow {
+            outcome: "duplicate",
+            site: first_and_overflow(&duplicate_sites),
+            count: counts.duplicate,
+        }
+        .to_value(),
+    ]
+}
+
+/// PRD §12.13's `SITE` cell form: `src/auth/verifier.ts +3 more`, deduplicated
+/// so 7 matches inside 4 files draw as 1 name and 3 more, not 6. `—` when
+/// `sites` is empty.
+fn first_and_overflow(sites: &[String]) -> String {
+    let mut distinct: Vec<&String> = Vec::new();
+    for site in sites {
+        if !distinct.contains(&site) {
+            distinct.push(site);
+        }
+    }
+    match distinct.split_first() {
+        None => "—".to_owned(),
+        Some((first, [])) => (*first).clone(),
+        Some((first, rest)) => format!("{first} +{} more", rest.len()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,6 +921,9 @@ mod tests {
             "schematify/read-layout",
             "schematify/lint",
             "schematify/reconcile-status",
+            "schematify/ingest-run",
+            "schematify/module-dashboard",
+            "schematify/runs",
         ] {
             let err = dispatch(&context, method, Some(json!({})))
                 .expect_err(&format!("{method} requires an actor"));
@@ -534,6 +943,9 @@ mod tests {
             "schematify/read-layout",
             "schematify/lint",
             "schematify/reconcile-status",
+            "schematify/ingest-run",
+            "schematify/module-dashboard",
+            "schematify/runs",
         ] {
             let err = dispatch(&context, method, Some(json!({ "actor": "human" })))
                 .expect_err(&format!("{method} requires an open project"));
@@ -969,5 +1381,327 @@ mod tests {
             superseded_by: None,
             stale: None,
         })
+    }
+
+    fn budget_module_node(id: Uuid, slug: &str, metric: &str) -> Node {
+        use schematify_core::{
+            Authorship, BudgetFields, BudgetTier, Lifecycle, NodeEnvelope, NodeKind, Probe, Slug,
+        };
+
+        Node::new(NodeEnvelope {
+            id,
+            slug: Slug::new(slug).expect("legal slug"),
+            kind: NodeKind::Budget,
+            title: metric.to_string(),
+            description: None,
+            lifecycle: Lifecycle::Specified,
+            layer: None,
+            parent: None,
+            decisions: Vec::new(),
+            authored_by: Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        })
+        .with_fields(&BudgetFields {
+            metric: metric.to_string(),
+            op: "<".to_string(),
+            value: 3.0,
+            unit: "ms".to_string(),
+            tier: BudgetTier::Hard,
+            probe: Some(Probe {
+                command: "pnpm bench:x".to_string(),
+                parser: "kaava-bench-v1".to_string(),
+            }),
+            sign_off: None,
+        })
+        .expect("budget fields serialize")
+    }
+
+    #[test]
+    fn ingest_run_writes_the_file_a_reader_gets_back() {
+        use schematify_core::{RunArtifact, RUN_SCHEMA_VERSION};
+
+        let dir = TempDir::new("ingest-run");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope_id = schematify_core::mint_id();
+        let scope = Node::new(schematify_core::NodeEnvelope {
+            id: scope_id,
+            slug: schematify_core::Slug::new("token-verifier").expect("legal slug"),
+            kind: schematify_core::NodeKind::Module,
+            title: "Token Verifier".to_string(),
+            description: None,
+            lifecycle: schematify_core::Lifecycle::Accepted,
+            layer: None,
+            parent: None,
+            decisions: Vec::new(),
+            authored_by: schematify_core::Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        });
+        store.write_node(&scope).expect("seed module write");
+        let budget = budget_module_node(schematify_core::mint_id(), "verify-p95", "verify_p95");
+        let mut budget = budget;
+        budget.envelope.parent = Some(scope_id);
+        store.write_node(&budget).expect("seed budget write");
+
+        let artifact = RunArtifact {
+            schema: RUN_SCHEMA_VERSION.to_string(),
+            run: 1,
+            at: "2026-09-03T00:00:00Z".to_string(),
+            commit: "abc1234".to_string(),
+            workflow: "ci/verify.yml".to_string(),
+            budgets: vec![schematify_core::BudgetResult {
+                metric: "verify_p95".to_string(),
+                value: 1.0,
+                unit: "ms".to_string(),
+                pass: true,
+            }],
+            tests: Vec::new(),
+            linter: None,
+            reconcile: None,
+        };
+        let artifact_path = dir.path().join("ci-artifact.json");
+        fs::write(
+            &artifact_path,
+            serde_json::to_vec(&artifact).expect("artifact serializes"),
+        )
+        .expect("write the artifact CI would have dropped");
+
+        let value = dispatch(
+            &context,
+            "schematify/ingest-run",
+            Some(json!({
+                "actor": "human",
+                "module": scope_id.to_string(),
+                "path": artifact_path.display().to_string(),
+            })),
+        )
+        .expect("ingest-run succeeds");
+        assert_eq!(value["ingested"], true);
+
+        let written = store.run_path(scope_id, 1);
+        assert!(
+            written.is_file(),
+            "the run landed at runs/<module>/run-1.json"
+        );
+    }
+
+    #[test]
+    fn ingest_run_refuses_a_second_ingestion_at_the_same_run_number() {
+        // Broken on purpose to confirm this test can fail: temporarily
+        // asserted `is_ok()` on the second call instead of `is_err()`, watched
+        // it fail with "second ingestion should be refused: Ok(...)", then
+        // restored the assertion below. Recorded per the task's own rule
+        // rather than left to a comment nobody checked.
+        use schematify_core::{RunArtifact, RUN_SCHEMA_VERSION};
+
+        let dir = TempDir::new("ingest-run-dup");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope_id = schematify_core::mint_id();
+        let scope = Node::new(schematify_core::NodeEnvelope {
+            id: scope_id,
+            slug: schematify_core::Slug::new("token-verifier").expect("legal slug"),
+            kind: schematify_core::NodeKind::Module,
+            title: "Token Verifier".to_string(),
+            description: None,
+            lifecycle: schematify_core::Lifecycle::Accepted,
+            layer: None,
+            parent: None,
+            decisions: Vec::new(),
+            authored_by: schematify_core::Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        });
+        store.write_node(&scope).expect("seed module write");
+
+        let artifact = RunArtifact {
+            schema: RUN_SCHEMA_VERSION.to_string(),
+            run: 1,
+            at: "2026-09-03T00:00:00Z".to_string(),
+            commit: "abc1234".to_string(),
+            workflow: "ci/verify.yml".to_string(),
+            budgets: Vec::new(),
+            tests: Vec::new(),
+            linter: None,
+            reconcile: None,
+        };
+        let artifact_path = dir.path().join("ci-artifact.json");
+        fs::write(
+            &artifact_path,
+            serde_json::to_vec(&artifact).expect("artifact serializes"),
+        )
+        .expect("write the artifact CI would have dropped");
+
+        let params = json!({
+            "actor": "human",
+            "module": scope_id.to_string(),
+            "path": artifact_path.display().to_string(),
+        });
+        dispatch(&context, "schematify/ingest-run", Some(params.clone()))
+            .expect("first ingestion succeeds");
+        let second = dispatch(&context, "schematify/ingest-run", Some(params));
+        assert!(
+            second.is_err(),
+            "second ingestion should be refused: {second:?}"
+        );
+    }
+
+    /// Against the real committed fixture, per §16.1: `verify-signature.json`,
+    /// `refresh-keys.json` and the module's own file carry `probe`; only
+    /// `cold-start-p95` does not, so `2 / 3` and `1 hard budget has no probe`.
+    /// `5 / 7` tests, `1` failing, `1` unlinked, per the 7 `test-case`
+    /// children this crate's own fixture holds.
+    #[test]
+    fn module_dashboard_against_the_real_fixture_draws_the_16_1_values() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("crates")
+            .join("schematify-core")
+            .join("fixtures")
+            .join("saas-backend");
+        let context = context_at(&root);
+
+        // token-verifier's real id, per the committed fixture (also read by
+        // `load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service`
+        // above via slug lookup; this test pins the id literally since it is
+        // this fixture's own stable identifier).
+        let module = "01a03637-7800-7024-8962-cc11fce89708";
+
+        let value = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": module })),
+        )
+        .expect("module-dashboard succeeds against the real fixture");
+
+        assert_eq!(value["module"]["slug"], "token-verifier");
+        assert_eq!(value["latestRun"]["run"], 1184);
+
+        assert_eq!(value["budgets"]["withProbe"], 2);
+        assert_eq!(value["budgets"]["total"], 3);
+        assert_eq!(value["budgets"]["hardMissingProbe"], 1);
+
+        assert_eq!(value["tests"]["passing"], 5);
+        assert_eq!(value["tests"]["total"], 7);
+        assert_eq!(value["tests"]["failing"], 1);
+        assert_eq!(value["tests"]["unlinked"], 1);
+
+        assert_eq!(value["linter"]["rules"], 14);
+        assert_eq!(value["linter"]["violations"], 0);
+
+        assert_eq!(value["reconciliation"]["matched"], 7);
+        assert_eq!(value["reconciliation"]["declaredAbsent"], 1);
+        assert_eq!(value["reconciliation"]["presentUnknown"], 0);
+        assert_eq!(value["reconciliation"]["duplicate"], 0);
+
+        let rows = value["reconciliationRows"]
+            .as_array()
+            .expect("reconciliationRows is an array");
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0]["outcome"], "matched");
+        assert_eq!(rows[0]["count"], 7);
+        assert_eq!(rows[0]["site"], "src/auth/verifier.ts +3 more");
+        assert_eq!(rows[1]["outcome"], "declared, absent");
+        assert_eq!(rows[1]["count"], 1);
+        assert_eq!(rows[1]["site"], "skew_window — no marker");
+        assert_eq!(rows[2]["site"], "—");
+        assert_eq!(rows[3]["site"], "—");
+
+        let audit = value["auditLog"].as_array().expect("auditLog is an array");
+        assert_eq!(audit.len(), 5);
+        assert_eq!(audit[0]["to"], "accepted");
+        assert_eq!(audit[0]["actorName"], "m.ross");
+    }
+
+    #[test]
+    fn module_dashboard_reports_no_run_and_dashes_for_a_module_that_never_ran() {
+        let dir = TempDir::new("module-dashboard-no-run");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope = sample_service_node();
+        store.write_node(&scope).expect("seed write succeeds");
+
+        let value = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": scope.id().to_string() })),
+        )
+        .expect("module-dashboard succeeds against a node with no run");
+
+        assert!(value["latestRun"].is_null());
+        assert!(value["linter"].is_null());
+        assert!(value["reconciliation"].is_null());
+        assert_eq!(value["budgets"]["total"], 0);
+        assert_eq!(value["tests"]["total"], 0);
+        let rows = value["reconciliationRows"].as_array().unwrap();
+        for row in rows {
+            assert_eq!(row["site"], "—");
+            assert_eq!(row["count"], 0);
+        }
+    }
+
+    #[test]
+    fn list_runs_against_the_real_fixture_finds_the_one_ingested_run() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("crates")
+            .join("schematify-core")
+            .join("fixtures")
+            .join("saas-backend");
+        let context = context_at(&root);
+
+        let value = dispatch(
+            &context,
+            "schematify/runs",
+            Some(json!({ "actor": "human" })),
+        )
+        .expect("runs succeeds against the real fixture");
+
+        let runs = value["runs"].as_array().expect("runs is an array");
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run"], 1184);
+        assert_eq!(runs[0]["module"]["slug"], "token-verifier");
+        assert_eq!(runs[0]["workflow"], "ci/verify.yml");
+    }
+
+    #[test]
+    fn list_runs_reports_none_for_a_project_that_has_never_run() {
+        let dir = TempDir::new("list-runs-empty");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let value = dispatch(
+            &context,
+            "schematify/runs",
+            Some(json!({ "actor": "agent" })),
+        )
+        .expect("runs succeeds over an empty project");
+        assert_eq!(value["runs"].as_array().expect("array").len(), 0);
+    }
+
+    #[test]
+    fn module_dashboard_refuses_an_id_that_names_no_node() {
+        let dir = TempDir::new("module-dashboard-missing");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let err = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": schematify_core::mint_id().to_string() })),
+        )
+        .expect_err("an id with no node is refused");
+        assert_eq!(err.code, INVALID_PARAMS);
     }
 }
