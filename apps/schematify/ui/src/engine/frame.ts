@@ -16,6 +16,7 @@ import {
   childrenOf,
   descendantsOf,
   indexDoc,
+  isAnnotation,
   visibleNodes,
   visibleStandIn,
 } from "./doc";
@@ -122,7 +123,12 @@ export function buildFrame(input: FrameInput): Frame {
     legendFooter: config.legendFooter,
     zoom: zoomReadout(viewport),
     minimap: config.chrome.minimap ? buildMinimap(visible, viewport, size) : null,
-    counts: { nodes: doc.nodes.length, edges: doc.edges.length },
+    counts: {
+      // An annotation is not a node (PRD §11.3), so a comment never moves a
+      // count the status bar draws.
+      nodes: doc.nodes.filter((node) => !isAnnotation(node)).length,
+      edges: doc.edges.length,
+    },
   };
 }
 
@@ -259,6 +265,10 @@ function containmentRenderings(
     if (node.parentId === null) continue;
     const parent = index.byId.get(node.parentId);
     if (!parent) continue;
+    // The ruling covers the module root to its facet cards. An annotation is
+    // not in the semantic vocabulary at all (PRD §11.3), so a comment or a
+    // group anchored by parentage gets no containment arrow.
+    if (isAnnotation(node) || isAnnotation(parent)) continue;
     out.push({
       id: `contains:${parent.id}:${node.id}`,
       kind: "contains",

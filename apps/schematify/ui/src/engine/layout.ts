@@ -10,8 +10,8 @@
  * — so keeping them out of `nodes/` is what makes "an annotation is not design
  * data" true on disk rather than only in the linter.
  */
-import type { LayoutAnnotation, LayoutFile, LayoutNode, ServiceGraph } from "../graph";
-import type { SchematicConfig, SchematicNodeKind } from "./config";
+import type { GraphNode, LayoutAnnotation, LayoutFile, LayoutNode, ServiceGraph } from "../graph";
+import type { NodeRole, SchematicConfig, SchematicNodeKind } from "./config";
 import { arrange } from "./arrange";
 import type { SchematicDoc, SchematicNode } from "./doc";
 import type { Viewport } from "./viewport";
@@ -35,12 +35,16 @@ export function buildDoc(
     parentId: node.parentId,
     rect: { x: 0, y: 0, ...config.nodeBox(node.kind as SchematicNodeKind) },
     collapsed: node.collapsed ?? false,
+    role: roleOf(node, config),
+    badge: node.badge,
+    lifecycle: node.lifecycle,
   }));
 
   const annotations: SchematicNode[] = (layout?.annotations ?? []).map(fromAnnotation);
 
   const draft: SchematicDoc = {
     slug: config.layoutSlug,
+    title: graph.serviceTitle,
     nodes: [...semantic, ...annotations],
     edges: graph.edges.map((edge) => ({
       id: edge.id,
@@ -59,6 +63,50 @@ export function buildDoc(
       if (node.kind === "group" || node.kind === "comment") return node;
       return { ...node, rect: arranged.get(node.id) ?? node.rect };
     }),
+  };
+}
+
+/**
+ * The part a node plays, read off what the graph already says rather than off
+ * a second list: the entry point is the node the Outline badges `ENTRY`
+ * (PRD §12.1, §12.10), and a Schematic's root is the node whose slug names the
+ * Schematic itself, which at tier 3 is the module root (PRD §12.11).
+ */
+function roleOf(node: GraphNode, config: SchematicConfig): NodeRole | undefined {
+  if (node.slug === config.layoutSlug) return "schematic-root";
+  if (node.badge === "ENTRY") return "entry-point";
+  return undefined;
+}
+
+/**
+ * The live graph, projected back out of the document — what the Outline and
+ * the status bar read, so their counts move when the engine's do. Annotations
+ * are dropped: a comment is not a node (PRD §11.3), and counting one would
+ * make the status bar read 13 nodes for a 12-node service.
+ */
+export function toServiceGraph(doc: SchematicDoc): ServiceGraph {
+  return {
+    tier: "service",
+    serviceSlug: doc.slug,
+    serviceTitle: doc.title,
+    nodes: doc.nodes
+      .filter((node) => node.kind !== "comment" && node.kind !== "group")
+      .map((node) => ({
+        id: node.id,
+        slug: node.slug,
+        title: node.title,
+        kind: node.kind === "service" ? "service" : "module",
+        parentId: node.parentId,
+        badge: node.badge,
+        lifecycle: node.lifecycle,
+        collapsed: node.collapsed,
+      })),
+    edges: doc.edges.map((edge) => ({
+      id: edge.id,
+      kind: edge.kind as "depends_on" | "implements" | "references_ui",
+      from: edge.from,
+      to: edge.to,
+    })),
   };
 }
 

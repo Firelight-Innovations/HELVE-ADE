@@ -27,12 +27,46 @@ const PAD = 18;
 const HEADER = 34;
 /** How many children sit in one row before the flow wraps. */
 const ROW = 3;
+/** The gap between a contract sheet's root and the column that fans off it. */
+const FAN = 120;
 
 /** Arranged geometry, by node id. Nodes are not mutated here. */
 export type Arrangement = ReadonlyMap<string, Rect>;
 
 export function arrange(doc: SchematicDoc, config: SchematicConfig): Arrangement {
   const index = indexDoc(doc);
+  if (config.arrangement === "contract-sheet") return contractSheet(doc, index, config);
+  return nestedFlow(index, config);
+}
+
+/**
+ * PRD §12.11's tier-3 arrangement: the root holds the left edge and every
+ * facet fans out to its right in one column, ordered by the palette's own
+ * order, so the Schematic reads as a contract sheet rather than a free graph.
+ *
+ * A first cut. Wave 5 owns the facet cards themselves and will want to group
+ * the column by card kind or split it in two; that is a change here and
+ * nowhere else.
+ */
+function contractSheet(doc: SchematicDoc, index: DocIndex, config: SchematicConfig): Arrangement {
+  const out = new Map<string, Rect>();
+  const roots = doc.nodes.filter((node) => node.role === "schematic-root");
+  const rootNode = roots[0] ?? childrenOf(index, null)[0];
+  const rootSize = rootNode ? config.nodeBox(rootNode.kind) : { width: 0, height: 0 };
+  if (rootNode) out.set(rootNode.id, { x: GAP, y: GAP, ...rootSize });
+
+  const columnX = snap(GAP + rootSize.width + FAN, config.grid.size);
+  let y = GAP;
+  for (const node of doc.nodes) {
+    if (node.id === rootNode?.id) continue;
+    const size = config.nodeBox(node.kind);
+    out.set(node.id, { x: columnX, y: snap(y, config.grid.size), ...size });
+    y += size.height + GAP;
+  }
+  return out;
+}
+
+function nestedFlow(index: DocIndex, config: SchematicConfig): Arrangement {
   const out = new Map<string, Rect>();
   const sizes = new Map<string, { width: number; height: number }>();
 

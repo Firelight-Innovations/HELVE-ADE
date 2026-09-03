@@ -13,7 +13,7 @@ import { openSchematic } from "./index";
 import { COMMENT_REFUSAL, CYCLE_REFUSAL, GROUP_REFUSAL, DUPLICATE_REFUSAL } from "./rules";
 import { isUuidV7 } from "./ids";
 import { buildFrame } from "./frame";
-import { buildDoc } from "./layout";
+import { buildDoc, toServiceGraph } from "./layout";
 import { SchematicEngine } from "./engine";
 import type { SchematicDoc } from "./doc";
 
@@ -397,6 +397,7 @@ describe("containment collapse", () => {
   it("rolls edges up to the collapsed border and says how many", () => {
     const doc: SchematicDoc = {
       slug: "roll-up",
+      title: "roll-up",
       nodes: [
         {
           id: "parent",
@@ -468,6 +469,7 @@ describe("containment collapse", () => {
   it("draws no edge at all between two nodes inside the same collapsed box", () => {
     const doc: SchematicDoc = {
       slug: "internal",
+      title: "internal",
       nodes: [
         {
           id: "parent",
@@ -549,12 +551,125 @@ describe("reparenting", () => {
     expect(engine.index.byId.get("token-verifier")?.parentId).toBeNull();
   });
 
-  it("allows a legal reparent, as a cosmetic change", async () => {
+  it("writes the node file, because parentage is meaning and a position is not", async () => {
     const { engine, seam } = await open();
     expect(engine.reparent("clock-skew", "token-issuer")).toBeNull();
     await engine.settled();
+
     expect(engine.index.byId.get("clock-skew")?.parentId).toBe("token-issuer");
-    expect([...seam.semantic.keys()]).toEqual([]);
+    expect([...seam.semantic.keys()]).toEqual(["nodes/clock-skew.json"]);
+    // The payload is what the backend will store, so it is asserted rather
+    // than the fact of a write. The memory seam's loader still answers with
+    // the fixture, so a reopen cannot show this yet — the written parent is.
+    expect(seam.semantic.get("nodes/clock-skew.json")).toMatchObject({
+      id: "clock-skew",
+      parent: "token-issuer",
+    });
+  });
+
+  it("removes the node file again on undo", async () => {
+    const { engine, seam } = await open();
+    engine.reparent("clock-skew", "token-issuer");
+    await engine.settled();
+    engine.undo();
+    await engine.settled();
+    expect(engine.index.byId.get("clock-skew")?.parentId).toBe("token-verifier");
+    expect(seam.semantic.size).toBe(0);
+  });
+});
+
+describe("the node policy", () => {
+  it("leaves a pinned node where it is when a drag moves the selection", async () => {
+    const { engine } = await open();
+    // `http-entry` carries the `ENTRY` badge, so it is this tier's entry point,
+    // and PRD §12.10 pins it to the Schematic edge.
+    expect(engine.isPinned("http-entry")).toBe(true);
+    const before = engine.index.byId.get("http-entry")?.rect;
+    engine.select(["http-entry"]);
+    engine.moveSelection(220, 220);
+    expect(engine.index.byId.get("http-entry")?.rect).toEqual(before);
+  });
+
+  it("moves the rest of a selection that also holds a pinned node", async () => {
+    const { engine } = await open();
+    const pinned = engine.index.byId.get("http-entry")?.rect;
+    const free = engine.index.byId.get("token-issuer")?.rect.x ?? 0;
+    engine.select(["http-entry", "token-issuer"]);
+    engine.moveSelection(220, 0);
+    expect(engine.index.byId.get("http-entry")?.rect).toEqual(pinned);
+    expect(engine.index.byId.get("token-issuer")?.rect.x).toBe(free + 220);
+  });
+
+  it("refuses to delete a node whose role the tier marks undeletable", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph();
+    const engine = new SchematicEngine(MODULE_CONFIG, buildDoc(graph, null, MODULE_CONFIG), seam);
+    const root = engine.state.doc.nodes.find((node) => node.role === "schematic-root");
+    expect(root?.slug).toBe("token-verifier");
+    expect(engine.canDelete(root?.id ?? "")?.reason).toBe("Token Verifier cannot be deleted.");
+  });
+
+  it("refuses to delete anything else too, because nothing is ever deleted", async () => {
+    const { engine } = await open();
+    expect(engine.canDelete("token-issuer")?.reason).toBe(
+      "Nothing is ever deleted. A node is superseded, not removed.",
+    );
+  });
+
+  it("pins the module root rather than the entry point at tier 3", () => {
+    expect(MODULE_CONFIG.nodePolicy.pinned.roles).toEqual(["schematic-root"]);
+    expect(MODULE_CONFIG.nodePolicy.undeletable).toEqual(["schematic-root"]);
+    expect(SERVICE_CONFIG.nodePolicy.pinned.roles).toEqual(["entry-point"]);
+    expect(SERVICE_CONFIG.nodePolicy.undeletable).toEqual([]);
+  });
+});
+
+describe("the live model behind the shell", () => {
+  it("drops annotations, so a comment is not a node", async () => {
+    const { engine } = await open();
+    engine.addComment({ x: 0, y: 0, width: 230, height: 100 }, "m.ross", "note");
+    expect(toServiceGraph(engine.state.doc).nodes).toHaveLength(12);
+  });
+
+  it("moves when the document moves, which is what the Outline reads", async () => {
+    const { engine } = await open();
+    expect(toServiceGraph(engine.state.doc).nodes).toHaveLength(12);
+    engine.select(["clock-skew"]);
+    engine.duplicateSelection();
+    expect(toServiceGraph(engine.state.doc).nodes).toHaveLength(13);
+  });
+
+  it("keeps the badges and the slug line the Outline draws", async () => {
+    const { engine } = await open();
+    const graph = toServiceGraph(engine.state.doc);
+    expect(graph.serviceSlug).toBe("auth-service");
+    expect(graph.serviceTitle).toBe("Auth Service");
+    expect(graph.nodes.find((node) => node.id === "http-entry")?.badge).toBe("ENTRY");
+    expect(graph.nodes.find((node) => node.id === "audit-emitter")?.badge).toBe("STALE");
+  });
+});
+
+describe("the arrangement strategy", () => {
+  it("fans a contract sheet off a root that holds the left edge", async () => {
+    const seam = createMemorySeam();
+    const doc = buildDoc(await seam.loadGraph(), null, MODULE_CONFIG);
+    const root = doc.nodes.find((node) => node.role === "schematic-root");
+    const others = doc.nodes.filter((node) => node.id !== root?.id);
+
+    expect(MODULE_CONFIG.arrangement).toBe("contract-sheet");
+    for (const node of others) {
+      expect(node.rect.x).toBeGreaterThan(root?.rect.x ?? 0);
+    }
+    expect(new Set(others.map((node) => node.rect.x)).size).toBe(1);
+  });
+
+  it("nests a containment tier instead", async () => {
+    const seam = createMemorySeam();
+    const doc = buildDoc(await seam.loadGraph(), null, SERVICE_CONFIG);
+    const parent = doc.nodes.find((node) => node.id === "token-verifier");
+    const child = doc.nodes.find((node) => node.id === "jwks-cache");
+    expect(SERVICE_CONFIG.arrangement).toBe("nested-flow");
+    expect(child?.rect.y).toBeGreaterThan(parent?.rect.y ?? 0);
   });
 });
 

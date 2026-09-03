@@ -10,8 +10,9 @@
  * box-select all ask about absolute boxes far more often than a reparent asks
  * about a relative one.
  */
-import type { EdgeKind, SchematicNodeKind } from "./config";
+import type { EdgeKind, NodeRole, SchematicNodeKind } from "./config";
 import { isAnnotationKind } from "./config";
+import type { Lifecycle, OutlineBadge } from "../graph";
 import type { Rect } from "./geometry";
 
 /** One box on the Schematic, semantic or annotation. */
@@ -31,6 +32,13 @@ export interface SchematicNode {
   author?: string;
   /** Comment only: the body text. */
   body?: string;
+  /** The part this node plays on its Schematic, if any (PRD §12.10, §12.11).
+   *  What the role costs the node is `SchematicConfig.nodePolicy`, per tier. */
+  role?: NodeRole;
+  /** Carried through from the graph so a projection back to `ServiceGraph`
+   *  loses nothing the Outline draws. Neither is read by the engine. */
+  badge?: OutlineBadge;
+  lifecycle?: Lifecycle;
 }
 
 /** One stored semantic edge. A drawn containment line at tier 3 is not one of
@@ -42,9 +50,11 @@ export interface SchematicEdge {
   to: string;
 }
 
-/** A whole open Schematic. `slug` names the layout file it persists to. */
+/** A whole open Schematic. `slug` names the layout file it persists to, and
+ *  `title` is what the breadcrumb draws for it. */
 export interface SchematicDoc {
   slug: string;
+  title: string;
   nodes: readonly SchematicNode[];
   edges: readonly SchematicEdge[];
 }

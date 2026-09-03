@@ -101,6 +101,11 @@ export const STACK_CONFIG: SchematicConfig = {
   edgeKinds: CONTAINMENT_TIER_EDGES,
   containment: { mode: "nesting" },
   annotations: true,
+  arrangement: "nested-flow",
+  // No wireframe pins anything at tier 1, and PRD §12.9 asks for nothing
+  // pinned; the entry point is named here anyway so the Stack Schematic's
+  // `api-gateway` holds the same edge its Service counterpart does.
+  nodePolicy: { pinned: { roles: ["entry-point"], edge: "left" }, undeletable: [] },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "click a service to drill into its modules",
   nodeBox: boxFor(
@@ -121,6 +126,9 @@ export const SERVICE_CONFIG: SchematicConfig = {
   edgeKinds: CONTAINMENT_TIER_EDGES,
   containment: { mode: "nesting" },
   annotations: true,
+  arrangement: "nested-flow",
+  // PRD §12.10: "The entry-point node pins to the Schematic edge."
+  nodePolicy: { pinned: { roles: ["entry-point"], edge: "left" }, undeletable: [] },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "contains = nesting · depends_on = drawn",
   nodeBox: boxFor(
@@ -147,7 +155,16 @@ export const MODULE_CONFIG: SchematicConfig = {
   zoom: { min: 0.2, max: 2, initial: 1 },
   edgeKinds: FACET_TIER_EDGES,
   containment: { mode: "nesting-and-arrows", label: "contains" },
+  // PRD §12.11: "Facets fan outward. The Schematic reads as a contract sheet,
+  // not as a free graph."
   annotations: true,
+  arrangement: "contract-sheet",
+  // PRD §12.11: the root "pins to the left edge" and draws
+  // `MODULE ROOT · CANNOT BE DELETED`.
+  nodePolicy: {
+    pinned: { roles: ["schematic-root"], edge: "left" },
+    undeletable: ["schematic-root"],
+  },
   chrome: { minimap: true, zoomReadout: true, legend: true },
   legendFooter: "contains · covers · satisfies",
   nodeBox: boxFor(

@@ -1,26 +1,19 @@
 /**
- * The one narrow seam between the shell and the graph, ahead of a real
- * loader. PRD §17 Wave 2 needs the shell to "open" `fixtures/saas-backend/`
- * — but `crates/schematify-core`'s graph loader (PRD §6.4) is being built on
- * a sibling branch that has not merged, and `00-AGENT-CONTEXT.md` forbids
- * this wave from importing or creating that crate.
+ * The one narrow seam between the shell and the graph, ahead of a real loader.
+ * PRD §17 Wave 2 needs the shell to "open" `fixtures/saas-backend/`, but
+ * `crates/schematify-core`'s loader (PRD §6.4) is on a branch that has not
+ * merged, and `00-AGENT-CONTEXT.md` forbids importing that crate.
  *
- * Deliberately pure: nothing here imports `@openkaava/bridge`, so this
- * module can be unit-tested under plain Node (`index.test.ts`) without a
- * `window` to talk to. `./backend.ts` is this app's other half — the file
- * that actually calls Rust — kept separate for exactly that reason, not out
- * of an aversion to one big file. It is this app's only door to Rust: see
- * its own doc comment.
+ * Deliberately pure: nothing here imports `@openkaava/bridge`, so this module
+ * unit-tests under plain Node without a `window`. `./backend.ts` is this app's
+ * other half, and its only door to Rust.
  *
- * The functions below `loadGraph` are pure and read no fixture themselves —
- * they take whatever `ServiceGraph` they're given and compute from it, per
- * PRD §0.4's counts rule, so a real graph swapped in tomorrow keeps every
- * string and count correct.
+ * The functions below `loadGraph` read no fixture themselves — they compute
+ * from whatever `ServiceGraph` they are given, per PRD §0.4.
  *
- * Wave 3 widened the seam from a loader to a loader *and* a writer, without
- * widening it to two modules: `SchematifySeam` at the foot of this file is
- * every read and every write the Schematic engine makes, and `createMemorySeam`
- * is the one implementation a backend replaces.
+ * Wave 3 widened the seam from a loader to a loader *and* a writer without
+ * widening it to 2 modules: `SchematifySeam` at the foot of this file is every
+ * read and every write the Schematic engine makes.
  */
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";

@@ -110,6 +110,71 @@ describe("counts", () => {
     const frame = await frameFor(SERVICE_CONFIG);
     expect(frame.counts).toEqual({ nodes: 12, edges: 9 });
   });
+
+  it("does not count an annotation as a node", async () => {
+    const seam = createMemorySeam();
+    const doc = buildDoc(await seam.loadGraph(), null, SERVICE_CONFIG);
+    const withComment = {
+      ...doc,
+      nodes: [
+        ...doc.nodes,
+        {
+          id: "c1",
+          slug: "comment-c1",
+          title: "note",
+          kind: "comment" as const,
+          parentId: null,
+          rect: { x: 0, y: 0, width: 230, height: 100 },
+          collapsed: false,
+          author: "m.ross",
+          body: "note",
+        },
+      ],
+    };
+    const frame = buildFrame({
+      doc: withComment,
+      config: SERVICE_CONFIG,
+      viewport: { x: -4000, y: -4000, zoom: 1 },
+      size: { width: 12000, height: 12000 },
+      selection: new Set(),
+    });
+    expect(frame.nodes.some((drawn) => drawn.node.kind === "comment")).toBe(true);
+    expect(frame.counts.nodes).toBe(12);
+  });
+});
+
+describe("a containment arrow never reaches an annotation", () => {
+  it("draws none to a comment anchored to a node", async () => {
+    const seam = createMemorySeam();
+    const doc = buildDoc(await seam.loadGraph(), null, MODULE_CONFIG);
+    const anchored = {
+      ...doc,
+      nodes: [
+        ...doc.nodes,
+        {
+          id: "c1",
+          slug: "comment-c1",
+          title: "note",
+          kind: "comment" as const,
+          parentId: "token-verifier",
+          rect: { x: 600, y: 40, width: 230, height: 100 },
+          collapsed: false,
+          author: "m.ross",
+          body: "note",
+        },
+      ],
+    };
+    const frame = buildFrame({
+      doc: anchored,
+      config: MODULE_CONFIG,
+      viewport: { x: -4000, y: -4000, zoom: 1 },
+      size: { width: 12000, height: 12000 },
+      selection: new Set(),
+    });
+    const rendered = frame.edges.filter((edge) => edge.kind === "contains");
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.some((edge) => edge.toId === "c1")).toBe(false);
+  });
 });
 
 describe("the minimap", () => {

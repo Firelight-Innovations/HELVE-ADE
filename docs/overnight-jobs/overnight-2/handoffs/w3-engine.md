@@ -25,6 +25,8 @@ interface SchematicConfig {
   zoom: { min: number; max: number; initial: number };
   edgeKinds: readonly EdgeKindRule[];   // the tier's closed vocabulary, PRD §11.1
   containment: { mode: "nesting" } | { mode: "nesting-and-arrows"; label: string };
+  arrangement: "nested-flow" | "contract-sheet";   // PRD §12.11 wants the sheet
+  nodePolicy: NodePolicy;          // which roles pin, and which cannot be deleted
   annotations: boolean;            // groups and comments, PRD §12.4
   chrome: { minimap: boolean; zoomReadout: boolean; legend: boolean };
   legendFooter: string;            // the note beside the legend chips
@@ -47,6 +49,25 @@ interface EdgeKindRule {
   refusal: string;                             // drawn at the cursor on a kind mismatch
 }
 ```
+
+A node's *role* is what a policy acts on, so a tier says what a role costs
+rather than naming nodes:
+
+```ts
+type NodeRole = "entry-point" | "schematic-root";
+interface NodePolicy {
+  pinned: { roles: readonly NodeRole[]; edge: "left" | "right" };  // PRD §12.10, §12.11
+  undeletable: readonly NodeRole[];                                 // §12.11's CANNOT BE DELETED
+}
+```
+
+The role is read off what the graph already says: the entry point is the node
+the Outline badges `ENTRY`, and a Schematic's root is the node whose slug names
+the Schematic. A pinned node does not move with a drag. `undeletable` is
+reported by `canDelete(id)` rather than enforced on a delete gesture, because
+PRD §6.6 says nothing is ever deleted at all — the engine offers no delete, and
+`canDelete` refuses every node, naming the undeletable ones specially so a tier
+drawing `MODULE ROOT · CANNOT BE DELETED` reads its own configuration.
 
 ### How a tier is configured
 
@@ -73,9 +94,10 @@ immutable and replaced wholesale; `subscribe(listener)` drives React, and
 |---|---|
 | Viewport | `pan`, `zoom`, `fit`, `setSize` |
 | Selection | `select`, `clearSelection`, `boxSelect`, `hitTest` |
-| Arrangement (cosmetic writes only) | `moveSelection`, `toggleCollapse`, `reparent`, `autoSort` |
+| Arrangement (cosmetic writes only) | `moveSelection`, `toggleCollapse`, `autoSort` |
 | Annotation tier (cosmetic writes only) | `addGroup`, `addComment`, `removeAnnotation` |
-| Design changes (semantic writes) | `createEdge`, `deleteEdge`, `duplicateSelection`, `copy`, `paste` |
+| Design changes (semantic writes) | `createEdge`, `deleteEdge`, `reparent`, `duplicateSelection`, `copy`, `paste` |
+| Policy | `isPinned`, `canDelete` |
 | History | `undo`, `redo`, `canUndo`, `canRedo` |
 | Reporting | `state`, `index`, `writes`, `semanticWrites`, `layoutDirty` |
 
@@ -130,8 +152,23 @@ whose mode is plain `nesting` draws none.
 | A semantic edge dropped on a comment is refused with §11.3's text | **Pass.** Compared literally, not by substring: `A comment is annotation tier. It cannot carry covers or any semantic edge.` Asserted for a drop on a comment, a drag from a comment, and that nothing at all is written when it refuses. |
 | A cycle edge is refused with §12.5's text | **Pass.** `A dependency edge here would create a cycle.` Asserted for a direct loop back and for a 3-node loop. |
 | A duplicate mints a new UUIDv7 | **Pass.** The identifier is not the original, matches the version-7 and variant bits, and the slug takes `-copy`, then `-copy-2`. A duplicated subtree mints one for every node in it. |
-| The dense fixture holds a 16 ms frame time, asserted from a test suite | **Pass.** `frameBudget.test.ts`. Median of 21 runs, **1.18 ms** on the reference machine (min 1.05, max 2.25) against the 16 ms budget. |
+| The dense fixture holds a 16 ms frame time, asserted from a test suite | **Pass, with the caveat below.** `frameBudget.test.ts`. Median of 21 runs, **1.18 ms** on the reference machine (min 1.05, max 2.25) against the 16 ms budget. |
 | `pnpm verify` passes | **Pass.** See section 8. |
+
+### What the 1.18 ms actually measures, and what it does not
+
+**It measures the model, not the painted frame.** `buildFrame` is the work of
+deciding a frame — visibility, roll-up, routing, captions, the minimap — and it
+is all of the frame-time work this wave wrote. It is not React reconciling, not
+the browser laying out 200 absolutely-positioned boxes, and not the compositor.
+PRD §14.7's budget is the painted frame, measured by `pnpm bench:frame`, which
+Wave 9 builds along with the other 5 benchmarks.
+
+So **1.18 ms is a floor, not headroom.** The honest reading is that the model
+layer leaves roughly 14 ms for everything downstream of it, and nobody has
+measured what downstream costs. A later wave that reads this number as 13x
+spare capacity will be wrong. When `pnpm bench:frame` exists, it is the number
+that settles the budget, and this test stays as the guard on the model layer.
 
 ### Why the frame budget cannot pass vacuously
 
@@ -187,6 +224,14 @@ holds exactly `x`, `y`, `width`, `height`, `collapsed` and nothing else.
 Recorded because a source was silent or in tension. Each is a decision this
 wave made alone, and each is cheap to reverse.
 
+0. **A reparent is a semantic write; a move is not.** Position is cosmetic and
+   parentage is not — containment is one of PRD §4.1's 2 relations, and it
+   lives in the node file. `reparent` writes `nodes/<uuid>.json` with the new
+   parent and undo removes it again. This was a review finding: the first
+   version of this wave stored parentage nowhere, so a legal reparent lived in
+   memory and vanished on the next open, and the test that called it cosmetic
+   passed because nothing was written at all rather than because nothing
+   semantic was. The drag rule is unchanged.
 1. **Groups and comments persist to the layout file, not to `nodes/`.**
    PRD §6.1 names groups as layout content; §11.3 puts both kinds in the
    annotation tier, out of reconciliation and unable to carry a semantic edge.
@@ -245,7 +290,19 @@ wave made alone, and each is cheap to reverse.
     structural here rather than a check.
 14. **The tier drawn by the running app is fixed to the Service Schematic.**
     The tier switch is Wave 5's `click-to-drill and breadcrumb walk-up`.
-15. **`references_ui` targets a `screen` node kind** that no Schematic draws a
+15. **A node's role is derived, not declared.** The entry point is whatever
+    node the Outline badges `ENTRY`, and a Schematic's root is the node whose
+    slug names the Schematic. Both are read off the graph rather than from a
+    second list, so nothing has to be kept in step. If Wave 5 needs a role the
+    graph does not already imply, `roleOf` in `engine/layout.ts` is the one
+    place to widen.
+16. **The contract-sheet arrangement is a first cut.** PRD §12.11 asks for
+    facets that "fan outward" reading "as a contract sheet, not as a free
+    graph"; what ships is the root holding the left edge with every facet in
+    one column to its right. Wave 5 owns the facet cards and will want the
+    column grouped by card kind. That is a change in `arrange.ts` and nowhere
+    else, behind the `arrangement` field.
+17. **`references_ui` targets a `screen` node kind** that no Schematic draws a
     box for this wave. The kind is named in the vocabulary so the edge table
     stays honest rather than widening the rule to `*`.
 
@@ -266,6 +323,7 @@ view, no query parameter.
 |---|---|---|---|
 | 1 | The Schematic, between the Outline and the Inspector | 10 boxes on the dot grid, edges between them, a `68%` readout and 3 legend chips at the lower left, a minimap at the lower right | An empty grid, or boxes stacked on the origin. Both mean the engine opened and the component did not draw the frame |
 | 2 | Any box | Title, slug beneath it, ports as small circles on the left and right edges at mid-height | A port drawn at a corner, or ports missing: the edge drag has no handle |
+| 2b | A comment or group box | The status bar's node count unchanged when one is added, and no containment arrow drawn to it at tier 3 | The count moving from 12 to 13, or an arrow reaching an annotation. Both were review findings and both are now asserted, so a visual failure here means the drawn model differs from the tested one |
 | 3 | `session-store` | Drawn collapsed, with `collapsed · 2 children` and `1 edge aggregated` | Either caption missing, or a count that is not 2 and 1. The counts are computed each frame, so a wrong number is a real defect, not stale data |
 | 4 | `session-store`'s `▸` triangle | Click expands it, the box grows to hold both children, and the children draw inside its border | Children drawing outside the parent's border, or the box not growing |
 | 5 | `token-verifier` | Drawn as a container with `jwks-cache` and `clock-skew` nested inside it, edges leaving the child crossing the parent's border | An edge routed around the parent, or a child overlapping its parent's header row |
@@ -287,14 +345,18 @@ view, no query parameter.
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass |
-| `pnpm test:js` | Pass — 88 tests in `apps/schematify/ui/src`, whole suite green |
+| `pnpm test:js` | Pass — 475 in the workspace suite, 109 of them this app's, plus the bridge's own 28 |
 | `pnpm lint:js` | Pass |
 | `pnpm lint:comments` | Pass, with no new baseline entry |
 | `pnpm lint:version`, `lint:identity`, `lint:branding` | Pass |
 | `pnpm format:check` | Pass |
-| `pnpm test:rust`, `pnpm lint:rust` | Pass — no Rust file was touched this wave |
+| `pnpm test:rust`, `pnpm lint:rust` | Pass — clippy at its baseline of 0; no Rust file was touched this wave |
 
-`pnpm baseline` was never run. No test was deleted or skipped.
+`pnpm baseline` was never run. No test was deleted or skipped. `pnpm lint:js`
+reports 8 warnings, all of them pre-existing in files this wave did not touch.
+
+`schematify/w2-shell` was merged into this branch before the final run, so
+Wave 2's twice-strengthened colour test has now run against every line here.
 
 ## 9. Left undone, on purpose
 
@@ -307,6 +369,12 @@ view, no query parameter.
   router draws every edge individually; the dense fixture holds the frame
   budget without bundling.
 - **A kind picker for edge creation.** See assumption 7.
+- **`pnpm bench:frame`**, the benchmark PRD §14.7 names. Wave 9 adds all 6
+  together; the model-layer assertion in `frameBudget.test.ts` stands in for it
+  and is a floor, not the budget — see section 4.
+- **Node deletion.** There is none, deliberately: PRD §6.6 says nothing is ever
+  deleted. `canDelete` reports the refusal for a surface that draws the
+  affordance.
 - **Search**, so the toolbar's search field stays disabled — Wave 8.
 - **Animated zoom-to-fit.** §12.3 asks for animation and `fit()` cuts. The
   destination viewport is computed in one place (`viewport.ts`'s `fitTo`), so

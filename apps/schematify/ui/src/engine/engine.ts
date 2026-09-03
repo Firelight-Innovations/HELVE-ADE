@@ -197,9 +197,11 @@ export class SchematicEngine {
     if (this.current.selection.length === 0) return;
     const moving = new Set<string>();
     for (const id of this.current.selection) {
+      if (this.isPinned(id)) continue;
       moving.add(id);
       for (const node of descendantsOf(this.cachedIndex, id)) moving.add(node.id);
     }
+    if (moving.size === 0) return;
     const grid = this.config.grid;
     this.commit(
       this.mapNodes((node) => {
@@ -237,13 +239,52 @@ export class SchematicEngine {
     );
   }
 
-  /** Reparents a node into a container, refusing a containment cycle
-   *  (PRD §12.5). Containment is `parentId`, so this too is arrangement. */
+  /**
+   * Reparents a node into a container, refusing a containment cycle
+   * (PRD §12.5). **This is a semantic write, not an arrangement.** Position is
+   * cosmetic and parentage is not: containment is one of the 2 relations
+   * (PRD §4.1), it lives in the node file rather than the layout file, and a
+   * reparent that only moved memory would be discarded on the next open.
+   */
   reparent(id: string, parentId: string | null): Refusal | null {
     const refusal = validateReparent(this.cachedIndex, id, parentId);
     if (refusal) return refusal;
-    this.commit(this.mapNodes((node) => (node.id === id ? { ...node, parentId } : node)));
+    const before = this.cachedIndex.byId.get(id);
+    if (!before) return refuse("That node is not on this Schematic.");
+    const after = { ...before, parentId };
+    this.commit(
+      this.mapNodes((node) => (node.id === id ? after : node)),
+      {
+        created: isAnnotation(after) ? [] : [nodeFile(after)],
+      },
+    );
     return null;
+  }
+
+  /** True when this tier's policy pins the node, so a drag leaves it where it
+   *  is (PRD §12.10, §12.11). */
+  isPinned(id: string): boolean {
+    const role = this.cachedIndex.byId.get(id)?.role;
+    return role !== undefined && this.config.nodePolicy.pinned.roles.includes(role);
+  }
+
+  /**
+   * The refusal to draw on a delete affordance, or `null` when the policy
+   * allows one. There is no `deleteNode` on this engine at all: PRD §6.6 says
+   * nothing is ever deleted, and a node with an inbound edge is superseded
+   * rather than removed. This method exists so a tier that draws
+   * `MODULE ROOT · CANNOT BE DELETED` (PRD §12.11) reads its own configuration
+   * for the answer rather than hard-coding the sentence.
+   */
+  canDelete(id: string): Refusal | null {
+    const node = this.cachedIndex.byId.get(id);
+    if (!node) return refuse("That node is not on this Schematic.");
+    if (isAnnotation(node)) return null;
+    const role = node.role;
+    if (role !== undefined && this.config.nodePolicy.undeletable.includes(role)) {
+      return refuse(`${node.title} cannot be deleted.`);
+    }
+    return refuse("Nothing is ever deleted. A node is superseded, not removed.");
   }
 
   /** `Auto-sort` (PRD §12.1, §12.3): rearranges everything, in one undoable

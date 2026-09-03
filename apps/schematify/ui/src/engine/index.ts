@@ -14,12 +14,15 @@ import { SchematicEngine } from "./engine";
 import { buildDoc } from "./layout";
 
 export type {
+  ArrangementStrategy,
   ChromeConfig,
   ContainmentRendering,
   EdgeKind,
   EdgeKindRule,
   EdgeStyle,
   GridConfig,
+  NodePolicy,
+  NodeRole,
   Refusal,
   SchematicConfig,
   SchematicNodeKind,
@@ -42,7 +45,7 @@ export {
   validateEdge,
   validateReparent,
 } from "./rules";
-export { buildDoc, toLayoutFile } from "./layout";
+export { buildDoc, toLayoutFile, toServiceGraph } from "./layout";
 export type { Viewport, ViewportSize } from "./viewport";
 export { toScreen, toWorld, zoomReadout } from "./viewport";
 

@@ -12,14 +12,13 @@
  */
 import type { Tier } from "../graph";
 
-/** Every edge kind in PRD §11.1, both tier bands in one union. A tier's own
- *  closed set is `SchematicConfig.edgeKinds`, not this type. */
+/** Every edge kind in PRD §11.1. A tier's own closed set is
+ *  `SchematicConfig.edgeKinds`, not this type. */
 export type EdgeKind =
   "depends_on" | "implements" | "references_ui" | "covers" | "satisfies" | "documents";
 
-/** A node kind the engine can hold. The 3 containment kinds come from the
- *  graph, the 5 facet kinds from PRD §12.11's palette, and the 2 annotation
- *  kinds from §11.3. `"*"` in an edge rule matches any of them. */
+/** A node kind the engine can hold: the graph's containment kinds, PRD
+ *  §12.11's 5 facet kinds, and §11.3's 2 annotation kinds. */
 export type SchematicNodeKind =
   | "service"
   | "module"
@@ -32,9 +31,8 @@ export type SchematicNodeKind =
   | "comment"
   | "group";
 
-/** PRD §11.3's annotation tier. A node of one of these kinds carries no
- *  semantic edge, appears in no reconciliation, and persists to the cosmetic
- *  layout file rather than to `nodes/`. */
+/** PRD §11.3's annotation tier: no semantic edge, no reconciliation, and
+ *  persisted to the cosmetic layout file rather than to `nodes/`. */
 export const ANNOTATION_KINDS: readonly SchematicNodeKind[] = ["comment", "group"];
 
 /** True when this kind sits in the annotation tier (PRD §11.3). */
@@ -42,8 +40,8 @@ export function isAnnotationKind(kind: string): boolean {
   return (ANNOTATION_KINDS as readonly string[]).includes(kind);
 }
 
-/** How one edge kind draws (PRD §12.5's style table). The legend chip reads
- *  the same style its edges do, so the two can never disagree. */
+/** How one edge kind draws (PRD §12.5). A legend chip reads the same style its
+ *  edges do, so the two cannot disagree. */
 export interface EdgeStyle {
   line: "solid" | "dashed" | "dotted";
   arrow: "filled" | "hollow" | "chip" | "none";
@@ -59,17 +57,16 @@ export interface EdgeKindRule {
   kind: EdgeKind;
   from: readonly (SchematicNodeKind | "*")[];
   to: readonly (SchematicNodeKind | "*")[];
-  /** When true, an edge of this kind that would close a directed cycle is
-   *  refused (PRD §12.5). `depends_on` carries it; `covers` does not. */
+  /** Refuse an edge of this kind that would close a directed cycle
+   *  (PRD §12.5). `depends_on` carries it; `covers` does not. */
   acyclic: boolean;
   style: EdgeStyle;
-  /** Whether this kind gets a chip beside the zoom readout. Separate from the
-   *  vocabulary because what a tier allows and what its legend advertises are
-   *  different questions — PRD §12.1 names 3 chips for the Module Schematic
-   *  where §11.1 allows 4 kinds. */
+  /** Whether this kind gets a chip beside the zoom readout. What a tier allows
+   *  and what its legend advertises are different questions: PRD §12.1 names 3
+   *  chips at tier 3 where §11.1 allows 4 kinds. */
   inLegend: boolean;
-  /** Drawn at the cursor when a drag's ends do not match `from`/`to`. The
-   *  heading `Drop refused` is added by the engine, never by this string. */
+  /** Drawn at the cursor when a drag's ends do not match. The heading
+   *  `Drop refused` is the engine's, never this string's. */
   refusal: string;
 }
 
@@ -83,24 +80,45 @@ export interface EdgeKindRule {
 export type ContainmentRendering =
   { mode: "nesting" } | { mode: "nesting-and-arrows"; label: string };
 
-/** Which Schematic chrome this tier draws (PRD §12.1). Three flags rather than
- *  one, because WIREFRAME-EXTRACT.md §10.3 adds the readout and the legend to
- *  the Module Schematic, which draws neither in the wireframe. */
+/** Which Schematic chrome this tier draws (PRD §12.1). Three flags because
+ *  WIREFRAME-EXTRACT.md §10.3 adds the readout and the legend at tier 3, which
+ *  draws neither in the wireframe. */
 export interface ChromeConfig {
   minimap: boolean;
   zoomReadout: boolean;
   legend: boolean;
 }
 
-/** Pan and zoom limits, and where a fresh Schematic starts (PRD §12.3). */
+/** A part a node plays, as opposed to what kind of thing it is. Each tier says
+ *  in `NodePolicy` what a role costs. */
+export type NodeRole = "entry-point" | "schematic-root";
+
+/**
+ * What a role costs a node. PRD §12.10 pins the service entry point to the
+ * Schematic edge; §12.11 pins the module root and draws
+ * `MODULE ROOT · CANNOT BE DELETED`. `undeletable` is reported by `canDelete`
+ * rather than enforced on a gesture, because PRD §6.6 says nothing is ever
+ * deleted at all and the engine offers no delete.
+ */
+export interface NodePolicy {
+  pinned: { roles: readonly NodeRole[]; edge: "left" | "right" };
+  undeletable: readonly NodeRole[];
+}
+
+/** How default placement and `Auto-sort` lay a Schematic out: children flowing
+ *  row-major inside their parent, or PRD §12.11's "facets fan outward. The
+ *  Schematic reads as a contract sheet, not as a free graph." */
+export type ArrangementStrategy = "nested-flow" | "contract-sheet";
+
+/** Pan and zoom limits, and where a Schematic starts (PRD §12.3). */
 export interface ZoomConfig {
   min: number;
   max: number;
   initial: number;
 }
 
-/** The dot grid this tier draws on, and whether a drag snaps to it. The
- *  Stack Schematic uses the larger grid (`--kv-grid-size-stack`, PRD §13.5). */
+/** The dot grid this tier draws on, and whether a drag snaps to it. Tier 1
+ *  uses the larger grid (`--kv-grid-size-stack`, PRD §13.5). */
 export interface GridConfig {
   size: number;
   snap: boolean;
@@ -113,24 +131,27 @@ export interface Size {
 }
 
 /**
- * The whole configuration surface: 10 fields, no callbacks except `nodeBox`.
- * A tier is one of these. `TIER_PRESETS` in `./presets.ts` holds the 3 Wave 5
- * starts; a tier that needs a rule this shape cannot express should add a
- * field here rather than fork the engine.
+ * The whole configuration surface. A tier is one of these, and `TIER_PRESETS`
+ * in `./presets.ts` holds the 3. A tier that needs a rule this shape cannot
+ * express adds a field here rather than forking the engine.
  */
 export interface SchematicConfig {
   /** Which tier this configuration draws. Chooses nothing by itself — every
    *  behavioural difference below is explicit. */
   tier: Tier;
-  /** Names the cosmetic file positions persist to, `layout/<slug>.json`
-   *  (PRD §6.1, §12.3). */
+  /** Names `layout/<slug>.json`, the cosmetic file positions persist to. */
   layoutSlug: string;
   grid: GridConfig;
   zoom: ZoomConfig;
-  /** The tier's closed edge vocabulary (PRD §11.1). An edge kind absent from
-   *  this list cannot be drawn on this tier at all. */
+  /** The tier's closed edge vocabulary (PRD §11.1). A kind absent from this
+   *  list cannot be drawn on this tier at all. */
   edgeKinds: readonly EdgeKindRule[];
   containment: ContainmentRendering;
+  /** How a node with no stored position is placed, and what `Auto-sort`
+   *  produces (PRD §12.3, §12.11). */
+  arrangement: ArrangementStrategy;
+  /** Which roles pin, to which edge, and which no gesture may delete. */
+  nodePolicy: NodePolicy;
   /** Whether groups and comments (PRD §12.4) are offered. Every tier says
    *  `true` today; a read-only Schematic is the plausible 4th configuration. */
   annotations: boolean;
@@ -143,14 +164,14 @@ export interface SchematicConfig {
   nodeBox: (kind: SchematicNodeKind) => Size;
 }
 
-/** The refusal every surface draws under the heading `Drop refused`
- *  (PRD §11.3, §12.5). Anchored at the cursor by the caller. */
+/** The refusal a surface draws under `Drop refused` (PRD §11.3, §12.5),
+ *  anchored at the cursor by the caller. */
 export interface Refusal {
   heading: "Drop refused";
   reason: string;
 }
 
-/** Builds the refusal envelope, so no caller types the heading itself. */
+/** The refusal envelope, so no caller types the heading itself. */
 export function refuse(reason: string): Refusal {
   return { heading: "Drop refused", reason };
 }

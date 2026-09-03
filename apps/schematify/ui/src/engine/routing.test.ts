@@ -92,6 +92,7 @@ describe("a group border is crossable", () => {
   it("routes straight through a group rather than around it", () => {
     const doc: SchematicDoc = {
       slug: "group-crossing",
+      title: "group-crossing",
       nodes: [
         {
           id: "source",
