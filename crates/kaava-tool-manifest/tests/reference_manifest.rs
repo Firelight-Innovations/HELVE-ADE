@@ -23,10 +23,25 @@ fn echo_tool_checkout() -> PathBuf {
 
 /// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the environment
 /// of a test binary it launches over the one baked in at compile time.
+///
+/// The existence check below is not redundant with reading the environment:
+/// it catches the rarer case where a stale binary somehow still ran (no
+/// `CARGO_MANIFEST_DIR` in its environment, so it fell back to the
+/// compile-time value), and names the problem instead of leaving a bare
+/// `NotFound` for the next agent to puzzle over.
 fn manifest_dir() -> PathBuf {
-    PathBuf::from(
+    let dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
-    )
+    );
+    assert!(
+        dir.is_dir(),
+        "CARGO_MANIFEST_DIR resolved to {}, which does not exist -- this looks like a \
+         stale cross-worktree build (a test binary compiled in a worktree that has since \
+         been removed and reused from a shared CARGO_TARGET_DIR); rerun `cargo test` from \
+         this worktree to force a rebuild",
+        dir.display()
+    );
+    dir
 }
 
 #[test]

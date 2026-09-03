@@ -27,11 +27,23 @@ fn fixture(name: &str) -> PathBuf {
 /// for agents working this repo) hold identical sources, so Cargo can reuse
 /// a test binary compiled in a worktree that has since been removed,
 /// carrying that worktree's absolute path. Reading the environment first
-/// avoids resolving fixtures against a directory that no longer exists.
+/// avoids resolving fixtures against a directory that no longer exists; the
+/// check below catches the rarer case where a stale binary somehow still
+/// ran, and names the problem instead of leaving a bare `NotFound` for the
+/// next agent to puzzle over.
 fn manifest_dir() -> PathBuf {
-    PathBuf::from(
+    let dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
-    )
+    );
+    assert!(
+        dir.is_dir(),
+        "CARGO_MANIFEST_DIR resolved to {}, which does not exist -- this looks like a \
+         stale cross-worktree build (a test binary compiled in a worktree that has since \
+         been removed and reused from a shared CARGO_TARGET_DIR); rerun `cargo test` from \
+         this worktree to force a rebuild",
+        dir.display()
+    );
+    dir
 }
 
 // ---------------------------------------------------------------------------
