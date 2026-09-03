@@ -1,0 +1,147 @@
+/**
+ * `projectServiceGraph` is the one place the real, whole-project graph
+ * (`schematify/load-graph`'s response) and this app's narrower `ServiceGraph`
+ * meet. These assertions read the written content — the actual nodes, edges,
+ * and their fields — rather than only checking that the function did not
+ * throw, per STANDARDS.md §8's rule that an assertion which cannot fail is
+ * worse than none.
+ */
+import { describe, expect, it } from "vitest";
+import { projectServiceGraph, type RawGraph, type RawNode } from "./project";
+
+function node(partial: Partial<RawNode> & Pick<RawNode, "id" | "slug" | "kind">): RawNode {
+  return {
+    title: partial.slug,
+    lifecycle: "accepted",
+    parent: null,
+    ...partial,
+  };
+}
+
+const RAW: RawGraph = {
+  nodes: [
+    node({ id: "svc", slug: "auth-service", kind: "service", title: "Auth Service" }),
+    node({ id: "m1", slug: "http-entry", kind: "module", title: "HTTP Entry", parent: "svc" }),
+    node({
+      id: "m2",
+      slug: "token-verifier",
+      kind: "module",
+      title: "Token Verifier",
+      parent: "svc",
+    }),
+    node({
+      id: "m3",
+      slug: "jwks-cache",
+      kind: "module",
+      title: "JWKS Cache",
+      parent: "m2",
+      layer: "backend",
+    }),
+    node({
+      id: "m4",
+      slug: "audit-emitter",
+      kind: "module",
+      title: "Audit Emitter",
+      parent: "svc",
+      lifecycle: "stale",
+    }),
+    node({ id: "g1", slug: "core", kind: "group", title: "Core", parent: "svc" }),
+    // A different service entirely, and a module inside it — neither should
+    // ever appear in `auth-service`'s projection.
+    node({ id: "svc2", slug: "billing-service", kind: "service", title: "Billing Service" }),
+    node({ id: "n1", slug: "invoicer", kind: "module", title: "Invoicer", parent: "svc2" }),
+    // A method whose signature-holding kind collapses to "module" per
+    // `w3-engine.md` assumption 16.
+    node({
+      id: "f1",
+      slug: "verify",
+      kind: "contract-method",
+      title: "verify",
+      parent: "m2",
+    }),
+  ],
+  edges: [
+    { id: "e1", kind: "depends_on", source: "m1", target: "m2" },
+    { id: "e2", kind: "depends_on", source: "m1", target: "svc2" }, // crosses services — dropped
+    { id: "e3", kind: "contains", source: "svc", target: "m1" }, // never a GraphEdge
+    { id: "e4", kind: "implements", source: "m4", target: "m2" },
+    { id: "e5", kind: "depends_on", source: "n1", target: "svc2" }, // wrong service entirely
+  ],
+};
+
+describe("projectServiceGraph", () => {
+  const graph = projectServiceGraph(RAW, "auth-service");
+
+  it("names the service by its slug and title", () => {
+    expect(graph.serviceSlug).toBe("auth-service");
+    expect(graph.serviceTitle).toBe("Auth Service");
+    expect(graph.tier).toBe("service");
+  });
+
+  it("includes only auth-service's own subtree, not billing-service's", () => {
+    const ids = graph.nodes.map((n) => n.id).sort();
+    expect(ids).toEqual(["f1", "g1", "m1", "m2", "m3", "m4"].sort());
+  });
+
+  it("maps a top-level module's parent to null, matching the fixture convention", () => {
+    const httpEntry = graph.nodes.find((n) => n.id === "m1");
+    expect(httpEntry?.parentId).toBeNull();
+  });
+
+  it("keeps a nested node's real parent id", () => {
+    const jwksCache = graph.nodes.find((n) => n.id === "m3");
+    expect(jwksCache?.parentId).toBe("m2");
+  });
+
+  it("keeps the group kind, and collapses every other kind to module", () => {
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    expect(byId.get("g1")?.kind).toBe("group");
+    expect(byId.get("m1")?.kind).toBe("module");
+    expect(byId.get("f1")?.kind).toBe("module");
+  });
+
+  it("carries layer through when the raw node has one", () => {
+    expect(graph.nodes.find((n) => n.id === "m3")?.layer).toBe("backend");
+  });
+
+  it("badges a stale node STALE and nothing else", () => {
+    const badged = graph.nodes.filter((n) => n.badge !== undefined);
+    expect(badged.map((n) => n.id)).toEqual(["m4"]);
+    expect(badged[0].badge).toBe("STALE");
+  });
+
+  it("keeps a depends_on edge whose ends are both in the subtree", () => {
+    expect(graph.edges.some((e) => e.id === "e1")).toBe(true);
+  });
+
+  it("drops an edge that crosses into another service", () => {
+    expect(graph.edges.some((e) => e.id === "e2")).toBe(false);
+    expect(graph.edges.some((e) => e.id === "e5")).toBe(false);
+  });
+
+  it("drops a contains edge — containment is parentId, never an edge", () => {
+    expect(graph.edges.some((e) => e.id === "e3")).toBe(false);
+  });
+
+  it("keeps an implements edge, renaming source/target to from/to", () => {
+    const implementsEdge = graph.edges.find((e) => e.id === "e4");
+    expect(implementsEdge).toEqual({ id: "e4", kind: "implements", from: "m4", to: "m2" });
+  });
+
+  it("throws when no service carries the requested slug", () => {
+    expect(() => projectServiceGraph(RAW, "no-such-service")).toThrow(/no-such-service/);
+  });
+
+  it("does not hang on a containment cycle that never reaches the service", () => {
+    const cyclic: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service" }),
+        node({ id: "a", slug: "a", kind: "module", parent: "b" }),
+        node({ id: "b", slug: "b", kind: "module", parent: "a" }),
+      ],
+      edges: [],
+    };
+    const result = projectServiceGraph(cyclic, "auth-service");
+    expect(result.nodes).toHaveLength(0);
+  });
+});

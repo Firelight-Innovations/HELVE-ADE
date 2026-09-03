@@ -224,6 +224,26 @@ export function createMemorySeam(): SchematifySeam & {
   };
 }
 
-/** The seam the running application uses. One process-wide instance, so two
- *  Schematics opened in turn see each other's positions. */
-export const defaultSeam: SchematifySeam = createMemorySeam();
+/**
+ * The seam the running application uses, backed by `./backend.ts` (the real
+ * `schematify/*` methods) through a dynamic `import()` rather than a static
+ * one — a static import here would pull `@openkaava/bridge`'s `window`
+ * access into the plain-Node `index.test.ts` (see `w2-shell.md`'s fix for
+ * the same failure). Memoized so `createBackendSeam`'s in-memory maps
+ * persist across calls. `loadGraph()` and `createMemorySeam()` above are
+ * untouched — every test that wants the fixture still gets it directly.
+ */
+let backendSeam: Promise<SchematifySeam> | null = null;
+function getBackendSeam(): Promise<SchematifySeam> {
+  backendSeam ??= import("./backend").then((m) => m.createBackendSeam());
+  return backendSeam;
+}
+
+export const defaultSeam: SchematifySeam = {
+  loadGraph: () => getBackendSeam().then((seam) => seam.loadGraph()),
+  loadDenseGraph: () => getBackendSeam().then((seam) => seam.loadDenseGraph()),
+  readLayout: (slug) => getBackendSeam().then((seam) => seam.readLayout(slug)),
+  writeLayout: (slug, file) => getBackendSeam().then((seam) => seam.writeLayout(slug, file)),
+  writeSemantic: (path, json) => getBackendSeam().then((seam) => seam.writeSemantic(path, json)),
+  removeSemantic: (path) => getBackendSeam().then((seam) => seam.removeSemantic(path)),
+};
