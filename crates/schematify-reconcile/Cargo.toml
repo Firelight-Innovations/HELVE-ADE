@@ -1,0 +1,32 @@
+[package]
+name = "schematify-reconcile"
+description = "Marker-token scanning and the `kaava reconcile` command — Schematify's code-to-design reconciliation (PRD section 9)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+# Lint levels come from [workspace.lints] in the root Cargo.toml.
+[lints]
+workspace = true
+
+[[bin]]
+name = "kaava"
+path = "src/bin/kaava.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+# Already resolved in Cargo.lock as transitive dependencies of the Tauri tree
+# before this crate existed (see docs/audits/schematify-baseline.md for the
+# equivalent check on `ignore`, already a direct src-tauri dependency at the
+# same "0.4" pin). None of the four widens what cargo-deny already allows.
+uuid = { version = "1", features = ["v4", "serde"] }
+regex = "1"
+ignore = "0.4"
+chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
