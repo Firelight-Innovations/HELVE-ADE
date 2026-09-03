@@ -1,0 +1,375 @@
+/*
+ * The product layer (PRD §12.17, §12.18) — Project brief, Screen registry,
+ * Flow editor, Decision log. `[P]` throughout: no wireframe draws any of
+ * these 4 surfaces (WIREFRAME-EXTRACT.md §8.1 lists S-19 through S-22 as
+ * undrawn), so this stylesheet follows `../shell/shell.css`'s own token
+ * usage and geometry conventions rather than a screen to match pixel for
+ * pixel. Every colour is a `--kv-*` custom property, per PRD §13 and this
+ * app's own `noLiteralHex.test.ts`.
+ */
+
+.kv-product-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+  background: var(--kv-bg-app);
+}
+
+.kv-product-panel__tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-product-panel__tab {
+  color: var(--kv-text-dim);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 0 0 6px;
+}
+
+.kv-product-panel__tab--active {
+  color: var(--kv-text-primary);
+  border-bottom: 1.5px solid var(--kv-accent);
+}
+
+.kv-panel-header {
+  color: var(--kv-text-tertiary);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  margin-bottom: 10px;
+}
+
+.kv-panel-count {
+  color: var(--kv-text-dim);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.kv-panel-error {
+  color: var(--kv-error);
+  font-size: 10.5px;
+  margin: 8px 0;
+}
+
+.kv-panel-save {
+  margin-top: 10px;
+  background: var(--kv-accent);
+  color: var(--kv-bg-root);
+  border: none;
+  border-radius: var(--kv-radius);
+  padding: 6px 14px;
+  font-family: var(--kv-font-mono);
+  font-weight: 500;
+}
+
+.kv-panel-save:disabled {
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-faint);
+}
+
+/* --- generic form fields ----------------------------------------------- */
+
+.kv-field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.kv-field__label {
+  display: block;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.kv-field__input,
+.kv-field__textarea {
+  width: 100%;
+  max-width: 480px;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 5px 8px;
+  box-sizing: border-box;
+}
+
+.kv-field__textarea {
+  min-height: 48px;
+  resize: vertical;
+}
+
+/* --- ListField ----------------------------------------------------------- */
+
+.kv-listfield {
+  margin-bottom: 10px;
+}
+
+.kv-listfield__label {
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.kv-listfield__items {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.kv-listfield__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--kv-text-near);
+}
+
+.kv-listfield__item-text {
+  flex: 1;
+}
+
+.kv-listfield__remove {
+  background: none;
+  border: none;
+  color: var(--kv-text-faint);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.kv-listfield__remove:hover {
+  color: var(--kv-error);
+}
+
+.kv-listfield__add {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.kv-listfield__input {
+  flex: 1;
+  max-width: 320px;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 8px;
+}
+
+.kv-listfield__add-button {
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 10px;
+}
+
+/* --- success metrics ------------------------------------------------------- */
+
+.kv-metrics {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.kv-metrics__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.kv-metrics__name,
+.kv-metrics__unit {
+  width: 120px;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 6px;
+}
+
+.kv-metrics__value {
+  width: 80px;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 6px;
+}
+
+.kv-metrics__warning {
+  color: var(--kv-warn);
+  font-size: 9.5px;
+}
+
+/* --- Screen registry / Decision log tables ------------------------------ */
+
+.kv-registry__table {
+  width: 100%;
+  max-width: 720px;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  margin-bottom: 8px;
+}
+
+.kv-registry__table th {
+  text-align: left;
+  color: var(--kv-text-tertiary);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-registry__row {
+  cursor: pointer;
+  color: var(--kv-text-near);
+}
+
+.kv-registry__row td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-registry__row:hover {
+  background: var(--kv-bg-raised);
+}
+
+.kv-registry__row--selected {
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-primary);
+}
+
+.kv-registry__slug {
+  color: var(--kv-text-tertiary);
+  font-family: var(--kv-font-mono);
+}
+
+.kv-registry__form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--kv-line);
+  max-width: 520px;
+}
+
+/* --- Flow editor ---------------------------------------------------------- */
+
+.kv-flow-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-width: 720px;
+}
+
+.kv-flow-list__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--kv-text-near);
+  border-bottom: 1px solid var(--kv-line);
+  font-size: 10.5px;
+}
+
+.kv-flow-list__row:hover {
+  background: var(--kv-bg-raised);
+}
+
+.kv-flow-list__row--selected {
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-primary);
+}
+
+.kv-flow-steps {
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-flow-steps__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.kv-flow-steps__index {
+  width: 16px;
+  color: var(--kv-text-faint);
+  font-size: 10px;
+}
+
+.kv-flow-steps__screen {
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 6px;
+}
+
+.kv-flow-steps__action {
+  flex: 1;
+  max-width: 260px;
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 6px;
+}
+
+/* --- Decision log ----------------------------------------------------------- */
+
+.kv-decision-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kv-decision-filter__tab {
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius-chip);
+  color: var(--kv-text-dim);
+  font-family: var(--kv-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+}
+
+.kv-decision-filter__tab--active {
+  color: var(--kv-text-primary);
+  border-color: var(--kv-accent);
+}
+
+.kv-decision-form__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

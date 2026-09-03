@@ -66,10 +66,7 @@ export function screenStateCount(screen: RawScreen): number {
  *  that names a node no longer in the graph is not counted, the same
  *  "resolve or don't count it" rule `../graph/project.ts` applies to a
  *  dependency edge whose endpoint fell out of the projection. */
-export function screenBackingModuleCount(
-  screen: RawScreen,
-  nodeIds: ReadonlySet<string>,
-): number {
+export function screenBackingModuleCount(screen: RawScreen, nodeIds: ReadonlySet<string>): number {
   let count = 0;
   for (const ref of screen.backed_by) {
     const id = uriId(ref);
@@ -101,10 +98,7 @@ export interface ResolvedFlowStep {
 /** PRD §12.17: "The Flow editor holds an ordered step list." Resolves each
  *  step's screen reference against `screens` so a caller can draw a title
  *  rather than a bare URI. */
-export function resolveFlowSteps(
-  flow: RawFlow,
-  screens: readonly RawScreen[],
-): ResolvedFlowStep[] {
+export function resolveFlowSteps(flow: RawFlow, screens: readonly RawScreen[]): ResolvedFlowStep[] {
   const byId = new Map(screens.map((screen) => [screen.id, screen]));
   return flow.steps.map((step, index) => {
     const id = uriId(step.screen);

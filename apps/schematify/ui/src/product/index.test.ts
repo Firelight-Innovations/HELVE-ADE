@@ -68,14 +68,24 @@ describe("screenUri / decisionUri", () => {
     const s = screen({ id: "id-1", slug: "login-form" });
     expect(screenUri(s)).toBe("schematify://screen/id-1");
 
-    const d = decision({ id: "id-2", slug: "DEC-TEC-AUTH-004", status: "ACTIVE", date: "2026-08-19" });
+    const d = decision({
+      id: "id-2",
+      slug: "DEC-TEC-AUTH-004",
+      status: "ACTIVE",
+      date: "2026-08-19",
+    });
     expect(decisionUri(d)).toBe("schematify://decision/id-2");
   });
 });
 
 describe("decisionDisplaySlug", () => {
   it("draws the structured slug, per PRD §3.3", () => {
-    const d = decision({ id: "id-1", slug: "DEC-TEC-AUTH-004", status: "ACTIVE", date: "2026-08-19" });
+    const d = decision({
+      id: "id-1",
+      slug: "DEC-TEC-AUTH-004",
+      status: "ACTIVE",
+      date: "2026-08-19",
+    });
     expect(decisionDisplaySlug(d)).toBe("DEC-TEC-AUTH-004");
   });
 });
@@ -145,8 +155,16 @@ describe("resolveFlowSteps", () => {
 
     const resolved = resolveFlowSteps(flow, screens);
     expect(resolved).toHaveLength(2);
-    expect(resolved[0]).toMatchObject({ index: 0, screenTitle: "Login form", screenSlug: "login-form" });
-    expect(resolved[1]).toMatchObject({ index: 1, screenTitle: "Dashboard", screenSlug: "dashboard" });
+    expect(resolved[0]).toMatchObject({
+      index: 0,
+      screenTitle: "Login form",
+      screenSlug: "login-form",
+    });
+    expect(resolved[1]).toMatchObject({
+      index: 1,
+      screenTitle: "Dashboard",
+      screenSlug: "dashboard",
+    });
   });
 
   it("resolves a dangling screen reference to null rather than throwing", () => {

@@ -241,6 +241,62 @@
   color: var(--kv-text-secondary);
 }
 
+/* PRD §12.5's screen-reference click-through (wave 10c): a `<button>`
+   dressed as the ordinary caption text it replaces, so it reads identically
+   whether or not a handler is wired. */
+.kv-node__caption--link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  color: var(--kv-agent);
+}
+
+.kv-node__caption--link:disabled {
+  cursor: default;
+  color: var(--kv-text-dim);
+}
+
+/* The Service Schematic's own form of the same reference (PRD §12.5): a
+   small labelled chip, `◈ SCREEN` above `screen/<slug>`, carrying no
+   lifecycle treatment of its own — see `SchematicCanvas.tsx`'s early return
+   for `kind: "screen"`. */
+.kv-node--screen-chip {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  background: var(--kv-bg-panel);
+  border: 1px dotted var(--kv-agent);
+  border-radius: var(--kv-radius);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.kv-node--screen-chip:disabled {
+  cursor: default;
+}
+
+.kv-node__screen-chip-label {
+  color: var(--kv-agent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-node__screen-chip-path {
+  color: var(--kv-text-tertiary);
+  font-size: 10px;
+}
+
 /* Facet card content (PRD §12.11), tier 3 only. Drawn the same way a
    caption already is — dim mono text, one line per row — since the content
    here is prose (a signature, a threshold, a body) rather than a chip. */

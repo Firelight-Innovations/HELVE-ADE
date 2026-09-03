@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import type { ExportRow } from "../graph";
+import { SCREEN_CHIP_LABEL } from "./anatomy";
 import type { Refusal } from "./config";
 import type { SchematicEngine } from "./engine";
 import type { DrawnEdge, DrawnNode } from "./frame";
@@ -54,9 +55,21 @@ export interface SchematicCanvasProps {
    *  tier. Data, not canvas geometry, so it comes from the caller's own
    *  projected graph rather than from `Frame`. */
   exports?: readonly ExportRow[];
+  /** PRD §12.5's click-through: "A click opens the Screen registry at that
+   *  screen." Called with a screen's id — a `kind: "screen"` chip node
+   *  passes its own `node.id`, the module root's own screen-reference path
+   *  passes `DrawnNode.screenReferenceId`. Omitted draws both as inert text,
+   *  the same "no seam, no gesture" rule every other disabled control in
+   *  this app already follows. Wave 10c. */
+  onOpenScreen?: (screenId: string) => void;
 }
 
-export function SchematicCanvas({ engine, onActivate, exports: exportRows }: SchematicCanvasProps) {
+export function SchematicCanvas({
+  engine,
+  onActivate,
+  exports: exportRows,
+  onOpenScreen,
+}: SchematicCanvasProps) {
   const state = useSyncExternalStore(
     useCallback((listener: () => void) => engine.subscribe(listener), [engine]),
     () => engine.state,
@@ -278,6 +291,7 @@ export function SchematicCanvas({ engine, onActivate, exports: exportRows }: Sch
           offset={drawn.selected ? moveOffset : { x: 0, y: 0 }}
           onDown={onNodeDown}
           onPortDown={onPortDown}
+          onOpenScreen={onOpenScreen}
         />
       ))}
 
@@ -405,12 +419,14 @@ function NodeBox({
   offset,
   onDown,
   onPortDown,
+  onOpenScreen,
 }: {
   drawn: DrawnNode;
   engine: SchematicEngine;
   offset: Point;
   onDown: (event: ReactPointerEvent<HTMLDivElement>, node: DrawnNode) => void;
   onPortDown: (event: ReactPointerEvent<HTMLElement>, nodeId: string) => void;
+  onOpenScreen?: (screenId: string) => void;
 }) {
   const { node } = drawn;
   const zoom = engine.state.viewport.zoom;
@@ -418,6 +434,32 @@ function NodeBox({
     x: node.rect.x + offset.x,
     y: node.rect.y + offset.y,
   });
+
+  // PRD §12.5: "a screen reference is a reference and never an editor." A
+  // `kind: "screen"` chip carries no lifecycle, no ports and no badges —
+  // it draws as a small labelled box and nothing else, so it returns before
+  // any of the module-anatomy machinery below runs.
+  if (node.kind === "screen") {
+    return (
+      <button
+        type="button"
+        className="kv-node kv-node--screen-chip"
+        style={{
+          left: origin.x,
+          top: origin.y,
+          width: node.rect.width * zoom,
+          height: node.rect.height * zoom,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => onOpenScreen?.(node.id)}
+        disabled={!onOpenScreen}
+      >
+        <span className="kv-node__screen-chip-label">{SCREEN_CHIP_LABEL}</span>
+        <span className="kv-node__screen-chip-path">screen/{node.slug}</span>
+      </button>
+    );
+  }
+
   const lifecycle = drawn.lifecycle;
   const classes = [
     "kv-node",
@@ -434,9 +476,12 @@ function NodeBox({
   // `contains N`, `collapsed · N children`, and the roll-up — plus every
   // other count string. One list, so the render order matches the anatomy
   // diagram's own top-to-bottom reading order without 4 near-identical JSX
-  // blocks.
+  // blocks. The screen-reference path is excluded here and drawn on its own
+  // just below instead, so PRD §12.5's click-through has somewhere to land
+  // — `drawn.counts` itself is untouched (`module.test.ts` still asserts it
+  // is there), only this component's rendering of it splits in 2.
   const captionLines = [
-    ...drawn.counts,
+    ...drawn.counts.filter((line) => line !== node.screenRef),
     drawn.containsCaption,
     drawn.collapsedCaption,
     drawn.rollUpCaption,
@@ -526,6 +571,25 @@ function NodeBox({
           {line}
         </div>
       ))}
+
+      {node.screenRef ? (
+        // PRD §12.5's module-root form of a screen reference — a plain
+        // path, `schematify://screen/<id>`. A click opens the Screen
+        // registry at that screen (`drawn.screenReferenceId`); drawn as
+        // inert text, same as every other disabled control here, when no
+        // handler was wired.
+        <button
+          type="button"
+          className="kv-node__caption kv-node__caption--link"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => {
+            if (drawn.screenReferenceId) onOpenScreen?.(drawn.screenReferenceId);
+          }}
+          disabled={!onOpenScreen || !drawn.screenReferenceId}
+        >
+          {node.screenRef}
+        </button>
+      ) : null}
 
       {drawn.facetContent.length > 0 ? (
         <div className="kv-node__facet-content">

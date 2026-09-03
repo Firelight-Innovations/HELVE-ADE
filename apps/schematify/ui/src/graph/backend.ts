@@ -73,6 +73,92 @@ async function writeRealLayout(slug: string, file: LayoutFile): Promise<void> {
   await invoke("schematify/write-layout", { actor: ACTOR, slug, layout: file });
 }
 
+// --- The product layer (PRD §12.17, §12.18) — wave 10c --------------------
+
+/** What `schematify/load-graph` carries that `loadRealGraph` above discards
+ *  on its way to a `ServiceGraph`: the product layer's own 4 collections,
+ *  plus the node id set `../product/index.ts`'s `screenBackingModuleCount`
+ *  needs to tell a live backing reference from a dangling one. */
+export interface ProductGraph {
+  nodeIds: ReadonlySet<string>;
+  screens: RawScreen[];
+  flows: RawFlow[];
+  decisions: RawDecision[];
+  brief: RawProjectBrief | null;
+}
+
+/** `schematify/load-graph`, read for the Outline's `Product` and
+ *  `Decisions` sections rather than for a Schematic — a second call rather
+ *  than a shared cache with `loadRealGraph`, since the 2 views are mounted
+ *  independently and neither PRD §12.1 nor §12.17 says one has to wait on
+ *  the other. */
+async function loadRealProductGraph(): Promise<ProductGraph> {
+  const response = await invoke<LoadGraphResponse>("schematify/load-graph", { actor: ACTOR });
+  return {
+    nodeIds: new Set(response.graph.nodes.map((node) => node.id)),
+    screens: response.graph.screens ?? [],
+    flows: response.graph.flows ?? [],
+    decisions: response.graph.decisions ?? [],
+    brief: response.graph.brief ?? null,
+  };
+}
+
+/** `schematify/write-screen`. Upserts one screen (PRD §5.7) — a screen
+ *  carries no append-only rule, unlike a decision row below. */
+async function writeRealScreen(screen: RawScreen): Promise<void> {
+  await invoke("schematify/write-screen", { actor: ACTOR, screen });
+}
+
+/** `schematify/write-flow`. Upserts one flow (PRD §5.8). */
+async function writeRealFlow(flow: RawFlow): Promise<void> {
+  await invoke("schematify/write-flow", { actor: ACTOR, flow });
+}
+
+/** `schematify/write-brief`. Overwrites `brief.json` (PRD §5.12) — the one
+ *  semantic file with no id of its own. */
+async function writeRealBrief(brief: RawProjectBrief): Promise<void> {
+  await invoke("schematify/write-brief", { actor: ACTOR, brief });
+}
+
+/** `schematify/write-decision`. Creates exactly one new, standing decision
+ *  row (PRD §5.9) — the Rust side refuses a second write to the same id, so
+ *  this function makes no promise this app cannot keep: a caller reusing an
+ *  id to "edit" a row gets the same refusal back that a hand-crafted RPC
+ *  call would. */
+async function writeRealDecision(decision: RawDecision): Promise<void> {
+  await invoke("schematify/write-decision", { actor: ACTOR, decision });
+}
+
+/** `schematify/supersede-decision`. The one write that can move a decision
+ *  to `SUPERSEDED` (PRD §5.9) — `priorId` names the row being replaced,
+ *  `decision` is the new row's own content. The server decides the new
+ *  row's `supersedes`/`superseded_by`, never this function's caller. */
+async function supersedeRealDecision(priorId: string, decision: RawDecision): Promise<void> {
+  await invoke("schematify/supersede-decision", { actor: ACTOR, priorId, decision });
+}
+
+/** The product layer's own seam, parallel to `SchematifySeamLike` above but
+ *  independent of it — `ProductView`/`ScreenRegistry`/`FlowEditor`/
+ *  `DecisionLog` (`../product/`) read and write through this, never
+ *  `invoke` directly, keeping this file the one door to Rust. */
+export interface ProductSeam {
+  loadProduct(): Promise<ProductGraph>;
+  writeScreen(screen: RawScreen): Promise<void>;
+  writeFlow(flow: RawFlow): Promise<void>;
+  writeBrief(brief: RawProjectBrief): Promise<void>;
+  writeDecision(decision: RawDecision): Promise<void>;
+  supersedeDecision(priorId: string, decision: RawDecision): Promise<void>;
+}
+
+export const productSeam: ProductSeam = {
+  loadProduct: loadRealProductGraph,
+  writeScreen: writeRealScreen,
+  writeFlow: writeRealFlow,
+  writeBrief: writeRealBrief,
+  writeDecision: writeRealDecision,
+  supersedeDecision: supersedeRealDecision,
+};
+
 /**
  * The seam the running application uses once a real project is open.
  *

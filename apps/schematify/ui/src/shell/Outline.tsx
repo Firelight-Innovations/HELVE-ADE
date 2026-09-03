@@ -1,23 +1,42 @@
 /**
  * The Outline panel (PRD §12.1): a 3-entry section switcher above a
- * containment tree, header, and footer. `Design` draws the tree this wave;
- * `Product` and `Decisions` are `[P]` per the PRD and undrawn by any
- * wireframe (WIREFRAME-EXTRACT.md §8.1 lists their surfaces, S-19 through
- * S-22, as later-wave scope) — they switch to a named placeholder rather
- * than nothing, so the switcher is honestly wired rather than 2 dead buttons.
+ * containment tree, header, and footer. `Design` draws the tree; `Product`
+ * and `Decisions` (PRD §12.17, §12.18) are built as of wave 10c —
+ * `../App.tsx` swaps the whole center body for `../product/ProductPanel`
+ * when either is active, so this component draws only the switcher itself
+ * plus a 1-line summary for the 2 non-Design sections, computed from
+ * whatever `productCounts` names (undefined while that data is still
+ * loading, so the summary reads "loading…" rather than a wrong `0`).
  */
 import { useState } from "react";
 import { buildOutlineRows, outlineFooter, type ServiceGraph } from "../graph";
 
 const SECTIONS = ["Design", "Product", "Decisions"] as const;
-type Section = (typeof SECTIONS)[number];
+export type Section = (typeof SECTIONS)[number];
+
+/** Computed at draw time from whatever the panel has loaded (PRD §0.4) —
+ *  never stored on the Outline itself. */
+export interface ProductCounts {
+  screens: number;
+  flows: number;
+  decisions: number;
+}
 
 export interface OutlineProps {
   graph: ServiceGraph;
+  /** Controlled from `../App.tsx` once wave 10c's Product/Decisions panels
+   *  exist, so a click there can also swap the center body. Falls back to
+   *  uncontrolled local state when omitted, keeping every caller written
+   *  before this wave compiling unchanged. */
+  section?: Section;
+  onSectionChange?: (section: Section) => void;
+  productCounts?: ProductCounts;
 }
 
-export function Outline({ graph }: OutlineProps) {
-  const [section, setSection] = useState<Section>("Design");
+export function Outline({ graph, section, onSectionChange, productCounts }: OutlineProps) {
+  const [localSection, setLocalSection] = useState<Section>("Design");
+  const activeSection = section ?? localSection;
+  const setSection = onSectionChange ?? setLocalSection;
   const rows = buildOutlineRows(graph);
 
   return (
@@ -28,8 +47,8 @@ export function Outline({ graph }: OutlineProps) {
             key={entry}
             type="button"
             role="tab"
-            aria-selected={entry === section}
-            className={`kv-outline__switcher-tab${entry === section ? " kv-outline__switcher-tab--active" : ""}`}
+            aria-selected={entry === activeSection}
+            className={`kv-outline__switcher-tab${entry === activeSection ? " kv-outline__switcher-tab--active" : ""}`}
             onClick={() => setSection(entry)}
           >
             {entry}
@@ -37,7 +56,7 @@ export function Outline({ graph }: OutlineProps) {
         ))}
       </div>
 
-      {section === "Design" ? (
+      {activeSection === "Design" ? (
         <>
           {/* WIREFRAME-EXTRACT.md §1.1 draws `OUTLINE — CONTAINMENT` at
               tier 2; §5.1 draws `OUTLINE — SERVICES` at tier 1. Neither
@@ -72,7 +91,15 @@ export function Outline({ graph }: OutlineProps) {
           <div className="kv-outline__footer">{outlineFooter(graph)}</div>
         </>
       ) : (
-        <div className="kv-outline__placeholder">{section} — not built yet.</div>
+        <div className="kv-outline__placeholder">
+          {activeSection === "Product"
+            ? productCounts
+              ? `${productCounts.screens} screens · ${productCounts.flows} flows`
+              : "loading…"
+            : productCounts
+              ? `${productCounts.decisions} decisions`
+              : "loading…"}
+        </div>
       )}
     </div>
   );

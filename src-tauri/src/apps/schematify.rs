@@ -7,23 +7,17 @@
 //! dispatch function rather than one `#[tauri::command]` per operation,
 //! matching `home.rs` and `files.rs` (`docs/audits/schematify-baseline.md` §11).
 //!
-//! PRD §14.5 lists ten operations. This file wires seven: open a project,
-//! load the whole graph and its report, write one node, write one edge,
-//! read/write one layout, run the linter, and read one reconcile status —
-//! plus `schematify/state` from wave 1a. `transition`, `ingest-run` and
-//! `search` stay unwired — see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+//! PRD §14.5 lists ten operations; this file wires seven, plus
+//! `schematify/state` from wave 1a. `transition`, `ingest-run` and `search`
+//! stay unwired — see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+//! Wave 10c adds the product layer's 5 writes: one screen, one flow, the
+//! brief, and 2 decision-log operations. `write-decision` and
+//! `supersede-decision` are separate methods on purpose — that split **is**
+//! the PRD §5.9 enforcement: neither can edit an existing decision's content
+//! in place or delete a decision file.
 //!
-//! Wave 10c adds the product layer's five writes: one screen, one flow, the
-//! brief, and the two decision-log operations. `write-decision` and
-//! `supersede-decision` are two separate methods rather than one, and that
-//! split **is** the enforcement PRD §5.9 asks for — "Schematify shall never
-//! edit a decision row in place. Schematify shall never remove a decision
-//! row." No method here can overwrite an existing decision's content or
-//! delete a decision file; see each function's own doc comment.
-//!
-//! Decision SCH-API-003 puts an `actor` (`"human"` or `"agent"`) on every
-//! operation, so wave 10's human-only gate has something honest to read.
-//! [`actor_param`] refuses a call that omits it rather than defaulting it.
+//! Decision SCH-API-003 puts an `actor` on every operation; [`actor_param`]
+//! refuses a call that omits it rather than defaulting it.
 
 use std::fs;
 use std::path::Path;
