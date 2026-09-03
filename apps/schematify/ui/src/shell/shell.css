@@ -1,0 +1,417 @@
+/*
+ * The application shell (PRD §12.1, §17 Wave 2) — title bar, tab strip,
+ * breadcrumb, toolbar, Outline, Schematic host frame, Inspector shell, dock
+ * frame, and status bar. Every colour is a `--kv-*` custom property from
+ * `../tokens.css`; every dimension named as a token in PRD §13.5 uses that
+ * token, and every other dimension (tab strip height, breadcrumb/toolbar
+ * height, status bar height) is a literal `px` value, since PRD §13 does not
+ * name a token for those 3 — only colour is required to be tokenised.
+ */
+
+.kv-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--kv-bg-root);
+  color: var(--kv-text-primary);
+  font-family: var(--kv-font-sans);
+  font-size: 12px;
+}
+
+/* --- title bar ------------------------------------------------------------ */
+
+.kv-titlebar {
+  height: var(--kv-titlebar-height);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--kv-bg-panel);
+  border-bottom: 1px solid var(--kv-line);
+  font-family: var(--kv-font-mono);
+}
+
+.kv-titlebar__project {
+  font-weight: 600;
+  color: var(--kv-text-primary);
+}
+
+.kv-titlebar__path {
+  flex: 1;
+  color: var(--kv-text-tertiary);
+  font-size: 11px;
+}
+
+.kv-titlebar__controls {
+  display: flex;
+  gap: 8px;
+  color: var(--kv-text-dim);
+}
+
+/* --- application tab strip ------------------------------------------------ */
+
+.kv-tabstrip {
+  height: 36px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: var(--kv-bg-app);
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-tabstrip__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.kv-tabstrip__tab {
+  padding: 4px 10px;
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-secondary);
+  font-weight: 500;
+}
+
+.kv-tabstrip__tab--active {
+  background: var(--kv-bg-raised);
+  color: var(--kv-accent);
+}
+
+.kv-tabstrip__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--kv-text-faint);
+  font-size: 11px;
+}
+
+.kv-tabstrip__search kbd {
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius-chip);
+  padding: 1px 5px;
+  color: var(--kv-text-faint);
+  font-family: var(--kv-font-mono);
+}
+
+/* --- breadcrumb + toolbar row ---------------------------------------------- */
+
+.kv-chrome-row {
+  height: 40px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-breadcrumb {
+  font-family: var(--kv-font-mono);
+}
+
+.kv-breadcrumb__path {
+  color: var(--kv-text-primary);
+}
+
+.kv-breadcrumb__slug {
+  color: var(--kv-text-tertiary);
+  font-size: 10.5px;
+}
+
+.kv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kv-toolbar__search {
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  width: 220px;
+}
+
+.kv-toolbar__button {
+  background: var(--kv-bg-panel);
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+/* --- 3-column body ---------------------------------------------------------- */
+
+.kv-shell__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* --- Outline ------------------------------------------------------------- */
+
+.kv-outline {
+  width: var(--kv-panel-outline);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--kv-bg-app);
+  border-right: 1px solid var(--kv-line);
+}
+
+.kv-outline__switcher {
+  display: flex;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-outline__switcher-tab {
+  flex: 1;
+  padding: 6px 0;
+  color: var(--kv-text-dim);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kv-outline__switcher-tab--active {
+  color: var(--kv-text-primary);
+  border-bottom: 1.5px solid var(--kv-accent);
+}
+
+.kv-outline__header {
+  padding: 8px 10px 4px;
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+}
+
+.kv-outline__root {
+  padding: 0 10px 6px;
+  color: var(--kv-text-primary);
+  font-weight: 600;
+}
+
+.kv-outline__tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kv-outline__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  color: var(--kv-text-near);
+}
+
+.kv-outline__triangle {
+  width: 10px;
+  color: var(--kv-text-tertiary);
+}
+
+.kv-outline__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--kv-radius-dot);
+  background: var(--kv-text-faint);
+  flex: 0 0 auto;
+}
+
+.kv-outline__dot--accepted,
+.kv-outline__dot--reviewed {
+  background: var(--kv-ok);
+}
+
+.kv-outline__dot--stale {
+  background: var(--kv-warn);
+}
+
+.kv-outline__dot--draft {
+  background: transparent;
+  border: 1px solid var(--kv-text-faint);
+}
+
+.kv-outline__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-outline__badge {
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-secondary);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+}
+
+.kv-outline__count {
+  color: var(--kv-text-tertiary);
+  font-size: 10px;
+}
+
+.kv-outline__footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--kv-line);
+  color: var(--kv-text-tertiary);
+  font-size: 10.5px;
+}
+
+.kv-outline__placeholder {
+  padding: 12px 10px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- Schematic host -------------------------------------------------------- */
+
+.kv-schematic-host {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--kv-bg-app);
+  background-image: var(--kv-grid-dot);
+  background-size: var(--kv-grid-size) var(--kv-grid-size);
+}
+
+.kv-schematic-host__note {
+  color: var(--kv-text-faint);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+}
+
+/* --- Inspector shell --------------------------------------------------------- */
+
+.kv-inspector {
+  width: var(--kv-panel-inspector);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--kv-bg-app);
+  border-left: 1px solid var(--kv-line);
+}
+
+.kv-inspector__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-inspector__tab {
+  flex: 1;
+  text-align: center;
+  padding: 6px 0;
+  color: var(--kv-text-dim);
+  font-size: 10.5px;
+}
+
+.kv-inspector__tab--active {
+  color: var(--kv-text-primary);
+  border-bottom: 1.5px solid var(--kv-accent);
+}
+
+.kv-inspector__placeholder {
+  padding: 12px 10px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- dock ------------------------------------------------------------------ */
+
+.kv-dock {
+  height: var(--kv-dock-height);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--kv-bg-panel);
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-dock__tabs {
+  display: flex;
+  gap: 12px;
+  padding: 6px 12px 0;
+}
+
+.kv-dock__tab {
+  color: var(--kv-text-dim);
+  font-size: 11px;
+  padding-bottom: 6px;
+}
+
+.kv-dock__tab--active {
+  color: var(--kv-text-primary);
+  border-bottom: 1.5px solid var(--kv-accent);
+}
+
+.kv-dock__note {
+  padding: 6px 12px;
+  color: var(--kv-text-tertiary);
+  font-size: 10px;
+}
+
+.kv-dock__placeholder {
+  padding: 0 12px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- status bar -------------------------------------------------------------- */
+
+.kv-statusbar {
+  height: 22px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  background: var(--kv-bg-panel);
+  border-top: 1px solid var(--kv-line);
+  color: var(--kv-text-tertiary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+}
+
+/* --- Stack Schematic first-run empty state ------------------------------------ */
+
+.kv-empty-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--kv-text-secondary);
+}
+
+.kv-empty-stack__action {
+  background: var(--kv-accent);
+  color: var(--kv-bg-root);
+  border: none;
+  border-radius: var(--kv-radius);
+  padding: 6px 14px;
+  font-weight: 500;
+}
+
+.kv-empty-stack__action:disabled {
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-faint);
+}
