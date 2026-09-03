@@ -41,8 +41,11 @@
 }
 
 /* --- nodes ----------------------------------------------------------------
-   Wave 4 owns node anatomy (PRD §12.6). What is here is the frame a box needs
-   to be draggable and connectable, and no state rendering at all. */
+   Node anatomy (PRD §12.6-§12.8, Wave 4). Every value the JSX did not already
+   compute in `frame.ts`/`anatomy.ts` (border colour and width, the dot's
+   fill and colour, the bottom-edge fill's width and colour, opacity) arrives
+   as an inline style already resolved to a `--kv-*` token; the rules below
+   are geometry and layout only. */
 
 .kv-node {
   position: absolute;
@@ -53,6 +56,14 @@
   padding: 6px 8px;
   overflow: hidden;
   cursor: grab;
+}
+
+.kv-node--border-dashed {
+  border-style: dashed;
+  /* PRD §12.7's `draft` treatment: "dashed, muted fill" — a step darker than
+     the ordinary panel background, WIREFRAME-EXTRACT.md §2.2's own reading of
+     `rgba(27,30,36,.6)` without repeating a literal alpha value. */
+  background: var(--kv-bg-app);
 }
 
 .kv-node--container {
@@ -75,10 +86,29 @@
   border-color: var(--kv-accent);
 }
 
+/* `stale`'s warning overlay stripe (PRD §12.7). A pseudo-element rather than
+   a 2nd child so it always paints above the fill and below the wedge without
+   its own place in the JSX. */
+.kv-node--stale-stripe::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--kv-warn-wash) 0,
+    var(--kv-warn-wash) 6px,
+    transparent 6px,
+    transparent 13px
+  );
+}
+
 .kv-node__header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
+  padding-right: 22px; /* keeps the title clear of the node menu and wedge */
   color: var(--kv-text-primary);
   font-size: 11px;
   font-weight: 600;
@@ -93,10 +123,48 @@
   cursor: pointer;
 }
 
+/* The lifecycle dot (PRD §12.6's header: "lifecycle dot · title · node
+   menu"). `--kv-radius-dot` is the same 50% token the ports use. */
+.kv-node__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid;
+  border-radius: var(--kv-radius-dot);
+}
+
+.kv-node__dot--hollow {
+  background: transparent;
+}
+
+.kv-node__glyph {
+  flex: none;
+  color: var(--kv-text-primary);
+  font-size: 9.5px;
+  line-height: 1;
+}
+
 .kv-node__title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kv-node__title--struck {
+  text-decoration: line-through;
+  color: var(--kv-text-dim);
+}
+
+/* The `[⋯]` node menu (PRD §12.6). Anatomy.ts's `headerOccupants` proves this
+   never reaches the health wedge; `NODE_MENU_INSET`/`HEALTH_WEDGE_SIZE` there
+   are this rule's own numbers, restated so the 2 stay in step. */
+.kv-node__menu {
+  position: absolute;
+  top: 0;
+  right: 18px; /* HEALTH_WEDGE_SIZE (14px) + NODE_MENU_INSET (4px) */
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  line-height: 1;
 }
 
 .kv-node__slug {
@@ -111,11 +179,119 @@
   line-height: 1.35;
 }
 
+.kv-node__description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--kv-text-near);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.kv-node__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.kv-node__badge {
+  padding: 1px 5px;
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-line);
+  color: var(--kv-text-secondary);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.kv-node__facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--kv-text-secondary);
+  font-size: 9px;
+}
+
+.kv-node__libraries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 9px;
+}
+
 .kv-node__caption {
   margin-top: 4px;
   color: var(--kv-text-dim);
   font-size: 9px;
   letter-spacing: 0.06em;
+}
+
+.kv-node__caption--reason {
+  color: var(--kv-text-secondary);
+}
+
+/* The lifecycle bottom-edge fill (PRD §12.7): a bar pinned to the box's own
+   bottom edge, its own width and colour set inline per state. Border weight,
+   this fill, and the overlay stripe are the 3 things WIREFRAME-EXTRACT.md
+   §2.4 says survive to 22% zoom. */
+.kv-node__bottom-fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2.5px;
+}
+
+/* The health wedge (PRD §12.8): the wireframe's 14px corner triangle, pinned
+   to the one corner PRD §12.6 reserves for it. `clip-path` draws the
+   triangle; the colour is the status token. */
+.kv-node__wedge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 14px; /* HEALTH_WEDGE_SIZE in anatomy.ts */
+  height: 14px;
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.kv-node__wedge--soft-fail {
+  background: var(--kv-warn);
+}
+
+.kv-node__wedge--hard-fail {
+  background: var(--kv-error);
+}
+
+.kv-node__wedge--no-data {
+  background: var(--kv-line);
+}
+
+/* The 3 zoom tiers (PRD §12.7, WIREFRAME-EXTRACT.md §2.4). `full` draws
+   everything; `mid` keeps the header and slug ("title, slug, state") and
+   drops the rest; `geometry` drops every piece of text, leaving only what
+   the rules above already draw without a `display` of their own — the
+   border, the bottom-edge fill, the overlay stripe and the health wedge. */
+.kv-node[data-zoom-tier="mid"] .kv-node__description,
+.kv-node[data-zoom-tier="mid"] .kv-node__badges,
+.kv-node[data-zoom-tier="mid"] .kv-node__facets,
+.kv-node[data-zoom-tier="mid"] .kv-node__libraries,
+.kv-node[data-zoom-tier="mid"] .kv-node__caption {
+  display: none;
+}
+
+.kv-node[data-zoom-tier="geometry"] .kv-node__header,
+.kv-node[data-zoom-tier="geometry"] .kv-node__slug,
+.kv-node[data-zoom-tier="geometry"] .kv-node__description,
+.kv-node[data-zoom-tier="geometry"] .kv-node__badges,
+.kv-node[data-zoom-tier="geometry"] .kv-node__facets,
+.kv-node[data-zoom-tier="geometry"] .kv-node__libraries,
+.kv-node[data-zoom-tier="geometry"] .kv-node__caption {
+  display: none;
 }
 
 .kv-node__port {

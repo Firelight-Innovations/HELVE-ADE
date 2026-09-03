@@ -9,6 +9,8 @@
  * export strip). What it should not have to change is the engine itself.
  */
 import type { EdgeKindRule, SchematicConfig, SchematicNodeKind, Size } from "./config";
+import { contentBox } from "./anatomy";
+import type { NodeContent } from "./anatomy";
 
 /** Shared by `depends_on` and `implements`: the neutral line every wireframe
  *  draws them with (WIREFRAME-EXTRACT.md §1.3). */
@@ -85,11 +87,14 @@ const FACET_TIER_EDGES: readonly EdgeKindRule[] = [
 
 /**
  * Default boxes, in world units, matching the wireframe's drawn geometry
- * (WIREFRAME-EXTRACT.md §1.2, §4.8, §5.2). Wave 4 replaces this with a
- * content-derived size; until then a kind gets one box.
+ * (WIREFRAME-EXTRACT.md §1.2, §4.8, §5.2) — a kind's base size before Wave
+ * 4's `contentBox` grows it for whatever rows this particular node's content
+ * adds. A caller with no content (or a collapsed box, which never passes one)
+ * gets exactly the base size, matching Wave 3's plain box.
  */
 function boxFor(sizes: Partial<Record<SchematicNodeKind, Size>>, fallback: Size) {
-  return (kind: SchematicNodeKind): Size => sizes[kind] ?? fallback;
+  return (kind: SchematicNodeKind, content: NodeContent = {}): Size =>
+    contentBox(sizes[kind] ?? fallback, content);
 }
 
 /** Tier 1 (PRD §12.9). The larger dot grid, services and groups only. */

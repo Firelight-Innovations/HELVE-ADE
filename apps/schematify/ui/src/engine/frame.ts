@@ -26,6 +26,19 @@ import type { Route } from "./routing";
 import { routeEdge } from "./routing";
 import type { Viewport, ViewportSize } from "./viewport";
 import { visibleWorldRect, zoomReadout } from "./viewport";
+import type { Caption, HeaderOccupants, LifecycleTreatment, ZoomTier } from "./anatomy";
+import {
+  LIFECYCLE_TREATMENTS,
+  badgesFor,
+  captionFor,
+  countStringsFor,
+  facetChipsFor,
+  healthRollupFor,
+  healthWedgeFor,
+  headerOccupants,
+  zoomTierFor,
+} from "./anatomy";
+import type { HealthStatus } from "../graph";
 
 /** A node as drawn. The captions are strings rather than numbers because the
  *  wireframe fixes their wording (WIREFRAME-EXTRACT.md §1.1) and one place
@@ -43,6 +56,34 @@ export interface DrawnNode {
   collapsedCaption?: string;
   /** `3 edges aggregated`, drawn only when edges roll up to this border. */
   rollUpCaption?: string;
+  /** `contains 2`, drawn only on an expanded box with visible children (PRD
+   *  §12.6). Distinct from `collapsedCaption`, which is the same count on a
+   *  collapsed box's own different wording. */
+  containsCaption?: string;
+
+  // --- PRD §12.6 node anatomy (Wave 4) --------------------------------------
+
+  /** The closed badge set (PRD §12.6), in reading order. */
+  badges: readonly string[];
+  /** The facet-count row's chips, tier 2 only — `⬤ 3 meth`, one entry per
+   *  facet type this node carries. */
+  facetChips: readonly string[];
+  /** Every other count string PRD §12.6 lists (`N exports`, `schemas ✓`, …). */
+  counts: readonly string[];
+  /** The one caption a state's reason draws, or the service roll-up caption
+   *  in words when this node is a `service` (PRD §12.8) — the 2 never both
+   *  apply, since only a facet-less `service` node rolls up. */
+  caption?: Caption;
+  /** How this node's lifecycle draws, with colour removed (PRD §12.7). */
+  lifecycle: LifecycleTreatment;
+  /** Which of PRD §12.8's 4 wedge treatments this node draws. `"passing"`
+   *  draws none. */
+  health: HealthStatus;
+  /** Where the health wedge and the node menu sit, so the renderer can prove
+   *  by construction that neither reaches the other (PRD §17 Wave 4). */
+  headerOccupants: HeaderOccupants;
+  /** Which of PRD §12.7's 3 zoom tiers this frame's viewport draws at. */
+  zoomTier: ZoomTier;
 }
 
 /** An edge as drawn. `stored` separates a real graph edge from the tier-3
@@ -112,9 +153,10 @@ export function buildFrame(input: FrameInput): Frame {
 
   const rollUp = new Map<string, number>();
   const edges = buildEdges(doc, index, config, visible, rollUp);
+  const zoomTier = zoomTierFor(viewport.zoom);
   const drawnNodes = visible
     .filter((node) => rectsOverlap(node.rect, view))
-    .map((node) => drawNode(node, index, selection, rollUp));
+    .map((node) => drawNode(node, index, selection, rollUp, config.tier, zoomTier));
 
   return {
     nodes: drawnNodes,
@@ -137,19 +179,37 @@ function drawNode(
   index: DocIndex,
   selection: ReadonlySet<string>,
   rollUp: ReadonlyMap<string, number>,
+  tier: SchematicConfig["tier"],
+  zoomTier: ZoomTier,
 ): DrawnNode {
   const kids = childrenOf(index, node.id);
   const childCount = node.collapsed ? descendantsOf(index, node.id).length : kids.length;
   const aggregated = rollUp.get(node.id) ?? 0;
+  const container = !node.collapsed && kids.length > 0;
+  const health = healthWedgeFor(node.health);
+  // A `service` node draws the roll-up caption in words (PRD §12.8) rather
+  // than its own state's caption — no node this wave is both `service`-kind
+  // and carries a lifecycle reason, so the 2 never compete in practice, but
+  // the roll-up is checked first because it is the more specific rule.
+  const caption = node.kind === "service" ? healthRollupFor(node, index) : captionFor(node);
   return {
     node,
     rect: node.rect,
     childCount,
-    container: !node.collapsed && kids.length > 0,
+    container,
     selected: selection.has(node.id),
     collapsedCaption: node.collapsed ? `collapsed · ${childCount} children` : undefined,
     rollUpCaption:
       aggregated > 0 ? `${aggregated} edge${aggregated === 1 ? "" : "s"} aggregated` : undefined,
+    containsCaption: container ? `contains ${childCount}` : undefined,
+    badges: badgesFor(node, tier),
+    facetChips: facetChipsFor(node.facets),
+    counts: countStringsFor(node),
+    caption,
+    lifecycle: LIFECYCLE_TREATMENTS[node.lifecycle ?? "specified"],
+    health,
+    headerOccupants: headerOccupants(node.rect, health !== "passing"),
+    zoomTier,
   };
 }
 
