@@ -14,9 +14,17 @@
  * there (`docs/overnight-jobs/overnight-2/handoffs/w3-engine.md` assumption
  * 16 names the same seam on the engine's side of the join).
  */
-import type { GraphEdge, GraphNode, Layer, Lifecycle, NodeKind, ServiceGraph } from "./types";
 import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
 import { staleCaption, type RawStaleness } from "./staleness";
+import type {
+  GraphEdge,
+  GraphNode,
+  Layer,
+  Lifecycle,
+  NodeKind,
+  SchematicGraph,
+  ServiceGraph,
+} from "./types";
 
 /**
  * One node exactly as `schematify_core::Node` serializes it: the envelope
@@ -50,15 +58,29 @@ export interface RawEdge {
   target: string;
 }
 
-/** The `graph` half of `schematify/load-graph`'s response. `rules` and
- *  `libraries` are not declared — no view any wave has built yet reads
- *  either. `screens`, `flows`, `decisions` and `brief` are declared as
- *  optional so a caller built against an older, narrower fixture object
- *  (every test file that predates wave 10c) keeps compiling unchanged; the
- *  product layer (`../product/`) is what actually reads them. */
+/** One entry of `schematify_core::LibraryRegistry`, exactly as `load_graph`
+ *  serializes it — read by [`projectModuleGraph`] to resolve an
+ *  `external-dep` facet's `registry_ref` to a version and a license, neither
+ *  of which the facet node itself carries (PRD §5.9: a use points at the
+ *  registry, it does not restate the registry's own fields). */
+export interface RawLibraryEntry {
+  id: string;
+  name: string;
+  version: string;
+  license: string;
+}
+
+/** The `graph` half of `schematify/load-graph`'s response. `rules` is not
+ *  declared — no view any wave has built yet reads it. `libraries` is read
+ *  by [`projectModuleGraph`] alone. `screens`, `flows`, `decisions` and
+ *  `brief` are declared as optional so a caller built against an older,
+ *  narrower fixture object (every test file that predates wave 10c) keeps
+ *  compiling unchanged; the product layer (`../product/`) is what actually
+ *  reads them. */
 export interface RawGraph {
   nodes: RawNode[];
   edges: RawEdge[];
+  libraries?: { libraries: RawLibraryEntry[] };
   screens?: RawScreen[];
   flows?: RawFlow[];
   decisions?: RawDecision[];
@@ -126,26 +148,46 @@ function asNodeKind(rawKind: "module" | "group"): NodeKind {
 }
 
 /**
- * Whether `node` sits inside `serviceId`'s containment subtree, walking
+ * Whether `node` sits inside `rootId`'s containment subtree, walking
  * `parent` up to the root. Guards against a containment cycle the same way
  * `./index.ts`'s `computeDepth` does — a real project is read off a
  * filesystem a person can hand-edit, so a cycle is a real possibility here,
- * not a hypothetical one a fixture could rule out.
+ * not a hypothetical one a fixture could rule out. Shared by
+ * [`projectServiceGraph`] (root = a service) and [`projectModuleGraph`]
+ * (root = a module) — the walk itself knows nothing about which tier called
+ * it.
  */
-function isDescendantOfService(
+function isDescendantOf(
   node: RawNode,
-  serviceId: string,
+  rootId: string,
   byId: ReadonlyMap<string, RawNode>,
 ): boolean {
   const visiting = new Set<string>();
   let current: RawNode | undefined = node;
   while (current) {
-    if (current.parent === serviceId) return true;
+    if (current.parent === rootId) return true;
     if (!current.parent || visiting.has(current.id)) return false;
     visiting.add(current.id);
     current = byId.get(current.parent);
   }
   return false;
+}
+
+/** PRD §7.4's `badge`/`staleReason` pair, shared by [`projectServiceGraph`]
+ *  (a module box drawn `STALE`) and [`projectModuleGraph`] (the module root
+ *  itself, drawn the same way). `stale.source` is a node id — resolved
+ *  against `byId`, the containment map the caller already built — so
+ *  `staleCaption` has a slug to draw rather than a UUID. */
+function staleFields(
+  node: RawNode,
+  byId: ReadonlyMap<string, RawNode>,
+  nowMs: number,
+): Pick<GraphNode, "badge" | "staleReason"> {
+  if (node.lifecycle !== "stale") return {};
+  return {
+    badge: "STALE",
+    staleReason: staleCaption(node.stale, byId.get(node.stale?.source ?? "")?.slug, nowMs),
+  };
 }
 
 /**
@@ -172,7 +214,7 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     (node) =>
       node.id !== serviceNode.id &&
       SERVICE_SCHEMATIC_KINDS.has(node.kind) &&
-      isDescendantOfService(node, serviceNode.id, byId),
+      isDescendantOf(node, serviceNode.id, byId),
   );
 
   // Read once per call rather than once per node — PRD §0.4's "computed at
@@ -192,14 +234,7 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     // `crates/schematify-core` yet — `ServiceFields.entry_point` is prose
     // ("how the service starts"), not a flag on a module. STALE is
     // derivable; see the wiring handoff.
-    badge: node.lifecycle === "stale" ? "STALE" : undefined,
-    // PRD §7.4's second caption line. `stale.source` is a node id — resolved
-    // against `byId`, the same map the containment walk above already
-    // built — so `staleCaption` has a slug to draw rather than a UUID.
-    staleReason:
-      node.lifecycle === "stale"
-        ? staleCaption(node.stale, byId.get(node.stale?.source ?? "")?.slug, nowMs)
-        : undefined,
+    ...staleFields(node, byId, nowMs),
   }));
 
   // A group can be drawn (above) while never becoming an edge endpoint —
@@ -230,4 +265,197 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     nodes,
     edges,
   };
+}
+
+// --- Module Schematic (PRD §12.11, tier 3) ---------------------------------
+
+/** PRD §12.11's 5 facet kinds — every `NodeKind` a Module Schematic draws
+ *  that is not the module root itself. */
+const MODULE_FACET_KINDS: ReadonlySet<string> = new Set([
+  "contract-method",
+  "test-case",
+  "budget",
+  "doc-block",
+  "external-dep",
+]);
+
+/** The 3 tier-3 edge kinds PRD §11.1 closes the vocabulary to. Unlike the
+ *  Service Schematic's `MODULE_ONLY_EDGE_ENDPOINT_KINDS`, every included
+ *  node (root and facet alike) is a legal endpoint here — a `covers` edge
+ *  runs test case to contract method, never through the root. */
+const MODULE_EDGE_KINDS: ReadonlySet<string> = new Set(["covers", "satisfies", "documents"]);
+
+function asFacetKind(rawKind: string): NodeKind {
+  return rawKind as NodeKind;
+}
+
+/** A `test-case` facet's `status` (`declared`/`linked`/`passing`/`failing`,
+ *  `schematify_core::node::TestStatus`), narrowed to the 2 words PRD §12.11
+ *  actually draws a status word for — a case that is merely `declared` or
+ *  `linked` draws none, the same as `./module.ts`'s stand-in fixture never
+ *  set the field for those states. */
+function asTestStatus(value: unknown): "passing" | "failing" | undefined {
+  return value === "passing" || value === "failing" ? value : undefined;
+}
+
+/** A `budget` facet's `tier` (`schematify_core::node::BudgetTier`), narrowed
+ *  the same way `asTestStatus` narrows a test status: `"target"` draws no
+ *  badge at all, matching `BudgetTier::badge()`'s own `None` for that tier
+ *  on the Rust side. */
+function asBudgetTier(value: unknown): "hard" | "soft" | undefined {
+  return value === "hard" || value === "soft" ? value : undefined;
+}
+
+/** `< 3 ms`, from a budget facet's `op`/`value`/`unit` — the 3 fields
+ *  `schematify_core::node::BudgetFields` always carries, so this never
+ *  returns `undefined` the way `budgetProbeCommand` and `budgetValueText`
+ *  (unmodeled — see `projectModuleGraph`'s own header) can. */
+function budgetThresholdText(node: RawNode): string | undefined {
+  const { op, value, unit } = node;
+  if (typeof op !== "string" || typeof value !== "number" || typeof unit !== "string") {
+    return undefined;
+  }
+  return `${op} ${value} ${unit}`;
+}
+
+function budgetProbeCommand(node: RawNode): string | undefined {
+  const probe = node.probe;
+  if (probe === null || typeof probe !== "object") return undefined;
+  const command = (probe as { command?: unknown }).command;
+  return typeof command === "string" ? command : undefined;
+}
+
+/** One facet's kind-specific fields (PRD §12.11), the tier-3 counterpart of
+ *  `projectServiceGraph`'s inline node map — split into its own function
+ *  because a `switch` over 5 kinds inline would out-grow what that map
+ *  reads comfortably. A contract method's covers count is deliberately not
+ *  one of these fields: wave 6 removed `GraphNode.coversCount` as a PRD
+ *  §0.4 breach (a stored count that could drift from the edges) and
+ *  replaced it with `engine/anatomy.ts`'s `coversCountFor(id, edges)`,
+ *  computed at draw time from the `covers` edges this function's caller
+ *  already returns — a caller wanting the number reads it from there, not
+ *  from a 2nd count this file would otherwise be computing independently. */
+function facetFields(
+  node: RawNode,
+  libraries: ReadonlyMap<string, RawLibraryEntry>,
+): Partial<GraphNode> {
+  switch (node.kind) {
+    case "contract-method":
+      return {
+        signature: typeof node.signature === "string" ? node.signature : undefined,
+        returns: typeof node.returns === "string" ? node.returns : undefined,
+        exported: node.exported === true,
+      };
+    case "test-case":
+      return { testStatus: asTestStatus(node.status) };
+    case "budget":
+      return {
+        budgetTier: asBudgetTier(node.tier),
+        budgetThresholdText: budgetThresholdText(node),
+        budgetProbe: budgetProbeCommand(node),
+        // `schematify_core::node::BudgetFields` has no "last measured
+        // value" field at all — only a threshold and an optional sign-off —
+        // so this stays `undefined` (PRD §12.12: "draws `—`") rather than
+        // guessing at a number the schema does not hold.
+        budgetValueText: undefined,
+      };
+    case "doc-block":
+      return {
+        docAudience: typeof node.audience === "string" ? node.audience : undefined,
+        docBody: typeof node.body === "string" ? node.body : undefined,
+      };
+    case "external-dep": {
+      const entry =
+        typeof node.registry_ref === "string" ? libraries.get(node.registry_ref) : undefined;
+      return {
+        depVersion: entry?.version,
+        depLicense: entry?.license,
+        depRegistryOk: entry !== undefined,
+      };
+    }
+    default:
+      return {};
+  }
+}
+
+/**
+ * Builds one module's `SchematicGraph` out of the whole project graph — the
+ * tier-3 counterpart of `projectServiceGraph`. The module root is drawn as
+ * its own node (`parentId: null`, unlike a service's root, which is never in
+ * `nodes` at all — PRD §12.11 fans facets out from a drawn root box, while a
+ * Service Schematic's root is the canvas itself), with every facet whose
+ * containment chain resolves back to it.
+ *
+ * Throws when no `module` node carries `moduleSlug`, the same contract
+ * `projectServiceGraph` makes — a caught rejection in `App.tsx`, not a crash.
+ */
+export function projectModuleGraph(raw: RawGraph, moduleSlug: string): SchematicGraph {
+  const moduleNode = raw.nodes.find((node) => node.kind === "module" && node.slug === moduleSlug);
+  if (!moduleNode) {
+    throw new Error(`no module named "${moduleSlug}" in this project`);
+  }
+
+  const byId = new Map(raw.nodes.map((node) => [node.id, node]));
+  const facets = raw.nodes.filter(
+    (node) => MODULE_FACET_KINDS.has(node.kind) && isDescendantOf(node, moduleNode.id, byId),
+  );
+  const included = [moduleNode, ...facets];
+  const includedIds = new Set(included.map((node) => node.id));
+
+  const libraries = new Map(
+    (raw.libraries?.libraries ?? []).map((entry) => [entry.id, entry] as const),
+  );
+
+  const nowMs = Date.now();
+
+  const nodes: GraphNode[] = included.map((node) => {
+    const isRoot = node.id === moduleNode.id;
+    return {
+      id: node.id,
+      slug: node.slug,
+      title: node.title,
+      kind: asFacetKind(node.kind),
+      layer: isRoot ? asLayer(node.layer) : undefined,
+      lifecycle: asLifecycle(node.lifecycle),
+      // A facet's real parent is already the module's own id — module.ts's
+      // stand-in fixture set it exactly this way — so unlike the service
+      // tier's root-becomes-null rewrite, only the root itself is `null`.
+      parentId: isRoot ? null : (node.parent ?? null),
+      description: isRoot && typeof node.description === "string" ? node.description : undefined,
+      screenRef: isRoot ? firstScreenRef(node.ui_refs) : undefined,
+      ...staleFields(node, byId, nowMs),
+      ...(isRoot ? {} : facetFields(node, libraries)),
+    };
+  });
+
+  const edges: GraphEdge[] = raw.edges
+    .filter(
+      (edge) =>
+        MODULE_EDGE_KINDS.has(edge.kind) &&
+        includedIds.has(edge.source) &&
+        includedIds.has(edge.target),
+    )
+    .map((edge) => ({
+      id: edge.id,
+      kind: edge.kind as GraphEdge["kind"],
+      from: edge.source,
+      to: edge.target,
+    }));
+
+  return {
+    tier: "module",
+    serviceSlug: moduleNode.slug,
+    serviceTitle: moduleNode.title,
+    nodes,
+    edges,
+  };
+}
+
+/** A module's `ui_refs` (PRD §12.5's tier-3 screen-reference path), taken as
+ *  its first entry — `GraphNode.screenRef` is a single string, and no
+ *  wireframe or fixture draws a module with more than 1. */
+function firstScreenRef(uiRefs: unknown): string | undefined {
+  if (!Array.isArray(uiRefs) || uiRefs.length === 0) return undefined;
+  const first: unknown = uiRefs[0];
+  return typeof first === "string" ? first : undefined;
 }
