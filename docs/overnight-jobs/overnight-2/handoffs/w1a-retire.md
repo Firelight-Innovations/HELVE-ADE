@@ -172,6 +172,15 @@ The review found 4 blocking issues and 3 non-blocking ones. Fixed all 7:
    place, untouched, per the original instruction and because another wave
    is still writing in that folder.
 
+**Ruling on the retirement exemption (orchestrator, after the review above):**
+the exemption follows the document, not the folder — a source document that
+records what Forger and Journeyman were, such as `SCHEMATIFY-PRD.md` or the
+four documents still in this job folder, keeps its own historical sections
+intact regardless of which path it lives at, because recording what was
+replaced is neither a product string nor a description of the current
+system. Later waves (CODEOWNERS, the remaining §20 decision rows) should not
+scrub those sections.
+
 ## Left undone, and why
 
 - **Wave 2 onward** (shell, tokens, Schematic engine, everything past the
