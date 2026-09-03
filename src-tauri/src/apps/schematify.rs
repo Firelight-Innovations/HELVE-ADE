@@ -2130,7 +2130,7 @@ mod tests {
     /// children this crate's own fixture holds.
     #[test]
     fn module_dashboard_against_the_real_fixture_draws_the_16_1_values() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let root = manifest_dir()
             .join("..")
             .join("crates")
             .join("schematify-core")
@@ -2219,9 +2219,97 @@ mod tests {
         }
     }
 
+    /// `COUNT` and `SITE` are read from 2 independent sources — the run
+    /// artifact's own `ReconcileResult`, and the `reconcile.json` files this
+    /// module's own children carry (§3 of the wave 9d handoff). Nothing
+    /// reconciles the two against each other, on purpose: a run can declare
+    /// a count no evidence file backs yet (CI ran before `kaava reconcile`
+    /// did), and a caller should see that gap rather than have one number
+    /// silently overwritten by the other. This test proves the 2 numbers
+    /// really are independent by making them disagree: a run declaring 5
+    /// matched outcomes, but only 1 `reconcile.json` file on disk actually
+    /// saying `matched`. If a future change made `COUNT` derive from the
+    /// evidence files, `reconciliation.matched` below would read `1`, not
+    /// `5`; if it made `SITE` fabricate itself from `COUNT`, the site text
+    /// would read `+4 more` rather than naming only the 1 file this test
+    /// wrote. Either failure mode is exactly what this test exists to catch.
+    #[test]
+    fn reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree() {
+        use schematify_core::{RunArtifact, RUN_SCHEMA_VERSION};
+
+        let dir = TempDir::new("reconciliation-independence");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope = sample_service_node();
+        store.write_node(&scope).expect("seed write succeeds");
+        let scope_id = scope.id();
+
+        let run = RunArtifact {
+            schema: RUN_SCHEMA_VERSION.to_string(),
+            run: 1,
+            at: "2026-09-03T00:00:00Z".to_string(),
+            commit: "abc1234".to_string(),
+            workflow: "ci/verify.yml".to_string(),
+            budgets: Vec::new(),
+            tests: Vec::new(),
+            linter: None,
+            reconcile: Some(schematify_core::ReconcileResult {
+                matched: 5,
+                declared_absent: 0,
+                present_unknown: 0,
+                duplicate: 0,
+            }),
+        };
+        store.write_run(scope_id, &run).expect("seed run write");
+
+        // 1 real reconcile.json — deliberately fewer than the run's own
+        // `matched: 5` — written directly under the module's own runs
+        // directory, on the module node itself (not a child), so this test
+        // needs no facet nodes to make its point.
+        let runs_dir = dir
+            .path()
+            .join(".kaava")
+            .join("runs")
+            .join(scope_id.to_string());
+        fs::write(
+            runs_dir.join("reconcile.json"),
+            json!({
+                "schema": "kaava-reconcile-v1",
+                "at": "2026-09-03T00:00:00Z",
+                "outcome": "matched",
+                "node_id": scope_id.to_string(),
+                "slug": "auth-service",
+                "site": { "file": "src/only_evidence_this_test_wrote.rs", "line": 1 },
+            })
+            .to_string(),
+        )
+        .expect("seed the one reconcile.json this test writes");
+
+        let value = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": scope_id.to_string() })),
+        )
+        .expect("module-dashboard succeeds");
+
+        // COUNT: read straight from the run artifact, untouched by there
+        // being only 1 piece of real evidence on disk.
+        assert_eq!(value["reconciliation"]["matched"], 5);
+        assert_eq!(value["reconciliationRows"][0]["count"], 5);
+        // SITE: read straight from the 1 real reconcile.json file, untouched
+        // by the run artifact claiming 5. Not "+4 more" — that would mean
+        // this function started fabricating evidence from the count.
+        assert_eq!(
+            value["reconciliationRows"][0]["site"],
+            "src/only_evidence_this_test_wrote.rs"
+        );
+    }
+
     #[test]
     fn list_runs_against_the_real_fixture_finds_the_one_ingested_run() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let root = manifest_dir()
             .join("..")
             .join("crates")
             .join("schematify-core")

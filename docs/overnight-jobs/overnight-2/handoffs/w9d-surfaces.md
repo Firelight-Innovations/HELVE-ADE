@@ -49,6 +49,24 @@ schematify-core -p openkaava-orchestrator` reported "Blocking waiting for
 file lock on build directory", confirming concurrent-build contention).
 Cleared and rebuilt clean; not a rebase/merge conflict.
 
+**`main` moved a 4th time (PR #97, the atomic-rename flake fix) while the
+above was in flight.** Merged again — 0 conflicts this time, a clean
+auto-merge. PR #97 added a `manifest_dir()` test helper (reads
+`CARGO_MANIFEST_DIR` from the environment first, falling back to the
+compile-time value, to survive a test binary reused across worktrees sharing
+one `CARGO_TARGET_DIR`) and used it in one existing test in this file; this
+wave's own 2 real-fixture tests
+(`module_dashboard_against_the_real_fixture_draws_the_16_1_values`,
+`list_runs_against_the_real_fixture_finds_the_one_ingested_run`) used the
+same raw `env!("CARGO_MANIFEST_DIR")` pattern PR #97 was fixing, so both were
+switched to call `manifest_dir()` too, for consistency and so they get the
+same protection.
+
+Also added in this review round, addressing 2 things flagged directly: a new
+test proving `COUNT` and `SITE` are computed independently rather than
+agreeing only by construction (§3), and a stronger, file-named disclosure of
+the contract-history rows' non-schema origin (§4).
+
 ## 1. What was built
 
 ### Rust (`src-tauri/src/apps/schematify.rs`) — 3 new dispatch arms
@@ -163,6 +181,17 @@ reconciliation data) is one line to switch to: drop the 8 new files and
 `first_and_overflow` degrades to `—` for every row, honestly, with `COUNT`
 still correct.
 
+**The independence of `COUNT` and `SITE` is asserted, not just true by
+construction.** `reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree`
+(`src-tauri/src/apps/schematify.rs`) builds a synthetic project where a run
+artifact declares `matched: 5` but only 1 real `reconcile.json` file exists
+on disk, naming 1 file. The test asserts `reconciliation.matched` still
+reads `5` (from the run artifact, untouched by the evidence gap) and `SITE`
+still reads only the 1 real file (not `+4 more`, which would mean `SITE` had
+started fabricating itself from `COUNT`). Broken on purpose to confirm it
+can fail — flipped the expected count to `1`, watched it panic with `left:
+Number(5), right: 1`, reverted — see §8.
+
 ## 4. Contract change history — a recorded gap, not a computed answer
 
 PRD §12.13's 4th table (`CONTRACT CHANGE HISTORY`) has no backing schema
@@ -173,12 +202,20 @@ node keeps only its current fields, overwritten on every edit (PRD §6.1's
 from, and inventing a change-log schema mid-wave is a crate decision this
 wave did not make unilaterally.
 
-`graph/dashboard.ts`'s `referenceContractHistory(moduleSlug)` draws PRD
-§16.1's 3 rows verbatim for `token-verifier` (the one module the reference
-fixture names) and an empty table — never fabricated content — for every
-other module. This satisfies the acceptance bar against the committed
-fixture without pretending every module has a history. **Flagged for whoever
-owns `crates/schematify-core`'s schema next**: a real fix needs either a
+**Be explicit about what these 3 rows actually are: literal, hand-typed
+strings in a TypeScript source file, not data read from any node, run, or
+audit file on disk.** The exact source is
+`apps/schematify/ui/src/graph/dashboard.ts`, function
+`referenceContractHistory(moduleSlug)` — it draws PRD §16.1's 3 rows
+verbatim, as a string-literal array, for `token-verifier` (the one module
+the reference fixture names) and an empty table for every other module. No
+crate, no RPC call, and no fixture file backs this function; it exists
+purely so the reference fixture's own screen matches its own wireframe
+source. Nobody should read these 3 rows as evidence the crate can produce
+this table — it cannot, for any module, including `token-verifier`. This
+satisfies the acceptance bar against the committed fixture without
+pretending every module has a history. **Flagged for whoever owns
+`crates/schematify-core`'s schema next**: a real fix needs either a
 `contract_history: Vec<...>` field somewhere durable, or a derivation from a
 2nd source (e.g., git blame on the node file) neither this wave nor any
 already-merged wave has built.
@@ -258,16 +295,16 @@ screen.
 
 | Step | Result |
 |---|---|
-| `cargo test -p openkaava-orchestrator schematify::` | 26 passed |
+| `cargo test -p openkaava-orchestrator schematify::` | 34 passed |
 | `cargo test --workspace` | All passing (the "known false failures" the brief warned about are not present in this run — already fixed elsewhere) |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 warnings above baseline |
 | `cargo fmt --all -- --check` | Pass |
-| `npx vitest run apps/schematify` | 291 passed |
+| `npx vitest run apps/schematify` | 339 passed |
 | `npx eslint apps/schematify/ui/src/` | 0 problems |
 | `npx prettier --check apps/schematify/ui/src/` | Pass |
-| `node scripts/check-comments.mjs` | 451 files checked, none above limit |
+| `node scripts/check-comments.mjs` | 455 files checked, none above limit |
 | `pnpm verify:fast` | Pass |
-| `pnpm verify` (full) | Pass, exit code 0 — the last run before this PR was marked ready |
+| `pnpm verify` (full) | Pass, exit code 0, run against the merged tree (`origin/main` merged twice — §0) — the last run before this PR was marked ready |
 
 Tests broken on purpose and confirmed to fail, then restored:
 
@@ -277,6 +314,10 @@ Tests broken on purpose and confirmed to fail, then restored:
 - `ingest_run_refuses_a_second_ingestion_at_the_same_run_number`
   (`src-tauri/src/apps/schematify.rs`) — flipped `is_err()` to `is_ok()`,
   reran, watched it panic at the assertion, reverted.
+- `reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree`
+  (`src-tauri/src/apps/schematify.rs`, added in review round — §3) — flipped
+  the expected `matched` count from `5` to `1`, reran, watched it panic with
+  `left: Number(5), right: 1`, reverted.
 
 `pnpm baseline` was never run. No test was deleted or skipped.
 
