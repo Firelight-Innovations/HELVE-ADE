@@ -67,7 +67,13 @@ fn duplicate_marker_token_exits_1() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let written = fs::read_to_string(root.join("runs").join(id).join("reconcile.json")).unwrap();
+    let written = fs::read_to_string(
+        root.join(".kaava")
+            .join("runs")
+            .join(id)
+            .join("reconcile.json"),
+    )
+    .unwrap();
     let value: serde_json::Value = serde_json::from_str(&written).unwrap();
     assert_eq!(value["outcome"], "duplicate");
 }
@@ -118,6 +124,47 @@ fn missing_project_exits_2() {
         .expect("kaava reconcile should run");
 
     assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn a_result_write_failure_exits_3_not_2() {
+    // Exit code 2 is reserved for "the command read no project at that path"
+    // (PRD 9.3); a failure writing results after the project read fine and
+    // reconciliation completed is a different failure class and must use a
+    // different code.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let nodes_dir = root.join(".kaava").join("nodes");
+    fs::create_dir_all(&nodes_dir).unwrap();
+
+    let id = "0192f4a4-4c3d-7890-a1b2-c3d4e5f6a7b8";
+    write_node(
+        &nodes_dir,
+        id,
+        "thing.run",
+        "contract-method",
+        "implemented",
+    );
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/a.rs"), format!("// @kaava:{id} thing.run\n")).unwrap();
+
+    // Block `.kaava/runs/` from being created: a plain file sits where
+    // `write_run_files` needs a directory.
+    fs::write(root.join(".kaava").join("runs"), b"not a directory").unwrap();
+
+    let output = Command::new(kaava_bin())
+        .arg("reconcile")
+        .arg("--root")
+        .arg(root)
+        .output()
+        .expect("kaava reconcile should run");
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

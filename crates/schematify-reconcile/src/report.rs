@@ -1,15 +1,17 @@
-//! Writing reconciliation results: `runs/<node-uuid>/reconcile.json` per
-//! marker identifier touched (PRD `SCHEMATIFY-PRD.md` section 9.3), and the
-//! consolidated report `kaava reconcile --out` writes or prints, in `text` or
-//! `json` form.
+//! Writing reconciliation results: `.kaava/runs/<node-uuid>/reconcile.json`
+//! per marker identifier touched (PRD `SCHEMATIFY-PRD.md` section 9.3), and
+//! the consolidated report `kaava reconcile --out` writes or prints, in
+//! `text` or `json` form.
 //!
 //! Section 9.3 names the path `runs/<node-uuid>/reconcile.json` but not its
-//! schema. This crate settles on the outcome itself plus a `schema` tag and a
-//! timestamp, mirroring how the `run-<n>.json` bench artifact carries a
-//! `schema` field (section 5.10) so a future reader can version it. The file
-//! is overwritten on every run — its name carries no run number, unlike
-//! `run-<n>.json`, so "the latest reconciliation of this node" is read
-//! without picking a number.
+//! schema; section 6.1's storage layout is what puts the `runs/` tree inside
+//! `.kaava/`, alongside `nodes/` — the same root [`crate::graph::JsonFileGraph`]
+//! reads from. This crate settles the schema itself on the outcome plus a
+//! `schema` tag and a timestamp, mirroring how the `run-<n>.json` bench
+//! artifact carries a `schema` field (section 5.10) so a future reader can
+//! version it. The file is overwritten on every run — its name carries no run
+//! number, unlike `run-<n>.json`, so "the latest reconciliation of this node"
+//! is read without picking a number.
 
 use std::fs;
 use std::io;
@@ -53,9 +55,10 @@ struct NodeReconcileFile<'a> {
     outcome: &'a ReconcileOutcome,
 }
 
-/// Write one `<root>/runs/<node-uuid>/reconcile.json` per outcome in `run`.
+/// Write one `<root>/.kaava/runs/<node-uuid>/reconcile.json` per outcome in
+/// `run` (PRD section 6.1 puts `runs/` inside `.kaava/`, beside `nodes/`).
 pub fn write_run_files(root: &Path, run: &ReconcileRun) -> Result<(), ReportError> {
-    let runs_dir = root.join("runs");
+    let runs_dir = root.join(".kaava").join("runs");
     let now = now_rfc3339();
 
     for outcome in &run.outcomes {
@@ -241,6 +244,7 @@ mod tests {
         write_run_files(root, &run).unwrap();
 
         let written = root
+            .join(".kaava")
             .join("runs")
             .join(id().to_string())
             .join("reconcile.json");

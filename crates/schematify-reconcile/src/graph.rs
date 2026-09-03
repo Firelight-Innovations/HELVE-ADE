@@ -21,18 +21,6 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use uuid::Uuid;
 
-/// Node kinds this crate considers responsible for carrying a code marker.
-/// `contract-method` is the facet PRD section 5.5 gives `signature`,
-/// `params`, `returns` — the one node kind that names a single code symbol
-/// the way the PRD 9.1 example (`token-verifier.verify_signature`) does.
-/// Service and module nodes describe architecture groupings rather than one
-/// callable, so they are not expected to carry their own marker.
-///
-/// This is an assumption, not something either the PRD or the baseline audit
-/// states outright — recorded here, in the one place it would need to change,
-/// per `docs/overnight-jobs/overnight-2/handoffs/w9a-reconcile.md`.
-const MARKABLE_KINDS: [&str; 1] = ["contract-method"];
-
 /// The facts about one graph node that reconciliation needs: its slug, its
 /// kind, and its lifecycle state. `kind` and `lifecycle` are carried as the
 /// wire strings from the common node envelope (PRD section 5.1) rather than
@@ -127,17 +115,25 @@ pub enum GraphLoadError {
     },
 }
 
-/// The fields of the common node envelope (PRD section 5.1) this crate reads.
-/// Every other field — `title`, `description`, `parent`, `decisions`,
-/// `authored_by`, `created`, `superseded_by`, plus any facet-specific field —
-/// is present in a real node file and ignored here; `serde` drops unknown
-/// fields by default, so no `deny_unknown_fields` is set.
+/// The fields of the common node envelope (PRD section 5.1) this crate reads,
+/// plus `impl_ref` — present on the `test-case` facet (PRD section 5.5) and
+/// potentially on a future facet kind. Every other field — `title`,
+/// `description`, `parent`, `decisions`, `authored_by`, `created`,
+/// `superseded_by`, and any other facet-specific field — is present in a real
+/// node file and ignored here; `serde` drops unknown fields by default, so no
+/// `deny_unknown_fields` is set.
 #[derive(Debug, Deserialize)]
 struct NodeEnvelope {
     id: Uuid,
     slug: String,
     kind: String,
     lifecycle: String,
+    /// A code implementation this node declares, if any. `serde`'s
+    /// `Option<T>` deserializer already treats a JSON `null` the same as a
+    /// missing key, so this is `None` whether the field is absent or
+    /// explicitly `null`.
+    #[serde(default)]
+    impl_ref: Option<serde_json::Value>,
 }
 
 /// A [`GraphLookup`] backed by `.kaava/nodes/*.json` on disk (PRD section
@@ -148,6 +144,9 @@ struct NodeEnvelope {
 #[derive(Debug)]
 pub struct JsonFileGraph {
     nodes: HashMap<Uuid, NodeFacts>,
+    /// Ids of nodes whose file declared a non-null `impl_ref` — see
+    /// [`GraphLookup::markable_node_ids`]'s doc comment on this impl.
+    markable: Vec<Uuid>,
 }
 
 impl JsonFileGraph {
@@ -163,6 +162,7 @@ impl JsonFileGraph {
         }
 
         let mut nodes = HashMap::new();
+        let mut markable = Vec::new();
         let entries = fs::read_dir(&nodes_dir).map_err(|source| GraphLoadError::Io {
             path: nodes_dir.clone(),
             source,
@@ -188,6 +188,10 @@ impl JsonFileGraph {
                     source,
                 })?;
 
+            if envelope.impl_ref.is_some() {
+                markable.push(envelope.id);
+            }
+
             nodes.insert(
                 envelope.id,
                 NodeFacts {
@@ -199,7 +203,7 @@ impl JsonFileGraph {
             );
         }
 
-        Ok(Self { nodes })
+        Ok(Self { nodes, markable })
     }
 }
 
@@ -208,12 +212,18 @@ impl GraphLookup for JsonFileGraph {
         self.nodes.get(&id).cloned()
     }
 
+    /// A node is markable — expected to carry a `@kaava:` marker in code —
+    /// when its file declares a non-null `impl_ref`, not by matching its
+    /// `kind` against a fixed list. PRD section 9.1 says every design
+    /// element *with a counterpart in code* carries a marker, and `impl_ref`
+    /// (PRD section 5.5) is the schema's own way of a node declaring that it
+    /// has one; driving this off the data means a future facet kind that
+    /// adds an `impl_ref`-shaped field is covered automatically, with no
+    /// list here to fall out of step with the schema. If Braden narrows this
+    /// back to specific kinds, this is the one place to change it — see
+    /// `docs/overnight-jobs/overnight-2/handoffs/w9a-reconcile.md`.
     fn markable_node_ids(&self) -> Vec<Uuid> {
-        self.nodes
-            .values()
-            .filter(|facts| MARKABLE_KINDS.contains(&facts.kind.as_str()))
-            .map(|facts| facts.id)
-            .collect()
+        self.markable.clone()
     }
 }
 
@@ -222,7 +232,17 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn node_json(id: &str, slug: &str, kind: &str, lifecycle: &str) -> String {
+    fn node_json(
+        id: &str,
+        slug: &str,
+        kind: &str,
+        lifecycle: &str,
+        impl_ref: Option<&str>,
+    ) -> String {
+        let impl_ref_field = match impl_ref {
+            Some(value) => format!("\"{value}\""),
+            None => "null".to_string(),
+        };
         format!(
             r#"{{
                 "id": "{id}",
@@ -233,7 +253,8 @@ mod tests {
                 "lifecycle": "{lifecycle}",
                 "authored_by": "human",
                 "created": "2026-08-25T00:00:00Z",
-                "superseded_by": null
+                "superseded_by": null,
+                "impl_ref": {impl_ref_field}
             }}"#
         )
     }
@@ -262,21 +283,24 @@ mod tests {
     }
 
     #[test]
-    fn loads_nodes_and_filters_markable_kinds() {
+    fn loads_nodes_and_filters_markable_by_impl_ref_not_kind() {
         let dir = tempfile::tempdir().unwrap();
         let nodes_dir = dir.path().join(".kaava").join("nodes");
         fs::create_dir_all(&nodes_dir).unwrap();
 
+        // A `test-case` facet (PRD 5.5) declaring an `impl_ref` is markable...
         fs::write(
             nodes_dir.join("0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8.json"),
             node_json(
                 "0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8",
-                "verify-signature",
-                "contract-method",
+                "verify-signature-test",
+                "test-case",
                 "implemented",
+                Some("@kaava:0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8 verify_signature_test"),
             ),
         )
         .unwrap();
+        // ...but a `module` node with no `impl_ref` is not, regardless of kind.
         fs::write(
             nodes_dir.join("0192f4a2-4c3d-7890-a1b2-c3d4e5f6a7b8.json"),
             node_json(
@@ -284,6 +308,20 @@ mod tests {
                 "token-verifier",
                 "module",
                 "accepted",
+                None,
+            ),
+        )
+        .unwrap();
+        // A `contract-method` with no `impl_ref` is likewise not markable —
+        // the decision follows the data, not a kind whitelist.
+        fs::write(
+            nodes_dir.join("0192f4a3-4c3d-7890-a1b2-c3d4e5f6a7b8.json"),
+            node_json(
+                "0192f4a3-4c3d-7890-a1b2-c3d4e5f6a7b8",
+                "verify-signature",
+                "contract-method",
+                "implemented",
+                None,
             ),
         )
         .unwrap();

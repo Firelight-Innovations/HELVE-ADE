@@ -19,7 +19,13 @@ use uuid::Uuid;
 use crate::token::{parse_captures, token_pattern};
 
 /// Directory names never descended into, regardless of `.gitignore` content.
-const ALWAYS_SKIP_DIRS: [&str; 2] = ["node_modules", "target"];
+/// `.kaava` is the design data itself (PRD section 6.1) — a `test-case`
+/// facet's `impl_ref` field (section 5.5) can hold the same marker-token text
+/// the scanner looks for, so without this exclusion the design data counts as
+/// a second code occurrence of its own marker and a correct project reports
+/// a false `duplicate`. `.git` is excluded for the same reason no source tree
+/// scan should read version-control internals as code.
+const ALWAYS_SKIP_DIRS: [&str; 4] = ["node_modules", "target", ".kaava", ".git"];
 
 /// Bytes examined at the front of a file to guess whether it is binary. Git
 /// uses the same "does the prefix contain a NUL byte" heuristic.
@@ -233,6 +239,40 @@ mod tests {
             result.occurrences[0].id.to_string(),
             "0192f4a3-4c3d-7890-a1b2-c3d4e5f6a7b8"
         );
+    }
+
+    #[test]
+    fn a_marker_inside_kaava_or_git_produces_no_occurrence() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        // A test-case facet's `impl_ref` field (PRD 5.5, 5.10) can hold the
+        // very marker text the scanner is looking for. The design data is
+        // not code, and must never be double-counted as a second site for
+        // the same marker.
+        write(
+            root,
+            ".kaava/nodes/0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8.json",
+            br#"{"id": "0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8", "impl_ref": "@kaava:0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8 thing.run"}"#,
+        );
+        write(
+            root,
+            ".git/config",
+            b"// @kaava:0192f4a2-4c3d-7890-a1b2-c3d4e5f6a7b8 git.internal\n",
+        );
+        write(
+            root,
+            "src/lib.rs",
+            b"// @kaava:0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8 thing.run\n",
+        );
+
+        let result = scan_tree(root);
+        assert_eq!(
+            result.occurrences.len(),
+            1,
+            "only the source file's marker should be found, not the copy inside .kaava or .git"
+        );
+        assert_eq!(result.occurrences[0].file, root.join("src").join("lib.rs"));
     }
 
     #[test]

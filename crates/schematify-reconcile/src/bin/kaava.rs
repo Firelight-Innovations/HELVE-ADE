@@ -94,19 +94,29 @@ fn parse_args(raw: Vec<String>) -> Result<ReconcileArgs, String> {
 }
 
 /// Exit code used for every failure that stops `kaava reconcile` before it
-/// can produce a [`schematify_reconcile::ReconcileRun`] at all: an
-/// unparseable argument, or a project that could not be read. PRD section 9.3
-/// names exit code 2 specifically for "the command read no project at that
-/// path"; the PRD defines no separate code for a bad argument, so this binary
-/// uses the same code for both rather than inventing an undocumented one.
-const EXIT_COULD_NOT_RUN: u8 = 2;
+/// can even produce a [`schematify_reconcile::ReconcileRun`]: an unparseable
+/// argument, or a project that could not be read. PRD section 9.3 names exit
+/// code 2 specifically for "the command read no project at that path"; the
+/// PRD defines no separate code for a bad argument, so this binary uses the
+/// same code for both rather than inventing an undocumented one.
+const EXIT_CANNOT_START: u8 = 2;
+
+/// Exit code used when reconciliation itself ran but its results could not be
+/// persisted or reported: writing `.kaava/runs/<node-uuid>/reconcile.json`,
+/// encoding the `--format json` report, or writing `--out`. This is
+/// deliberately distinct from [`EXIT_CANNOT_START`] — PRD section 9.3
+/// reserves exit code 2 for "the command read no project at that path," which
+/// this is not: the project read fine and reconciliation completed, and only
+/// a later I/O step failed. The PRD names no code for this failure class, so
+/// this binary claims one it does not already use.
+const EXIT_RESULT_NOT_WRITTEN: u8 = 3;
 
 fn run_reconcile(raw_args: Vec<String>) -> ExitCode {
     let args = match parse_args(raw_args) {
         Ok(args) => args,
         Err(message) => {
             eprintln!("kaava reconcile: {message}");
-            return ExitCode::from(EXIT_COULD_NOT_RUN);
+            return ExitCode::from(EXIT_CANNOT_START);
         }
     };
 
@@ -114,7 +124,7 @@ fn run_reconcile(raw_args: Vec<String>) -> ExitCode {
         Ok(graph) => graph,
         Err(err) => {
             eprintln!("kaava reconcile: {err}");
-            return ExitCode::from(EXIT_COULD_NOT_RUN);
+            return ExitCode::from(EXIT_CANNOT_START);
         }
     };
 
@@ -122,7 +132,7 @@ fn run_reconcile(raw_args: Vec<String>) -> ExitCode {
 
     if let Err(err) = write_run_files(&args.root, &run) {
         eprintln!("kaava reconcile: {err}");
-        return ExitCode::from(EXIT_COULD_NOT_RUN);
+        return ExitCode::from(EXIT_RESULT_NOT_WRITTEN);
     }
 
     let rendered = match args.format {
@@ -131,7 +141,7 @@ fn run_reconcile(raw_args: Vec<String>) -> ExitCode {
             Ok(json) => json,
             Err(err) => {
                 eprintln!("kaava reconcile: failed to encode report: {err}");
-                return ExitCode::from(EXIT_COULD_NOT_RUN);
+                return ExitCode::from(EXIT_RESULT_NOT_WRITTEN);
             }
         },
     };
@@ -140,7 +150,7 @@ fn run_reconcile(raw_args: Vec<String>) -> ExitCode {
         Some(path) => {
             if let Err(err) = std::fs::write(path, &rendered) {
                 eprintln!("kaava reconcile: failed to write {}: {err}", path.display());
-                return ExitCode::from(EXIT_COULD_NOT_RUN);
+                return ExitCode::from(EXIT_RESULT_NOT_WRITTEN);
             }
         }
         None => println!("{rendered}"),

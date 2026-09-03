@@ -23,7 +23,7 @@ thiserror.workspace = true
 # before this crate existed (see docs/audits/schematify-baseline.md for the
 # equivalent check on `ignore`, already a direct src-tauri dependency at the
 # same "0.4" pin). None of the four widens what cargo-deny already allows.
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["serde"] }
 regex = "1"
 ignore = "0.4"
 chrono = "0.4"
