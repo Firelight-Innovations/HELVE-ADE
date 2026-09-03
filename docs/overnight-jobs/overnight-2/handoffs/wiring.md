@@ -1,20 +1,23 @@
 # Wiring wave handoff — the swap
 
 Branch `schematify/wiring`, off `main` at `3a30391` (after wave 3's engine
-merged). This wave connects the application to `crates/schematify-core`
-through the seam every earlier wave was told to read the graph through, per
+merged), later merged forward to `main` at `a9a7222` (after wave 7a's linter
+and wave 10a's CI gates landed) once a review pointed out both were sitting
+unwired in the same crate this branch already depended on. This wave connects
+the application to `crates/schematify-core` through the seam every earlier
+wave was told to read the graph through, per
 `docs/overnight-jobs/overnight-2/00-AGENT-CONTEXT.md`.
 
 ## What was built
 
 ### Rust: `src-tauri/src/apps/schematify.rs`
 
-Six JSON-RPC methods on Schematify's one dispatch function — no new Tauri
+Eight JSON-RPC methods on Schematify's one dispatch function — no new Tauri
 command, no `generate_handler!` line, no `bindings.ts` wrapper, per
 `docs/audits/schematify-baseline.md` §11 and `home.rs`'s own pattern. Every
 method requires an `actor: "human" | "agent"` parameter and refuses a call
 missing or misusing it (decision SCH-API-003) — parsed and validated, but
-not yet fed to a policy, since none of these six reach a lifecycle
+not yet fed to a policy, since none of these eight reach a lifecycle
 transition. `src-tauri/Cargo.toml` gained one dependency,
 `schematify-core = { path = "../crates/schematify-core" }`.
 
@@ -27,21 +30,42 @@ transition. `src-tauri/Cargo.toml` gained one dependency,
 | `schematify/write-edge` | `actor`, `edge` | Same, for `Edge`. Reports `stored: false` for a `contains` edge, which the crate refuses to write at all. |
 | `schematify/write-layout` | `actor`, `slug`, `layout` | Writes `layout/<slug>.json` **verbatim**, not through `schematify_core::Layout`/`Placement` — see "The layout mismatch" below. |
 | `schematify/read-layout` | `actor`, `slug` | Reads the same file back verbatim, or `null` if it does not exist. Not one of PRD §14.5's ten — added because a write-only seam cannot serve `openSchematic`, which reads a layout before drawing anything. |
+| `schematify/lint` | `actor` | `load_project` then `schematify_core::lint(&graph)` (wave 7a, merged after this branch's base but before this wave closed). Returns the whole `LintReport` as-is — `Finding`/`Location`/`LintReport` are fully `Serialize`, unlike `Graph`/`Report`, so no hand-shaping is needed here. |
+| `schematify/reconcile-status` | `actor`, `node` (a UUID) | Reads `runs/<node>/reconcile.json` verbatim, or `null` if it does not exist — see "The reconcile-status file, too" below. |
 
-**Left undone, and why:** `schematify_transition` (needs `write_transition`
-plus real actor-gated lifecycle policy — a bigger, separate piece of work
-than wiring), `schematify_lint` (the linter is wave 7's, not built),
-`schematify_ingest_run` and `schematify_search` (nothing on the front end
-calls either yet), `schematify_reconcile_status` (same). All five depend on
-machinery this wave did not build; wiring a method to nothing would be
-guessing, not connecting.
+`schematify/lint` and `schematify/reconcile-status` are wired and tested at
+the RPC layer only — nothing in `apps/schematify/ui/` calls either yet. That
+is correct for tonight: the Problems panel that would call `lint` and the
+Inspector tab that would call `reconcile-status` are both interface work the
+wave 7a and wiring prompts scope to a later agent (`w7a-linter.md` §7: "The
+Problems panel… is interface work"). Wiring the RPC ahead of its caller is
+the same shape as `write-node`/`write-edge` below.
 
-13 new Rust tests in `schematify.rs`, each asserting written content (a
-reader gets back what was sent) rather than only "did not throw" — including
-one that round-trips a layout file carrying fields `schematify_core::Layout`
-cannot hold, to pin the deliberate mismatch below. `cargo test --workspace`:
-811 passed, 1 pre-existing ignored (`github::live::fetches_a_real_repository`),
-0 failed. `clippy`: 0 warnings, at the baseline of 0.
+**Left undone, and why:** `schematify_transition` (wave 10's lifecycle gate —
+`write_transition` exists in the crate, but wiring it without the gate PRD
+§7 and wave 10 own would make an enforcement point that enforces nothing) and
+`schematify_ingest_run`/`schematify_search` (both are being built on other
+branches tonight; wiring against nothing on this app's side would be
+guessing which shape they will land in, not connecting to something real).
+
+A first pass at this handoff listed `lint` and `reconcile-status` here too, as
+blocked by missing machinery. That was wrong and a review caught it: the
+linter (wave 7a) and the reconcile crate's result/run-artifact types (present
+in `crates/schematify-core` since the crate itself landed) were both already
+sitting in the same dependency this branch already had — the branch had
+simply never been rebased onto wave 7a's merge to see it. Fixed by merging
+`main` forward and wiring both; see the two rows above.
+
+19 tests in `schematify.rs` (up from the 3 wave 1a shipped), each asserting
+written content (a reader gets back what was sent) rather than only "did not
+throw" — including one that round-trips a layout file carrying fields
+`schematify_core::Layout` cannot hold (pinning the mismatch below), one that
+seeds a real dependency cycle and asserts `schematify/lint` reports it as
+`L02`, and one that seeds a
+`reconcile.json` by hand and asserts `schematify/reconcile-status` returns it
+verbatim. `cargo test --workspace`: 832 passed, 1 pre-existing ignored
+(`github::live::fetches_a_real_repository`), 0 failed. `clippy`: 0 warnings,
+at the baseline of 0.
 
 ### The layout mismatch — read this before touching layout persistence
 
@@ -59,8 +83,59 @@ every comment body on the first real write), `schematify/write-layout` and
 through the same atomic writer `Store` itself uses
 (`schematify_core::write_json_atomic`), at the same path
 `Store::layout_path` computes. This is documented at the function and pinned
-by a round-trip test. Reconciling the two types is a wave 3/crate decision,
-not this wave's to make silently.
+by a round-trip test.
+
+**Ruling from review: the crate is not wrong.** Checked against PRD §5.10
+directly, `schematify_core::Layout` matches the specification exactly; the
+extra shape (`version`, the combined viewport, whole annotation bodies) is
+the front end's own invention, not two schemas that drifted from one spec.
+Writing verbatim rather than downcasting through the typed struct was the
+right call for tonight — downcasting would silently drop every annotation
+body, the worst of the three options available (verbatim, downcast, or
+refuse to wire the write at all). **Not fixed tonight, and not this wave's
+call to make unilaterally.**
+
+**Follow-up for whoever next touches `crates/schematify-core`'s layout
+schema.** The real question is not "which shape is right" but where an
+annotation's body belongs at all. PRD §11.3 puts groups and comments in the
+annotation tier, out of reconciliation — so the open question is whether an
+annotation's body (title, author, prose) belongs in the layout file
+alongside its geometry, or in the node store like every other piece of
+authored content, with the layout file narrowed back to carrying only
+position and size for annotations too, the way it already does for every
+node. Evidence for **narrowing the front end** (store the body in `nodes/`):
+consistency with every other authored field in this schema, and PRD §6.2's
+own reason for splitting layers at all — a body edit is content, not
+arrangement, and arguably should not be able to go stale from an unrelated
+drag the way a purely cosmetic file is allowed to. Evidence for **widening
+the crate** (add the body to `Placement` or a sibling type): an annotation
+is explicitly *not* semantic (PRD §11.3 keeps it out of reconciliation and
+forbids it carrying a semantic edge), so treating its content as more akin
+to `nodes/` data may misclassify it, and `engine/layout.ts`'s
+`toLayoutFile`/`buildDoc` already treat annotations as cosmetic-tier
+end-to-end. **Narrowing the front end looks like the more likely resolution**
+— it keeps the crate's existing PRD-§5.10-exact `Layout` type as the one
+schema, and treats an annotation's body the same way every other piece of
+prose in this system is treated: authored content lives in the semantic
+tree. But this is a design call, not a fact this handoff can settle, and
+until someone makes it, **there are two live shapes for one file**: the
+crate's typed `Layout`/`Placement`, and the front end's actual
+`LayoutFile`/`LayoutAnnotation` with a body no typed reader can see.
+
+### The reconcile-status file, too
+
+The same shape of question, smaller: `crates/schematify-reconcile/src/
+report.rs` writes `runs/<node>/reconcile.json` as its own
+`NodeReconcileFile { schema, at, outcome: ReconcileOutcome }` — a type in the
+*reconcile* crate. `schematify_core::ReconcileResult` (in `run.rs`, exported
+since the core crate landed) is a **different** type, matching PRD §5.10's
+`{ rules, violations }` shape for a run artifact generally, not this file
+specifically. `schematify/reconcile-status` reads the file verbatim, the
+same reasoning as the layout read above applied word for word: deserializing
+into `schematify_core::ReconcileResult` would either fail outright (the
+fields don't match) or silently coerce a shape it was never written in.
+Nothing here adds `schematify-reconcile` as a `src-tauri` dependency — the
+raw-JSON read needs no type from either crate.
 
 ## Front end: the fixture is replaced behind the seam
 
@@ -269,14 +344,14 @@ stay backend-free":
 
 | Check | Result |
 |---|---|
-| `pnpm build` | Pass. `dist/assets/schematify-*.js` built, 35.13 kB. |
-| `pnpm test:js` | Pass — 492 + 28 (bridge), including 15 `project.test.ts` assertions on real projected content (not just "did not throw") plus the facet-exclusion and comment-exclusion cases the real-fixture discovery added. |
+| `pnpm build` | Pass. `dist/assets/schematify-*.js` built. |
+| `pnpm test:js` | Pass — 505 + 28 (bridge). Includes 15 `project.test.ts` assertions on real projected content (not just "did not throw") plus the facet-exclusion and comment-exclusion cases the real-fixture discovery added; the merge from `main` also brought wave 10a's 13 `check-kaava-boundary.test.mjs` cases along, unrelated to this wave's own changes. |
 | `pnpm typecheck` (`tsc`) | Pass, plus re-run as `npx tsc -p tsconfig.json --noEmit --typeRoots ./__no_types__` (wave 2's technique for ruling out this machine's stray home-directory `@types/node`) — also clean. No Node builtin, no post-ES2020 API in any new file. |
 | `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing React-hook warnings named in the wave 2/3 handoffs, none in a file this wave touched. |
-| `pnpm lint:comments` | Pass after trimming 3 files that first exceeded the 20-consecutive-comment-line cap (`backend.ts`, `index.ts`, `schematify.rs`) — moved detail into this handoff instead of re-baselining. 0 grandfathered. |
+| `pnpm lint:comments` | Pass after trimming 4 spots that exceeded the 20-consecutive-comment-line cap over the course of this wave (`backend.ts`, `index.ts`, and `schematify.rs`'s module doc comment twice, once after the first pass and again after adding `lint`/`reconcile-status`) — moved detail into this handoff instead of re-baselining. 0 grandfathered. |
 | `pnpm lint:version`/`lint:identity`/`lint:branding` | Pass. |
-| `pnpm format:check` | Pass, after `cargo fmt --all` (rustfmt wanted several lines in the new test module rewrapped). |
-| `cargo test --workspace` | Pass — 812 passed, 1 pre-existing ignored, 0 failed, including the permanent regression test against the real fixture. Run twice: once piped through `tail` (masked the real per-crate totals — a lesson worth naming so it isn't repeated), once captured whole to confirm the untruncated result; run a third time after the facet-inclusion fix, same result. |
+| `pnpm format:check` | Pass, after `cargo fmt --all` (rustfmt wanted several lines in the test module rewrapped, twice). |
+| `cargo test --workspace` | Pass — 832 passed, 1 pre-existing ignored, 0 failed, including 19 in `schematify.rs` itself (the permanent regression test against the real fixture, the `lint` cycle test, the `reconcile-status` round-trip). Run 4 times across this wave's two passes; the first run was piped through `tail` and silently truncated the real per-crate totals — a lesson worth naming so it isn't repeated — every run after that was captured whole. |
 | `cargo clippy` (`node scripts/clippy-baseline.mjs`) | Pass — 0 warnings, at the baseline of 0. |
 | `pnpm baseline` | Never run. |
 | Real fixture vs. stand-in, by hand | See "The real fixture vs. the wave 2 stand-in" above — the one check no script runs, and the one that found the facet-inclusion bug. |
@@ -286,7 +361,7 @@ No test was deleted or skipped.
 ## Assumptions
 
 1. **`actor` is parsed and validated on every method, but not yet acted on.**
-   None of the six methods this wave wires reach a lifecycle transition, so
+   None of the eight methods this wave wires reach a lifecycle transition, so
    there is no policy for wave 10's gate to attach to yet — but every call
    still has to name who it is, honestly, per the task's explicit
    instruction not to default it silently.
@@ -314,6 +389,15 @@ No test was deleted or skipped.
 8. **A contains, covers, satisfies, or documents edge is dropped from the
    real-graph projection.** `./types.ts`'s `GraphEdge` union only names 3
    kinds; containment is `parentId`, and the other 2 have no drawing yet.
+9. **`schematify/lint` returns the raw `LintReport`, no envelope around it.**
+   `Finding`, `Location` and `LintReport` are all `Serialize`, so there was
+   nothing to hand-shape — unlike `load-graph`, where `Graph`/`Report`
+   forced a manual reshape.
+10. **`schematify/reconcile-status` reads `runs/<node>/reconcile.json`
+    verbatim, the same reasoning as the layout read, applied to a second
+    file with the same problem** — see "The reconcile-status file, too"
+    above. `node` is required as a UUID string; a malformed one is refused
+    (`INVALID_PARAMS`), not silently treated as "not found".
 
 ## What a human must check on screen
 

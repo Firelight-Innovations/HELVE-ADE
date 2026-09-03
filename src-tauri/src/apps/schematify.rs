@@ -7,12 +7,11 @@
 //! dispatch function rather than one `#[tauri::command]` per operation,
 //! matching `home.rs` and `files.rs` (`docs/audits/schematify-baseline.md` §11).
 //!
-//! PRD §14.5 lists ten operations. This file wires the five the current
-//! front end can reach tonight — open a project, load the whole graph and
-//! its report, write one node, write one edge, read/write one layout —
-//! plus `schematify/state` from wave 1a. The other five depend on
-//! machinery that does not exist yet (the linter is wave 7, for instance);
-//! see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+//! PRD §14.5 lists ten operations. This file wires seven: open a project,
+//! load the whole graph and its report, write one node, write one edge,
+//! read/write one layout, run the linter, and read one reconcile status —
+//! plus `schematify/state` from wave 1a. `transition`, `ingest-run` and
+//! `search` stay unwired — see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
 //!
 //! Decision SCH-API-003 puts an `actor` (`"human"` or `"agent"`) on every
 //! operation, so wave 10's human-only gate has something honest to read.
@@ -23,7 +22,7 @@ use std::path::Path;
 
 use crate::apps::CallContext;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
-use schematify_core::{load_project, CoreError, Edge, Node, Store};
+use schematify_core::{lint, load_project, CoreError, Edge, Node, Store, Uuid};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
@@ -69,6 +68,8 @@ fn dispatch(context: &CallContext, method: &str, params: Option<Value>) -> Resul
         "schematify/write-edge" => write_edge(context, params.as_ref()),
         "schematify/write-layout" => write_layout(context, params.as_ref()),
         "schematify/read-layout" => read_layout(context, params.as_ref()),
+        "schematify/lint" => lint_graph(context, params.as_ref()),
+        "schematify/reconcile-status" => reconcile_status(context, params.as_ref()),
         _ => Err(RpcError::new(
             METHOD_NOT_FOUND,
             format!("no such method: {method}"),
@@ -351,14 +352,27 @@ fn read_layout(context: &CallContext, params: Option<&Value>) -> Result<Value, R
     let slug = string_param(params, "slug")?;
 
     let store = Store::open(root);
-    let path = store.layout_path(&slug);
+    read_json_object_or_null(&store.layout_path(&slug))
+}
+
+/// A JSON object read verbatim from `path`, or `Value::Null` when the file
+/// does not exist — the first-run state every caller of this helper treats
+/// as ordinary rather than an error. Shared by `read_layout` and
+/// `reconcile_status`: both read a file this crate defines the *location*
+/// of but not, for this app's purposes, a typed shape to deserialize into
+/// (see `write_layout`'s doc comment for why, and the wiring handoff for
+/// `reconcile.json` specifically — its true on-disk shape is
+/// `schematify-reconcile`'s own `NodeReconcileFile`, not
+/// `schematify_core::ReconcileResult`, so reading it as anything but raw
+/// JSON would be guessing which of two live shapes is the real one).
+fn read_json_object_or_null(path: &std::path::Path) -> Result<Value, RpcError> {
     if !path.is_file() {
         return Ok(Value::Null);
     }
 
-    let text = fs::read_to_string(&path).map_err(|source| {
+    let text = fs::read_to_string(path).map_err(|source| {
         core_rpc(CoreError::Io {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })
     })?;
@@ -377,6 +391,47 @@ fn read_layout(context: &CallContext, params: Option<&Value>) -> Result<Value, R
     }
 
     Ok(value)
+}
+
+/// `schematify/lint`. Loads the project and runs `schematify_core::lint`
+/// over the graph it built, returning the whole `LintReport` — findings,
+/// sorted errors-then-warnings, and the 4 input counts a test (or a status
+/// bar) can check the run actually walked something. `Finding` and its
+/// `Location` are fully `Serialize`, unlike `Graph`/`Report` in
+/// `load_graph`, so this needs no hand-shaping.
+fn lint_graph(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let outcome = load_project(root).map_err(core_rpc)?;
+    let report = lint(&outcome.graph);
+
+    serde_json::to_value(&report).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            format!("could not shape the lint report: {e}"),
+        )
+    })
+}
+
+/// `schematify/reconcile-status`. Reads `runs/<node-uuid>/reconcile.json`
+/// verbatim (see `read_json_object_or_null`), or `null` when the node has
+/// never been reconciled. `node` is required and must parse as a UUID —
+/// `schematify-reconcile` names the directory by the node's identifier, not
+/// its slug, so a caller supplies the same `node.id` `load-graph` returned.
+fn reconcile_status(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let node = string_param(params, "node")?;
+    let node_id = Uuid::parse_str(&node)
+        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("node must be a UUID: {e}")))?;
+
+    let store = Store::open(root);
+    let path = store
+        .kaava_dir()
+        .join("runs")
+        .join(node_id.to_string())
+        .join("reconcile.json");
+    read_json_object_or_null(&path)
 }
 
 #[cfg(test)]
@@ -458,6 +513,8 @@ mod tests {
             "schematify/write-edge",
             "schematify/write-layout",
             "schematify/read-layout",
+            "schematify/lint",
+            "schematify/reconcile-status",
         ] {
             let err = dispatch(&context, method, Some(json!({})))
                 .expect_err(&format!("{method} requires an actor"));
@@ -475,6 +532,8 @@ mod tests {
             "schematify/write-edge",
             "schematify/write-layout",
             "schematify/read-layout",
+            "schematify/lint",
+            "schematify/reconcile-status",
         ] {
             let err = dispatch(&context, method, Some(json!({ "actor": "human" })))
                 .expect_err(&format!("{method} requires an open project"));
@@ -664,6 +723,157 @@ mod tests {
         )
         .expect("read-layout does not fail on a missing file");
         assert!(value.is_null());
+    }
+
+    #[test]
+    fn lint_reports_a_dependency_cycle_it_was_given() {
+        use schematify_core::{Authorship, EdgeKind, Lifecycle, NodeEnvelope, NodeKind, Slug};
+
+        let dir = TempDir::new("lint-cycle");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let module = |slug: &str| {
+            Node::new(NodeEnvelope {
+                id: schematify_core::mint_id(),
+                slug: Slug::new(slug).expect("legal slug"),
+                kind: NodeKind::Module,
+                title: slug.to_string(),
+                description: None,
+                lifecycle: Lifecycle::Draft,
+                layer: None,
+                parent: None,
+                decisions: Vec::new(),
+                authored_by: Authorship::Human,
+                created: "2026-09-03T00:00:00Z".to_string(),
+                superseded_by: None,
+                stale: None,
+            })
+        };
+        let a = module("a");
+        let b = module("b");
+        store.write_node(&a).expect("write a");
+        store.write_node(&b).expect("write b");
+        store
+            .write_edge(&Edge::new(
+                schematify_core::mint_id(),
+                EdgeKind::DependsOn,
+                a.id(),
+                b.id(),
+                "2026-09-03T00:00:00Z",
+            ))
+            .expect("write a->b");
+        store
+            .write_edge(&Edge::new(
+                schematify_core::mint_id(),
+                EdgeKind::DependsOn,
+                b.id(),
+                a.id(),
+                "2026-09-03T00:00:00Z",
+            ))
+            .expect("write b->a");
+
+        let value = dispatch(
+            &context,
+            "schematify/lint",
+            Some(json!({ "actor": "human" })),
+        )
+        .expect("lint succeeds");
+
+        assert_eq!(value["nodes"], 2);
+        assert_eq!(value["edges"], 2);
+        assert_eq!(value["rules"], schematify_core::RULE_COUNT);
+        let findings = value["findings"].as_array().expect("findings is an array");
+        assert!(
+            findings.iter().any(|f| f["rule"] == "L02"),
+            "the a<->b cycle should draw an L02 row: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn lint_reports_no_findings_over_an_empty_project() {
+        let dir = TempDir::new("lint-clean");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let value = dispatch(
+            &context,
+            "schematify/lint",
+            Some(json!({ "actor": "agent" })),
+        )
+        .expect("lint succeeds over an empty project");
+        assert_eq!(
+            value["findings"].as_array().expect("array"),
+            &Vec::<Value>::new()
+        );
+        assert_eq!(value["nodes"], 0);
+    }
+
+    #[test]
+    fn reconcile_status_reports_null_for_a_node_never_reconciled() {
+        let dir = TempDir::new("reconcile-null");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+        let node = schematify_core::mint_id();
+
+        let value = dispatch(
+            &context,
+            "schematify/reconcile-status",
+            Some(json!({ "actor": "human", "node": node.to_string() })),
+        )
+        .expect("reconcile-status does not fail on a missing file");
+        assert!(value.is_null());
+    }
+
+    #[test]
+    fn reconcile_status_reads_the_reconcile_json_a_reconcile_run_wrote() {
+        let dir = TempDir::new("reconcile-read");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+        let node = schematify_core::mint_id();
+
+        // A stand-in shape, not `schematify-reconcile`'s real
+        // `NodeReconcileFile` (`crates/schematify-reconcile/src/report.rs`)
+        // — this test is about the raw-JSON round trip `reconcile_status`
+        // promises, which does not depend on the payload's real fields any
+        // more than `write_layout_then_read_layout_round_trips` did.
+        let dir_path = dir
+            .path()
+            .join(".kaava")
+            .join("runs")
+            .join(node.to_string());
+        fs::create_dir_all(&dir_path).expect("runs dir");
+        let payload = json!({
+            "schema": "kaava-reconcile-v1",
+            "at": "2026-09-03T00:00:00Z",
+            "outcome": "matched",
+        });
+        fs::write(dir_path.join("reconcile.json"), payload.to_string())
+            .expect("seed reconcile.json");
+
+        let value = dispatch(
+            &context,
+            "schematify/reconcile-status",
+            Some(json!({ "actor": "human", "node": node.to_string() })),
+        )
+        .expect("reconcile-status succeeds");
+        assert_eq!(value, payload);
+    }
+
+    #[test]
+    fn reconcile_status_refuses_a_node_that_is_not_a_uuid() {
+        let dir = TempDir::new("reconcile-bad-uuid");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let err = dispatch(
+            &context,
+            "schematify/reconcile-status",
+            Some(json!({ "actor": "human", "node": "not-a-uuid" })),
+        )
+        .expect_err("a malformed node id is refused");
+        assert_eq!(err.code, INVALID_PARAMS);
     }
 
     /// Not a fabricated `Node` literal: `load-graph` against the real
