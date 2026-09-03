@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-703c-9b68-aa6724cdd73b",
+  "slug": "clock-skew-at-the-boundary",
+  "kind": "test-case",
+  "title": "clock skew at the boundary",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "given": "a token one second outside the window",
+  "when": "the module is exercised",
+  "then": "the declared behaviour holds",
+  "impl_ref": null,
+  "status": "declared",
+  "last_result_ms": null
+}

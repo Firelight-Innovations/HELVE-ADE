@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-7090-9751-09165e22c4fb",
+  "slug": "api-gateway-module-4",
+  "kind": "module",
+  "title": "API Gateway module 4",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7013-8f28-175e47272c69",
+  "description": "One module of API Gateway.",
+  "layer": "edge",
+  "allowed_libraries": [
+    "01a03637-7800-7000-a6d7-fdea42cbbcac"
+  ],
+  "ui_refs": []
+}

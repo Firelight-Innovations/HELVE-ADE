@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-702a-ac0a-72768738bcd6",
+  "slug": "crypto-primitives",
+  "kind": "module",
+  "title": "Crypto Primitives",
+  "lifecycle": "accepted",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Signing, hashing and constant-time comparison.",
+  "allowed_libraries": [
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

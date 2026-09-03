@@ -1,0 +1,8 @@
+{
+  "id": "01a03637-7800-7f3b-b7e7-b7b9356df0c3",
+  "kind": "depends_on",
+  "source": "01a03637-7800-762e-8bb7-c7e8d2dfd89f",
+  "target": "01a03637-7800-752f-9775-a6fffa9934bd",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null
+}

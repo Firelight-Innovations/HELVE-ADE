@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-702c-8ba9-ddd34a5262f9",
+  "slug": "rate-limiter",
+  "kind": "module",
+  "title": "Rate Limiter",
+  "lifecycle": "draft",
+  "authored_by": "agent",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Pre-filled by agent. Not reviewed.",
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

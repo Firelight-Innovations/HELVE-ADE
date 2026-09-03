@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-707a-a6e4-85e27f1dfb5a",
+  "slug": "jwks-cache-method-1",
+  "kind": "contract-method",
+  "title": "jwks_cache_method_1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7025-98ce-14295e1b5901",
+  "errors": [],
+  "signature": "jwks_cache_1()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Declared on this module.",
+  "exported": false
+}

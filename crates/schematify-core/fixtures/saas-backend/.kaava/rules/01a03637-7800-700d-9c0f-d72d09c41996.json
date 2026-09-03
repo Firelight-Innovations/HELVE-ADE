@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700d-9c0f-d72d09c41996",
+  "slug": "bug-fix-carries-a-test",
+  "statement": "A bug fix arrives with the test that would have caught it.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

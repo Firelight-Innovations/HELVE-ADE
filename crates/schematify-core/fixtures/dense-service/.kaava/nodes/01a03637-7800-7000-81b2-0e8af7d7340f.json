@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7000-81b2-0e8af7d7340f",
+  "slug": "dense-service",
+  "kind": "service",
+  "title": "Dense Service",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "layer": "backend",
+  "entry_point": "Started by the supervisor.",
+  "exports": [],
+  "schemas": null
+}

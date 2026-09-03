@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-7026-b087-77932935b4d3",
+  "slug": "clock-skew",
+  "kind": "module",
+  "title": "Clock Skew",
+  "lifecycle": "draft",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "description": "Tolerates a bounded difference between issuer and verifier clocks.",
+  "allowed_libraries": [
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-708b-a3ec-036cc5556d87",
+  "slug": "dense-module-139",
+  "kind": "module",
+  "title": "Dense module 139",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-708a-9ac2-95f414b571f8",
+  "layer": "backend",
+  "description": "Module 139 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

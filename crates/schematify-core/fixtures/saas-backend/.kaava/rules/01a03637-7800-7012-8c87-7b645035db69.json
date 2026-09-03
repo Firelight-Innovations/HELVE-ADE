@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7012-8c87-7b645035db69",
+  "slug": "no-sequential-ids",
+  "statement": "An identifier is a UUIDv7, never a sequential or path-derived value.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

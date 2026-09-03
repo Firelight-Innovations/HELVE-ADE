@@ -3855,6 +3855,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "schematify-core"
+version = "0.3.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "schematify-reconcile"
 version = "0.3.0"
 dependencies = [

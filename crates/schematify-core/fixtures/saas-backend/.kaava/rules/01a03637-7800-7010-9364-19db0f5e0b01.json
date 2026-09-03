@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7010-9364-19db0f5e0b01",
+  "slug": "append-only-audit",
+  "statement": "An audit row is appended and never edited.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7011-b379-76dfb5a850e5",
+  "slug": "marker-token-on-linked-code",
+  "statement": "Code with a design counterpart carries its marker token.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

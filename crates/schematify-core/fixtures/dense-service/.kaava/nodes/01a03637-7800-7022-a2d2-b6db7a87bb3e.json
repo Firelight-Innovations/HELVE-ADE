@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7022-a2d2-b6db7a87bb3e",
+  "slug": "dense-module-34",
+  "kind": "module",
+  "title": "Dense module 34",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7021-9c3e-22813c425572",
+  "layer": "backend",
+  "description": "Module 34 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

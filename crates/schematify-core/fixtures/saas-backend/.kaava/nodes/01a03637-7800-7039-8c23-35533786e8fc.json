@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-7039-8c23-35533786e8fc",
+  "slug": "skew-window",
+  "kind": "contract-method",
+  "title": "skew_window",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "errors": [],
+  "signature": "skew_window()",
+  "params": [],
+  "returns": "Duration",
+  "semantics": "Reports the configured tolerance.",
+  "exported": false
+}

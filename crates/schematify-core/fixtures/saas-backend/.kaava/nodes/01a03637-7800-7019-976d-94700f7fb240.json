@@ -1,0 +1,19 @@
+{
+  "id": "01a03637-7800-7019-976d-94700f7fb240",
+  "slug": "ledger-store",
+  "kind": "service",
+  "title": "Ledger Store",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7016-b26f-5d48df3ab0d9",
+  "layer": "data",
+  "entry_point": "Started with the session service.",
+  "exports": [
+    "01a03637-7800-70b5-9fda-953a48b2e211",
+    "01a03637-7800-70b6-bf91-14aed7272e6b",
+    "01a03637-7800-70b7-87a6-2d29950a8223"
+  ],
+  "schemas": "./schema/ledger.sql"
+}

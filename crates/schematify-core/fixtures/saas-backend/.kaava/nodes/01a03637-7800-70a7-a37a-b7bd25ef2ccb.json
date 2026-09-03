@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70a7-a37a-b7bd25ef2ccb",
+  "slug": "billing-service-module-4",
+  "kind": "module",
+  "title": "Billing Service module 4",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7017-8b4d-83bf1beacc83",
+  "description": "One module of Billing Service.",
+  "layer": "backend",
+  "allowed_libraries": [
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

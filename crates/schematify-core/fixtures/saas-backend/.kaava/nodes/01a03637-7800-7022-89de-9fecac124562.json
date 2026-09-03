@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-7022-89de-9fecac124562",
+  "slug": "http-entry",
+  "kind": "module",
+  "title": "HTTP Entry",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Terminates the request and routes it into the service.",
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

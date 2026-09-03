@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-702d-9727-2c8c912ca86f",
+  "slug": "dense-module-45",
+  "kind": "module",
+  "title": "Dense module 45",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7000-81b2-0e8af7d7340f",
+  "layer": "backend",
+  "description": "Module 45 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

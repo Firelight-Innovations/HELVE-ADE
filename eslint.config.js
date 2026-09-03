@@ -251,9 +251,12 @@ export default tseslint.config(
     },
   },
 
-  // Node scripts and config files run outside the browser.
+  // Node scripts and config files run outside the browser. The fixture
+  // generators under `crates/*/fixtures/` are the same kind of thing: build
+  // tools run by hand, which happen to sit beside the crate whose test input
+  // they write rather than in `scripts/`.
   {
-    files: ["scripts/**/*.mjs", "*.config.{ts,js}", "*.config.mjs"],
+    files: ["scripts/**/*.mjs", "crates/*/fixtures/*.mjs", "*.config.{ts,js}", "*.config.mjs"],
     languageOptions: { globals: { ...globals.node } },
   },
 );

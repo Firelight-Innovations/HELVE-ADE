@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70b1-a551-f346a528079f",
+  "slug": "billing-service-export-5",
+  "kind": "contract-method",
+  "title": "billing_service_export_5",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-70a8-b3e9-3ebfeca2496a",
+  "errors": [],
+  "signature": "billing_service_5()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Published across the service boundary.",
+  "exported": true
+}

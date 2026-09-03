@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-700c-af51-7f994fa94a23",
+  "slug": "tests-beside-source",
+  "statement": "A test lives beside the module it covers.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-70a1-90ab-156a93aa0490",
+  "slug": "session-service-module-6",
+  "kind": "module",
+  "title": "Session Service module 6",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7016-b26f-5d48df3ab0d9",
+  "description": "One module of Session Service.",
+  "layer": "data",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

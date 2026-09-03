@@ -1,0 +1,23 @@
+{
+  "product_name": "stress-2000",
+  "problem": "A graph large enough to measure a cold load against.",
+  "users": [
+    "The wave 1 load budget",
+    "The wave 7 lint budget",
+    "The wave 8 search budget"
+  ],
+  "goals": [
+    "2000 nodes and 3000 edges"
+  ],
+  "non_goals": [
+    "Readable content"
+  ],
+  "constraints": [],
+  "success_metrics": [
+    {
+      "name": "graph_load",
+      "value": 1000,
+      "unit": "ms"
+    }
+  ]
+}

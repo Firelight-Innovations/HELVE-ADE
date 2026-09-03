@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-724c-a43e-d29dc1e08530",
+  "slug": "stress-module-6-74",
+  "kind": "module",
+  "title": "Stress module 6.74",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-724b-96a6-b8964bdcd2b3",
+  "layer": "data",
+  "description": "Module 74 of stress service 6.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

@@ -1,0 +1,83 @@
+[
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-19T10:00:00Z",
+    "from": "draft",
+    "to": "specified",
+    "actor": "human",
+    "actor_name": "j.okonkwo",
+    "reason": "Written up."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-21T15:31:00Z",
+    "from": "specified",
+    "to": "assigned",
+    "actor": "human",
+    "actor_name": "j.okonkwo",
+    "reason": "Handed to agent."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-22T11:00:00Z",
+    "from": "assigned",
+    "to": "implemented",
+    "actor": "agent",
+    "actor_name": "claude-sdd",
+    "reason": "First pass linked."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-23T14:00:00Z",
+    "from": "implemented",
+    "to": "reviewed",
+    "actor": "human",
+    "actor_name": "j.okonkwo",
+    "reason": "Opened for review."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-24T09:05:00Z",
+    "from": "reviewed",
+    "to": "specified",
+    "actor": "human",
+    "actor_name": "j.okonkwo",
+    "reason": "Bounced: skew tolerance was unspecified."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-24T12:40:00Z",
+    "from": "specified",
+    "to": "assigned",
+    "actor": "human",
+    "actor_name": "j.okonkwo",
+    "reason": "Re-handed to agent after the bounce."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-24T22:18:00Z",
+    "from": "assigned",
+    "to": "implemented",
+    "actor": "agent",
+    "actor_name": "claude-sdd",
+    "reason": "All declared tests linked. 1 failing, flagged not asserted."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-25T11:40:00Z",
+    "from": "implemented",
+    "to": "reviewed",
+    "actor": "human",
+    "actor_name": "m.ross",
+    "reason": "Contract amended during review."
+  },
+  {
+    "node": "01a03637-7800-7024-8962-cc11fce89708",
+    "at": "2026-08-25T14:02:00Z",
+    "from": "reviewed",
+    "to": "accepted",
+    "actor": "human",
+    "actor_name": "m.ross",
+    "reason": "Result type resolves the throw-on-expiry ambiguity."
+  }
+]

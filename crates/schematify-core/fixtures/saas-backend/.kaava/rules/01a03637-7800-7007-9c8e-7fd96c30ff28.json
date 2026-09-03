@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7007-9c8e-7fd96c30ff28",
+  "slug": "module-doc-comment",
+  "statement": "Every module opens with a doc comment saying what it is for.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}
