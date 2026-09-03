@@ -88,11 +88,21 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), Ato
 /// cross-device rename fails the same way it did before, immediately, because
 /// waiting cannot fix either.
 fn rename_with_retry(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    rename_with_retry_counted(from, to).0
+}
+
+/// Same rename loop as [`rename_with_retry`], but also reports how many
+/// attempts it took.
+///
+/// Split out so a test can prove a non-transient error fails on the first
+/// attempt — the property that matters — instead of measuring wall clock,
+/// which a loaded CI runner can blow through even when no sleep happened.
+fn rename_with_retry_counted(from: &Path, to: &Path) -> (Result<(), std::io::Error>, u32) {
     let mut pause = RENAME_BACKOFF;
     let mut attempt = 1;
     loop {
         match fs::rename(from, to) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return (Ok(()), attempt),
             Err(error) if attempt < RENAME_ATTEMPTS && is_transient_lock(&error) => {
                 std::thread::sleep(pause);
                 pause *= 2;
@@ -100,7 +110,7 @@ fn rename_with_retry(from: &Path, to: &Path) -> Result<(), std::io::Error> {
             }
             // The last attempt takes this arm whatever went wrong, so the
             // error a caller sees is always one a rename actually returned.
-            Err(error) => return Err(error),
+            Err(error) => return (Err(error), attempt),
         }
     }
 }
@@ -310,13 +320,15 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let source = directory.path().join("from.json");
         fs::write(&source, "{}").unwrap();
-        let started = std::time::Instant::now();
-        let error =
-            rename_with_retry(&source, &directory.path().join("gone").join("to.json")).unwrap_err();
+        let (result, attempts) =
+            rename_with_retry_counted(&source, &directory.path().join("gone").join("to.json"));
+        let error = result.unwrap_err();
         assert!(!is_transient_lock(&error));
-        assert!(
-            started.elapsed() < RENAME_BACKOFF,
-            "a failure the retry cannot fix is not slept on"
+        // A wall-clock budget flakes on a loaded runner even when nothing was
+        // slept on; the attempt count proves the same thing directly.
+        assert_eq!(
+            attempts, 1,
+            "a failure the retry cannot fix is not retried"
         );
     }
 
