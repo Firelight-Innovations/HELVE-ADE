@@ -5,12 +5,13 @@
  * `./index.ts`'s `defaultSeam` reaches everything below through a dynamic
  * `import("./backend")` for the same reason.
  *
- * Wraps 5 of the 6 methods `src-tauri/src/apps/schematify.rs` answers as of
+ * Wraps 8 of the 9 methods `src-tauri/src/apps/schematify.rs` answers as of
  * this wave (`schematify/state` was Wave 1a's). `open-project`,
  * `write-node` and `write-edge` are not called from here — see
  * `createBackendSeam`'s doc comment and `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
  */
 import { KaavaRpcError, invoke } from "@openkaava/bridge";
+import type { Dashboard, RawRunsReport } from "./dashboard";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
 import type { RawLintReport } from "./problems";
@@ -89,6 +90,29 @@ async function writeRealLayout(slug: string, file: LayoutFile): Promise<void> {
  *  time, never stored, so there is nothing to invalidate. */
 export function fetchLintReport(): Promise<RawLintReport> {
   return invoke<RawLintReport>("schematify/lint", { actor: ACTOR });
+}
+
+/** `schematify/module-dashboard` (wave 9d's own arm, PRD §12.13). `module`
+ *  accepts either a node id or a slug — see the Rust function's own doc
+ *  comment for why: the Module Schematic's own stand-in engine
+ *  (`./module.ts`) has no real backend uuid to hand this call yet. */
+export function fetchModuleDashboard(module: string): Promise<Dashboard> {
+  return invoke<Dashboard>("schematify/module-dashboard", { actor: ACTOR, module });
+}
+
+/** `schematify/runs` (wave 9d's own arm, PRD §12.2 S-14). Project-wide,
+ *  independent of which tier is open — same "whole project, not one tier"
+ *  scope `fetchLintReport` already draws for the Problems panel. */
+export function fetchRuns(): Promise<RawRunsReport> {
+  return invoke<RawRunsReport>("schematify/runs", { actor: ACTOR });
+}
+
+/** `schematify/ingest-run` (wave 9d's own arm): the Tauri wiring for wave
+ *  9b's `schematify_core::ingest_run_file`. `module` is the node whose CI
+ *  workflow produced the run; `path` is wherever CI dropped the
+ *  `kaava-bench-v1` artifact, outside `.kaava/`. */
+export function ingestRun(module: string, path: string): Promise<{ ingested: boolean }> {
+  return invoke<{ ingested: boolean }>("schematify/ingest-run", { actor: ACTOR, module, path });
 }
 
 /**

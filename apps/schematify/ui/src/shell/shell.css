@@ -11,6 +11,7 @@
  */
 
 .kv-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -857,4 +858,356 @@
   color: var(--kv-text-dim);
   font-size: 10.5px;
   line-height: 1.5;
+}
+
+/* --- Runs dock tab (PRD §12.2, S-14) ----------------------------------------- */
+
+.kv-runs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  text-align: left;
+}
+
+.kv-runs th {
+  position: sticky;
+  top: 0;
+  background: var(--kv-bg-panel);
+  padding: 4px 12px;
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-runs__row td {
+  padding: 3px 12px;
+  color: var(--kv-text-near);
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-runs__row--clickable {
+  cursor: pointer;
+}
+
+.kv-runs__row--clickable:hover td {
+  background: var(--kv-bg-raised);
+}
+
+.kv-runs__run,
+.kv-runs__commit {
+  color: var(--kv-text-primary);
+}
+
+.kv-runs__state {
+  color: var(--kv-ok);
+}
+
+.kv-runs__error {
+  padding: 8px 12px;
+  color: var(--kv-error);
+  font-size: 11px;
+}
+
+.kv-runs__placeholder {
+  padding: 8px 12px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- Module dashboard (PRD §12.13, S-12) ------------------------------------- */
+
+.kv-dashboard {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--kv-bg-app);
+  overflow-y: auto;
+}
+
+.kv-dashboard__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--kv-line);
+  flex: 0 0 auto;
+}
+
+.kv-dashboard__breadcrumb {
+  color: var(--kv-text-secondary);
+  font-size: 11px;
+}
+
+.kv-dashboard__badge {
+  margin-top: 4px;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-dashboard__path {
+  margin-top: 4px;
+  color: var(--kv-text-faint);
+  font-size: 10px;
+}
+
+.kv-dashboard__close {
+  background: none;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  padding: 4px 10px;
+}
+
+.kv-dashboard__error {
+  padding: 12px 18px;
+  color: var(--kv-error);
+  font-size: 11px;
+}
+
+.kv-dashboard__placeholder {
+  padding: 8px 0;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+.kv-dashboard__body {
+  padding: 14px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.kv-dashboard__latest-run {
+  color: var(--kv-text-secondary);
+  font-size: 11px;
+}
+
+.kv-dashboard__counters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.kv-dashboard__counter {
+  border-left: 2px solid var(--kv-line);
+  background: var(--kv-bg-panel);
+  border-radius: var(--kv-radius);
+  padding: 10px 12px;
+}
+
+.kv-dashboard__counter--error {
+  border-left-color: var(--kv-error);
+}
+
+.kv-dashboard__counter--ok {
+  border-left-color: var(--kv-ok);
+}
+
+.kv-dashboard__counter--warn {
+  border-left-color: var(--kv-warn);
+}
+
+.kv-dashboard__counter-label {
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-dashboard__counter-value {
+  margin-top: 4px;
+  color: var(--kv-text-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.kv-dashboard__counter-note {
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 10px;
+}
+
+.kv-dashboard__section h3 {
+  margin: 0 0 8px;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-dashboard__columns {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.kv-dashboard__columns .kv-dashboard__section {
+  flex: 1;
+  min-width: 320px;
+}
+
+.kv-dashboard__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+
+.kv-dashboard__table th {
+  text-align: left;
+  padding: 4px 8px;
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-dashboard__table td {
+  padding: 4px 8px;
+  color: var(--kv-text-near);
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-dashboard__site {
+  color: var(--kv-text-tertiary);
+}
+
+.kv-dashboard__count {
+  color: var(--kv-text-primary);
+  text-align: right;
+}
+
+/* A reconciliation row whose declared count disagrees with its own
+   reconcile.json evidence (`countMismatch`, `src-tauri/src/apps/schematify.rs`'s
+   `reconciliation_rows`) — never hidden, per PRD §12.1's "Errors first ·
+   never hidden". */
+.kv-dashboard__count--mismatch {
+  color: var(--kv-warn);
+  font-weight: 600;
+}
+
+.kv-dashboard__when {
+  color: var(--kv-text-tertiary);
+  white-space: nowrap;
+}
+
+.kv-dashboard__actor {
+  white-space: nowrap;
+}
+
+.kv-dashboard__reason {
+  color: var(--kv-text-dim);
+}
+
+.kv-dashboard__footnote {
+  margin: 8px 0 0;
+  color: var(--kv-text-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.kv-dashboard__budgets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kv-dashboard__budget-row {
+  background: var(--kv-bg-panel);
+  border-radius: var(--kv-radius);
+  padding: 10px 12px;
+}
+
+.kv-dashboard__budget-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+}
+
+.kv-dashboard__budget-metric {
+  color: var(--kv-text-primary);
+}
+
+.kv-dashboard__budget-tier {
+  border-radius: var(--kv-radius-chip);
+  padding: 1px 5px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.kv-dashboard__budget-tier--hard {
+  color: var(--kv-error);
+  background: var(--kv-error-wash, transparent);
+}
+
+.kv-dashboard__budget-tier--soft {
+  color: var(--kv-warn);
+  background: var(--kv-warn-wash, transparent);
+}
+
+.kv-dashboard__budget-tier--target {
+  color: var(--kv-text-tertiary);
+}
+
+.kv-dashboard__budget-value {
+  margin-left: auto;
+  color: var(--kv-text-secondary);
+}
+
+.kv-dashboard__budget-noprobe {
+  margin-top: 8px;
+  color: var(--kv-text-dim);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.kv-dashboard__budget-nodata {
+  margin-top: 8px;
+  color: var(--kv-text-faint);
+  font-size: 10.5px;
+}
+
+.kv-dashboard__budget-signoff {
+  margin-top: 6px;
+  color: var(--kv-warn);
+  font-size: 10px;
+}
+
+.kv-dashboard__sparkline {
+  width: 100%;
+  height: 64px;
+  margin-top: 8px;
+}
+
+.kv-dashboard__sparkline-threshold {
+  stroke: var(--kv-text-faint);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.kv-dashboard__sparkline-threshold-label {
+  fill: var(--kv-text-faint);
+  font-size: 8px;
+  font-family: var(--kv-font-mono);
+}
+
+.kv-dashboard__sparkline-dot--pass {
+  fill: var(--kv-ok);
+}
+
+.kv-dashboard__sparkline-dot--fail {
+  fill: var(--kv-error);
 }
