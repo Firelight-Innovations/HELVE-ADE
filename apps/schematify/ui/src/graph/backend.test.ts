@@ -1,19 +1,21 @@
 /**
- * `createBackendSeam().loadGraph`'s tier/slug routing — the exact defect
- * this wave was opened to fix: `loadRealGraph` used to ignore both
- * parameters entirely and always return the `auth-service` Service
- * Schematic, so a Module-location Problems row's click-through opened an
- * empty canvas (`docs/overnight-jobs/overnight-2/handoffs/w7b-problems.md`
- * §6 item 3).
- *
- * `@openkaava/bridge` is mocked rather than imported for real — its root
- * export touches `window` at module load, which this file (plain Node, no
- * jsdom, same as every other test in this app) has none of. `./index.ts`
- * keeps `./backend.ts` out of its own static imports for the identical
- * reason; this file does the same thing a level lower, by faking the one
- * thing `backend.ts` actually calls.
+ * `schematify/load-graph`'s tier/slug routing. `backend.ts`'s
+ * `loadRealGraph` used to ignore both and always return `auth-service`.
+ * Fixing that alone wasn't enough: `./index.ts`'s `defaultSeam.loadGraph` —
+ * what `App.tsx`'s real click-through calls, 1 layer above
+ * `createBackendSeam` — had the identical 0-argument-arrow shape. Both
+ * layers are covered here; a fix at one proves nothing about the other,
+ * since TypeScript lets a function with fewer declared parameters satisfy a
+ * type requiring more.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// `@openkaava/bridge` is mocked, not imported for real — its root export
+// touches `window` at module load, which this plain-Node file has none of.
+// `./index.ts` keeps `./backend.ts` out of its own static imports for the
+// same reason; faking the one thing `backend.ts` calls covers both
+// `createBackendSeam` (imported directly) and `defaultSeam` (reached
+// through `./index.ts`'s own lazy `import("./backend")`).
 
 const invokeMock = vi.fn();
 vi.mock("@openkaava/bridge", () => ({
@@ -24,8 +26,10 @@ vi.mock("@openkaava/bridge", () => ({
 // Import after the mock: `vi.mock` calls are hoisted above every import in
 // this file by vitest's transform, so `./backend`'s own static
 // `import { invoke } from "@openkaava/bridge"` resolves to the mock above,
-// never the real bridge.
+// never the real bridge — whether reached directly (`createBackendSeam`) or
+// through `./index.ts`'s lazy `import("./backend")` (`defaultSeam`).
 const { createBackendSeam } = await import("./backend");
+const { defaultSeam } = await import("./index");
 
 function response(nodes: Record<string, unknown>[]) {
   return { graph: { nodes, edges: [] }, report: { clean: true } };
@@ -101,5 +105,29 @@ describe("createBackendSeam().loadGraph", () => {
     expect(graph.tier).toBe("stack");
     expect(graph.nodes).toHaveLength(0);
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `defaultSeam.loadGraph` — the seam `engine/index.ts`'s `openSchematic`
+ * (and so `App.tsx`'s real click-through) actually calls, one layer above
+ * `createBackendSeam`. The suite above proves `createBackendSeam().loadGraph`
+ * routes correctly; it proves nothing about whether the wrapper 1 layer up
+ * still forwards its arguments to that function — which, until this fix,
+ * it didn't.
+ */
+describe("defaultSeam.loadGraph (the real path a click-through calls)", () => {
+  it("draws the requested module through the full seam, not just through createBackendSeam directly", async () => {
+    invokeMock.mockResolvedValue(response([AUTH_SERVICE, TOKEN_VERIFIER, COLD_START_BUDGET]));
+    const graph = await defaultSeam.loadGraph("module", "token-verifier");
+    expect(graph.tier).toBe("module");
+    expect(graph.serviceSlug).toBe("token-verifier");
+  });
+
+  it("draws the requested service through the full seam", async () => {
+    invokeMock.mockResolvedValue(response([BILLING_SERVICE]));
+    const graph = await defaultSeam.loadGraph("service", "billing-service");
+    expect(graph.tier).toBe("service");
+    expect(graph.serviceSlug).toBe("billing-service");
   });
 });

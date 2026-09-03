@@ -3,7 +3,10 @@
 Branch `schematify/w7c-drill`, off `main`. Follow-on to wave 7b: fixes the
 gap that handoff flagged rather than fixed — `graph/backend.ts`'s
 `loadRealGraph` ignored `tier` and `slug` entirely, so a Problems row's
-click-through onto a Module-location finding opened an empty canvas.
+click-through onto a Module-location finding opened an empty canvas. Went
+through 2 review rounds; both are recorded below rather than only the final
+state, since the 2nd round's findings are exactly the kind of thing a future
+reader should know were caught and how.
 
 ## 1. The defect, and why it was silent
 
@@ -18,12 +21,14 @@ system caught it because `SchematifySeamLike`'s own restatement of the real
 `SchematifySeam` interface (`./index.ts`) had drifted to `(): …` right along
 with the implementation — the interface never disagreed with the bug.
 
+Round 2 found the identical shape 1 layer up — see §3.
+
 ## 2. What was built
 
 - **`graph/backend.ts`** — `loadRealGraph(tier?, slug?)` now routes by tier:
   `service` → `projectServiceGraph` (already generic across any slug, just
   never called with the real one); `module` → the new
-  `projectModuleGraph`; `stack` → an honest empty graph (see §5).
+  `projectModuleGraph`; `stack` → an honest empty graph (see §6).
   `SchematifySeamLike.loadGraph` widened to match the real interface it was
   supposed to restate.
 - **`graph/project.ts`** — `projectModuleGraph(raw, moduleSlug)`, the tier-3
@@ -32,32 +37,80 @@ with the implementation — the interface never disagreed with the bug.
   `test-case`, `budget`, `doc-block`, `external-dep`), each with its
   kind-specific fields read off the flat wire node
   (`schematify_core::Node`'s `#[serde(flatten)]` envelope-plus-fields
-  shape): a contract method's `signature`/`returns`/`exported` and its
-  computed `coversCount` (counted from live `covers` edges, the same way
-  `projectServiceGraph` computes everything at draw time per PRD §0.4); a
-  budget's `tier`/threshold text/probe command (`budgetValueText` stays
-  `undefined` — `BudgetFields` has no "last measured value" field at all,
-  so this doesn't invent one); a test case's status, narrowed to
+  shape): a contract method's `signature`/`returns`/`exported`; a budget's
+  `tier`/threshold text/probe command (`budgetValueText` stays `undefined`
+  — `BudgetFields` has no "last measured value" field at all, so this
+  doesn't invent one); a test case's status, narrowed to
   `passing`/`failing`; a doc block's audience and body; an external dep's
   version and license, resolved against the `libraries` registry
   `schematify/load-graph` already returns (a new `RawGraph.libraries`
-  field, and a new `RawLibraryEntry` type). `covers`/`satisfies`/`documents`
-  edges between included facets are kept, matching tier 3's closed edge
-  vocabulary (PRD §11.1). `isDescendantOfService` renamed to the
-  tier-generic `isDescendantOf`, `badge`/`staleReason` factored into a
-  shared `staleFields` helper — both walks were already tier-agnostic, only
-  their names weren't.
+  field, and a new `RawLibraryEntry` type). Real `covers`/`satisfies`/
+  `documents` edges between included facets are kept, matching tier 3's
+  closed edge vocabulary (PRD §11.1) — a contract method's own covers
+  *count* is deliberately not a field on the node; see §3.
+  `isDescendantOfService` renamed to the tier-generic `isDescendantOf`,
+  `badge`/`staleReason` factored into a shared `staleFields` helper — both
+  walks were already tier-agnostic, only their names weren't.
 - **`graph/backend.test.ts`**, new — the direct proof of the fix: mocks
-  `@openkaava/bridge`'s `invoke` (this file never touches `window`, same
-  reason `./index.ts` keeps `./backend.ts` out of its own static imports)
-  and asserts `createBackendSeam().loadGraph(tier, slug)` actually draws
-  the requested scope.
+  `@openkaava/bridge`'s `invoke` and asserts both `createBackendSeam()
+  .loadGraph(tier, slug)` and, since round 2, `defaultSeam.loadGraph`
+  actually draw the requested scope (see §3).
 - **`graph/project.test.ts`** — 18 new cases under `projectModuleGraph`,
   shaped after PRD §16.1's own `token-verifier` paragraph (a
   `cold_start_p95` budget with no probe — the exact node an L03 Problems
   row has to land on).
 
-## 3. A second, unrelated fix folded in: the Dock badges' loading state
+## 3. Round 2: what the reviewer found, and the fixes
+
+**The fix was unreachable from the real app.** `backend.ts`'s
+`loadRealGraph` was correct — and dead. `graph/index.ts`'s `defaultSeam`,
+the seam `App.tsx`'s real click-through actually calls (1 layer above
+`createBackendSeam`), still had:
+
+```ts
+loadGraph: () => getBackendSeam().then((seam) => seam.loadGraph()),
+```
+
+The identical bug, 1 layer up: a 0-argument arrow dropping `tier`/`slug`
+before they ever reached the now-fixed function underneath it. The reviewer
+reproduced it directly: `defaultSeam.loadGraph("module", "token-verifier")`
+returned `tier: "service", slug: "auth-service"`. **No interface signature
+would have caught either instance** — TypeScript permits a function with
+fewer declared parameters to satisfy a type requiring more, unconditionally,
+so the backstop has to be a test through the real path, not a type. Fixed:
+`defaultSeam.loadGraph` now forwards both arguments. `backend.test.ts`
+gained a 2nd `describe` block exercising `defaultSeam.loadGraph` itself
+(imported from `./index`, still against the same `@openkaava/bridge` mock),
+proving the real path, not just `createBackendSeam` 1 layer below it where
+the bug no longer lived. Made to fail on purpose the same way as round 1 —
+see §5.
+
+**The branch didn't compile against current `main`.** Wave 6 (PR #92)
+merged while this branch was open, and deleted `GraphNode.coversCount` as
+the PRD §0.4 breach it was — a stored count that could drift from the real
+edges. `project.ts`'s `facetFields` had reintroduced exactly that field,
+independently, with its own 3rd computation of the same number
+(`inboundCovers`, a hand-rolled map wave 6's own consolidation had just
+finished eliminating). Fixed: `coversCount` dropped from `facetFields`
+entirely, `inboundCovers` deleted, and the corresponding test rewritten to
+assert `coversCountFor(id, graph.edges)` (`engine/anatomy.ts`, wave 6's own
+sanctioned function) against the real `covers` edges `projectModuleGraph`
+already returns — the one place this number is computed now, at draw time,
+by every caller (`engine/frame.ts`, `engine/inspector.ts` both already call
+it this way).
+
+**Why local verify had looked green.** PR checks had run against the base
+commit at open time; `main` advanced past it (wave 6 merged) without a
+re-run, so a green check proved nothing once the base moved. Separately,
+the round-1 "made to fail on purpose" pass only ran vitest, which doesn't
+typecheck — 711 tests can pass on code that doesn't build. Fixed process,
+not just code: merged `origin/main` into this branch first (a clean
+auto-merge — no conflicts landed in any file this branch touches, confirmed
+`git show --stat` and grepped for `<<<<<<<` afterward), then reran
+`npx tsc -p tsconfig.json --noEmit` as its own explicit step, separate from
+`pnpm verify`'s bundled one, before doing anything else.
+
+## 4. A second, unrelated fix folded in: the Dock badges' loading state
 
 Caught in post-merge review of wave 7b, not by this branch's own tests.
 `shell/Dock.tsx` computed `problemBadges(findings ?? [])` and rendered
@@ -81,27 +134,36 @@ introduces), so nothing here exercises `Dock.tsx`'s JSX directly. The change
 was checked by reading the render tree, the same standard the file's own
 "badges stay visible on the collapsed strip" claim already rested on.
 
-## 4. Made to fail on purpose
+## 5. Made to fail on purpose
 
-**`backend.test.ts`, all 4 cases, against the real defect.** Reverted
-`loadRealGraph` to its pre-fix, 0-argument body (`git diff` of the exact
-change is in this commit's history — the whole point was to run it against
-the *actual* old code, not a stand-in), reran the suite: 3 of 4 failed —
-"draws the requested service" (`no service named "auth-service"` — the mock
-graph in that test has no `auth-service` at all, correctly), "draws the
-requested module" (`tier` came back `"service"`, not `"module"`), and "draws
-an honest empty graph for the stack tier" (crashed trying to read `.graph`
-off an unmocked response, since the old code called `invoke` unconditionally
-and the stack-tier test never primed a mock response for it — exactly the
-"silently wrong service" this fix exists to stop). Reverted back to the fix,
-reran clean.
+**`backend.test.ts`'s `createBackendSeam` cases, round 1.** Reverted
+`loadRealGraph` to its pre-fix, 0-argument body, reran the suite: 3 of 4
+failed — "draws the requested service" (`no service named "auth-service"`
+— the mock graph in that test has no `auth-service` at all, correctly),
+"draws the requested module" (`tier` came back `"service"`, not
+`"module"`), and "draws an honest empty graph for the stack tier" (crashed
+reading `.graph` off an unmocked response, since the old code called
+`invoke` unconditionally). Reverted back to the fix, reran clean.
 
-**`project.test.ts`, the covers-count case.** Changed
-`coversCount: inboundCovers.get(node.id) ?? 0` to a hardcoded `0`, reran:
-"draws a contract method's signature, returns, exported, and covers count"
-failed (`expected +0 to be 2`). Reverted.
+**`backend.test.ts`'s `defaultSeam` cases, round 2.** Same technique, 1
+layer up: reverted `defaultSeam.loadGraph` to `() => getBackendSeam()
+.then((seam) => seam.loadGraph())`, reran — both new cases failed
+("draws the requested module through the full seam" got back
+`tier: "service"`; "draws the requested service through the full seam" hit
+the same `no service named "auth-service"` error the round-1 case did, one
+layer further out). Reverted back to the fix, reran clean.
 
-## 5. The stack tier, deliberately left out
+**`project.test.ts`, the contract-method covers case, round 1 → replaced in
+round 2.** Round 1 hardcoded `coversCount` to `0` and watched an assertion
+on that field fail. Round 2 deleted the field along with the assertion
+(§3) — the replacement test asserts `coversCountFor("verify", graph.edges)`
+instead; breaking it now means breaking `projectModuleGraph`'s edge
+filtering itself (temporarily excluding the `covers` edges from
+`MODULE_EDGE_KINDS`), which was run and reverted the same way, confirming
+the new assertion still catches a real regression in the thing it now
+actually tests.
+
+## 6. The stack tier, deliberately left out
 
 The task named "opening a Service or Module Schematic" — not Stack. No rule
 in `crates/schematify-core/src/lint.rs` produces a `Location::Stack` finding
@@ -115,15 +177,19 @@ answers the stack tier with the same honest empty graph
 fixture for, rather than silently drawing the wrong service (the exact
 defect this branch fixes) or crashing. Flagged here rather than worked
 around quietly, the same way the wave 7b handoff flagged the original gap.
+The round 2 review checked this ruling against `location_of` in `lint.rs`
+directly and confirmed it: `Location::Stack` is a distinct variant, and the
+5 reference rows' `Stack › Auth Service` cells are all `Location::Service`.
 
-## 6. Acceptance
+## 7. Acceptance
 
 | Condition | Result |
 |---|---|
-| `loadRealGraph` honours tier and slug for Service and Module Schematics | **Pass.** `backend.test.ts`'s 4 cases; §4 records the deliberate-break proof against the real pre-fix code. |
-| The Problems-panel click-through lands on the right node | **Pass, for what a real project can serve.** `resolveClickThrough` (wave 7b, untouched) already computed the correct `NavigationTarget`/`select` id — the missing piece was that the target Schematic drew nothing once opened. Now it draws the requested module's real facets, `cold_start_p95` included, so `engine.select([id])` (`App.tsx`, wave 7b) has a real node to find. Not re-verified against a live browser — see §7. |
+| `loadRealGraph` honours tier and slug for Service and Module Schematics, through the real `defaultSeam` path | **Pass.** `backend.test.ts`'s 6 cases (4 `createBackendSeam`, 2 `defaultSeam`); §5 records the deliberate-break proof against the real pre-fix code at both layers. |
+| The Problems-panel click-through lands on the right node | **Pass, for what a real project can serve.** `resolveClickThrough` (wave 7b, untouched) already computed the correct `NavigationTarget`/`select` id — the missing piece was 2 layers of the target Schematic drawing nothing once opened, both now fixed. Not re-verified against a live browser — see §8. |
+| The merged tree typechecks | **Pass**, `npx tsc -p tsconfig.json --noEmit` run explicitly against the tree after merging `origin/main`, as its own step — see §3. |
 
-## 7. What a human must check by eye
+## 8. What a human must check by eye
 
 No browser was available (`00-AGENT-CONTEXT.md`'s standing limit). Once a
 real `.kaava/` project is open in OpenKaava:
@@ -143,31 +209,36 @@ real `.kaava/` project is open in OpenKaava:
 5. A budget card with no probe (PRD §16.1's `cold_start_p95` is the
    canonical one) — confirm its "last value" line draws `—`, not a stale
    placeholder.
+6. A contract-method card's covers line — confirm it reads the live
+   `coversCountFor` number, not a blank or stale one, now that the count is
+   computed at draw time rather than stored.
 
-## 8. Verification
+## 9. Verification
 
 | Step | Result |
 |---|---|
-| `npx tsc -p tsconfig.json --noEmit` | Pass |
-| `npx vitest run apps/schematify` | Pass — 295 tests (was 265 after wave 7b) |
+| `git merge origin/main` | Clean, no conflicts in any file this branch touches |
+| `npx tsc -p tsconfig.json --noEmit` (explicit, separate from `pnpm verify`) | Pass |
+| `npx vitest run apps/schematify` | Pass — 335 tests |
 | `npx eslint apps/schematify/ui/src` | Pass, 0 errors |
 | `npx prettier --check apps/schematify/ui/src` | Pass |
 | `node scripts/check-comments.mjs` | Pass, 0 above limit, 0 grandfathered |
-| `pnpm verify` (full) | See PR — this file was written before that run's own result landed; the PR carries whichever came back. |
+| `pnpm verify` (full, on the merged and fixed tree) | Pass — see the PR for this run's own output |
 
-No Rust file changed this branch — the defect and its fix are entirely in
+No Rust file changed this branch — every defect and fix is in
 `apps/schematify/ui/src/graph/`. `cargo test --workspace` is expected to
-show the same pre-existing, shared-`CARGO_TARGET_DIR` false failures the
-orchestrator has already named as `sch-fix-flake`'s to own, not this
-branch's.
+show only the same pre-existing, shared-`CARGO_TARGET_DIR` false failures
+the orchestrator has already named as `sch-fix-flake`'s to own.
 
-`pnpm baseline` was never run. No test was deleted or skipped.
+`pnpm baseline` was never run. No test was deleted or skipped — the 1 test
+that changed shape (§5's covers-count case) was replaced with a stronger
+assertion of the same underlying claim, not removed.
 
-## 9. Left undone
+## 10. Left undone
 
-- A real Stack Schematic projector (§4) — separately scoped, not this
+- A real Stack Schematic projector (§6) — separately scoped, not this
   branch's.
-- No live-browser verification (§6).
+- No live-browser verification (§8).
 - `budgetValueText` stays permanently `undefined` for every real budget —
   not a gap this branch introduced; `schematify_core::node::BudgetFields`
   has no field to read one from at all.

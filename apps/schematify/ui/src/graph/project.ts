@@ -320,10 +320,15 @@ function budgetProbeCommand(node: RawNode): string | undefined {
 /** One facet's kind-specific fields (PRD §12.11), the tier-3 counterpart of
  *  `projectServiceGraph`'s inline node map — split into its own function
  *  because a `switch` over 5 kinds inline would out-grow what that map
- *  reads comfortably. */
+ *  reads comfortably. A contract method's covers count is deliberately not
+ *  one of these fields: wave 6 removed `GraphNode.coversCount` as a PRD
+ *  §0.4 breach (a stored count that could drift from the edges) and
+ *  replaced it with `engine/anatomy.ts`'s `coversCountFor(id, edges)`,
+ *  computed at draw time from the `covers` edges this function's caller
+ *  already returns — a caller wanting the number reads it from there, not
+ *  from a 2nd count this file would otherwise be computing independently. */
 function facetFields(
   node: RawNode,
-  inboundCovers: ReadonlyMap<string, number>,
   libraries: ReadonlyMap<string, RawLibraryEntry>,
 ): Partial<GraphNode> {
   switch (node.kind) {
@@ -332,7 +337,6 @@ function facetFields(
         signature: typeof node.signature === "string" ? node.signature : undefined,
         returns: typeof node.returns === "string" ? node.returns : undefined,
         exported: node.exported === true,
-        coversCount: inboundCovers.get(node.id) ?? 0,
       };
     case "test-case":
       return { testStatus: asTestStatus(node.status) };
@@ -390,11 +394,6 @@ export function projectModuleGraph(raw: RawGraph, moduleSlug: string): Schematic
   const included = [moduleNode, ...facets];
   const includedIds = new Set(included.map((node) => node.id));
 
-  const inboundCovers = new Map<string, number>();
-  for (const edge of raw.edges) {
-    if (edge.kind !== "covers") continue;
-    inboundCovers.set(edge.target, (inboundCovers.get(edge.target) ?? 0) + 1);
-  }
   const libraries = new Map(
     (raw.libraries?.libraries ?? []).map((entry) => [entry.id, entry] as const),
   );
@@ -417,7 +416,7 @@ export function projectModuleGraph(raw: RawGraph, moduleSlug: string): Schematic
       description: isRoot && typeof node.description === "string" ? node.description : undefined,
       screenRef: isRoot ? firstScreenRef(node.ui_refs) : undefined,
       ...staleFields(node, byId, nowMs),
-      ...(isRoot ? {} : facetFields(node, inboundCovers, libraries)),
+      ...(isRoot ? {} : facetFields(node, libraries)),
     };
   });
 

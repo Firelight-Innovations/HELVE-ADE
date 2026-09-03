@@ -7,6 +7,7 @@
  * worse than none.
  */
 import { describe, expect, it, vi } from "vitest";
+import { coversCountFor } from "../engine/anatomy";
 import { countNodes } from "./index";
 import { projectModuleGraph, projectServiceGraph, type RawGraph, type RawNode } from "./project";
 
@@ -373,14 +374,22 @@ describe("projectModuleGraph", () => {
     expect(graph.nodes.find((n) => n.id === "verify")?.parentId).toBe("mod");
   });
 
-  it("draws a contract method's signature, returns, exported, and covers count", () => {
+  it("draws a contract method's signature, returns, and exported flag — not a stored covers count", () => {
     const verify = graph.nodes.find((n) => n.id === "verify");
     expect(verify?.signature).toBe("(token: string, jwks: KeySet)");
     expect(verify?.returns).toBe("Result<Claims, VerifyError>");
     expect(verify?.exported).toBe(true);
-    // 2 covers edges from this module — the 3rd targets other-method, a
-    // different module's facet, and is not counted here.
-    expect(verify?.coversCount).toBe(2);
+    // Wave 6 removed GraphNode.coversCount as a PRD §0.4 breach — a caller
+    // computes it from the real edges via coversCountFor, below, not from a
+    // field this projection would otherwise be storing a 2nd time.
+  });
+
+  it("returns real covers edges a caller can compute coversCountFor from — 2 for this module, not the 3rd targeting a different module's facet", () => {
+    const coversTargetingVerify = graph.edges.filter(
+      (e) => e.kind === "covers" && e.to === "verify",
+    );
+    expect(coversTargetingVerify).toHaveLength(2);
+    expect(coversCountFor("verify", graph.edges)).toBe(2);
   });
 
   it("draws a budget's tier, threshold text, and leaves budgetValueText undefined — no probe, PRD §16.1's exact node", () => {
