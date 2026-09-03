@@ -119,6 +119,7 @@ export function buildSaasBackend() {
 
   const decision = {
     id: f.mint(),
+    kind: "decision",
     slug: "DEC-TEC-AUTH-004",
     title: "Verify signatures against a rotating key set",
     context: "The prior design pinned one signing key.",
@@ -288,6 +289,16 @@ function buildAuthService(f, stack, lib, decisionUri) {
     lifecycle: "stale",
     fields: { allowed_libraries: [], ui_refs: [] },
   });
+  // PRD section 7.4 draws a second caption line naming what moved under this
+  // node. The source is token-verifier rather than the crypto-primitives the
+  // wireframe names, for the reason the handoff gives under conflict 3: the
+  // drawn dependent count and the drawn cause cannot both hold, and the count
+  // is the one the wireframe computes.
+  auditEmitter.stale = {
+    source: tokenVerifier.id,
+    member: "verify-signature",
+    at: "2026-08-25T11:40:00Z",
+  };
 
   f.edge("depends_on", httpEntry, tokenIssuer);
   f.edge("depends_on", httpEntry, tokenVerifier);
@@ -661,6 +672,7 @@ function distributeLibraries(f, lib) {
 function addScreen(f, auth) {
   const screen = {
     id: f.mint(),
+    kind: "screen",
     slug: "login-form",
     title: "Login form",
     purpose: "Collects credentials and starts a session.",
@@ -678,6 +690,7 @@ function addScreen(f, auth) {
 
   f.flows.push({
     id: f.mint(),
+    kind: "flow",
     slug: "first-run-signup",
     title: "First-run signup",
     trigger: "A visitor opens the product with no account.",

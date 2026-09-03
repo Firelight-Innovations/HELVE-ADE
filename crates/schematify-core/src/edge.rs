@@ -106,7 +106,10 @@ impl fmt::Display for EdgeKind {
 }
 
 /// One edge file under `.kaava/edges/`.
+///
+/// Closed to unknown fields for the reason [`crate::Screen`] gives.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Edge {
     /// The UUIDv7 of this edge.
     pub id: Uuid,

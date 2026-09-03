@@ -48,7 +48,7 @@ pub enum ToolFrontend {
 ///
 /// `id` is whatever the shell is holding in an app id's position, which is one
 /// of two things: a first-party app id (`home`), or a plugin surface address
-/// (`forger.specs`). Both arrive here because the switcher does not distinguish
+/// (`acme.specs`). Both arrive here because the switcher does not distinguish
 /// them — see `plugins::split_address`.
 pub fn resolve(app: &AppHandle, id: &str) -> Result<ToolFrontend> {
     // A first-party app resolves before anything is consulted, and cannot fail.

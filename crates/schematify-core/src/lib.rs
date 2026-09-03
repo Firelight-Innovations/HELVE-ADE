@@ -50,13 +50,16 @@ pub use id::{id_timestamp_ms, mint_id, IdMinter};
 pub use layout::{Layout, Placement};
 pub use lifecycle::{
     check_transition, contract_fields_changed, stale_cascade, transition_table, transitions_from,
-    Actor, AuditRow, Lifecycle, LifecycleError, TransitionRule,
+    Actor, AuditRow, Lifecycle, LifecycleError, StaleDrop, Staleness, TransitionRule,
 };
-pub use load::{load_project, LoadOutcome, Quarantine, QuarantineReason, ReadProblem, Report};
+pub use load::{
+    load_project, IdCollision, LoadOutcome, MisnamedFile, Quarantine, QuarantineReason,
+    ReadProblem, Report,
+};
 pub use node::{
-    BudgetFields, BudgetTier, CommentFields, ContractMethodFields, DocAudience, DocBlockFields,
-    ExternalDepFields, GroupFields, Layer, ModuleFields, Node, NodeEnvelope, NodeKind, Probe,
-    ServiceFields, TestCaseFields, TestStatus,
+    Authorship, BudgetFields, BudgetTier, CommentFields, ContractMethodFields, DocAudience,
+    DocBlockFields, ExternalDepFields, GroupFields, Layer, ModuleFields, Node, NodeEnvelope,
+    NodeKind, Probe, ServiceFields, TestCaseFields, TestStatus,
 };
 pub use product::{Flow, FlowStep, Screen};
 pub use registry::{LibraryEntry, LibraryRegistry, Rule, Severity};

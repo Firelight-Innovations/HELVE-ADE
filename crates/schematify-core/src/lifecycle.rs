@@ -254,6 +254,17 @@ pub fn check_transition(
     to: Lifecycle,
     actor: Actor,
 ) -> Result<&'static TransitionRule, LifecycleError> {
+    // A move to the state the node is already in is refused, including
+    // `deprecated` to `deprecated`, which the wildcard row would otherwise
+    // wave through. Two reasons. `transitions_from` already excludes a
+    // self-loop, and a validator that accepts what the picker will not offer
+    // is a disagreement somebody hits from a command rather than from a menu.
+    // And the audit is append-only, so a self-loop appends a row recording
+    // that nothing happened.
+    if from == to {
+        return Err(LifecycleError::IllegalTransition { from, to });
+    }
+
     let explicit = TRANSITIONS
         .iter()
         .find(|r| r.to == to && r.from == Some(from));
@@ -277,12 +288,46 @@ pub fn check_transition(
     })
 }
 
+/// Why a node is stale, carried on the node itself.
+///
+/// PRD section 7.4 draws two lines on a stale node. The first is fixed copy;
+/// the second is `crypto-primitives.sign changed 2h ago. Re-review required.`
+/// and names the contract that moved. Nothing in the envelope could produce
+/// that once the node had been written and reloaded, because [`stale_cascade`]
+/// runs against a graph that has since changed, so the reason has to be stored
+/// at the moment the cascade fires.
+///
+/// The elapsed time is not stored. `2h ago` is computed at draw time from
+/// `at`, the same way every other number in Schematify is computed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Staleness {
+    /// The node whose contract changed.
+    pub source: Uuid,
+    /// The member that changed, drawn after the source slug. `None` where a
+    /// service `exports` array changed rather than one named method.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<String>,
+    /// When it changed, as an RFC 3339 timestamp.
+    pub at: String,
+}
+
+/// One node dropped from `accepted` to `stale`, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaleDrop {
+    /// The node that goes stale.
+    pub node: Uuid,
+    /// What to write into that node's `stale` field.
+    pub staleness: Staleness,
+}
+
 /// One row of `runs/<node-uuid>/audit.json`.
 ///
 /// PRD section 7.2 appends one of these on every transition, and PRD section
 /// 6.3 makes that append and the node write a single action the CI path gate
 /// lets through.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuditRow {
     /// The node that moved.
     pub node: Uuid,
@@ -326,19 +371,26 @@ pub fn contract_fields_changed(before: &Node, after: &Node) -> bool {
 /// to. A transitive reading would mark a whole subtree stale on one signature
 /// edit and make the state meaningless.
 #[must_use]
-pub fn stale_cascade(graph: &Graph, changed: Uuid) -> Vec<Uuid> {
+pub fn stale_cascade(graph: &Graph, changed: Uuid, at: &str) -> Vec<StaleDrop> {
     let mut owners = vec![changed];
+    let mut member = None;
     if let Some(node) = graph.node(changed) {
         // A facet's contract belongs to the module that holds it, and the
         // dependency edges are drawn between modules rather than between
         // facets, so the dependents of a changed method are the dependents of
-        // its module.
+        // its module. The facet's own slug is what the caption draws after it.
         if node.kind().is_facet() {
+            member = Some(node.envelope.slug.as_str().to_owned());
             if let Some(parent) = node.envelope.parent {
                 owners.push(parent);
             }
         }
     }
+
+    // The source named in the caption is the owning module rather than the
+    // facet, because `crypto-primitives.sign` is a module slug and a member
+    // name, not one identifier a reader could resolve.
+    let source = *owners.last().unwrap_or(&changed);
 
     let mut stale: Vec<Uuid> = owners
         .iter()
@@ -352,6 +404,16 @@ pub fn stale_cascade(graph: &Graph, changed: Uuid) -> Vec<Uuid> {
     stale.sort_unstable();
     stale.dedup();
     stale
+        .into_iter()
+        .map(|node| StaleDrop {
+            node,
+            staleness: Staleness {
+                source,
+                member: member.clone(),
+                at: at.to_owned(),
+            },
+        })
+        .collect()
 }
 
 /// Why a transition was refused.
@@ -495,6 +557,258 @@ mod tests {
             "\"deprecated\""
         );
         assert_eq!(serde_json::to_string(&Actor::Agent).unwrap(), "\"agent\"");
+    }
+
+    /// The whole point of these: nothing else in the crate pins the direction
+    /// of a `depends_on` edge, and an inverted cascade would stale the node
+    /// that changed rather than the nodes that read it.
+    fn cascade_graph() -> Graph {
+        use crate::edge::{Edge, EdgeKind};
+        use crate::node::{Authorship, NodeEnvelope, NodeKind};
+        use crate::slug::Slug;
+
+        let node = |id: u128, slug: &str, kind: NodeKind, parent: Option<u128>, life: Lifecycle| {
+            Node::new(NodeEnvelope {
+                id: Uuid::from_u128(id),
+                slug: Slug::new(slug).unwrap(),
+                kind,
+                title: slug.to_owned(),
+                description: None,
+                lifecycle: life,
+                layer: None,
+                parent: parent.map(Uuid::from_u128),
+                decisions: Vec::new(),
+                authored_by: Authorship::Human,
+                created: "2026-08-25T00:00:00Z".to_owned(),
+                superseded_by: None,
+                stale: None,
+            })
+        };
+
+        let mut graph = Graph::new();
+        // crypto-primitives holds the contract. Two accepted nodes read it,
+        // one draft node reads it, and it reads nothing itself.
+        graph.insert_node(node(
+            1,
+            "crypto-primitives",
+            NodeKind::Module,
+            None,
+            Lifecycle::Accepted,
+        ));
+        graph.insert_node(node(
+            2,
+            "sign",
+            NodeKind::ContractMethod,
+            Some(1),
+            Lifecycle::Accepted,
+        ));
+        graph.insert_node(node(
+            3,
+            "token-issuer",
+            NodeKind::Module,
+            None,
+            Lifecycle::Accepted,
+        ));
+        graph.insert_node(node(
+            4,
+            "audit-emitter",
+            NodeKind::Module,
+            None,
+            Lifecycle::Accepted,
+        ));
+        graph.insert_node(node(
+            5,
+            "rate-limiter",
+            NodeKind::Module,
+            None,
+            Lifecycle::Draft,
+        ));
+        graph.insert_node(node(
+            6,
+            "downstream",
+            NodeKind::Module,
+            None,
+            Lifecycle::Accepted,
+        ));
+
+        let depends = |id: u128, source: u128, target: u128| {
+            Edge::new(
+                Uuid::from_u128(id),
+                EdgeKind::DependsOn,
+                Uuid::from_u128(source),
+                Uuid::from_u128(target),
+                "2026-08-25T00:00:00Z",
+            )
+        };
+        graph.insert_edge(depends(100, 3, 1));
+        graph.insert_edge(depends(101, 4, 1));
+        graph.insert_edge(depends(102, 5, 1));
+        // Reads token-issuer, not crypto-primitives. A transitive reading of
+        // section 7.4 would stale this one; the direct reading does not.
+        graph.insert_edge(depends(103, 6, 3));
+        graph.reindex();
+        graph
+    }
+
+    #[test]
+    fn a_contract_change_stales_the_accepted_nodes_that_read_it() {
+        let graph = cascade_graph();
+        let dropped = stale_cascade(&graph, Uuid::from_u128(2), "2026-08-25T11:40:00Z");
+        let nodes: Vec<Uuid> = dropped.iter().map(|d| d.node).collect();
+
+        assert_eq!(nodes, [Uuid::from_u128(3), Uuid::from_u128(4)]);
+        assert!(
+            !nodes.contains(&Uuid::from_u128(5)),
+            "a draft node is not dropped from accepted"
+        );
+        assert!(
+            !nodes.contains(&Uuid::from_u128(6)),
+            "the cascade is direct dependents, not transitive"
+        );
+        assert!(
+            !nodes.contains(&Uuid::from_u128(1)),
+            "the node that changed does not stale itself"
+        );
+    }
+
+    #[test]
+    fn the_cascade_names_the_module_and_the_member_the_caption_draws() {
+        let graph = cascade_graph();
+        let dropped = stale_cascade(&graph, Uuid::from_u128(2), "2026-08-25T11:40:00Z");
+        let mark = &dropped[0].staleness;
+
+        assert_eq!(mark.source, Uuid::from_u128(1), "the module, not the facet");
+        assert_eq!(mark.member.as_deref(), Some("sign"));
+        assert_eq!(mark.at, "2026-08-25T11:40:00Z");
+    }
+
+    #[test]
+    fn a_service_export_change_stales_without_naming_a_member() {
+        let graph = cascade_graph();
+        let dropped = stale_cascade(&graph, Uuid::from_u128(1), "2026-08-25T11:40:00Z");
+        assert_eq!(dropped.len(), 2);
+        assert_eq!(dropped[0].staleness.source, Uuid::from_u128(1));
+        assert_eq!(dropped[0].staleness.member, None);
+    }
+
+    #[test]
+    fn a_node_nothing_depends_on_stales_nothing() {
+        let graph = cascade_graph();
+        assert!(stale_cascade(&graph, Uuid::from_u128(6), "2026-08-25T00:00:00Z").is_empty());
+        assert!(stale_cascade(&graph, Uuid::from_u128(999), "2026-08-25T00:00:00Z").is_empty());
+    }
+
+    #[test]
+    fn a_staleness_mark_round_trips() {
+        let mark = Staleness {
+            source: Uuid::from_u128(1),
+            member: Some("sign".to_owned()),
+            at: "2026-08-25T11:40:00Z".to_owned(),
+        };
+        let text = serde_json::to_string(&mark).unwrap();
+        assert_eq!(serde_json::from_str::<Staleness>(&text).unwrap(), mark);
+        assert!(serde_json::from_str::<Staleness>(
+            r#"{"source":"00000000-0000-0000-0000-000000000001","at":"x","extra":1}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn only_the_four_contract_fields_count_as_a_contract_change() {
+        use crate::node::{ContractMethodFields, NodeKind, ServiceFields};
+
+        let base = ContractMethodFields {
+            signature: "sign(bytes: Bytes)".to_owned(),
+            params: vec!["bytes: Bytes".to_owned()],
+            returns: Some("Signature".to_owned()),
+            errors: vec!["SignError".to_owned()],
+            semantics: Some("Signs.".to_owned()),
+            exported: true,
+        };
+        let before = contract_node(&base);
+
+        for mutate in [
+            |f: &mut ContractMethodFields| f.signature = "sign(bytes: Bytes, kid: Kid)".to_owned(),
+            |f: &mut ContractMethodFields| f.params.push("kid: Kid".to_owned()),
+            |f: &mut ContractMethodFields| f.returns = Some("Result<Signature>".to_owned()),
+            |f: &mut ContractMethodFields| f.errors.push("Rotated".to_owned()),
+        ] {
+            let mut changed = base.clone();
+            mutate(&mut changed);
+            assert!(
+                contract_fields_changed(&before, &contract_node(&changed)),
+                "a change to a contract field counts"
+            );
+        }
+
+        let mut cosmetic = base.clone();
+        cosmetic.semantics = Some("Signs the payload.".to_owned());
+        assert!(
+            !contract_fields_changed(&before, &contract_node(&cosmetic)),
+            "an amended semantics paragraph is not a contract change"
+        );
+
+        let mut exported = base;
+        exported.exported = false;
+        assert!(!contract_fields_changed(&before, &contract_node(&exported)));
+
+        // A service counts one field, `exports`, and a module counts none.
+        let service = service_node(&ServiceFields::default());
+        let mut moved = ServiceFields::default();
+        moved.exports.push(Uuid::from_u128(9));
+        assert!(contract_fields_changed(&service, &service_node(&moved)));
+
+        let module = Node::new(envelope_for(NodeKind::Module));
+        assert!(!contract_fields_changed(&module, &module));
+    }
+
+    fn envelope_for(kind: crate::node::NodeKind) -> crate::node::NodeEnvelope {
+        use crate::node::{Authorship, NodeEnvelope};
+        use crate::slug::Slug;
+        NodeEnvelope {
+            id: Uuid::from_u128(1),
+            slug: Slug::new("sign").unwrap(),
+            kind,
+            title: "sign".to_owned(),
+            description: None,
+            lifecycle: Lifecycle::Accepted,
+            layer: None,
+            parent: None,
+            decisions: Vec::new(),
+            authored_by: Authorship::Human,
+            created: "2026-08-25T00:00:00Z".to_owned(),
+            superseded_by: None,
+            stale: None,
+        }
+    }
+
+    fn contract_node(fields: &crate::node::ContractMethodFields) -> Node {
+        Node::new(envelope_for(crate::node::NodeKind::ContractMethod))
+            .with_fields(fields)
+            .unwrap()
+    }
+
+    fn service_node(fields: &crate::node::ServiceFields) -> Node {
+        Node::new(envelope_for(crate::node::NodeKind::Service))
+            .with_fields(fields)
+            .unwrap()
+    }
+
+    #[test]
+    fn a_state_never_transitions_to_itself() {
+        for state in Lifecycle::all() {
+            for actor in [Actor::Human, Actor::Agent, Actor::System] {
+                let result = check_transition(state, state, actor);
+                assert!(
+                    matches!(result, Err(LifecycleError::IllegalTransition { .. })),
+                    "{state} to itself by {actor} should be illegal"
+                );
+            }
+            assert!(
+                !transitions_from(state).iter().any(|r| r.to == state),
+                "{state} should not offer itself"
+            );
+        }
     }
 
     #[test]

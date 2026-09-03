@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// One measurable claim about success.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SuccessMetric {
     /// What is measured.
     pub name: String,
@@ -22,7 +23,9 @@ pub struct SuccessMetric {
 }
 
 /// What the product is for.
+/// Closed to unknown fields for the reason [`crate::Screen`] gives.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectBrief {
     /// The product's name.
     pub product_name: String,

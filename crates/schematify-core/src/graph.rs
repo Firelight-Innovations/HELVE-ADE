@@ -292,7 +292,10 @@ impl Graph {
     pub fn descendants(&self, id: Uuid) -> Vec<Uuid> {
         let mut found = Vec::new();
         let mut queue = vec![id];
-        let mut seen = HashSet::new();
+        // The starting node is marked seen, so a `parent` chain that loops
+        // back to it terminates the walk and does not report the node as its
+        // own descendant.
+        let mut seen = HashSet::from([id]);
         while let Some(current) = queue.pop() {
             for child in self.children(current) {
                 if seen.insert(*child) {
@@ -417,8 +420,17 @@ impl Graph {
     pub fn modules_of_service(&self, service: Uuid) -> Vec<Uuid> {
         let mut found = Vec::new();
         let mut queue = vec![service];
+        // Two node files whose `parent` fields point at each other are a legal
+        // thing to find on disk after a bad merge, and without this set the
+        // walk never returns. Rule L01 reports the cycle; this method's job is
+        // to finish. `descendants` and `ancestors` guard the same way.
+        let mut seen = HashSet::new();
+        seen.insert(service);
         while let Some(current) = queue.pop() {
             for child in self.children(current) {
+                if !seen.insert(*child) {
+                    continue;
+                }
                 let Some(node) = self.node(*child) else {
                     continue;
                 };
@@ -433,6 +445,24 @@ impl Graph {
         }
         found.sort_unstable();
         found
+    }
+
+    /// The module a facet belongs to: the nearest module at or above it.
+    ///
+    /// PRD section 3.2 scopes a facet slug to its module root rather than to
+    /// its immediate parent, and section 5.5 lets a group sit between the two.
+    /// Walking is the only way to tell them apart, which is why the loader
+    /// resolves the scope here rather than passing a parent that is sometimes
+    /// the right answer.
+    #[must_use]
+    pub fn module_root(&self, id: Uuid) -> Option<Uuid> {
+        let node = self.node(id)?;
+        if *node.kind() == NodeKind::Module {
+            return Some(id);
+        }
+        self.ancestors(id)
+            .into_iter()
+            .find(|a| self.node(*a).is_some_and(|n| *n.kind() == NodeKind::Module))
     }
 
     /// Every node of a kind, in identifier order.
@@ -496,8 +526,8 @@ impl Graph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::{Actor, Lifecycle};
-    use crate::node::{NodeEnvelope, NodeKind};
+    use crate::lifecycle::Lifecycle;
+    use crate::node::{Authorship, NodeEnvelope, NodeKind};
     use crate::slug::Slug;
 
     fn node(id: u128, slug: &str, kind: NodeKind, parent: Option<u128>) -> Node {
@@ -511,9 +541,10 @@ mod tests {
             layer: None,
             parent: parent.map(Uuid::from_u128),
             decisions: Vec::new(),
-            authored_by: Actor::Human,
+            authored_by: Authorship::Human,
             created: "2026-08-25T00:00:00Z".to_owned(),
             superseded_by: None,
+            stale: None,
         })
     }
 
@@ -687,6 +718,40 @@ mod tests {
         assert!(graph.is_quarantined(Uuid::from_u128(6)));
         assert!(graph.node(Uuid::from_u128(6)).is_some());
         assert_eq!(graph.quarantined().count(), 1);
+    }
+
+    #[test]
+    fn a_parent_cycle_terminates_every_containment_walk() {
+        let mut graph = Graph::new();
+        graph.insert_node(node(1, "a", NodeKind::Module, Some(2)));
+        graph.insert_node(node(2, "b", NodeKind::Module, Some(1)));
+        graph.reindex();
+        assert_eq!(graph.modules_of_service(Uuid::from_u128(1)).len(), 1);
+        assert_eq!(graph.descendants(Uuid::from_u128(1)).len(), 1);
+    }
+
+    #[test]
+    fn a_facet_under_a_group_still_reports_its_module_root() {
+        let mut graph = Graph::new();
+        graph.insert_node(node(1, "auth-service", NodeKind::Service, None));
+        graph.insert_node(node(2, "token-verifier", NodeKind::Module, Some(1)));
+        graph.insert_node(node(3, "token-pipeline", NodeKind::Group, Some(2)));
+        graph.insert_node(node(
+            4,
+            "verify-signature",
+            NodeKind::ContractMethod,
+            Some(3),
+        ));
+        graph.reindex();
+        assert_eq!(
+            graph.module_root(Uuid::from_u128(4)),
+            Some(Uuid::from_u128(2))
+        );
+        assert_eq!(
+            graph.module_root(Uuid::from_u128(2)),
+            Some(Uuid::from_u128(2))
+        );
+        assert_eq!(graph.module_root(Uuid::from_u128(1)), None);
     }
 
     #[test]

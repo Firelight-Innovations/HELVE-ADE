@@ -220,6 +220,22 @@ fn the_token_verifier_holds_the_facets_and_the_history_the_wireframe_draws() {
 }
 
 #[test]
+fn the_stale_node_carries_the_reason_the_caption_draws() {
+    let outcome = load_project(&fixture("saas-backend")).unwrap();
+    let graph = &outcome.graph;
+    let emitter = graph.node(by_slug(graph, "audit-emitter")).unwrap();
+
+    assert_eq!(emitter.envelope.lifecycle, Lifecycle::Stale);
+    let mark = emitter.envelope.stale.as_ref().expect("a stale reason");
+    assert_eq!(mark.source, by_slug(graph, "token-verifier"));
+    assert_eq!(mark.member.as_deref(), Some("verify-signature"));
+
+    // The dependency edge that justifies the mark exists, so a wave 10
+    // cascade over this fixture reproduces it rather than contradicting it.
+    assert!(graph.dependents(mark.source).contains(&emitter.id()));
+}
+
+#[test]
 fn every_audit_row_in_the_fixture_is_a_legal_transition() {
     let outcome = load_project(&fixture("saas-backend")).unwrap();
     let graph = &outcome.graph;

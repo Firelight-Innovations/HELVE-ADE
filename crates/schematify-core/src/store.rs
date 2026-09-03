@@ -381,12 +381,35 @@ impl Store {
             reason: reason.to_owned(),
         };
 
-        node.envelope.lifecycle = to;
-        self.write_node(node)?;
-
+        // The audit is read before anything is written, so an unreadable
+        // history fails while the node file and the in-memory node are still
+        // untouched. PRD section 6.3 calls this pair one action, and a node
+        // advanced on disk with no audit row is exactly the half-applied state
+        // the append-only rule exists to prevent.
         let mut history = self.read_audit(node.id())?;
         history.push(row.clone());
-        write_json_atomic(&self.audit_path(node.id()), &history)?;
+
+        node.envelope.lifecycle = to;
+        if let Err(error) = self.write_node(node) {
+            node.envelope.lifecycle = from;
+            return Err(error);
+        }
+
+        // The node landed and the audit did not. The node file is rewritten
+        // with the old state rather than left ahead of its history: a failed
+        // rewrite is reported through `TransitionTornWrite`, which names both
+        // halves so a person knows the file needs looking at.
+        if let Err(error) = write_json_atomic(&self.audit_path(node.id()), &history) {
+            node.envelope.lifecycle = from;
+            return match self.write_node(node) {
+                Ok(()) => Err(error.into()),
+                Err(rollback) => Err(CoreError::TransitionTornWrite {
+                    id: node.id(),
+                    audit: error.to_string(),
+                    rollback: rollback.to_string(),
+                }),
+            };
+        }
         Ok(row)
     }
 
@@ -473,7 +496,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{NodeEnvelope, NodeKind};
+    use crate::node::{Authorship, NodeEnvelope, NodeKind};
     use crate::slug::Slug;
 
     fn node(id: u128, lifecycle: Lifecycle) -> Node {
@@ -487,9 +510,10 @@ mod tests {
             layer: None,
             parent: None,
             decisions: Vec::new(),
-            authored_by: Actor::Human,
+            authored_by: Authorship::Human,
             created: "2026-08-25T00:00:00Z".to_owned(),
             superseded_by: None,
+            stale: None,
         })
     }
 
@@ -616,6 +640,92 @@ mod tests {
         assert!(matches!(error, CoreError::Lifecycle(_)));
         assert_eq!(value.envelope.lifecycle, Lifecycle::Reviewed);
         assert!(!store.node_path(value.id()).exists());
+        assert!(store.read_audit(value.id()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_audit_leaves_the_node_where_it_was() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Reviewed);
+        store.write_node(&value).unwrap();
+
+        // A corrupt audit is the case the ordering exists for: it used to be
+        // read after the node file had already been advanced on disk.
+        let audit = store.audit_path(value.id());
+        fs::create_dir_all(audit.parent().unwrap()).unwrap();
+        fs::write(&audit, "{ not an array").unwrap();
+
+        let error = store
+            .write_transition(
+                &mut value,
+                Lifecycle::Accepted,
+                Actor::Human,
+                "m.ross",
+                "2026-08-25T14:02:00Z",
+                "Accepted.",
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, CoreError::Parse { .. }));
+        assert_eq!(
+            value.envelope.lifecycle,
+            Lifecycle::Reviewed,
+            "the in-memory node did not advance"
+        );
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(
+            on_disk.envelope.lifecycle,
+            Lifecycle::Reviewed,
+            "the node file did not advance"
+        );
+    }
+
+    #[test]
+    fn an_illegal_transition_leaves_the_audit_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Draft);
+
+        let error = store
+            .write_transition(
+                &mut value,
+                Lifecycle::Accepted,
+                Actor::Human,
+                "m.ross",
+                "2026-08-25T14:02:00Z",
+                "Skipping the queue.",
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, CoreError::Lifecycle(_)));
+        assert!(store.read_audit(value.id()).unwrap().is_empty());
+        assert!(!store.node_path(value.id()).exists());
+    }
+
+    #[test]
+    fn a_node_never_transitions_to_the_state_it_is_in() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Deprecated);
+
+        let error = store
+            .write_transition(
+                &mut value,
+                Lifecycle::Deprecated,
+                Actor::Human,
+                "m.ross",
+                "2026-08-25T14:02:00Z",
+                "Again.",
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, CoreError::Lifecycle(_)));
         assert!(store.read_audit(value.id()).unwrap().is_empty());
     }
 

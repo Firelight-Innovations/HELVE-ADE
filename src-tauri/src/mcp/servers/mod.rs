@@ -11,7 +11,7 @@
 //! and a pile of tool descriptions competing for the model's attention.
 //!
 //! What earns a server is something that exists only inside OpenKaava and has no
-//! filesystem equivalent — Forger's design model is the first real case, because
+//! filesystem equivalent — Schematify's design model is the first real case, because
 //! an agent cannot read a spec's *boundaries* by opening a file. [`debug`] is
 //! the second, [`design`] the third and [`ui`] the fourth. Each module's own doc
 //! says which fact about it earns its place, and — for the two that write —

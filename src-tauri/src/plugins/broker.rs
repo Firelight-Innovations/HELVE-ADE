@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn an_id_disagreeing_with_the_manifest_is_refused() {
         let reply = json!({"id": "something-else", "protocol": 1});
-        let err = check_hello(&reply, "forger", "forger").expect_err("ids disagree");
+        let err = check_hello(&reply, "acme", "acme").expect_err("ids disagree");
         assert_eq!(err.code, HANDSHAKE_FAILED);
         assert!(err.message.contains("something-else"), "{}", err.message);
     }

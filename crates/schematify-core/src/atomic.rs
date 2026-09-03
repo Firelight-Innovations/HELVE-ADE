@@ -16,14 +16,31 @@
 //! truncated in place is not.
 
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde::Serialize;
 
 /// Distinguishes two temporary files written inside one process.
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// How many times a rename is retried past a sharing violation.
+///
+/// Windows is the product's only platform and it locks a file that anything
+/// else has open: a backup agent, an indexer, an antivirus scanner, or the
+/// editor a person has the node open in. Every one of those releases the
+/// handle within milliseconds. Without a retry, saving a node while a scanner
+/// walks past it is a hard error a person cannot act on; with one it is
+/// invisible. The temporary file and its bytes are already safe on disk by
+/// this point, so a retry repeats a rename and never a write.
+const RENAME_ATTEMPTS: u32 = 5;
+
+/// The pause before the first retry. Each attempt doubles it, so five
+/// attempts wait 5, 10, 20 and 40 milliseconds: 75 ms in the worst case,
+/// which is under a frame and far under a scanner's grip on one small file.
+const RENAME_BACKOFF: Duration = Duration::from_millis(5);
 
 /// Serialize a value and write it where nothing can observe a partial file.
 ///
@@ -55,7 +72,7 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), Ato
     }
     outcome?;
 
-    fs::rename(&temporary, path).map_err(|source| {
+    rename_with_retry(&temporary, path).map_err(|source| {
         let _ = fs::remove_file(&temporary);
         AtomicWriteError::Rename {
             from: temporary.clone(),
@@ -63,6 +80,38 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), Ato
             source,
         }
     })
+}
+
+/// Rename, retrying past a lock somebody else is holding for a moment.
+///
+/// Only a permission or sharing error is retried. A missing directory or a
+/// cross-device rename fails the same way it did before, immediately, because
+/// waiting cannot fix either.
+fn rename_with_retry(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    let mut pause = RENAME_BACKOFF;
+    for attempt in 1..=RENAME_ATTEMPTS {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < RENAME_ATTEMPTS && is_transient_lock(&error) => {
+                std::thread::sleep(pause);
+                pause *= 2;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    // Unreachable: the loop either returns or exhausts its attempts through
+    // the final arm, which returns too.
+    fs::rename(from, to)
+}
+
+/// Whether an error is the kind another process releases on its own.
+fn is_transient_lock(error: &std::io::Error) -> bool {
+    if matches!(error.kind(), ErrorKind::PermissionDenied) {
+        return true;
+    }
+    // ERROR_SHARING_VIOLATION (32) and ERROR_LOCK_VIOLATION (33). Neither maps
+    // to a distinct `ErrorKind` on stable Rust, so they are named by number.
+    matches!(error.raw_os_error(), Some(32 | 33))
 }
 
 fn write_and_sync(temporary: &Path, bytes: &[u8]) -> Result<(), AtomicWriteError> {
@@ -234,6 +283,40 @@ mod tests {
         let path = directory.path().join("runs").join("abc").join("run-1.json");
         write_json_atomic(&path, &json!({ "run": 1 })).unwrap();
         assert!(path.exists());
+    }
+
+    #[test]
+    fn a_sharing_violation_is_treated_as_transient_and_a_real_failure_is_not() {
+        for raw in [32, 33] {
+            assert!(
+                is_transient_lock(&std::io::Error::from_raw_os_error(raw)),
+                "os error {raw} is a lock somebody releases"
+            );
+        }
+        assert!(is_transient_lock(&std::io::Error::from(
+            ErrorKind::PermissionDenied
+        )));
+        assert!(!is_transient_lock(&std::io::Error::from(
+            ErrorKind::NotFound
+        )));
+        assert!(!is_transient_lock(&std::io::Error::from(
+            ErrorKind::InvalidInput
+        )));
+    }
+
+    #[test]
+    fn a_rename_onto_a_missing_directory_fails_without_waiting() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("from.json");
+        fs::write(&source, "{}").unwrap();
+        let started = std::time::Instant::now();
+        let error =
+            rename_with_retry(&source, &directory.path().join("gone").join("to.json")).unwrap_err();
+        assert!(!is_transient_lock(&error));
+        assert!(
+            started.elapsed() < RENAME_BACKOFF,
+            "a failure the retry cannot fix is not slept on"
+        );
     }
 
     #[test]

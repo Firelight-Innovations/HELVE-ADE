@@ -1,5 +1,6 @@
 {
   "id": "01a03637-7800-70be-a914-a9307dfd03dd",
+  "kind": "flow",
   "slug": "first-run-signup",
   "title": "First-run signup",
   "trigger": "A visitor opens the product with no account.",

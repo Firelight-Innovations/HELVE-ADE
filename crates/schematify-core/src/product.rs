@@ -18,10 +18,23 @@ use crate::slug::Slug;
 use crate::uri::Uri;
 
 /// One product screen.
+///
+/// `deny_unknown_fields` is deliberate, and it applies to every closed schema
+/// in this crate. [`crate::Node`] can absorb a field it does not model,
+/// because its open map keeps one. Nothing else can: a field a later wave
+/// writes here would be dropped on the next rewrite, silently, and the loss
+/// would surface later as design data that quietly reverted. Failing the parse
+/// is louder and cheaper.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Screen {
     /// The UUIDv7 every reference stores.
     pub id: Uuid,
+    /// Always `screen`. PRD section 5.7 writes it as the first key, and a
+    /// reader holding a file from outside its own directory needs it to tell
+    /// what the file is.
+    #[serde(default = "screen_kind")]
+    pub kind: String,
     /// The name, unique across the screen collection.
     pub slug: Slug,
     /// The name drawn on the screen entry.
@@ -44,6 +57,7 @@ pub struct Screen {
 
 /// One step of a flow: a screen, and what happens on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FlowStep {
     /// The screen this step happens on.
     pub screen: Uri,
@@ -52,10 +66,16 @@ pub struct FlowStep {
 }
 
 /// One product flow.
+///
+/// Closed to unknown fields for the reason [`Screen`] gives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Flow {
     /// The UUIDv7 every reference stores.
     pub id: Uuid,
+    /// Always `flow`, per PRD section 5.8.
+    #[serde(default = "flow_kind")]
+    pub kind: String,
     /// The name, unique across the flow collection.
     pub slug: Slug,
     /// The name drawn on the flow entry.
@@ -69,6 +89,24 @@ pub struct Flow {
     pub outcome: String,
 }
 
+fn screen_kind() -> String {
+    Screen::KIND.to_owned()
+}
+
+fn flow_kind() -> String {
+    Flow::KIND.to_owned()
+}
+
+impl Screen {
+    /// The word a screen file writes into its `kind` field.
+    pub const KIND: &str = "screen";
+}
+
+impl Flow {
+    /// The word a flow file writes into its `kind` field.
+    pub const KIND: &str = "flow";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,6 +116,7 @@ mod tests {
     fn a_screen_round_trips() {
         let screen = Screen {
             id: Uuid::from_u128(1),
+            kind: Screen::KIND.to_owned(),
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials and starts a session.".to_owned(),
@@ -94,6 +133,7 @@ mod tests {
     fn a_flow_round_trips_with_its_steps() {
         let flow = Flow {
             id: Uuid::from_u128(1),
+            kind: Flow::KIND.to_owned(),
             slug: Slug::new("first-run-signup").unwrap(),
             title: "First-run signup".to_owned(),
             trigger: "A visitor opens the product with no account.".to_owned(),
@@ -113,6 +153,7 @@ mod tests {
     fn a_screen_with_no_design_reference_omits_the_field() {
         let screen = Screen {
             id: Uuid::from_u128(1),
+            kind: Screen::KIND.to_owned(),
             slug: Slug::new("empty-state").unwrap(),
             title: "Empty state".to_owned(),
             purpose: "Nothing yet.".to_owned(),

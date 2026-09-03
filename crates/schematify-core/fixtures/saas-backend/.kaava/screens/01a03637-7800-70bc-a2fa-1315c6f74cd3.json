@@ -1,5 +1,6 @@
 {
   "id": "01a03637-7800-70bc-a2fa-1315c6f74cd3",
+  "kind": "screen",
   "slug": "login-form",
   "title": "Login form",
   "purpose": "Collects credentials and starts a session.",

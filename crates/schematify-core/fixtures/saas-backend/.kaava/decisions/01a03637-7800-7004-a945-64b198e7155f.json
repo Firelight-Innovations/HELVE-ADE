@@ -1,5 +1,6 @@
 {
   "id": "01a03637-7800-7004-a945-64b198e7155f",
+  "kind": "decision",
   "slug": "DEC-TEC-AUTH-004",
   "title": "Verify signatures against a rotating key set",
   "context": "The prior design pinned one signing key.",

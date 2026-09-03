@@ -16,7 +16,7 @@ use crate::edge::{Edge, EdgeKind};
 use crate::error::CoreError;
 use crate::lifecycle::{Actor, Lifecycle};
 use crate::load::{load_project, QuarantineReason};
-use crate::node::{ExternalDepFields, ModuleFields, Node, NodeEnvelope, NodeKind};
+use crate::node::{Authorship, ExternalDepFields, ModuleFields, Node, NodeEnvelope, NodeKind};
 use crate::product::{Flow, FlowStep, Screen};
 use crate::registry::{LibraryEntry, LibraryRegistry};
 use crate::run::{RunArtifact, RUN_SCHEMA_VERSION};
@@ -35,9 +35,10 @@ fn node(id: u128, slug: &str, kind: NodeKind, parent: Option<u128>) -> Node {
         layer: None,
         parent: parent.map(Uuid::from_u128),
         decisions: Vec::new(),
-        authored_by: Actor::Human,
+        authored_by: Authorship::Human,
         created: "2026-08-25T00:00:00Z".to_owned(),
         superseded_by: None,
+        stale: None,
     })
 }
 
@@ -173,6 +174,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_screen(&Screen {
             id: Uuid::from_u128(3),
+            kind: Screen::KIND.to_owned(),
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials.".to_owned(),
@@ -186,6 +188,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_flow(&Flow {
             id: Uuid::from_u128(4),
+            kind: Flow::KIND.to_owned(),
             slug: Slug::new("first-run").unwrap(),
             title: "First run".to_owned(),
             trigger: "A visitor arrives.".to_owned(),
@@ -200,6 +203,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_decision(&Decision {
             id: Uuid::from_u128(5),
+            kind: Decision::KIND.to_owned(),
             slug: Slug::new("DEC-TEC-AUTH-004").unwrap(),
             title: "A decision".to_owned(),
             context: "Context.".to_owned(),
@@ -242,6 +246,7 @@ fn a_references_ui_edge_resolves_its_target_against_the_screens() {
     store
         .write_screen(&Screen {
             id: Uuid::from_u128(2),
+            kind: Screen::KIND.to_owned(),
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials.".to_owned(),
@@ -444,4 +449,164 @@ fn the_loader_reads_a_project_written_anywhere_on_disk() {
         .unwrap();
     let elsewhere: &Path = directory.path();
     assert_eq!(load_project(elsewhere).unwrap().graph.node_count(), 1);
+}
+
+#[test]
+fn two_files_claiming_one_identifier_are_both_reported() {
+    let (directory, store) = project();
+    let first = store.kaava_dir().join("nodes").join("aaa.json");
+    let second = store.kaava_dir().join("nodes").join("zzz.json");
+    let mut a = node(1, "first-file", NodeKind::Service, None);
+    a.envelope.title = "First file".to_owned();
+    let mut b = node(1, "second-file", NodeKind::Service, None);
+    b.envelope.title = "Second file".to_owned();
+    write_json_atomic(&first, &a).unwrap();
+    write_json_atomic(&second, &b).unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(outcome.graph.node_count(), 1);
+    assert_eq!(outcome.report.id_collisions.len(), 1);
+    let collision = &outcome.report.id_collisions[0];
+    assert_eq!(collision.id, Uuid::from_u128(1));
+    assert!(collision.kept.ends_with("aaa.json"));
+    assert!(collision.discarded.ends_with("zzz.json"));
+    assert!(!outcome.report.is_clean());
+}
+
+#[test]
+fn the_surviving_file_of_a_collision_is_the_same_on_every_load() {
+    let (directory, store) = project();
+    for name in ["b", "c", "a", "d"] {
+        let mut value = node(1, "same-id", NodeKind::Service, None);
+        value.envelope.title = name.to_owned();
+        write_json_atomic(
+            &store.kaava_dir().join("nodes").join(format!("{name}.json")),
+            &value,
+        )
+        .unwrap();
+    }
+    for _ in 0..5 {
+        let outcome = load_project(directory.path()).unwrap();
+        assert_eq!(
+            outcome
+                .graph
+                .node(Uuid::from_u128(1))
+                .unwrap()
+                .envelope
+                .title,
+            "a"
+        );
+        assert_eq!(outcome.report.id_collisions.len(), 3);
+    }
+}
+
+#[test]
+fn a_filename_that_disagrees_with_its_identifier_is_reported() {
+    let (directory, store) = project();
+    let path = store.kaava_dir().join("nodes").join("token-verifier.json");
+    write_json_atomic(&path, &node(1, "token-verifier", NodeKind::Module, None)).unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(outcome.graph.node_count(), 1, "the node still loads");
+    assert_eq!(outcome.report.misnamed.len(), 1);
+    assert_eq!(outcome.report.misnamed[0].id, Uuid::from_u128(1));
+    assert!(outcome.report.misnamed[0]
+        .file
+        .ends_with("token-verifier.json"));
+}
+
+#[test]
+fn a_quarantine_row_names_the_file_the_reference_was_read_from() {
+    let (directory, store) = project();
+    let path = store.kaava_dir().join("nodes").join("odd-name.json");
+    write_json_atomic(&path, &node(2, "orphan", NodeKind::Module, Some(999))).unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    let record = &outcome.report.quarantined[0];
+    assert_eq!(record.file, path, "the real path, not a synthesized one");
+    assert!(record.file.exists());
+}
+
+#[test]
+fn a_facet_under_a_group_is_scoped_to_its_module_root() {
+    let (directory, store) = project();
+    store
+        .write_node(&node(1, "token-verifier", NodeKind::Module, None))
+        .unwrap();
+    store
+        .write_node(&node(2, "token-pipeline", NodeKind::Group, Some(1)))
+        .unwrap();
+    store
+        .write_node(&node(3, "verify", NodeKind::ContractMethod, Some(2)))
+        .unwrap();
+    // Directly under the module, so it collides with the one under the group
+    // only if both are scoped to the module root, which is what section 3.2
+    // asks for.
+    store
+        .write_node(&node(4, "verify", NodeKind::ContractMethod, Some(1)))
+        .unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(
+        outcome.report.slug_collisions.len(),
+        1,
+        "two methods named verify inside one module collide"
+    );
+    assert_eq!(
+        outcome
+            .report
+            .slug_owner(SlugScope::ModuleRoot(Uuid::from_u128(1)), "verify"),
+        Some(Uuid::from_u128(3))
+    );
+}
+
+#[test]
+fn a_closed_schema_refuses_a_field_it_does_not_model() {
+    let (directory, store) = project();
+    write_json_atomic(
+        &store.kaava_dir().join("screens").join("s.json"),
+        &serde_json::json!({
+            "id": "00000000-0000-0000-0000-000000000001",
+            "kind": "screen",
+            "slug": "login-form",
+            "title": "Login form",
+            "purpose": "Collects credentials.",
+            "invented_by_a_later_wave": "this must not be dropped"
+        }),
+    )
+    .unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(outcome.report.unreadable.len(), 1);
+    assert_eq!(outcome.graph.screens().count(), 0);
+}
+
+#[test]
+fn the_three_product_schemas_carry_their_kind() {
+    let (directory, store) = project();
+    store
+        .write_screen(&Screen {
+            id: Uuid::from_u128(1),
+            kind: Screen::KIND.to_owned(),
+            slug: Slug::new("login-form").unwrap(),
+            title: "Login form".to_owned(),
+            purpose: "Collects credentials.".to_owned(),
+            states: Vec::new(),
+            acceptance: Vec::new(),
+            design_ref: None,
+            backed_by: Vec::new(),
+        })
+        .unwrap();
+
+    let text = std::fs::read_to_string(store.screen_path(Uuid::from_u128(1))).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["kind"], "screen");
+    assert_eq!(
+        load_project(directory.path())
+            .unwrap()
+            .graph
+            .screens()
+            .count(),
+        1
+    );
 }

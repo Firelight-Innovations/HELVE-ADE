@@ -37,13 +37,15 @@ differ.
 |---|---|
 | `Node { envelope: NodeEnvelope, fields: Map<String, Value> }` | The envelope of PRD 5.1 plus an open map. `Node::new(envelope)`, `.with_fields(&T)`, `.id()`, `.kind()`. |
 | `Node::service()`, `.module()`, `.contract_method()`, `.test_case()`, `.budget()`, `.doc_block()`, `.external_dep()`, `.comment()`, `.group()` | Typed views over `fields`. Each returns `Result<_, serde_json::Error>`. |
+| `Authorship::{Human, Agent}` | What `authored_by` takes. Not `Actor`, which has a third value. |
+| `Staleness { source, member, at }` | Why a node is stale, on `NodeEnvelope::stale`. |
 | `NodeKind` | Nine named variants plus `Custom(String)`. `.as_str()`, `.is_annotation()`, `.is_facet()`. |
 | `Layer` | Five values, `.badge()`. |
 | `ServiceFields`, `ModuleFields`, `ContractMethodFields`, `TestCaseFields`, `BudgetFields`, `DocBlockFields`, `ExternalDepFields`, `CommentFields`, `GroupFields` | The added fields of PRD 5.3 to 5.5. |
 | `BudgetTier`, `TestStatus`, `DocAudience`, `Probe` | The enumerations those fields take. |
 | `Edge`, `EdgeKind`, `EdgeTier` | PRD 5.6 and 11.1. `Edge::new`, `.is_stored()`, `.is_live()`; `EdgeKind::all()`, `.tier()`, `.is_semantic()`. |
-| `Screen`, `Flow`, `FlowStep` | PRD 5.7 and 5.8. |
-| `Decision`, `DecisionStatus` | PRD 5.9, plus `.is_superseded_without_successor()` for rule L07. |
+| `Screen`, `Flow`, `FlowStep` | PRD 5.7 and 5.8. Each carries `kind`, with `Screen::KIND` and `Flow::KIND` as the words. |
+| `Decision`, `DecisionStatus` | PRD 5.9, carrying `kind` (`Decision::KIND`), plus `.is_superseded_without_successor()` for rule L07. |
 | `Rule`, `Severity`, `LibraryEntry`, `LibraryRegistry` | PRD 5.10 and 10. `LibraryRegistry::get`, `.contains`, `.by_name`. |
 | `Layout`, `Placement` | PRD 5.10. `Layout::new(slug)`, `.file_name()`. |
 | `RunArtifact`, `BudgetResult`, `TestResult`, `LinterResult`, `ReconcileResult`, `RUN_SCHEMA_VERSION` | PRD 5.10. `.is_known_schema()`, `.budgets_passing()`, `.tests_passing()`, `ReconcileResult::drawn()`, `.error_count(bool)`. |
@@ -69,10 +71,11 @@ differ.
 |---|---|
 | `load_project(&Path) -> Result<LoadOutcome>` | Walks `.kaava/`. The only error is `CoreError::NoProject`. |
 | `LoadOutcome { graph, report }` | |
-| `Report { quarantined, unreadable, slug_collisions, slug_index, duration_ms }` | `.is_clean()`, `.slug_owner(scope, slug)`. |
+| `Report { quarantined, unreadable, slug_collisions, id_collisions, misnamed, slug_index, duration_ms }` | `.is_clean()`, `.slug_owner(scope, slug)`. |
+| `IdCollision { id, kept, discarded }`, `MisnamedFile { id, file }` | Two files claiming one identifier, and a filename disagreeing with the identifier inside it. |
 | `Quarantine { subject, field, reference, reason, file }`, `QuarantineReason`, `ReadProblem` | `subject` is the referring thing, never the missing one. |
 | `Graph` | `.node`, `.nodes`, `.edge`, `.edges`, `.screen(s)`, `.flow(s)`, `.decision(s)`, `.rules`, `.layout`, `.runs`, `.audit`, `.libraries`, `.brief`. |
-| `Graph` containment | `.children`, `.roots`, `.descendants`, `.ancestors`, `.lowest_common_ancestor(&[Uuid])`, `.modules_of_service(id)`, `.facet_count(module)`. |
+| `Graph` containment | `.children`, `.roots`, `.descendants`, `.ancestors`, `.lowest_common_ancestor(&[Uuid])`, `.modules_of_service(id)`, `.module_root(id)`, `.facet_count(module)`. Every walk carries a visited set, so a cyclic `parent` chain terminates. |
 | `Graph` dependency | `.dependencies`, `.dependents`, `.is_shared`, `.shared_node_parent`, `.shared_node_is_at_lca`, `.has_dependency_cycle`, `.dependency_cycle`. |
 | `Graph` mutation | `.insert_node`, `.insert_edge`, `.insert_screen`, `.insert_flow`, `.insert_decision`, `.insert_rule`, `.insert_layout`, `.insert_run`, `.insert_audit`, `.set_libraries`, `.set_brief`, `.quarantine`, `.reindex`. Call `.reindex()` after inserting. |
 | `Graph` misc | `.node_count`, `.edge_count`, `.nodes_of_kind(&NodeKind)`, `.is_quarantined`, `.quarantined`. |
@@ -88,13 +91,20 @@ differ.
 | `transition_table()`, `transitions_from(Lifecycle)`, `TransitionRule` | The PRD 7.2 table as data, for a surface that draws it. |
 | `AuditRow` | One row of `runs/<node>/audit.json`. |
 | `contract_fields_changed(&Node, &Node) -> bool` | PRD 7.4's definition of a contract change. |
-| `stale_cascade(&Graph, changed) -> Vec<Uuid>` | The accepted dependents that drop to `stale`. |
+| `stale_cascade(&Graph, changed, at) -> Vec<StaleDrop>` | The accepted dependents that drop to `stale`, each with the `Staleness` to write onto it. |
+| `StaleDrop { node, staleness }` | One drop and its reason. |
 
 ### Errors
 
 `CoreError` is the one error the crate returns across its surface, with a
 `Result<T>` alias. `SlugError`, `UriError`, `LifecycleError` and
-`AtomicWriteError` each convert into it.
+`AtomicWriteError` each convert into it. `CoreError::TransitionTornWrite` is the
+one state no rollback can repair, and it names both failures.
+
+Every schema except `Node` denies unknown fields. `Node` absorbs one into its
+open map; nothing else has anywhere to put it, so a field a later wave writes
+into a `Screen` would be dropped on the next rewrite. Failing the parse is
+louder than losing the data.
 
 ---
 
@@ -102,7 +112,7 @@ differ.
 
 | Condition | Result | Evidence |
 |---|---|---|
-| `pnpm verify` passes | **Pass** | Section 6 below lists each step and its result. |
+| `pnpm verify` passes | **Pass** | Section 7 below lists each step and its result. |
 | The loader reads `fixtures/stress-2000/` in under 1000 ms, asserted from a test | **Pass** | `tests/fixtures.rs::the_stress_fixture_loads_inside_the_wave_one_budget`. The measured load is 71 ms on this machine, against a 1000 ms budget. |
 | A dangling reference produces a quarantine record and no crash | **Pass** | Nine reasons in `QuarantineReason`, covered by `load_tests.rs`. `every_kind_of_dangling_reference_is_reported_rather_than_dropped` exercises seven at once. |
 | Every named node in PRD 16.1 exists in `fixtures/saas-backend/` | **Pass** | `tests/fixtures.rs::every_node_named_in_the_wireframe_fixture_exists`, against a 32-slug list. |
@@ -116,11 +126,34 @@ dangling reference; every legal and every illegal cell of the PRD 7.2 table
 rule at both tiers, including a node above and a node below the lowest common
 ancestor.
 
-**132 tests**: 115 unit and 17 integration. The whole workspace is 737 and all pass.
+**154 tests**: 136 unit and 18 integration, 22 of them added by the review fixes. The whole workspace is 796 and all pass.
 
 ---
 
-## 3. PRD ambiguities resolved
+## 3. Review findings, and what changed
+
+An Opus review of pull request 80 returned twelve findings. All twelve are
+fixed on this branch. Each fix arrives with the test that would have caught it,
+per STANDARDS section 8.
+
+| # | Finding | Fix | Test |
+|---|---|---|---|
+| 1 | `modules_of_service` walked containment with no visited set, so two node files whose parents point at each other hung the process. | Visited set, seeded with the starting node. `descendants` is seeded the same way now, so a chain that loops back does not report a node as its own descendant. | `a_parent_cycle_terminates_every_containment_walk` |
+| 2 | A duplicate identifier was inserted over the first file, silently, and which file survived varied with the parallel chunk order. | Files are sorted by path before insertion, the first wins, and the loser is reported in `Report::id_collisions`. The real path is carried from the parse through to every quarantine row, so `Quarantine::file` names a file that exists. A filename disagreeing with the identifier inside it is reported in `Report::misnamed`. | `two_files_claiming_one_identifier_are_both_reported`, `the_surviving_file_of_a_collision_is_the_same_on_every_load`, `a_filename_that_disagrees_with_its_identifier_is_reported`, `a_quarantine_row_names_the_file_the_reference_was_read_from` |
+| 3 | `Screen`, `Flow` and `Decision` dropped the `kind` field, and no schema denied unknown fields, so anything a later wave wrote into the seven closed types was discarded on the next rewrite. | `kind` restored on all three, with a `KIND` constant and a serde default. `deny_unknown_fields` on every schema except `Node`, whose open map is what makes it the exception. | `a_closed_schema_refuses_a_field_it_does_not_model`, `the_three_product_schemas_carry_their_kind` |
+| 4 | `write_transition` wrote the node first and the audit second, so a corrupt audit advanced the node on disk and in memory while returning an error. | The audit is read before anything is written. A failed node write restores the field. A failed audit append rewrites the node with the old state, and reports `CoreError::TransitionTornWrite` when even that fails. | `an_unreadable_audit_leaves_the_node_where_it_was`, `an_illegal_transition_leaves_the_audit_alone` |
+| 5 | `stale_cascade` and `contract_fields_changed` had no tests, so nothing pinned the direction of a dependency edge. | Six tests, including one asserting that the node that changed does not stale itself and one asserting the cascade is direct rather than transitive. | `a_contract_change_stales_the_accepted_nodes_that_read_it`, `only_the_four_contract_fields_count_as_a_contract_change`, and four more |
+| 6 | `check_transition` accepted `deprecated` to `deprecated` through the wildcard row while `transitions_from` offered nothing, and the self-loop appended a row to an append-only audit. | A move to the state a node is already in is refused, for every state. | `a_state_never_transitions_to_itself`, `a_node_never_transitions_to_the_state_it_is_in` |
+| 7 | PRD section 7.4's second caption line had no data model: `stale_cascade` returned bare identifiers and nothing survived a reload. | `NodeEnvelope::stale` carries a `Staleness { source, member, at }`, and `stale_cascade` returns `StaleDrop` values that supply it. The elapsed time is not stored; `2h ago` is computed at draw time. | `the_cascade_names_the_module_and_the_member_the_caption_draws`, `a_staleness_mark_round_trips`, `the_stale_node_carries_the_reason_the_caption_draws` |
+| 8 | The slug-scope contract asked for a facet's module root and the only caller passed the immediate parent. | Slugs are claimed after the index is built, and a facet's anchor comes from `Graph::module_root`, which walks past a group. | `a_facet_under_a_group_is_scoped_to_its_module_root`, `a_facet_under_a_group_still_reports_its_module_root` |
+| 9 | `authored_by` was typed as `Actor`, admitting `system`, while PRD 5.1 allows `human` or `agent`. | A separate `Authorship` enum with two values. `Actor` keeps its third value for the one transition nobody requests. | The envelope round-trip tests, which no longer compile with an `Actor` there |
+| 10 | The `is_facet` doc sentence called the two annotation kinds tier-3. | The sentence now says what the code does and cites PRD 5.4's "annotation facets included". | `the_annotation_tier_and_the_facet_tier_are_named` |
+| 11 | The rename had no retry, so on a Windows-only product a scanner holding the file for a moment was a hard error. | Five attempts with doubling backoff, 75 ms in the worst case, on a permission error or Windows error 32 or 33 alone. The bytes are already synced by then, so a retry repeats a rename and never a write. | `a_sharing_violation_is_treated_as_transient_and_a_real_failure_is_not`, `a_rename_onto_a_missing_directory_fails_without_waiting` |
+| 12 | `crates/schematify-reconcile` landed on main pinning `uuid` and `tempfile` literally, ignoring the workspace pins this branch added. | Nothing changed, deliberately. Both specifications resolve to the same version today, so nothing breaks. See section 9. | None |
+
+---
+
+## 4. PRD ambiguities resolved
 
 **A node is an envelope plus an open map, not a tagged enum.** PRD 11.2 lets a
 user register a node kind this build has never seen. Under a
@@ -165,15 +198,16 @@ such edge.
 Rule L04 in wave 7 reports the same condition; the loader reporting it too is
 deliberate, because the graph cannot resolve the reference at all.
 
-**Slug scope for a facet uses the immediate parent.** PRD 3.2 says "its module
-root". Every facet in the fixture is a direct child of its module, so the two
-readings coincide. If a facet ever nests under another facet, `SlugScope::for_node`
-will need the module root passed in rather than the parent; the signature
-already takes an `Option<Uuid>` so no caller changes.
+**Slug scope for a facet is the module root, resolved by walking.** PRD 3.2
+says "its module root" and 5.5 lets a group sit between a facet and its module,
+so the immediate parent is the wrong anchor whenever it does. The loader claims
+slugs after the containment index is built and asks `Graph::module_root` for the
+anchor. Two methods named `verify` inside one module now collide even when a
+group separates them, which is what the section asks for.
 
 ---
 
-## 4. Wireframe arithmetic conflicts
+## 5. Wireframe arithmetic conflicts
 
 PRD 0.4 decides all of these the same way: the computed value is the truth and
 the wireframe carries the conflict. Section 16.4 lists the first two. The other
@@ -183,7 +217,7 @@ three turned up while building the fixture and are new.
 |---|---|---|---|---|
 | 1 | `6 services` on the Stack Schematic | `7 services` | PRD 16.4, open item 19.11 | The fixture holds seven nodes of kind `service`. A surface counts them. |
 | 2 | `layer backend · 4 facets` on the module root | 15 facets on `token-verifier` | PRD 16.4, open item 19.12 | The wireframe draws seven facet cards beside a count of four; the fixture's full facet count is 15, which is what 5.4 defines. |
-| 3 | `2 dependents` on `crypto-primitives` alongside `crypto-primitives.sign changed 2h ago` staling `audit-emitter` | 2 dependents, and `audit-emitter` is not one of them | New | The two cannot both hold. Rule L10 fires only if every dependent of `crypto-primitives` sits inside one subtree, and `audit-emitter` sits outside it. The fixture keeps the drawn count and the L10 warning, and makes `audit-emitter` stale from `token-verifier`, whose `verify_signature` the contract history shows changing on 25 Aug. The caption naming `crypto-primitives.sign` is the part that does not follow. |
+| 3 | `2 dependents` on `crypto-primitives` alongside `crypto-primitives.sign changed 2h ago` staling `audit-emitter` | 2 dependents, and `audit-emitter` is not one of them | New | The two cannot both hold. Rule L10 fires only if every dependent of `crypto-primitives` sits inside one subtree, and `audit-emitter` sits outside it. The fixture keeps the drawn count and the L10 warning, and makes `audit-emitter` stale from `token-verifier`, whose `verify_signature` the contract history shows changing on 25 Aug. The node now carries that reason in its `stale` field, so a surface draws the caption from the graph rather than from copy. The wireframe's `crypto-primitives.sign` is the part that does not follow, and no method by that name exists in the fixture to draw. |
 | 4 | One `Contract method with no covers edge` row, against `token-issuer.mint` | Two rows: `token-issuer.mint` and `token-verifier.skew_window` | New | 16.1 gives `skew_window` zero covers edges explicitly, and rule L11 fires on any contract method with none. Either the Problems panel is truncated or L11 is meant to fire on exported methods alone. The fixture reproduces the content and wave 7 will report two rows. |
 | 5 | The five most recent audit rows | Six rows are needed to make them legal | New | The drawn rows run `reviewed → specified` at 24 Aug 09:05 and then `assigned → implemented` at 24 Aug 22:18, with nothing between them. PRD 7.2 has no such edge. The fixture inserts `specified → assigned` at 24 Aug 12:40, which pushes `21 Aug 15:31` out of the five most recent. Four of the five drawn rows are reproduced exactly. |
 
@@ -193,7 +227,7 @@ on its entry-point module, and the fixture computes it from `auth-service`.
 
 ---
 
-## 5. Assumptions
+## 6. Assumptions
 
 - **Fixture identifiers are seeded, not minted.** A fixture rebuilt with a live
   clock changes 5648 files on every run and cannot be reviewed. The generator
@@ -231,13 +265,13 @@ on its entry-point module, and the fixture computes it from `auth-service`.
 
 ---
 
-## 6. Verification
+## 7. Verification
 
 | Step | Result |
 |---|---|
 | `pnpm build` | Pass |
 | `pnpm test:js` | Pass, unchanged by this wave |
-| `pnpm test:rust` | Pass, 737 across the workspace, 132 of them new |
+| `pnpm test:rust` | Pass, 796 across the workspace, 154 of them new |
 | `pnpm lint:js` | Pass, 0 errors and the 8 pre-existing React hook warnings |
 | `pnpm lint:rust` | Pass, no new clippy findings and no baseline change |
 | `pnpm lint:comments` | Pass, 0 grandfathered |
@@ -248,7 +282,7 @@ No baseline file was regenerated.
 
 ---
 
-## 7. Files outside the crate
+## 8. Files outside the crate
 
 Three, each one line of content.
 
@@ -265,7 +299,27 @@ touched, so this merges independently of the wave 1a rename.
 
 ---
 
-## 8. Left undone
+## 9. The dependency pin this branch leaves open
+
+`crates/schematify-reconcile` merged to main while this branch was in review. It
+pins `uuid = { version = "1", features = ["serde"] }` and `tempfile = "3"` in
+its own manifest rather than through `[workspace.dependencies]`, which this
+branch added for exactly those two crates.
+
+Nothing conflicts and nothing breaks. Both specifications resolve to the same
+version today, and the lockfile merge was one hunk: keep both package blocks in
+alphabetical order.
+
+What is left is a workspace pin one member ignores, which is the drift the root
+`Cargo.toml` says the pins exist to prevent. **The wiring wave should change
+those two lines in `crates/schematify-reconcile/Cargo.toml` to
+`uuid.workspace = true` and `tempfile.workspace = true`.** The workspace pin
+already carries the `serde` feature the reconcile crate asks for. Doing it here
+would have touched another wave's crate for no gain tonight.
+
+---
+
+## 10. Left undone
 
 - **`crates/schematify-reconcile` is not here.** PRD 9.3 puts the `kaava
   reconcile` binary in its own crate, and wave 9 owns it. Nothing in this crate

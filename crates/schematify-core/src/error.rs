@@ -67,6 +67,22 @@ pub enum CoreError {
         inbound: usize,
     },
 
+    /// PRD section 6.3's pair came apart: the node file was written, the
+    /// audit append failed, and the rollback of the node file failed too.
+    ///
+    /// The node on disk is one transition ahead of its own history and no
+    /// automatic repair is possible, so this names both failures rather than
+    /// reporting whichever one happened to be last.
+    #[error("torn lifecycle write on {id}: the audit failed ({audit}) and the rollback failed ({rollback})")]
+    TransitionTornWrite {
+        /// The node whose files disagree.
+        id: uuid::Uuid,
+        /// Why the audit append failed.
+        audit: String,
+        /// Why the node file could not be put back.
+        rollback: String,
+    },
+
     /// A slug collided inside its scope, or was not a legal slug.
     #[error(transparent)]
     Slug(#[from] SlugError),

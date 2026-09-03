@@ -29,10 +29,16 @@ pub enum DecisionStatus {
 }
 
 /// One entry in the decision log.
+///
+/// Closed to unknown fields for the reason [`crate::Screen`] gives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Decision {
     /// The UUIDv7 every reference stores.
     pub id: Uuid,
+    /// Always `decision`, per PRD section 5.9.
+    #[serde(default = "decision_kind")]
+    pub kind: String,
     /// The structured, drawn name, such as `DEC-TEC-AUTH-004`.
     pub slug: Slug,
     /// What was decided, in one line.
@@ -55,7 +61,14 @@ pub struct Decision {
     pub date: String,
 }
 
+fn decision_kind() -> String {
+    Decision::KIND.to_owned()
+}
+
 impl Decision {
+    /// The word a decision file writes into its `kind` field.
+    pub const KIND: &str = "decision";
+
     /// Whether this row breaks linter rule L07.
     ///
     /// A row marked superseded with no successor is a dead end: it tells a
@@ -73,6 +86,7 @@ mod tests {
     fn sample() -> Decision {
         Decision {
             id: Uuid::from_u128(1),
+            kind: Decision::KIND.to_owned(),
             slug: Slug::new("DEC-TEC-AUTH-004").unwrap(),
             title: "Verify signatures against a rotating key set".to_owned(),
             context: "The prior design pinned one signing key.".to_owned(),

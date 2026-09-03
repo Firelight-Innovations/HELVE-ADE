@@ -22,6 +22,7 @@ pub const RUN_SCHEMA_VERSION: &str = "kaava-bench-v1";
 
 /// One budget measured by one run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BudgetResult {
     /// What was measured, matching the `metric` on a budget facet.
     pub metric: String,
@@ -35,6 +36,7 @@ pub struct BudgetResult {
 
 /// One test measured by one run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TestResult {
     /// The marker token that binds this result to a test-case facet.
     pub impl_ref: String,
@@ -51,6 +53,7 @@ pub struct TestResult {
 /// linter of section 10.4. The two produce different numbers on the same
 /// project and neither is a Schematify constant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LinterResult {
     /// How many rules ran.
     pub rules: u32,
@@ -60,6 +63,7 @@ pub struct LinterResult {
 
 /// What reconciliation found on one run, per PRD section 9.2.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReconcileResult {
     /// The design element and the code site agree.
     #[serde(default)]
@@ -110,7 +114,13 @@ impl ReconcileResult {
 }
 
 /// One ingested CI result set, stored at `runs/<node-uuid>/run-<n>.json`.
+///
+/// Closed to unknown fields, and the `schema` field is what makes that safe:
+/// a later format declares a new version, and a reader that meets one rejects
+/// the file by version rather than by field. [`crate::Screen`] states the
+/// general rule.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RunArtifact {
     /// The artifact schema version.
     pub schema: String,

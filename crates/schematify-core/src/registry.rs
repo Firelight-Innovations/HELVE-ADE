@@ -30,7 +30,10 @@ pub enum Severity {
 }
 
 /// One code standard an agent follows on the target project.
+///
+/// Closed to unknown fields for the reason [`crate::Screen`] gives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     /// The UUIDv7 every reference stores.
     pub id: Uuid,
@@ -53,6 +56,7 @@ pub struct Rule {
 
 /// One approved external library.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LibraryEntry {
     /// The UUIDv7 a module's `allowed_libraries` array stores.
     pub id: Uuid,
@@ -72,6 +76,7 @@ pub struct LibraryEntry {
 
 /// The whole of `registry/libraries.json`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LibraryRegistry {
     /// Every approved library, in one global list.
     #[serde(default)]

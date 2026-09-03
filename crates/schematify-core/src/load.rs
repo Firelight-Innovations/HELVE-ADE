@@ -17,6 +17,7 @@
 //! cost and it is trivially parallel, since each file becomes one value and
 //! nothing joins up until the graph is assembled.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -96,6 +97,37 @@ pub struct Quarantine {
     pub file: PathBuf,
 }
 
+/// Two files claiming one identifier.
+///
+/// The second file read used to win, silently, and which one that was varied
+/// between loads because the parallel chunks finish in no fixed order. PRD
+/// section 6.6 forbids dropping a reference in silence, and a whole node is a
+/// reference. The graph now keeps the first file in path order, which makes
+/// the outcome the same on every load, and this record names both files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdCollision {
+    /// The identifier both files claim.
+    pub id: Uuid,
+    /// The file the graph kept.
+    pub kept: PathBuf,
+    /// The file the graph discarded.
+    pub discarded: PathBuf,
+}
+
+/// A file whose name does not match the identifier inside it.
+///
+/// Not fatal, and not silent either. The identifier inside the file is what
+/// every reference resolves against, and the filename is a convenience for a
+/// person reading a diff. When the two disagree one of them is a mistake, and
+/// nothing else in the system would ever say so.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MisnamedFile {
+    /// The identifier the file carries.
+    pub id: Uuid,
+    /// The file it was read from.
+    pub file: PathBuf,
+}
+
 /// One file that could not be read or parsed.
 #[derive(Debug)]
 pub struct ReadProblem {
@@ -114,6 +146,10 @@ pub struct Report {
     pub unreadable: Vec<ReadProblem>,
     /// Every slug collision, as the error the slug index raised.
     pub slug_collisions: Vec<crate::slug::SlugError>,
+    /// Every identifier claimed by two files.
+    pub id_collisions: Vec<IdCollision>,
+    /// Every file whose name disagrees with the identifier inside it.
+    pub misnamed: Vec<MisnamedFile>,
     /// Every slug the loader claimed, so a caller can look one up.
     ///
     /// It sits on the report rather than on the graph because it is a load
@@ -128,7 +164,11 @@ impl Report {
     /// Whether the load found nothing wrong.
     #[must_use]
     pub fn is_clean(&self) -> bool {
-        self.quarantined.is_empty() && self.unreadable.is_empty() && self.slug_collisions.is_empty()
+        self.quarantined.is_empty()
+            && self.unreadable.is_empty()
+            && self.slug_collisions.is_empty()
+            && self.id_collisions.is_empty()
+            && self.misnamed.is_empty()
     }
 
     /// What holds a slug in a scope, if anything does.
@@ -193,30 +233,41 @@ pub fn load_project(project_root: &Path) -> Result<LoadOutcome> {
         graph.set_brief(brief);
     }
 
-    for (_, node) in nodes {
-        let scope = SlugScope::for_node(node.kind(), node.envelope.parent);
-        if let Err(error) = report
-            .slug_index
-            .claim(scope, &node.envelope.slug, node.id())
-        {
-            report.slug_collisions.push(error);
+    // Sorted before insertion, so which file wins a collision is decided by
+    // path order rather than by whichever parse worker finished first.
+    let mut nodes = nodes;
+    nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut origins: HashMap<Uuid, PathBuf> = HashMap::new();
+
+    for (path, node) in nodes {
+        if claim_file(node.id(), path, &mut origins, &mut report) {
+            graph.insert_node(node);
         }
-        graph.insert_node(node);
     }
-    for (_, edge) in edges {
-        graph.insert_edge(edge);
+    for (path, edge) in edges {
+        if claim_file(edge.id, path, &mut origins, &mut report) {
+            graph.insert_edge(edge);
+        }
     }
-    for (_, screen) in screens {
-        graph.insert_screen(screen);
+    for (path, screen) in screens {
+        if claim_file(screen.id, path, &mut origins, &mut report) {
+            graph.insert_screen(screen);
+        }
     }
-    for (_, flow) in flows {
-        graph.insert_flow(flow);
+    for (path, flow) in flows {
+        if claim_file(flow.id, path, &mut origins, &mut report) {
+            graph.insert_flow(flow);
+        }
     }
-    for (_, decision) in decisions {
-        graph.insert_decision(decision);
+    for (path, decision) in decisions {
+        if claim_file(decision.id, path, &mut origins, &mut report) {
+            graph.insert_decision(decision);
+        }
     }
-    for (_, rule) in rules {
-        graph.insert_rule(rule);
+    for (path, rule) in rules {
+        if claim_file(rule.id, path, &mut origins, &mut report) {
+            graph.insert_rule(rule);
+        }
     }
     for (_, layout) in layouts {
         graph.insert_layout(layout);
@@ -224,10 +275,70 @@ pub fn load_project(project_root: &Path) -> Result<LoadOutcome> {
 
     read_runs(&kaava.join("runs"), &mut graph, &mut report);
     graph.reindex();
-    resolve_references(&kaava, &mut graph, &mut report);
+
+    // Slugs are claimed after the index is built, because a facet is scoped to
+    // its module root and that is an ancestor walk rather than a parent field.
+    // PRD section 5.5 lets a group sit between the two.
+    claim_slugs(&graph, &mut report);
+    resolve_references(&origins, &mut graph, &mut report);
 
     report.duration_ms = started.elapsed().as_millis();
     Ok(LoadOutcome { graph, report })
+}
+
+/// Record where one value came from, and say whether to keep it.
+///
+/// Returns `false` when another file already claimed this identifier, which is
+/// the one case a value is not inserted. The rejection is reported rather than
+/// silent, which is the whole point.
+fn claim_file(
+    id: Uuid,
+    path: PathBuf,
+    origins: &mut HashMap<Uuid, PathBuf>,
+    report: &mut Report,
+) -> bool {
+    let matches_name = path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .and_then(|n| Uuid::parse_str(n).ok())
+        == Some(id);
+    if !matches_name {
+        report.misnamed.push(MisnamedFile {
+            id,
+            file: path.clone(),
+        });
+    }
+
+    if let Some(kept) = origins.get(&id) {
+        report.id_collisions.push(IdCollision {
+            id,
+            kept: kept.clone(),
+            discarded: path,
+        });
+        return false;
+    }
+    origins.insert(id, path);
+    true
+}
+
+/// Claim every node slug in the scope PRD section 3.2 gives its kind.
+fn claim_slugs(graph: &Graph, report: &mut Report) {
+    for node in graph.nodes() {
+        let anchor = if node.kind().is_facet() {
+            node.envelope
+                .parent
+                .and_then(|parent| graph.module_root(parent))
+        } else {
+            node.envelope.parent
+        };
+        let scope = SlugScope::for_node(node.kind(), anchor);
+        if let Err(error) = report
+            .slug_index
+            .claim(scope, &node.envelope.slug, node.id())
+        {
+            report.slug_collisions.push(error);
+        }
+    }
 }
 
 /// Read every `.json` file in a directory, in parallel.
@@ -420,13 +531,13 @@ fn read_runs(directory: &Path, graph: &mut Graph, report: &mut Report) {
 /// The subject of a quarantine is the *referring* thing, never the missing
 /// one. A missing node has no record to attach a problem to, and the thing a
 /// person has to fix is the reference that points at nothing.
-fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
+fn resolve_references(origins: &HashMap<Uuid, PathBuf>, graph: &mut Graph, report: &mut Report) {
     let ids: Vec<Uuid> = graph.nodes().map(Node::id).collect();
     let mut quarantine = Vec::new();
 
     for id in ids {
         let Some(node) = graph.node(id) else { continue };
-        let file = kaava.join("nodes").join(format!("{id}.json"));
+        let file = origins.get(&id).cloned().unwrap_or_default();
         let mut problems = Vec::new();
 
         if let Some(parent) = node.envelope.parent {
@@ -517,7 +628,7 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
 
     let edges: Vec<Edge> = graph.edges().cloned().collect();
     for edge in edges {
-        let file = kaava.join("edges").join(format!("{}.json", edge.id));
+        let file = origins.get(&edge.id).cloned().unwrap_or_default();
         for (field, endpoint) in [("source", edge.source), ("target", edge.target)] {
             if !endpoint_exists(graph, edge.kind, field, endpoint) {
                 quarantine.push(Quarantine {
@@ -536,7 +647,7 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
         .map(|s| (s.id, s.backed_by.clone()))
         .collect();
     for (id, backed_by) in screens {
-        let file = kaava.join("screens").join(format!("{id}.json"));
+        let file = origins.get(&id).cloned().unwrap_or_default();
         for uri in backed_by {
             if !resolves(graph, uri) {
                 quarantine.push(Quarantine {
@@ -555,7 +666,7 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
         .map(|f| (f.id, f.steps.iter().map(|s| s.screen).collect()))
         .collect();
     for (id, steps) in flows {
-        let file = kaava.join("flows").join(format!("{id}.json"));
+        let file = origins.get(&id).cloned().unwrap_or_default();
         for uri in steps {
             if !resolves(graph, uri) {
                 quarantine.push(Quarantine {
@@ -574,7 +685,7 @@ fn resolve_references(kaava: &Path, graph: &mut Graph, report: &mut Report) {
         .map(|d| (d.id, d.supersedes, d.superseded_by))
         .collect();
     for (id, supersedes, superseded_by) in decisions {
-        let file = kaava.join("decisions").join(format!("{id}.json"));
+        let file = origins.get(&id).cloned().unwrap_or_default();
         for (field, target) in [("supersedes", supersedes), ("superseded_by", superseded_by)] {
             if let Some(target) = target {
                 if graph.decision(target).is_none() {

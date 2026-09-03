@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 /// Where one node or group sits on a Schematic.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Placement {
     /// The left edge.
     pub x: f64,
@@ -38,6 +39,7 @@ pub struct Placement {
 /// because JSON object keys are strings and a position for a node that has
 /// since been deleted should not stop the file parsing.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Layout {
     /// The Schematic slug this file belongs to. Matches the filename.
     pub schematic: String,

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use crate::lifecycle::{Actor, Lifecycle};
+use crate::lifecycle::{Lifecycle, Staleness};
 use crate::slug::Slug;
 use crate::uri::Uri;
 
@@ -85,8 +85,12 @@ impl NodeKind {
         matches!(self, Self::Comment | Self::Group)
     }
 
-    /// Whether this kind is a tier-3 facet, and so counts toward a module's
-    /// computed facet count.
+    /// Whether this kind counts toward a module's facet count.
+    ///
+    /// The seven tier-3 kinds, and the two annotation kinds with them. PRD
+    /// section 5.4 defines the count as every facet node whose parent is the
+    /// module, "annotation facets included", so a comment and a group are in
+    /// it even though PRD section 11.3 keeps them out of reconciliation.
     #[must_use]
     pub fn is_facet(&self) -> bool {
         matches!(
@@ -139,6 +143,32 @@ impl Layer {
     }
 }
 
+/// Who wrote a node.
+///
+/// PRD section 5.1 allows `human` or `agent` and nothing else, which is why
+/// this is not [`crate::Actor`]. `Actor` carries a third value, `system`, for
+/// the one lifecycle transition nobody requests, and a node with
+/// `authored_by: "system"` would be a node no reviewer could hold to account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Authorship {
+    /// A person wrote it.
+    Human,
+    /// A coding agent wrote it. The node face draws the agent-draft diamond.
+    Agent,
+}
+
+impl Authorship {
+    /// The word this value writes into JSON.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Agent => "agent",
+        }
+    }
+}
+
 /// The envelope every node carries, whatever its kind.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeEnvelope {
@@ -165,12 +195,20 @@ pub struct NodeEnvelope {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub decisions: Vec<Uri>,
     /// Whether a person or an agent wrote this node.
-    pub authored_by: Actor,
+    pub authored_by: Authorship,
     /// When the node was created, as an RFC 3339 timestamp.
     pub created: String,
     /// The replacement, once this node is deprecated.
     #[serde(default)]
     pub superseded_by: Option<Uuid>,
+    /// Why this node is stale, when `lifecycle` is `stale`.
+    ///
+    /// PRD section 7.4 draws a second caption line naming the contract that
+    /// moved and how long ago. The cascade knows both at the moment it fires
+    /// and a reloaded graph does not, so the answer is written here rather
+    /// than recomputed. Wave 10 sets it; this crate defines it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale: Option<Staleness>,
 }
 
 /// One node: the envelope, plus whatever its kind adds.
@@ -546,9 +584,10 @@ mod tests {
             layer: Some(Layer::Backend),
             parent: Some(Uuid::from_u128(2)),
             decisions: vec![Uri::decision(Uuid::from_u128(3))],
-            authored_by: Actor::Human,
+            authored_by: Authorship::Human,
             created: "2026-08-25T00:00:00Z".to_owned(),
             superseded_by: None,
+            stale: None,
         }
     }
 

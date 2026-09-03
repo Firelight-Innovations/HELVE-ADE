@@ -15,9 +15,8 @@ Viewer with their folder as the project.
 ### Before you file a bug
 
 **OpenKaava is pre-alpha.** The window runs, and so do its own apps: Home, the File
-Explorer, the File Viewer and Tutorials. Forger and Journeyman, the design
-apps, ship in this same build but do not yet have a working screen behind
-their tabs.
+Explorer, the File Viewer and Tutorials. Schematify, the design layer, ships
+in this same build but does not yet have a working screen behind its tab.
 
 **Windows only.** macOS and Linux are untested rather than excluded.
 

@@ -5,15 +5,15 @@ What a repository outside this one has to publish for OpenKaava to install it.
 app repository needs, and the two differ in what they produce: OpenKaava ships an
 `.exe` installer, an app ships a `.zip`.
 
-Nothing uses this pipeline today. Forger and Journeyman used to be the concrete
-case it was written for — each was to own its own copy of this, being separate
-parts of the stack maintained by separate teams, where a shared pipeline would
-make one's release cadence the other's problem. Both have since been
-reclassified as in-repo apps (`apps/README.md`) and release through the
-orchestrator's own pipeline (`docs/dev/releases.md`) instead. This document is
-what the first genuinely third-party tool repository will need — kept for that
-case rather than deleted, the same way `catalog.toml` and `kaava.toml` keep
-their machinery with zero rows.
+Nothing uses this pipeline today. Schematify's two predecessor applications
+used to be the concrete case it was written for — each was to own its own
+copy of this, being separate parts of the stack maintained by separate teams,
+where a shared pipeline would make one's release cadence the other's problem.
+Both have since been folded into one in-repo app (`apps/README.md`) and
+release through the orchestrator's own pipeline (`docs/dev/releases.md`)
+instead. This document is what the first genuinely third-party tool
+repository will need — kept for that case rather than deleted, the same way
+`catalog.toml` and `kaava.toml` keep their machinery with zero rows.
 
 ## What OpenKaava downloads
 
@@ -37,22 +37,22 @@ path `[core] bin` names. **Nothing is built on the user's machine.**
 
 ```toml
 [tool]
-id          = "forger"
+id          = "acme-tool"
 version     = "0.1.0"
-name        = "Forger"
-description = "Technical design software — specs out the stack and its boundaries."
+name        = "Acme Tool"
+description = "An example third-party tool, published outside this repository."
 
 [frontend]
 dist    = "ui/dist"
 dev-url = "http://localhost:5174"    # pick a port per app; echo-tool has 5174
 
 [[surface]]
-id   = "specs"
-name = "Spec Editor"
-path = "specs/"
+id   = "main"
+name = "Main"
+path = "main/"
 
 [core]
-bin = "core/target/release/kaava-forger.exe"
+bin = "core/target/release/kaava-acme-tool.exe"
 ```
 
 `[tool] id` **must** equal the `id` in `catalog.toml` for a library entry. A
