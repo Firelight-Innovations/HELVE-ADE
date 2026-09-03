@@ -31,12 +31,16 @@ async function moduleFrame() {
 }
 
 describe("the module fixture", () => {
-  it("loads token-verifier with a root and 8 facets", async () => {
+  it("loads token-verifier with a root and 11 facets", async () => {
+    // 3 contract-methods, 3 budgets, 1 doc-block, 3 test-cases and 1
+    // external-dep — Wave 6 completed the budget and test-case sets `../graph/
+    // module.ts`'s own header comment flagged as curated (1 of 3 budgets, 2
+    // of the wireframe's own 3 named test cases).
     const doc = await moduleDoc();
-    expect(doc.nodes).toHaveLength(9);
+    expect(doc.nodes).toHaveLength(12);
     const root = doc.nodes.find((node) => node.role === "schematic-root");
     expect(root?.slug).toBe("token-verifier");
-    expect(doc.nodes.filter((node) => node.parentId === root?.id)).toHaveLength(8);
+    expect(doc.nodes.filter((node) => node.parentId === root?.id)).toHaveLength(11);
   });
 
   it("carries all 3 contract-methods, including skew_window", () => {
@@ -227,7 +231,7 @@ describe("the module root", () => {
   it("draws its own computed facet count and screen reference", async () => {
     const frame = await moduleFrame();
     const root = frame.nodes.find((node) => node.node.role === "schematic-root");
-    expect(root?.counts).toContain("layer backend · 8 facets");
+    expect(root?.counts).toContain("layer backend · 11 facets");
     expect(root?.counts).toContain("schematify://screen/login-form");
   });
 });

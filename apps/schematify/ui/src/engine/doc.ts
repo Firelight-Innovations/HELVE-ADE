@@ -12,7 +12,17 @@
  */
 import type { EdgeKind, NodeRole, SchematicNodeKind } from "./config";
 import { isAnnotationKind } from "./config";
-import type { FacetCounts, HealthStatus, Layer, Lifecycle, OutlineBadge, Tier } from "../graph";
+import type {
+  ContractMethodSummary,
+  ExportRow,
+  FacetCounts,
+  HealthStatus,
+  Layer,
+  Lifecycle,
+  LifecycleAuditRow,
+  OutlineBadge,
+  Tier,
+} from "../graph";
 import type { Rect } from "./geometry";
 
 /** One box on the Schematic, semantic or annotation. */
@@ -76,6 +86,30 @@ export interface SchematicNode {
   depLicense?: string;
   depRegistryOk?: boolean;
   screenRef?: string;
+
+  // --- PRD §12.12 Inspector content (Wave 6), mirroring `../graph/types.ts`'s
+  // `GraphNode` — see that file for what each draws. -------------------------
+
+  decisions?: readonly string[];
+  runReference?: string;
+  additionalPassingTests?: number;
+  assignee?: string;
+  auditRows?: readonly LifecycleAuditRow[];
+  given?: string;
+  when?: string;
+  then?: string;
+  markerToken?: string;
+  testLinkState?: "declared" | "linked";
+  lastDurationMs?: number;
+  mismatch?: string;
+  semantics?: string;
+  budgetSignOff?: string;
+  budgetTrending?: boolean;
+  exports?: readonly ExportRow[];
+  resolvedMethods?: readonly ContractMethodSummary[];
+  screenLinks?: readonly string[];
+  inboundReferenceCount?: number;
+  danglingReferences?: readonly string[];
 }
 
 /** One stored semantic edge. A drawn containment line at tier 3 is not one of

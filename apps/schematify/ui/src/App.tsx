@@ -132,32 +132,40 @@ export default function App() {
       engine={engine}
       path={path}
       onNavigate={(index) => setPath(path.slice(0, index + 1))}
-      onActivate={(drawn) => {
-        const dest = nextDrillTarget(engine.config.tier, drawn.node);
-        if (dest) setPath([...path, dest]);
-      }}
+      onDrillTo={(dest) => setPath([...path, dest])}
     />
   );
 }
 
 /** The populated view, split out so the engine subscription lives where the
- *  engine is known to exist rather than behind a null check. */
+ *  engine is known to exist rather than behind a null check.
+ *
+ * `onDrillTo` is the 1 navigation primitive both the canvas's click-to-drill
+ * and the Inspector's `Open module canvas` footer control (PRD §12.12, §17
+ * Wave 6) push through — a click on the canvas resolves a `DrawnNode` to a
+ * `DrillTarget` first (`onActivate`, below), the footer control already
+ * holds one. */
 function Schematify({
   engine,
   path,
   onNavigate,
-  onActivate,
+  onDrillTo,
 }: {
   engine: SchematicEngine;
   path: readonly DrillTarget[];
   onNavigate: (index: number) => void;
-  onActivate: (node: DrawnNode) => void;
+  onDrillTo: (target: DrillTarget) => void;
 }) {
   const state = useSyncExternalStore(
     (listener) => engine.subscribe(listener),
     () => engine.state,
   );
   const graph = useMemo(() => toGraph(state.doc), [state.doc]);
+
+  const onActivate = (drawn: DrawnNode) => {
+    const dest = nextDrillTarget(engine.config.tier, drawn.node);
+    if (dest) onDrillTo(dest);
+  };
 
   return (
     <div className="kv-shell">
@@ -176,7 +184,12 @@ function Schematify({
         <Outline graph={graph} />
         {graph.tier === "module" ? <FacetPalette /> : null}
         <SchematicCanvas engine={engine} onActivate={onActivate} exports={graph.exports} />
-        <InspectorShell graph={graph} selectionCount={state.selection.length} />
+        <InspectorShell
+          graph={graph}
+          selection={state.selection}
+          engine={engine}
+          onOpenModuleCanvas={onDrillTo}
+        />
       </div>
       <Dock />
       <StatusBar graph={graph} layoutClean={!engine.layoutDirty} />

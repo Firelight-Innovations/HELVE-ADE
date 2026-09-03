@@ -159,6 +159,90 @@ export interface GraphNode {
   /** A module root only: PRD §12.5's tier-3 screen-reference path,
    *  `schematify://screen/<slug>`. */
   screenRef?: string;
+
+  // --- PRD §12.12 Inspector content (Wave 6) --------------------------------
+
+  /** PRD §5.1's `decisions`, resolved to slugs (PRD §3.3) — Identity and
+   *  References prefix each `decision://`. */
+  decisions?: readonly string[];
+  /** A module facet's parent only: the Budgets tab's run reference, e.g.
+   *  `run #<N> · <age>`. */
+  runReference?: string;
+  /** A module root only: further passing `test-case` facets not modelled as
+   *  their own nodes — the same curation `coversCount` already applies to a
+   *  method's untracked covers edges. `testsContent` folds this into the
+   *  passing count and the total. */
+  additionalPassingTests?: number;
+  /** The Lifecycle tab's assignee, and the field `Assign` writes. */
+  assignee?: string;
+  /** The Lifecycle tab's last-3 audit rows, newest first. */
+  auditRows?: readonly LifecycleAuditRow[];
+
+  /** `test-case`: the 3 given/when/then lines. */
+  given?: string;
+  when?: string;
+  then?: string;
+  /** `test-case`: PRD §9.1's marker token. */
+  markerToken?: string;
+  /** `test-case`: `"declared"` is the unlinked state; `"linked"` pairs with
+   *  `testStatus` for the passing/failing forms. */
+  testLinkState?: "declared" | "linked";
+  /** `test-case`, linked and passing only: last duration in ms. */
+  lastDurationMs?: number;
+  /** `test-case`, linked and failing only: the mismatch text. */
+  mismatch?: string;
+
+  /** `contract-method`: the semantics sentence. */
+  semantics?: string;
+
+  /** `budget`: set once a human signs off a trending soft budget;
+   *  `undefined` draws the sign-off control. */
+  budgetSignOff?: string;
+  /** `budget`, soft tier only: near its threshold. A stored curation flag —
+   *  no source gives this app a time series to derive a trend from. */
+  budgetTrending?: boolean;
+
+  /** A `service`-kind node only (stack tier): the authored export list the
+   *  Contract tab edits (PRD §12.12). Distinct from `SchematicGraph.exports`
+   *  (the service tier's own export strip, PRD §12.10) — this lives on the
+   *  service node itself, one level up. */
+  exports?: readonly ExportRow[];
+  /** A `service`-kind node only: the method blocks `exports` resolves to,
+   *  for the Contract tab's OpenAPI toggle. */
+  resolvedMethods?: readonly ContractMethodSummary[];
+
+  /** References tab: screen links, inbound reference count, and dangling
+   *  marks (decision links come off `decisions` above). */
+  screenLinks?: readonly string[];
+  inboundReferenceCount?: number;
+  danglingReferences?: readonly string[];
+}
+
+/** One row of the Lifecycle tab's audit log (PRD §12.12, §7.2), e.g.
+ *  `25 Aug 14:02 · reviewed → accepted · m.ross · human`. */
+export interface LifecycleAuditRow {
+  when: string;
+  transition: string;
+  actor: string;
+}
+
+/** One resolved method block behind a service's export list (PRD §12.12's
+ *  Contract tab, OpenAPI mode) — a restatement of `GraphNode`'s own
+ *  `signature`/`returns`/`semantics`, for a method not projected as a real
+ *  facet node. */
+export interface ContractMethodSummary {
+  name: string;
+  signature: string;
+  returns: string;
+  semantics?: string;
+}
+
+/** One row of the Dependencies tab's external-library list (PRD §12.12),
+ *  e.g. `jose 5.2.4 · MIT`. */
+export interface LibraryDetail {
+  name: string;
+  version: string;
+  license: string;
 }
 
 /** One typed edge. `contains` is deliberately absent — containment is

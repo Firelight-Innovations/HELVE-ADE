@@ -751,3 +751,83 @@ describe("one engine, three configurations", () => {
     expect(engine.index.byId.get("audit-emitter")?.rect.x).toBe((before?.x ?? 0) + 220);
   });
 });
+
+describe("the Inspector: 1 semantic file, no layout write (PRD §17 Wave 6)", () => {
+  it("editNode writes exactly 1 semantic file and 0 layout files", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const before = engine.index.byId.get("verify_signature")?.semantics;
+    expect(before).toBe("Rejects on expiry, unknown kid, or skew beyond the configured window.");
+
+    const refusal = engine.editNode("verify_signature", { semantics: "Updated for this test." });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.index.byId.get("verify_signature")?.semantics).toBe("Updated for this test.");
+    expect(engine.semanticWrites).toEqual(["nodes/verify_signature.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+    expect(seam.semantic.get("nodes/verify_signature.json")).toMatchObject({
+      id: "verify_signature",
+      semantics: "Updated for this test.",
+    });
+  });
+
+  it("refuses on an id this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.editNode("not-a-real-id", { title: "x" })?.reason).toBe(
+      "That node is not on this Schematic.",
+    );
+  });
+
+  it("refuses to edit an annotation node — it has no Inspector panel", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    const comment = engine.addComment({ x: 0, y: 0, width: 10, height: 10 }, "m.ross", "note");
+    const refusal = engine.editNode(comment.id, { title: "x" });
+    expect(refusal?.reason).toBe("An annotation node has no Inspector panel.");
+  });
+
+  it("addFacet mints exactly 1 new node and writes exactly its 1 file", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    const before = engine.state.doc.nodes.length;
+
+    const refusal = engine.addFacet("token-verifier", "contract-method", {
+      title: "new_method",
+      signature: "()",
+      returns: "void",
+    });
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.state.doc.nodes).toHaveLength(before + 1);
+    const added = engine.state.doc.nodes.find((node) => node.title === "new_method");
+    expect(added?.parentId).toBe("token-verifier");
+    expect(added?.kind).toBe("contract-method");
+    expect(engine.semanticWrites).toHaveLength(1);
+    expect([...seam.layouts.keys()]).toEqual([]);
+  });
+
+  it("addFacet refuses on a parent this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.addFacet("not-a-real-id", "budget", {})?.reason).toBe(
+      "That node is not on this Schematic.",
+    );
+  });
+
+  it("dropFacet removes exactly 1 node and writes exactly its 1 file", async () => {
+    const { engine, seam } = await open(MODULE_CONFIG);
+    expect(engine.index.byId.get("cold_start_p95")).toBeDefined();
+
+    const refusal = engine.dropFacet("cold_start_p95");
+    await engine.settled();
+
+    expect(refusal).toBeNull();
+    expect(engine.state.doc.nodes.find((node) => node.id === "cold_start_p95")).toBeUndefined();
+    expect(engine.semanticWrites).toEqual(["nodes/cold_start_p95.json"]);
+    expect([...seam.layouts.keys()]).toEqual([]);
+    expect(engine.writes.filter((write) => write.layer === "semantic")).toHaveLength(1);
+  });
+
+  it("dropFacet refuses on an id this Schematic does not hold", async () => {
+    const { engine } = await open(MODULE_CONFIG);
+    expect(engine.dropFacet("not-a-real-id")?.reason).toBe("That node is not on this Schematic.");
+  });
+});
