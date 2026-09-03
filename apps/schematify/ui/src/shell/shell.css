@@ -374,20 +374,44 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   background: var(--kv-bg-panel);
   border-top: 1px solid var(--kv-line);
 }
 
+/* PRD §12.1: "The dock collapses to a status strip." No wireframe screen
+   draws the collapsed height, so this is this wave's own reading of "a
+   strip" — tall enough for one row of tabs and nothing else. `[P]`. */
+.kv-dock--collapsed {
+  height: 28px;
+}
+
 .kv-dock__tabs {
   display: flex;
+  align-items: center;
   gap: 12px;
   padding: 6px 12px 0;
+  flex: 0 0 auto;
+}
+
+.kv-dock--collapsed .kv-dock__tabs {
+  padding: 4px 12px;
 }
 
 .kv-dock__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--kv-text-dim);
+  background: none;
+  border: none;
+  font-family: var(--kv-font-mono);
   font-size: 11px;
   padding-bottom: 6px;
+}
+
+.kv-dock--collapsed .kv-dock__tab {
+  padding-bottom: 0;
 }
 
 .kv-dock__tab--active {
@@ -395,14 +419,128 @@
   border-bottom: 1.5px solid var(--kv-accent);
 }
 
+/* The 2 badges PRD §12.1 names on the `Problems` tab — an error count and a
+   warning count, in that order, and the whole reason this tab row is never
+   inside the block `.kv-dock--collapsed` removes. */
+.kv-dock__badges {
+  display: flex;
+  gap: 4px;
+}
+
+.kv-dock__badge {
+  min-width: 14px;
+  padding: 0 5px;
+  border-radius: var(--kv-radius-pill);
+  background: var(--kv-bg-raised);
+  font-size: 9.5px;
+  text-align: center;
+}
+
+.kv-dock__badge--error {
+  color: var(--kv-error);
+}
+
+.kv-dock__badge--warn {
+  color: var(--kv-warn);
+}
+
+.kv-dock__collapse {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--kv-text-tertiary);
+  font-family: var(--kv-font-mono);
+  font-size: 11px;
+  padding: 0 4px 6px;
+}
+
 .kv-dock__note {
   padding: 6px 12px;
   color: var(--kv-text-tertiary);
   font-size: 10px;
+  flex: 0 0 auto;
 }
 
 .kv-dock__placeholder {
   padding: 0 12px;
+  color: var(--kv-text-dim);
+  font-size: 11px;
+}
+
+/* --- Problems panel (PRD §12.14, S-13) -------------------------------------- */
+
+.kv-problems {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--kv-font-mono);
+  font-size: 10.5px;
+  text-align: left;
+}
+
+.kv-problems th {
+  position: sticky;
+  top: 0;
+  background: var(--kv-bg-panel);
+  padding: 4px 12px;
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-problems__row td {
+  padding: 3px 12px;
+  color: var(--kv-text-near);
+  border-top: 1px solid var(--kv-line);
+}
+
+.kv-problems__row--clickable {
+  cursor: pointer;
+}
+
+.kv-problems__row--clickable:hover td {
+  background: var(--kv-bg-raised);
+}
+
+.kv-problems__severity {
+  white-space: nowrap;
+}
+
+.kv-problems__row--error .kv-problems__severity {
+  color: var(--kv-error);
+}
+
+.kv-problems__row--warning .kv-problems__severity {
+  color: var(--kv-warn);
+}
+
+.kv-problems__node {
+  color: var(--kv-text-primary);
+}
+
+.kv-problems__location {
+  color: var(--kv-text-tertiary);
+}
+
+/* The 1 blank row a severity-group break draws (PRD §12.14: findings
+   "grouped by severity") — never the first row, and never a 2nd sort. */
+.kv-problems__group-break td {
+  height: 6px;
+  padding: 0;
+  border-top: none;
+}
+
+.kv-problems__error {
+  padding: 8px 12px;
+  color: var(--kv-error);
+  font-size: 11px;
+}
+
+.kv-problems__placeholder {
+  padding: 8px 12px;
   color: var(--kv-text-dim);
   font-size: 11px;
 }
