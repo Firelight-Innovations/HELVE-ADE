@@ -65,7 +65,7 @@
 # transition and is still `nodes/` + `runs/`; it is `nodes/` that carries the
 # owner in that pair, same as any other write there, and `runs/` still does not.
 #
-# No leading slash on any of these five lines, deliberately — unlike every rule
+# No leading slash on any of the lines below, deliberately — unlike every rule
 # above. `.kaava/` is a *project's* root, not a fixed location in this repository:
 # today it exists three times, under
 # `crates/schematify-core/fixtures/{dense-service,saas-backend,stress-2000}/`,
@@ -76,10 +76,10 @@
 # `apps` directory anywhere rather than only at the root — so this does not need
 # updating every time a fixture is added or renamed.
 #
-# These five lines come after `/crates/` above on purpose: CODEOWNERS resolves
+# The lines below come after `/crates/` above on purpose: CODEOWNERS resolves
 # a path against the *last* matching line in the file, and `/crates/` alone
 # would hand every one of these fixture trees to the owner, `runs/` and
-# `layout/` included. Placing the two unowned lines below give them the last
+# `layout/` included. Placing the two unowned lines last gives them the final
 # word for the paths they name.
 .kaava/brief.json @braden-seaborn
 .kaava/nodes/ @braden-seaborn
