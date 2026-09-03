@@ -35,7 +35,7 @@ use crate::lifecycle::AuditRow;
 use crate::node::Node;
 use crate::product::{Flow, Screen};
 use crate::registry::{LibraryRegistry, Rule};
-use crate::run::{RunArtifact, RUN_SCHEMA_VERSION};
+use crate::run::{read_run_artifact, RunReadError};
 use crate::slug::{SlugIndex, SlugScope};
 use crate::uri::{Uri, UriKind};
 
@@ -557,41 +557,23 @@ fn read_runs(directory: &Path, graph: &mut Graph, report: &mut Report) {
                 }
             };
 
-            // The version is read on its own, before the artifact. A later
-            // format adds a field, which is the only reason anyone bumps a
-            // version, and `RunArtifact` is closed to unknown fields like
-            // every other schema here. Deserializing first would turn that
-            // file into a parse error and lose the one thing PRD section 5.10
-            // requires a reader to report: the version it could not read.
-            let version = match serde_json::from_slice::<SchemaProbe>(&bytes) {
-                Ok(probe) => probe.schema,
-                Err(source) => {
-                    report.unreadable.push(ReadProblem {
-                        file: file.clone(),
-                        error: CoreError::Parse {
-                            path: file,
-                            schema: "run",
-                            source,
-                        },
-                    });
-                    continue;
-                }
-            };
-
-            if version != RUN_SCHEMA_VERSION {
-                report.quarantined.push(Quarantine {
-                    subject: node,
-                    field: "schema".to_owned(),
-                    reference: version,
-                    reason: QuarantineReason::UnknownRunSchema,
-                    file,
-                });
-                continue;
-            }
-
-            match serde_json::from_slice::<RunArtifact>(&bytes) {
+            // `read_run_artifact` reads the version through a probe before
+            // the artifact, which is what lets an unknown one be quarantined
+            // and named rather than falling into `unreadable` with the
+            // version it could not report. Ingestion reads the same way, so
+            // the two paths cannot drift.
+            match read_run_artifact(&bytes) {
                 Ok(run) => graph.insert_run(node, run),
-                Err(source) => report.unreadable.push(ReadProblem {
+                Err(RunReadError::UnknownSchema(version)) => {
+                    report.quarantined.push(Quarantine {
+                        subject: node,
+                        field: "schema".to_owned(),
+                        reference: version,
+                        reason: QuarantineReason::UnknownRunSchema,
+                        file,
+                    });
+                }
+                Err(RunReadError::Malformed(source)) => report.unreadable.push(ReadProblem {
                     file: file.clone(),
                     error: CoreError::Parse {
                         path: file,
@@ -602,12 +584,6 @@ fn read_runs(directory: &Path, graph: &mut Graph, report: &mut Report) {
             }
         }
     }
-}
-
-/// Just enough of a run artifact to read its version.
-#[derive(serde::Deserialize)]
-struct SchemaProbe {
-    schema: String,
 }
 
 /// Resolve every stored reference, quarantining what does not land.

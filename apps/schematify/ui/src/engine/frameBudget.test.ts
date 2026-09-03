@@ -82,6 +82,10 @@ describe("the dense fixture holds the 16 ms frame budget", () => {
 
     const sorted = [...samples].sort((a, b) => a - b);
     const median = sorted[Math.floor(SAMPLES / 2)];
+    // Logged rather than only asserted, matching the load and lint budgets'
+    // convention in the Rust suite — so Wave 9's `pnpm bench:frame` can read
+    // the number off this run rather than re-timing the engine itself.
+    console.log(`dense fixture frame time: median ${median.toFixed(2)} ms over ${SAMPLES} samples`);
     expect(Number.isFinite(median)).toBe(true);
     expect(median).toBeGreaterThan(0);
     expect(median).toBeLessThan(BUDGET_MS);
