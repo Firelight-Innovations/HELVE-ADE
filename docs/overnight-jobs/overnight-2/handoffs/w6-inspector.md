@@ -42,13 +42,45 @@ controls.
   already carries in — the Inspector reads through this same projection,
   so a field `toGraph` dropped was a field no tab could ever draw.
 
+### Review round: 2 stored-count breaches, fixed (not scope creep)
+
+A reviewer caught 2 PRD §0.4 violations — a count stored on a node rather
+than computed at draw time. Both are fixed on this branch, not deferred:
+
+- **`engine/anatomy.ts`'s `coversCount`, inherited from Wave 5.** Stored
+  directly on a `contract-method` node, read by `facetContentFor` and
+  `coverageOf`. Now computed: `coversCountFor(id, edges)` counts real
+  `covers` edges targeting that method, `frame.ts` threads `doc.edges`
+  through `drawNode` so the canvas card computes it too, not only the
+  Inspector. `graph/module.ts`'s `token-verifier` fixture now carries 7
+  real `covers` edges (was 2) reproducing Wave 5's own 4/3/0 split by
+  construction rather than by declaration.
+- **`engine/inspector.ts`'s `additionalPassingTests`, this wave's own
+  breach.** A stored integer on the module root, summed into `testsContent`'s
+  drawn total. Removed entirely — `graph/module.ts` now carries all 7 real
+  `test-case` nodes PRD §16.1 implies (3 named, 4 invented `[P]`, the same
+  shape this wave already used for `api-gateway`'s 11 invented
+  `resolvedMethods`), so `testsContent` computes `7 CASES` from
+  `children.length` alone, no 2nd argument.
+
+`engine.test.ts`'s `addFacet`/`dropFacet` tests were also strengthened —
+they asserted write count and path but never content, which a reviewer
+proved by swapping `inspectorNodeJson`'s return for a placeholder object
+and watching all 8 tests still pass. Both now assert the written object's
+real fields via `seam.semantic.get(...)`, and all 3 Inspector-write
+methods (`editNode`, `addFacet`, `dropFacet`) have an undo/redo
+round-trip test checking real content on both sides, not just presence.
+Verified by mutation twice (`inspectorNodeJson`, `coversCountFor`), each
+time confirming the new tests fail under the mutation and pass once
+reverted — see the commit that made these fixes for the exact counts.
+
 ## Acceptance conditions (PRD §17 Wave 6)
 
 | Condition | Status | Evidence |
 |---|---|---|
-| The Inspector edits a node and writes 1 file. One, not two. | **Pass** | `engine.test.ts`'s new describe block: `editNode`/`addFacet`/`dropFacet`/the export-list editor each assert `engine.semanticWrites` holds exactly 1 path and `seam.layouts.keys()` is empty. |
+| The Inspector edits a node and writes 1 file. One, not two. | **Pass** | `engine.test.ts`'s Inspector describe block: `editNode`/`addFacet`/`dropFacet`/the export-list editor each assert `engine.semanticWrites` holds exactly 1 path, `seam.layouts.keys()` is empty, and (after the review round) the written object's real content via `seam.semantic.get(...)`. |
 | The Contract tab draws an OpenAPI view for `api-gateway`, whose 11 exports resolve to 11 methods. | **Pass** | `inspector.test.ts`: `contractContent(gateway, [])` against the real stack fixture — `exportRows` and `resolvedMethods` both length 11. |
-| Every Inspector string in §12.12 draws from the fixture. | **Pass, with 1 named gap** | Every quoted literal form (`3 METHODS`, `✓ N covers edges`/`▲ no covers edge…`, `7 CASES`/`5 passing`/`1 failing`/`1 unlinked`, `linked · 41ms`/`linked, failing`, the unlinked sentence, `3 BUDGETS`, the run reference, `1.8 ms`/`< 3 ms`, `—`, `trending to breach · sign-off required`, `No probe declared`, the lint-error note) is asserted in `inspector.test.ts` against the real `token-verifier`/`api-gateway` fixtures. The gap: PRD §16.1 names only 3 of the module's 7 test cases; the other 4 (all passing) are represented as a stored rollup (`additionalPassingTests`) rather than 4 invented nodes — see "Assumptions" below. |
+| Every Inspector string in §12.12 draws from the fixture. | **Pass, no remaining gap** | Every quoted literal form (`3 METHODS`, `✓ N covers edges`/`▲ no covers edge…`, `7 CASES`/`5 passing`/`1 failing`/`1 unlinked`, `linked · 41ms`/`linked, failing`, the unlinked sentence, `3 BUDGETS`, the run reference, `1.8 ms`/`< 3 ms`, `—`, `trending to breach · sign-off required`, `No probe declared`, the lint-error note) is asserted in `inspector.test.ts` against the real `token-verifier`/`api-gateway` fixtures. The gap this table used to name (4 of 7 test cases as a stored rollup) is closed — see the review-round section above; `7 CASES` is now computed from 7 real nodes. |
 | 5 flat tabs draw at 380 px, 4 tabs plus `More` draw at 360 px. | **Pass** | `inspector.test.ts`'s `tabStripFor` tests, both widths, numerically. |
 
 ## Every assumption, and why
@@ -71,15 +103,12 @@ controls.
    (`More` stays, holding the remaining 3) is equally defensible and an
    easy 1-line change (`tabStripFor` in `engine/inspector.ts`) if a human
    picks it instead. **Flagged for a human**, not fixed unilaterally.
-3. **The 4 test cases PRD §16.1 declines to name individually
-   (`additionalPassingTests`) are a stored rollup on the module root, not
-   4 synthetic nodes.** The alternative — inventing 4 given/when/then
-   blocks with no source — would fabricate content a fixture didn't
-   actually earn; the alternative to that — leaving the fixture at 3 real
-   cases and drawing `3 CASES` — would contradict PRD §16.1's own literal
-   "seven, of which five pass." This follows the exact precedent
-   `coversCount` already sets on a `contract-method` for its own untracked
-   covers edges (Wave 5's own choice, not this wave's invention).
+3. **The 4 test cases PRD §16.1 declines to name individually are now 4
+   real, invented `[P]` nodes**, not a stored rollup — a review round
+   reversed this wave's own first attempt (a stored `additionalPassingTests`
+   integer), which was a PRD §0.4 breach. Each of the 4 carries its own
+   given/when/then, marker token, and a real `covers` edge; see the
+   review-round section above.
 4. **`api-gateway`'s 4 module slugs and 11 method names/signatures are
    invented.** PRD §16.1 gives the service's own counts (`11 exports`,
    `4 modules`) but no Service Schematic fixture exists for it the way
@@ -148,21 +177,24 @@ or `pnpm dev:agent`:
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass. |
-| `pnpm test:js` | Pass — 662 tests (28 in `packages/bridge`), including 41 new assertions in `engine/inspector.test.ts` and 9 new in `engine.test.ts`'s Inspector describe block. |
+| `pnpm test:js` | Pass — 667 tests (28 in `packages/bridge`), including `engine/inspector.test.ts`'s assertions against the real `token-verifier`/`api-gateway` fixtures and `engine.test.ts`'s Inspector describe block (write-count, write-path, written-content, and undo/redo round-trip checks for `editNode`/`addFacet`/`dropFacet`). |
 | `pnpm typecheck` | Pass. |
 | `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing React-hook warnings named in earlier handoffs, none in a file this wave touched. |
 | `pnpm lint:comments` | Pass — 0 grandfathered. |
 | `pnpm lint:version` / `lint:identity` / `lint:branding` | Pass. |
 | `pnpm format:check` | Pass, after `pnpm format`. |
-| `cargo test --workspace` | **Fails, and not on this wave's diff.** 3 failures in `kaava-tool-manifest`'s `reference_manifest.rs`, on 2 separate runs — this branch touches no Rust file at all. Every panic names a path resolved under `crates\kaava-tool-manifest\../../examples/echo-tool`, but rooted at a *different* worktree, `w9b-review`. `CARGO_TARGET_DIR` is shared across every worktree tonight (per `00-AGENT-CONTEXT.md`); that crate's test binary embeds a path baked in relative to whichever worktree's `cargo` last compiled it, and cargo's own change-detection sees no source diff, so it keeps reusing that stale binary rather than recompiling under this worktree. This is a real hazard in the shared-target-dir strategy itself, not a flaky test — flagged to the orchestrator directly rather than fixed here (out of this wave's scope, and touching another wave's crate unilaterally is exactly what `00-AGENT-CONTEXT.md` asks agents not to do). |
+| `cargo test --workspace` | **Fails, and not on this wave's diff.** 3 failures in `kaava-tool-manifest`'s `reference_manifest.rs`, on every run tried (3 so far, against 3 different colliding worktree names) — this branch touches no Rust file at all. Root cause and fix confirmed by the orchestrator: `CARGO_TARGET_DIR` is shared across every worktree tonight, that crate's test binary embeds `CARGO_MANIFEST_DIR` at compile time rather than reading it from the environment per-run, and cargo's own change-detection sees no source diff so it keeps reusing whichever worktree's binary compiled last. `sch-fix-flake` owns the fix on its own branch (not yet merged as of this handoff); not fixed here — out of this wave's scope, and it isn't this wave's crate. |
 | `cargo clippy` | Pass — 0 warnings, at the baseline of 0. |
 | `pnpm baseline` | Never run. |
 
-No test was deleted or skipped. 2 pre-existing tests were updated because
-the fixture they assert against grew (not because they were wrong):
-`module.test.ts`'s node/facet counts (9→12, 8→11) and its `layer backend ·
-N facets` string, both PRD §0.4 computed values that move when the
-fixture does.
+No test was deleted or skipped. A run of pre-existing tests was updated
+because the fixture they assert against grew, not because they were
+wrong: `module.test.ts`'s node/facet counts (grew twice over the wave, to
+16 nodes / 15 facets) and its `layer backend · N facets` string, and its
+`coverageOf`/`facetContentFor` calls (signature changed to take real
+edges/a covers count instead of a stored field) — both PRD §0.4-driven
+changes, the 2nd one a review-round fix rather than this wave's own
+first draft.
 
 ---
 
