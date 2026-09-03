@@ -225,6 +225,12 @@ fn search_returns_a_first_result_inside_the_wave_eight_budget() {
     // print `0` and a later reader learns nothing about the margin they are
     // spending. The comparison below is nanosecond-precise either way; it is
     // the message that has to stay informative.
+    //
+    // Printed rather than only asserted, matching fixtures.rs's load-budget
+    // test and lint.rs's lint-budget test — so `cargo test -- --nocapture`
+    // reports the number, and Wave 9's `pnpm bench:search` can read it off
+    // this run rather than re-timing the query itself.
+    println!("stress-2000 search in {} us", elapsed.as_micros());
     assert!(
         elapsed.as_micros() < 100_000,
         "PRD section 14.7 gives search 100 ms to a first result over \

@@ -6,7 +6,9 @@ project, each with its probe command" and "Add the 6 `pnpm bench:*` scripts."
 Read §14.7 for the table, §5.10 for the budget facet schema, §6.1 for storage
 layout. Built in worktree `sch-w10a-gates`, branch `schematify/w9c-bench`,
 off `origin/main` at `e60fa7b` (after wave 7a's linter merged; before wave 8's
-search, so `bench:search` has nothing to call — see below).
+search and wave 10a's boundary check). `origin/main` has since merged both,
+and this branch has been merged up to `79a42a2` to pick them up — see the
+search and boundary-check sections below for what that changed.
 
 ## The 6 `pnpm bench:*` scripts
 
@@ -17,14 +19,15 @@ search, so `bench:search` has nothing to call — see below).
 | `bench:frame` | **real** | Runs `apps/schematify/ui/src/engine/frameBudget.test.ts` via `vitest run --reporter=verbose` (the default reporter hides a passing test's `console.log`). Same story: I added one `console.log` of the median to the existing median-of-21 test. |
 | `bench:startup` | **honest stub** | No probe exists. Measuring cold launch to first Schematic paint needs a launched, running application, and CLAUDE.md reserves that for Braden. Prints why and exits 1. |
 | `bench:drag` | **honest stub** | No probe exists. Measuring drag-to-write needs a launched application and a simulated drag. Same reason, same shape. |
-| `bench:search` | **honest stub** | No probe exists, for a different reason: `schematify_search` and its ranking are not built as of this branch (confirmed by grep — nothing under `apps/schematify/ui` or `crates/schematify-core` implements search). This is a Wave 8 gap, not a "needs a live app" gap. |
+| `bench:search` | **real** | Wave 8 merged `schematify_search` and `GraphIndex` into the core crate, with `crates/schematify-core/tests/registries.rs`'s `search_returns_a_first_result_inside_the_wave_eight_budget` already asserting the budget. That test measured its elapsed time but only printed it inside the failure message, so a passing run reported nothing to parse — the same gap `lint.rs` had before this wave added its `println!`. Fixed the same way: one `println!("stress-2000 search in {} us", elapsed.as_micros())` ahead of the assertion, and `bench:search` now runs that test through `runProbe` exactly like `bench:load` and `bench:lint`, rather than re-measuring search itself. |
 
-None of the three stubs invents a number. Each prints the budget it is
+None of the two remaining stubs invents a number. Each prints the budget it is
 standing in for and exits 1, so a caller checking only the exit code cannot
 mistake a stub for a pass. `scripts/bench-lib.mjs` holds the shared `runProbe`
-(spawn the real test, stream its output, pull the number out with a regex) and
-`stub` (print and fail) that all six scripts use — one implementation of
-"read a budget from its test," not six.
+(spawn the real test, stream its output, pull the number out with a regex,
+now with an optional `unit` for `bench:search`'s microseconds) and `stub`
+(print and fail) that all six scripts use — one implementation of "read a
+budget from its test," not six.
 
 **Why real scripts run the test rather than re-measuring:** the wave brief was
 explicit that two implementations of one budget drift, and the test is the one
@@ -82,23 +85,25 @@ Thought about this, per the prompt's warning. Every file this wave adds under
 facets"), not a separate `facets/` tree. Nothing here touches `runs/` or
 `layout/`, so `scripts/check-kaava-boundary.mjs`'s rule (which only fires when
 one `.kaava` root's diff touches *both* `nodes/` and `runs/`) has nothing to
-see regardless of whether it is on this branch — the script itself isn't
-present here yet, since this branch forked from main before wave 10a merged.
-I did not run it directly for that reason; I read its logic instead and
-confirmed by construction that a nodes-only diff can never trip it.
+see. The script merged with wave 10a, after this branch forked, and is now
+present here after merging `origin/main`. Run directly —
+`node scripts/check-kaava-boundary.mjs --base e60fa7b --head 846b83f` —
+it reports `kaava-boundary: clean (18 file(s) changed)`, confirming by
+measurement what the by-construction argument above already predicted.
 
 ## Verification
 
-Foreground, all green: `pnpm build`, `pnpm test:js` (31 files / 477 tests,
-plus `packages/bridge`'s 28), `pnpm lint:js`, `pnpm lint:comments`,
-`pnpm format:check` (after one `cargo fmt` pass). Also ran each of the 6
-`pnpm bench:*` scripts directly and read their output: the three real ones
-report a real number and exit 0; the three stubs print their reason and exit
-1.
+Foreground, all green after merging `origin/main`: `pnpm build`, `pnpm test:js`,
+`pnpm lint:js`, `pnpm lint:comments`, `pnpm format:check`. Also ran each of
+the 6 `pnpm bench:*` scripts directly and read their output: the four real
+ones (`load`, `lint`, `frame`, `search`) report a real number and exit 0; the
+two remaining stubs (`startup`, `drag`) print their reason and exit 1. See
+`## Verification (post-merge)` at the end of this handoff for the exact
+numbers.
 
-Background: `cargo test -p schematify-core` — 177 tests, all pass (149 unit +
-18 fixtures + 7 lint + 3 self_budgets). `node scripts/clippy-baseline.mjs` —
-0 warnings.
+Background: `cargo test -p schematify-core`, `node scripts/clippy-baseline.mjs`
+— see the post-merge section for current counts; the numbers below predate
+wave 8's search and wave 10a's boundary check merging in.
 
 **One transient problem, not from this wave's code:** `cargo test --workspace`
 failed twice in a row with `schematify_core::lint`, `RuleId`, `RULE_COUNT`
@@ -133,12 +138,41 @@ are quiet.
 
 ## Left undone
 
-- A real `bench:startup` and `bench:drag` need a launched application; a real
-  `bench:search` needs Wave 8's search index and ranking. None of the three
-  is this wave's to build.
+- A real `bench:startup` and `bench:drag` need a launched application; that
+  is Braden's, not an agent's, per CLAUDE.md. `bench:search` is no longer in
+  this list — Wave 8's search index merged, and it is real as of this branch.
 - `cargo test --workspace` should be re-run clean once the other open
   Schematify branches are not also building against the shared target
   directory (see above).
+
+## Verification (post-merge)
+
+After merging `origin/main` (wave 8's search, wave 10a's boundary check, and
+the wiring/w4-nodes merges) up to `79a42a2`, re-ran everything, foreground:
+`pnpm build`, `pnpm test:js` (35 files / 583 tests, plus `packages/bridge`'s
+28), `pnpm lint:js` (0 errors, 8 pre-existing warnings unrelated to this
+branch), `pnpm lint:comments` (434 files, none over budget), `pnpm
+format:check` (prettier and `cargo fmt --check` both clean). Background:
+`pnpm test:rust` — clean this time, no repeat of the transient flake noted
+above (`schematify-core`: 173 unit + 18 fixtures + 7 lint + 9 registries + 3
+self_budgets = 210, all pass; workspace total 658 passed, 1 ignored, 0
+failed); `pnpm lint:rust` — `clippy: 0 warnings, none above the baseline of
+0`.
+
+All 6 `pnpm bench:*` scripts run directly, output read rather than assumed:
+
+| Script | Real/stub | Printed | Exit |
+|---|---|---|---|
+| `bench:load` | real | `stress-2000 loaded in 86 ms` → `graph_load_ms = 86 ms` | 0 |
+| `bench:lint` | real | `stress-2000 lint in 42 ms` → `full_lint_ms = 42 ms` | 0 |
+| `bench:search` | real | `stress-2000 search in 756 us` → `search_first_result_ms = 756 us` | 0 |
+| `bench:frame` | real | `dense fixture frame time: median 1.47 ms over 21 samples` → `frame_time_ms = 1.47 ms` | 0 |
+| `bench:startup` | honest stub | `cold_launch_ms — NOT IMPLEMENTED` | 1 |
+| `bench:drag` | honest stub | `drag_to_write_ms — NOT IMPLEMENTED` | 1 |
+
+Four real, two honest stubs — down from three and three, since `bench:search`
+moved into the real column this pass. Neither stub invented a number or
+softened its exit code.
 
 ## Pull request
 

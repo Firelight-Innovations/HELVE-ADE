@@ -21,8 +21,12 @@ import { spawn } from "node:child_process";
  * @param {string[]} opts.args - its arguments.
  * @param {RegExp} opts.pattern - matched against the captured output; group 1
  *   is the reported number.
+ * @param {string} [opts.unit] - unit label for the summary line. Defaults to
+ *   `ms`, since load, lint and frame all report milliseconds; search reports
+ *   microseconds and passes `us` so the summary line names what it printed
+ *   rather than relabelling it.
  */
-export function runProbe({ name, budget, command, args, pattern }) {
+export function runProbe({ name, budget, command, args, pattern, unit = "ms" }) {
   const child = spawn(command, args, {
     cwd: process.cwd(),
     shell: true,
@@ -47,7 +51,7 @@ export function runProbe({ name, budget, command, args, pattern }) {
     const match = pattern.exec(captured);
     if (code === 0) {
       if (match) {
-        console.log(`\nbench: ${name} = ${match[1]} ms (budget: ${budget})`);
+        console.log(`\nbench: ${name} = ${match[1]} ${unit} (budget: ${budget})`);
       } else {
         // The probe passed, but this script's own pattern did not find the
         // number inside its output — a real result, reported honestly as

@@ -1,19 +1,27 @@
 /**
- * PRD §14.7: "Search first result, under 100 ms, hard."
- *
- * No probe exists yet, and unlike startup and drag, this one is not blocked
- * on a launched application — it is blocked on Wave 8 itself, which builds
- * `schematify_search` and its ranking. Nothing under `apps/schematify/ui` or
- * `crates/schematify-core` implements search as of this wave (confirmed by
- * grep before writing this stub). Wave 9 declares the budget node with this
- * script as its probe command regardless; see the handoff.
+ * PRD §14.7: "Search first result, under 100 ms, hard." Runs the test that
+ * already asserts it — `crates/schematify-core/tests/registries.rs`'s
+ * `search_returns_a_first_result_inside_the_wave_eight_budget`, which times
+ * `GraphIndex::search` alone and prints `stress-2000 search in N us` on the
+ * way to its assertion — rather than timing the search again here.
  */
-import { stub } from "./bench-lib.mjs";
+import { runProbe } from "./bench-lib.mjs";
 
-stub({
+runProbe({
   name: "search_first_result_ms",
   budget: "under 100 ms, hard",
-  reason:
-    "no probe exists yet — Wave 8's search and ranking are not built as of this wave, so there " +
-    "is nothing to time. See docs/overnight-jobs/overnight-2/handoffs/w9c-bench.md.",
+  command: "cargo",
+  args: [
+    "test",
+    "-p",
+    "schematify-core",
+    "--test",
+    "registries",
+    "search_returns_a_first_result_inside_the_wave_eight_budget",
+    "--",
+    "--exact",
+    "--nocapture",
+  ],
+  pattern: /stress-2000 search in (\d+(?:\.\d+)?) us/,
+  unit: "us",
 });
