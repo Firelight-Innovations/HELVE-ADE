@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-7025-98ce-14295e1b5901",
+  "slug": "jwks-cache",
+  "kind": "module",
+  "title": "JWKS Cache",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "description": "Holds the remote key set and refreshes it lazily.",
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

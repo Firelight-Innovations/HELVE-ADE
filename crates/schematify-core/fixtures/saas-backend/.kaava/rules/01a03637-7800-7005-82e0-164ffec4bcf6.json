@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7005-82e0-164ffec4bcf6",
+  "slug": "no-unwrap",
+  "statement": "No unwrap on a value that came from the filesystem or a user.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

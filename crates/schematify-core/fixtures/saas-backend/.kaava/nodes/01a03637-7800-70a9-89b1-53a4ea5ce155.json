@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70a9-89b1-53a4ea5ce155",
+  "slug": "billing-service-module-6",
+  "kind": "module",
+  "title": "Billing Service module 6",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7017-8b4d-83bf1beacc83",
+  "description": "One module of Billing Service.",
+  "layer": "backend",
+  "allowed_libraries": [
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

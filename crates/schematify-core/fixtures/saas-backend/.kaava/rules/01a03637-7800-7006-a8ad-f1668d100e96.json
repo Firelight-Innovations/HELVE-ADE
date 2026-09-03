@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7006-a8ad-f1668d100e96",
+  "slug": "error-enum-per-domain",
+  "statement": "One error enum per bounded domain, never a stringly-typed error.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-705a-b01d-e5eaf41211c4",
+  "slug": "crypto-primitives-method-4",
+  "kind": "contract-method",
+  "title": "crypto_primitives_method_4",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-702a-ac0a-72768738bcd6",
+  "errors": [],
+  "signature": "crypto_primitives_4()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Declared on this module.",
+  "exported": false
+}

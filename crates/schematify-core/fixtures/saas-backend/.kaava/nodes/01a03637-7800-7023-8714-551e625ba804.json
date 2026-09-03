@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-7023-8714-551e625ba804",
+  "slug": "token-issuer",
+  "kind": "module",
+  "title": "Token Issuer",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Mints access and refresh pairs, binds them to a session record.",
+  "allowed_libraries": [
+    "01a03637-7800-7000-a6d7-fdea42cbbcac",
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

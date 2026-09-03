@@ -1,0 +1,13 @@
+{
+  "id": "01a03637-7800-701a-9ac5-d300643db1a8",
+  "slug": "event-bus",
+  "kind": "service",
+  "title": "Event Bus",
+  "lifecycle": "accepted",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "entry_point": "Started before every consumer.",
+  "exports": []
+}

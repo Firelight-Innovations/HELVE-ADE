@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-708a-a932-0a33cd839d0d",
+  "slug": "token-pipeline",
+  "kind": "group",
+  "title": "Token pipeline",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "color": "accent-2",
+  "members": [
+    "01a03637-7800-7023-8714-551e625ba804",
+    "01a03637-7800-7024-8962-cc11fce89708"
+  ],
+  "collapsed": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-702b-aa48-a879c88914b3",
+  "slug": "password-hasher",
+  "kind": "module",
+  "title": "Password Hasher",
+  "lifecycle": "reviewed",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7015-a746-8194e08cebd0",
+  "description": "Argon2id hashing with per-tenant cost parameters.",
+  "allowed_libraries": [
+    "01a03637-7800-7002-87ee-b7a3875d4a27"
+  ],
+  "ui_refs": []
+}

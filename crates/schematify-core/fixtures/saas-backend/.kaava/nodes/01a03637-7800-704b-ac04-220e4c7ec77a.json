@@ -1,0 +1,13 @@
+{
+  "id": "01a03637-7800-704b-ac04-220e4c7ec77a",
+  "slug": "verify-before-lookup",
+  "kind": "doc-block",
+  "title": "Verify before any session lookup",
+  "lifecycle": "specified",
+  "authored_by": "agent",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7024-8962-cc11fce89708",
+  "body": "Call verify_signature before any session lookup; the key set is cached and refreshed lazily.",
+  "audience": "agent"
+}

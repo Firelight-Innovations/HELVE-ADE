@@ -1,0 +1,19 @@
+{
+  "id": "01a03637-7800-704d-b4a0-d8977e024964",
+  "slug": "issue-pair",
+  "kind": "contract-method",
+  "title": "issue_pair",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7023-8714-551e625ba804",
+  "errors": [],
+  "signature": "issue_pair(subject: SubjectId)",
+  "params": [
+    "subject: SubjectId"
+  ],
+  "returns": "Promise<TokenPair>",
+  "semantics": "Mints an access and refresh pair bound to one session record.",
+  "exported": true
+}

@@ -1,0 +1,16 @@
+{
+  "id": "01a03637-7800-7029-8c7b-f12c556b80ae",
+  "slug": "session-index",
+  "kind": "module",
+  "title": "Session Index",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7027-a1c8-3befc1c44f19",
+  "description": "Indexes sessions by subject and by device.",
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

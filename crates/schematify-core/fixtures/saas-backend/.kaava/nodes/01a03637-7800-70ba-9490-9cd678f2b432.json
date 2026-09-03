@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70ba-9490-9cd678f2b432",
+  "slug": "event-bus-module-1",
+  "kind": "module",
+  "title": "Event Bus module 1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-701a-9ac5-d300643db1a8",
+  "description": "One module of Event Bus.",
+  "layer": null,
+  "allowed_libraries": [
+    "01a03637-7800-7001-b6cf-1e9594432dae"
+  ],
+  "ui_refs": []
+}

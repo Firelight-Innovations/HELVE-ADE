@@ -1,0 +1,9 @@
+{
+  "id": "01a03637-7800-7008-b759-80eeca82988c",
+  "slug": "record-the-alternative",
+  "statement": "A rejected alternative is recorded where the choice was made.",
+  "command": "pnpm verify",
+  "marker": null,
+  "severity": "error",
+  "audit": []
+}

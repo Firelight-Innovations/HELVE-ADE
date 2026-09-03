@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-741a-9fd0-623b725c3610",
+  "slug": "stress-module-11-41",
+  "kind": "module",
+  "title": "Stress module 11.41",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7419-a6f6-516ba398f820",
+  "layer": "backend",
+  "description": "Module 41 of stress service 11.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

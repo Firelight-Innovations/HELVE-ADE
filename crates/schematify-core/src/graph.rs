@@ -403,6 +403,33 @@ impl Graph {
             .count()
     }
 
+    /// The modules a Service Schematic draws for one service.
+    ///
+    /// The walk stops at a nested service, because that service has its own
+    /// Schematic and its modules are drawn there. `ledger-store` sitting
+    /// inside `session-service` is the case from PRD section 16.1: the six
+    /// modules the wireframe draws for `session-service` are its own, and the
+    /// ledger's two belong to the ledger.
+    #[must_use]
+    pub fn modules_of_service(&self, service: Uuid) -> Vec<Uuid> {
+        let mut found = Vec::new();
+        let mut queue = vec![service];
+        while let Some(current) = queue.pop() {
+            for child in self.children(current) {
+                let Some(node) = self.node(*child) else { continue };
+                if *node.kind() == NodeKind::Service {
+                    continue;
+                }
+                if *node.kind() == NodeKind::Module {
+                    found.push(*child);
+                }
+                queue.push(*child);
+            }
+        }
+        found.sort_unstable();
+        found
+    }
+
     /// Every node of a kind, in identifier order.
     #[must_use]
     pub fn nodes_of_kind(&self, kind: &NodeKind) -> Vec<Uuid> {
@@ -582,6 +609,25 @@ mod tests {
         graph.insert_node(node(5, "child-module", NodeKind::Module, Some(1)));
         graph.reindex();
         assert_eq!(graph.facet_count(Uuid::from_u128(1)), 3);
+    }
+
+    #[test]
+    fn a_nested_service_keeps_its_own_modules() {
+        let mut graph = Graph::new();
+        graph.insert_node(node(1, "session-service", NodeKind::Service, None));
+        graph.insert_node(node(2, "session-codec", NodeKind::Module, Some(1)));
+        graph.insert_node(node(3, "ledger-store", NodeKind::Service, Some(1)));
+        graph.insert_node(node(4, "ledger-writer", NodeKind::Module, Some(3)));
+        graph.reindex();
+        assert_eq!(
+            graph.modules_of_service(Uuid::from_u128(1)),
+            [Uuid::from_u128(2)]
+        );
+        assert_eq!(
+            graph.modules_of_service(Uuid::from_u128(3)),
+            [Uuid::from_u128(4)]
+        );
+        assert_eq!(graph.descendants(Uuid::from_u128(1)).len(), 3);
     }
 
     #[test]

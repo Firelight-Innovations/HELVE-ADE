@@ -1,0 +1,20 @@
+{
+  "id": "01a03637-7800-70bc-a2fa-1315c6f74cd3",
+  "slug": "login-form",
+  "title": "Login form",
+  "purpose": "Collects credentials and starts a session.",
+  "states": [
+    "empty",
+    "filled",
+    "submitting",
+    "error",
+    "locked"
+  ],
+  "acceptance": [
+    "A locked account shall show the recovery path."
+  ],
+  "design_ref": "https://claude.ai/design/p/522c739c-b021-4cce-b8a2-ae11c9f3353d",
+  "backed_by": [
+    "schematify://node/01a03637-7800-7024-8962-cc11fce89708"
+  ]
+}

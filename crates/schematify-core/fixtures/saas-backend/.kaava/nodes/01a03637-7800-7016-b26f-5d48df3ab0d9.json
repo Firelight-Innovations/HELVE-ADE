@@ -1,0 +1,18 @@
+{
+  "id": "01a03637-7800-7016-b26f-5d48df3ab0d9",
+  "slug": "session-service",
+  "kind": "service",
+  "title": "Session Service",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7014-b21e-166c43593ed8",
+  "layer": "data",
+  "entry_point": "Started by the platform supervisor.",
+  "exports": [
+    "01a03637-7800-70a2-80f5-1fa1582cdcb4",
+    "01a03637-7800-70a3-a4dc-4805fb932e27"
+  ],
+  "schemas": null
+}

@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7015-87eb-ba70961c58c1",
+  "slug": "dense-module-21",
+  "kind": "module",
+  "title": "Dense module 21",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7000-81b2-0e8af7d7340f",
+  "layer": "backend",
+  "description": "Module 21 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

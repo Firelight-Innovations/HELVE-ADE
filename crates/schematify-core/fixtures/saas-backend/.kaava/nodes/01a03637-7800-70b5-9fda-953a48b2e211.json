@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70b5-9fda-953a48b2e211",
+  "slug": "ledger-store-export-1",
+  "kind": "contract-method",
+  "title": "ledger_store_export_1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-70b3-9863-acf93d00e86f",
+  "errors": [],
+  "signature": "ledger_store_1()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Published across the service boundary.",
+  "exported": true
+}

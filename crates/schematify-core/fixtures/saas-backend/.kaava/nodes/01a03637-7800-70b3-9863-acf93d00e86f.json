@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70b3-9863-acf93d00e86f",
+  "slug": "ledger-store-module-1",
+  "kind": "module",
+  "title": "Ledger Store module 1",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7019-976d-94700f7fb240",
+  "description": "One module of Ledger Store.",
+  "layer": "data",
+  "allowed_libraries": [
+    "01a03637-7800-7003-80e8-057e002d552a"
+  ],
+  "ui_refs": []
+}

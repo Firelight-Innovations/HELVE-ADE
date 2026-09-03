@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-70bc-82a4-a5ef5f578eb2",
+  "slug": "dense-module-188",
+  "kind": "module",
+  "title": "Dense module 188",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-70bb-9c2c-0f9f0a9be40d",
+  "layer": "backend",
+  "description": "Module 188 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

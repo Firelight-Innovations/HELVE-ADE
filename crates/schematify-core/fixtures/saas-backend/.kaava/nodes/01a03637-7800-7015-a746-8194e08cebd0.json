@@ -1,0 +1,20 @@
+{
+  "id": "01a03637-7800-7015-a746-8194e08cebd0",
+  "slug": "auth-service",
+  "kind": "service",
+  "title": "Auth Service",
+  "lifecycle": "accepted",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7014-b21e-166c43593ed8",
+  "layer": "backend",
+  "entry_point": "Started by the platform supervisor.",
+  "exports": [
+    "01a03637-7800-7037-a89b-b57943e5389a",
+    "01a03637-7800-704d-b4a0-d8977e024964",
+    "01a03637-7800-7088-bad2-cadf14307724",
+    "01a03637-7800-7089-a114-dd61cc5dfb2c"
+  ],
+  "schemas": null
+}

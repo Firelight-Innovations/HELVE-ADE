@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7006-a52d-ab367380f07c",
+  "slug": "dense-module-6",
+  "kind": "module",
+  "title": "Dense module 6",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7005-8d13-64cc13801a89",
+  "layer": "backend",
+  "description": "Module 6 of the dense fixture.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

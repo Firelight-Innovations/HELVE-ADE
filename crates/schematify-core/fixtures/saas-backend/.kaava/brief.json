@@ -1,0 +1,33 @@
+{
+  "product_name": "saas-backend",
+  "problem": "Every product rebuilds the same account, session and billing layer from scratch.",
+  "users": [
+    "Platform engineers",
+    "Product teams shipping on top of the platform"
+  ],
+  "goals": [
+    "One authentication path",
+    "One billing ledger",
+    "One event bus"
+  ],
+  "non_goals": [
+    "A hosted product",
+    "A public API for third parties"
+  ],
+  "constraints": [
+    "Postgres only",
+    "No shared database between services"
+  ],
+  "success_metrics": [
+    {
+      "name": "verify_p95",
+      "value": 3,
+      "unit": "ms"
+    },
+    {
+      "name": "cold_start_p95",
+      "value": 800,
+      "unit": "ms"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-7014-b21e-166c43593ed8",
+  "slug": "platform-core",
+  "kind": "group",
+  "title": "Platform Core",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": null,
+  "color": "accent-1",
+  "members": [
+    "01a03637-7800-7015-a746-8194e08cebd0",
+    "01a03637-7800-7016-b26f-5d48df3ab0d9"
+  ],
+  "collapsed": false
+}

@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-70be-a914-a9307dfd03dd",
+  "slug": "first-run-signup",
+  "title": "First-run signup",
+  "trigger": "A visitor opens the product with no account.",
+  "steps": [
+    {
+      "screen": "schematify://screen/01a03637-7800-70bc-a2fa-1315c6f74cd3",
+      "action": "The visitor enters an email address."
+    },
+    {
+      "screen": "schematify://screen/01a03637-7800-70bc-a2fa-1315c6f74cd3",
+      "action": "The visitor sets a password."
+    }
+  ],
+  "outcome": "The visitor holds an active session."
+}

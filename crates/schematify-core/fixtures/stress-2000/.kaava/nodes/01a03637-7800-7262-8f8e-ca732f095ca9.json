@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-7262-8f8e-ca732f095ca9",
+  "slug": "stress-module-6-96",
+  "kind": "module",
+  "title": "Stress module 6.96",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-7261-9011-e1d102782bf7",
+  "layer": "data",
+  "description": "Module 96 of stress service 6.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

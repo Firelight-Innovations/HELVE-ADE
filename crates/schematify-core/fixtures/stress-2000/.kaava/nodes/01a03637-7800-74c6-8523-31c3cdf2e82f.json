@@ -1,0 +1,15 @@
+{
+  "id": "01a03637-7800-74c6-8523-31c3cdf2e82f",
+  "slug": "stress-module-13-15",
+  "kind": "module",
+  "title": "Stress module 13.15",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-74c5-b915-f4350bfdd0b1",
+  "layer": "backend",
+  "description": "Module 15 of stress service 13.",
+  "allowed_libraries": [],
+  "ui_refs": []
+}

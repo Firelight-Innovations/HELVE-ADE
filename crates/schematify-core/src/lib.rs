@@ -73,3 +73,9 @@ pub use run::{
 pub use slug::{Slug, SlugError, SlugIndex, SlugScope};
 pub use store::{allowed_together, layer_of, Store, WriteLayer};
 pub use uri::{Uri, UriError, UriKind};
+
+// Every identifier in this crate is a `uuid::Uuid`, and a caller that holds a
+// node cannot avoid naming the type. Re-exporting it means a consumer depends
+// on the version this crate resolved rather than declaring its own and
+// discovering at a type error that the two do not match.
+pub use uuid::Uuid;

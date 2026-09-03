@@ -54,6 +54,13 @@ Cargo.lock
 # gain. Prose wrapping stays a human decision.
 *.md
 
+# The Schematify reference fixtures: 5648 generated JSON files written by
+# crates/schematify-core/fixtures/generate.mjs and regenerated whole. Prettier
+# would reformat every one of them, and the diff of a regeneration would then
+# depend on which tool ran last. The generator writes two-space JSON with a
+# trailing newline, which is what Prettier would have produced anyway.
+crates/schematify-core/fixtures/*/
+
 # A git worktree an agent is working in: a second checkout of this repository
 # sitting inside it. Formatting someone else's branch from this one is not this
 # checkout's business.

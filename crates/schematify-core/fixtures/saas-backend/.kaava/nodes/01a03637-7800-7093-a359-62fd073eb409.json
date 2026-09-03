@@ -1,0 +1,17 @@
+{
+  "id": "01a03637-7800-7093-a359-62fd073eb409",
+  "slug": "api-gateway-export-3",
+  "kind": "contract-method",
+  "title": "api_gateway_export_3",
+  "lifecycle": "specified",
+  "authored_by": "human",
+  "created": "2026-08-25T00:00:00Z",
+  "superseded_by": null,
+  "parent": "01a03637-7800-708f-81f3-045588783171",
+  "errors": [],
+  "signature": "api_gateway_3()",
+  "params": [],
+  "returns": "Promise<void>",
+  "semantics": "Published across the service boundary.",
+  "exported": true
+}
