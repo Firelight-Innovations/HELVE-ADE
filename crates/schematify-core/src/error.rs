@@ -58,6 +58,38 @@ pub enum CoreError {
         expected: &'static str,
     },
 
+    /// Ingestion named a scope node that is not in the graph.
+    ///
+    /// A run with no scope in the graph would be unfindable by
+    /// [`crate::Graph::runs_for_budget`] no matter what it measured, so
+    /// ingestion refuses before writing anything.
+    #[error("cannot ingest a run under {scope}: no such node")]
+    UnknownRunScope {
+        /// The node id ingestion was asked to write under.
+        scope: uuid::Uuid,
+    },
+
+    /// A run artifact reported a budget that matches no `budget` node under
+    /// its scope, so the result would answer nothing findable.
+    #[error("run under {scope} answers no budget for metric {metric:?}")]
+    RunAnswersNoBudget {
+        /// The scope node the run was ingested under.
+        scope: uuid::Uuid,
+        /// The metric named in the run's `budgets` array.
+        metric: String,
+    },
+
+    /// A run already exists at this scope and run number. Ingestion never
+    /// overwrites evidence that is already on disk; a genuinely new result
+    /// carries a new run number.
+    #[error("run {run} already exists under {scope}")]
+    RunAlreadyIngested {
+        /// The scope node.
+        scope: uuid::Uuid,
+        /// The run number that collided.
+        run: u64,
+    },
+
     /// PRD section 6.6: a node with an inbound edge is never deleted.
     #[error("cannot delete node {id}: {inbound} inbound references, deprecate it instead")]
     DeleteRefused {

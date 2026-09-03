@@ -16,6 +16,7 @@
  */
 import type { GraphEdge, GraphNode, Layer, Lifecycle, NodeKind, ServiceGraph } from "./types";
 import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
+import { staleCaption, type RawStaleness } from "./staleness";
 
 /**
  * One node exactly as `schematify_core::Node` serializes it: the envelope
@@ -34,6 +35,10 @@ export interface RawNode {
   lifecycle: string;
   layer?: string;
   parent?: string | null;
+  /** PRD §7.4: set by Wave 10's staleness cascade, carried only while
+   *  `lifecycle` is `"stale"`. `crates/schematify-core/src/node.rs`'s own
+   *  doc comment on `NodeEnvelope.stale` states the same rule. */
+  stale?: RawStaleness;
   [extra: string]: unknown;
 }
 
@@ -170,6 +175,11 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
       isDescendantOfService(node, serviceNode.id, byId),
   );
 
+  // Read once per call rather than once per node — PRD §0.4's "computed at
+  // draw time" rule is about not storing the elapsed time on disk, not about
+  // recomputing `Date.now()` for every node in one draw.
+  const nowMs = Date.now();
+
   const nodes: GraphNode[] = included.map((node) => ({
     id: node.id,
     slug: node.slug,
@@ -180,9 +190,16 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     parentId: node.parent === serviceNode.id ? null : (node.parent ?? null),
     // No structural source for PRD §12.1's ENTRY badge exists in
     // `crates/schematify-core` yet — `ServiceFields.entry_point` is prose
-    // ("how the service starts"), not a flag on a module. Only STALE is
-    // derivable tonight; see the wiring handoff.
+    // ("how the service starts"), not a flag on a module. STALE is
+    // derivable; see the wiring handoff.
     badge: node.lifecycle === "stale" ? "STALE" : undefined,
+    // PRD §7.4's second caption line. `stale.source` is a node id — resolved
+    // against `byId`, the same map the containment walk above already
+    // built — so `staleCaption` has a slug to draw rather than a UUID.
+    staleReason:
+      node.lifecycle === "stale"
+        ? staleCaption(node.stale, byId.get(node.stale?.source ?? "")?.slug, nowMs)
+        : undefined,
   }));
 
   // A group can be drawn (above) while never becoming an edge endpoint —

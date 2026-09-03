@@ -220,6 +220,28 @@ fn the_token_verifier_holds_the_facets_and_the_history_the_wireframe_draws() {
 }
 
 #[test]
+fn a_budget_node_finds_the_run_that_answers_it_without_naming_its_module() {
+    let outcome = load_project(&fixture("saas-backend")).unwrap();
+    let graph = &outcome.graph;
+
+    // The fixture's run sits at `runs/<token-verifier>/`, not at any budget
+    // node's own uuid; `runs_for_budget` is the explicit link PRD section 8
+    // asks for, so a caller reaches the run from the budget alone.
+    for slug in ["verify-p95", "jwks-refetch-rate", "cold-start-p95"] {
+        let budget = by_slug(graph, slug);
+        let found = graph.runs_for_budget(budget);
+        assert_eq!(found.len(), 1, "{slug} should find exactly the one run");
+        assert_eq!(found[0].run, 1184);
+    }
+
+    // `issue-p95` sits under `token-issuer`, which never ran in this
+    // fixture, so it must not pick up `token-verifier`'s run just because
+    // one exists somewhere in the graph.
+    let issue_p95 = by_slug(graph, "issue-p95");
+    assert!(graph.runs_for_budget(issue_p95).is_empty());
+}
+
+#[test]
 fn the_stale_node_carries_the_reason_the_caption_draws() {
     let outcome = load_project(&fixture("saas-backend")).unwrap();
     let graph = &outcome.graph;

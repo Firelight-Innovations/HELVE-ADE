@@ -1,23 +1,22 @@
-//! Schematify's Rust half — the design layer of OpenKaava. A module here,
-//! registered like Home and Files, per `docs/design/SCHEMATIFY-PRD.md` §1.3.
+//! Schematify's Rust half — the design layer of OpenKaava, registered like
+//! Home and Files (`docs/design/SCHEMATIFY-PRD.md` §1.3). A thin JSON-RPC
+//! layer over `schematify-core`: resolves a project root from
+//! [`CallContext`], turns `params` into typed arguments, calls the crate,
+//! and shapes the answer back into JSON — one dispatch function rather than
+//! one `#[tauri::command]` per operation, matching `home.rs`/`files.rs`
+//! (`docs/audits/schematify-baseline.md` §11).
 //!
-//! A thin JSON-RPC layer over `schematify-core`: this file resolves a
-//! project root from [`CallContext`], turns request `params` into typed
-//! arguments, calls the crate, and shapes the answer back into JSON. One
-//! dispatch function rather than one `#[tauri::command]` per operation,
-//! matching `home.rs` and `files.rs` (`docs/audits/schematify-baseline.md` §11).
-//!
-//! PRD §14.5 lists ten operations; this file wires seven, plus
-//! `schematify/state` from wave 1a. `transition`, `ingest-run` and `search`
-//! stay unwired — see `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
-//! Wave 10c adds the product layer's 5 writes: one screen, one flow, the
-//! brief, and 2 decision-log operations. `write-decision` and
-//! `supersede-decision` are separate methods on purpose — that split **is**
-//! the PRD §5.9 enforcement: neither can edit an existing decision's content
-//! in place or delete a decision file.
+//! PRD §14.5 lists ten operations, wired to eight — the graph, a node, an
+//! edge, a layout (read and write), the linter, one lifecycle transition,
+//! and a reconcile status, plus `schematify/state` from wave 1a —
+//! `ingest-run`/`search` stay unwired. Wave 10c adds the product layer's 5
+//! writes ([`write_screen`], [`write_flow`], [`write_brief`],
+//! [`write_decision`], [`supersede_decision`]) — see the last 2 for how
+//! PRD §5.9's append-only rule is enforced here, not merely drawn.
 //!
 //! Decision SCH-API-003 puts an `actor` on every operation; [`actor_param`]
-//! refuses a call that omits it rather than defaulting it.
+//! refuses a call that omits it and never admits `"system"` — PRD §7.2's
+//! `accepted → stale` actor, used only from [`apply_stale_cascade`].
 
 use std::fs;
 use std::path::Path;
@@ -25,8 +24,8 @@ use std::path::Path;
 use crate::apps::CallContext;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use schematify_core::{
-    lint, load_project, CoreError, Decision, DecisionStatus, Edge, Flow, Node, ProjectBrief,
-    Screen, Store, Uuid,
+    contract_fields_changed, lint, load_project, stale_cascade, Actor, CoreError, Decision,
+    DecisionStatus, Edge, Flow, Graph, Lifecycle, Node, ProjectBrief, Screen, Store, Uuid,
 };
 use serde_json::{json, Value};
 use tauri::AppHandle;
@@ -74,6 +73,7 @@ fn dispatch(context: &CallContext, method: &str, params: Option<Value>) -> Resul
         "schematify/write-layout" => write_layout(context, params.as_ref()),
         "schematify/read-layout" => read_layout(context, params.as_ref()),
         "schematify/lint" => lint_graph(context, params.as_ref()),
+        "schematify/transition" => transition(context, params.as_ref()),
         "schematify/reconcile-status" => reconcile_status(context, params.as_ref()),
         "schematify/write-screen" => write_screen(context, params.as_ref()),
         "schematify/write-flow" => write_flow(context, params.as_ref()),
@@ -114,10 +114,10 @@ fn require_project(context: &CallContext) -> Result<&Path, RpcError> {
 }
 
 /// The `actor` every one of these operations carries, per decision
-/// SCH-API-003. Refused rather than defaulted: wave 10 enforces a human-only
-/// gate at this boundary, and a defaulted actor would make that gate
-/// meaningless. Unused past validation today — no method here yet reaches a
-/// lifecycle transition — but every call still has to say who it is.
+/// SCH-API-003. Refused rather than defaulted: [`transition`]'s human-only
+/// gate (PRD §7.3) reads exactly what this returns, and a defaulted actor
+/// would make that gate meaningless. Every other method still requires it
+/// and ignores the value past validation — every call has to say who it is.
 fn actor_param(params: Option<&Value>) -> Result<&'static str, RpcError> {
     match params.and_then(|p| p.get("actor")).and_then(Value::as_str) {
         Some("human") => Ok("human"),
@@ -159,8 +159,18 @@ fn typed_param<T: serde::de::DeserializeOwned>(
 
 /// Every [`CoreError`] this file can hit is a filesystem or parse failure the
 /// caller can only react to by reading the message, so all of them become
-/// `-32603` here — the same rule `home.rs`'s own `rpc` helper states.
+/// `-32603` here — the same rule `home.rs`'s own `rpc` helper states — with
+/// one exception. [`CoreError::Lifecycle`] is [`transition`] and
+/// [`apply_stale_cascade`] refusing the request itself (PRD §7.2's closed
+/// table, and §7.3's human-only gate), not a server fault, so it maps to
+/// `-32602` instead and carries whatever [`schematify_core::LifecycleError`]'s
+/// `Display` states — `HumanOnly` names itself in the message, which is what
+/// lets a caller tell "you may not" from "the disk failed" without matching
+/// on a variant this module does not re-export.
 fn core_rpc(error: CoreError) -> RpcError {
+    if let CoreError::Lifecycle(lifecycle_error) = &error {
+        return RpcError::new(INVALID_PARAMS, lifecycle_error.to_string());
+    }
     RpcError::new(INTERNAL_ERROR, error.to_string())
 }
 
@@ -281,16 +291,98 @@ fn load_graph(context: &CallContext, params: Option<&Value>) -> Result<Value, Rp
 /// kind-specific fields flattened together, the same shape `Node` reads off
 /// disk — so the frontend constructs it once rather than this handler
 /// re-deriving fields it cannot know (a title, a slug, an `authored_by`).
+///
+/// PRD §7.4's staleness cascade fires from here rather than from
+/// `schematify/transition`: a contract change is an edit to a
+/// `contract-method`'s `signature`/`params`/`returns`/`errors` or a
+/// service's `exports`, and those fields move through an ordinary node
+/// write, not a lifecycle move — the node making the change need not itself
+/// transition at all. [`apply_stale_cascade`] only runs when the write
+/// actually changed a contract field, checked against the node's shape
+/// immediately before this write landed.
 fn write_node(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
     actor_param(params)?;
     let root = require_project(context)?;
     let node: Node = typed_param(params, "node")?;
 
     let store = Store::open(root);
+
+    // Loaded before the write lands, so `contract_fields_changed` has both
+    // shapes to compare and, if it fires, `stale_cascade` walks a graph
+    // whose `depends_on` edges have not moved — a field edit never changes
+    // containment or dependency edges, so the pre-write graph is still the
+    // right one to find this node's dependents in.
+    let before = load_project(root).map_err(core_rpc)?;
+    let previous = before.graph.node(node.id()).cloned();
+    let contract_changed =
+        previous.is_some_and(|previous| contract_fields_changed(&previous, &node));
+
+    // Checked and required before anything is written, not after: a missing
+    // `at` must never leave the changed node's own file ahead of a cascade
+    // that then could not run. An ordinary write that changes no contract
+    // field never needs `at` at all.
+    let at = contract_changed
+        .then(|| string_param(params, "at"))
+        .transpose()
+        .map_err(|_| {
+            RpcError::new(
+                INVALID_PARAMS,
+                "at is required when a write changes a contract field, to record when the staleness cascade fired",
+            )
+        })?;
+
     let path = store.node_path(node.id());
     store.write_node(&node).map_err(core_rpc)?;
 
-    Ok(json!({ "id": node.id(), "path": path.display().to_string() }))
+    let staled = match at {
+        Some(at) => apply_stale_cascade(&store, &before.graph, node.id(), &at)?,
+        None => Vec::new(),
+    };
+
+    Ok(json!({ "id": node.id(), "path": path.display().to_string(), "staled": staled }))
+}
+
+/// PRD §7.4: a contract change on `changed` drops every `accepted` dependent
+/// to `stale`, each carrying the [`schematify_core::Staleness`] mark the
+/// caption draws from. The drop runs as [`Actor::System`] — the one actor
+/// PRD §7.2's `accepted → stale` row names, never admitted from a client
+/// (see [`actor_param`]) — through [`Store::write_transition`], so each drop
+/// gets its own audit row like any other move.
+///
+/// `at` is an RFC 3339 timestamp for the cascade, trusted from the caller
+/// the same way `node.created` is — `crates/schematify-core` has no clock of
+/// its own. [`write_node`] validates its presence before this function runs.
+///
+/// A dependent's own write can still fail after an earlier one in the same
+/// cascade already landed: `Store::write_transition` keeps one node's write
+/// and its audit row atomic with each other (PRD §6.3), but names no
+/// cross-node transaction, so this loop is best-effort across the *set* of
+/// dependents. The changed node's own write has already committed either way.
+fn apply_stale_cascade(
+    store: &Store,
+    graph: &Graph,
+    changed: Uuid,
+    at: &str,
+) -> Result<Vec<Value>, RpcError> {
+    let mut staled = Vec::new();
+    for drop in stale_cascade(graph, changed, at) {
+        let Some(mut dependent) = graph.node(drop.node).cloned() else {
+            continue;
+        };
+        dependent.envelope.stale = Some(drop.staleness);
+        let row = store
+            .write_transition(
+                &mut dependent,
+                Lifecycle::Stale,
+                Actor::System,
+                "schematify",
+                at,
+                "An upstream contract changed.",
+            )
+            .map_err(core_rpc)?;
+        staled.push(json!({ "node": dependent.id(), "audit": row }));
+    }
+    Ok(staled)
 }
 
 /// `schematify/write-edge`. Writes one edge file — unless it is a `contains`
@@ -401,6 +493,49 @@ fn read_json_object_or_null(path: &std::path::Path) -> Result<Value, RpcError> {
     }
 
     Ok(value)
+}
+
+/// `schematify/transition`. Applies one lifecycle move and appends one row
+/// to `runs/<node-uuid>/audit.json` — the pair PRD §6.3 allows as a single
+/// write. `params.node` carries the node's current shape exactly as
+/// `schematify/write-node`'s does: `Store::write_transition` rewrites the
+/// whole file, and this handler has no second source of truth to fill in
+/// the rest of it from.
+///
+/// PRD §7.3's human-only gate is enforced here by construction, not by a
+/// special case in this function: [`actor_param`] admits only `"human"` or
+/// `"agent"` from a client, never `"system"`, and `Store::write_transition`
+/// calls `check_transition` before writing anything, so an agent asking for
+/// `reviewed → accepted` (or `stale → accepted`) is refused — nothing is
+/// written, and [`core_rpc`]'s special case for
+/// [`schematify_core::CoreError::Lifecycle`] carries the reason back as a
+/// stated error rather than a silent no-op.
+fn transition(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    let actor_str = actor_param(params)?;
+    let root = require_project(context)?;
+    let mut node: Node = typed_param(params, "node")?;
+    let to: Lifecycle = typed_param(params, "to")?;
+    let actor_name = string_param(params, "actorName")?;
+    let at = string_param(params, "at")?;
+    let reason = string_param(params, "reason")?;
+
+    let actor = match actor_str {
+        "human" => Actor::Human,
+        "agent" => Actor::Agent,
+        other => {
+            return Err(RpcError::new(
+                INTERNAL_ERROR,
+                format!("actor_param admitted an actor this match does not handle: {other}"),
+            ))
+        }
+    };
+
+    let store = Store::open(root);
+    let row = store
+        .write_transition(&mut node, to, actor, &actor_name, &at, &reason)
+        .map_err(core_rpc)?;
+
+    Ok(json!({ "node": node, "audit": row }))
 }
 
 /// `schematify/lint`. Loads the project and runs `schematify_core::lint`
@@ -694,6 +829,7 @@ mod tests {
             "schematify/write-layout",
             "schematify/read-layout",
             "schematify/lint",
+            "schematify/transition",
             "schematify/reconcile-status",
             "schematify/write-screen",
             "schematify/write-flow",
@@ -718,6 +854,7 @@ mod tests {
             "schematify/write-layout",
             "schematify/read-layout",
             "schematify/lint",
+            "schematify/transition",
             "schematify/reconcile-status",
             "schematify/write-screen",
             "schematify/write-flow",
@@ -810,6 +947,258 @@ mod tests {
         let written: Node = serde_json::from_str(&text).expect("the file parses as a node");
         assert_eq!(written.envelope.title, "Auth Service");
         assert_eq!(written.envelope.slug.as_str(), "auth-service");
+    }
+
+    /// A minimal module envelope, for tests that build a small dependency
+    /// graph by hand rather than reaching for `sample_service_node`'s one
+    /// fixed shape. Mirrors the `module` closure `lint_reports_a_dependency_
+    /// cycle_it_was_given` already uses below.
+    fn sample_module(slug: &str, lifecycle: Lifecycle, parent: Option<Uuid>) -> Node {
+        use schematify_core::{Authorship, NodeEnvelope, NodeKind, Slug};
+
+        Node::new(NodeEnvelope {
+            id: schematify_core::mint_id(),
+            slug: Slug::new(slug).expect("legal slug"),
+            kind: NodeKind::Module,
+            title: slug.to_string(),
+            description: None,
+            lifecycle,
+            layer: None,
+            parent,
+            decisions: Vec::new(),
+            authored_by: Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        })
+    }
+
+    /// A `contract-method` facet, for the same tests. `fields` lets each test
+    /// build the "before" and "after" shape `contract_fields_changed` compares
+    /// without repeating the whole envelope.
+    fn sample_contract_method(
+        slug: &str,
+        parent: Uuid,
+        fields: &schematify_core::ContractMethodFields,
+    ) -> Node {
+        use schematify_core::{Authorship, NodeEnvelope, NodeKind, Slug};
+
+        Node::new(NodeEnvelope {
+            id: schematify_core::mint_id(),
+            slug: Slug::new(slug).expect("legal slug"),
+            kind: NodeKind::ContractMethod,
+            title: slug.to_string(),
+            description: None,
+            lifecycle: Lifecycle::Accepted,
+            layer: None,
+            parent: Some(parent),
+            decisions: Vec::new(),
+            authored_by: Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        })
+        .with_fields(fields)
+        .expect("contract-method fields attach")
+    }
+
+    /// PRD §7.4, exercised through the RPC boundary rather than
+    /// `schematify_core::stale_cascade` directly: `token-issuer` depends on
+    /// `crypto-primitives` and is `accepted`; `rate-limiter` depends on the
+    /// same module but is `draft`. Changing `sign`'s `params` through
+    /// `schematify/write-node` should drop the first to `stale`, with an
+    /// audit row, and leave the second exactly where it was.
+    #[test]
+    fn write_node_stales_an_accepted_dependent_when_a_contract_field_changes() {
+        use schematify_core::{ContractMethodFields, EdgeKind};
+
+        let dir = TempDir::new("write-node-cascade");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let crypto = sample_module("crypto-primitives", Lifecycle::Accepted, None);
+        let token_issuer = sample_module("token-issuer", Lifecycle::Accepted, None);
+        let rate_limiter = sample_module("rate-limiter", Lifecycle::Draft, None);
+        for m in [&crypto, &token_issuer, &rate_limiter] {
+            store.write_node(m).expect("seed module");
+        }
+        store
+            .write_edge(&Edge::new(
+                schematify_core::mint_id(),
+                EdgeKind::DependsOn,
+                token_issuer.id(),
+                crypto.id(),
+                "2026-09-03T00:00:00Z",
+            ))
+            .expect("seed token-issuer -> crypto-primitives");
+        store
+            .write_edge(&Edge::new(
+                schematify_core::mint_id(),
+                EdgeKind::DependsOn,
+                rate_limiter.id(),
+                crypto.id(),
+                "2026-09-03T00:00:00Z",
+            ))
+            .expect("seed rate-limiter -> crypto-primitives");
+
+        let before_fields = ContractMethodFields {
+            signature: "sign(bytes: Bytes)".to_owned(),
+            params: vec!["bytes: Bytes".to_owned()],
+            returns: Some("Signature".to_owned()),
+            errors: vec!["SignError".to_owned()],
+            semantics: Some("Signs the payload.".to_owned()),
+            exported: true,
+        };
+        let sign = sample_contract_method("sign", crypto.id(), &before_fields);
+        store.write_node(&sign).expect("seed sign");
+
+        let mut after_fields = before_fields;
+        after_fields.params.push("kid: Kid".to_owned());
+        let changed_sign = Node::new(sign.envelope.clone())
+            .with_fields(&after_fields)
+            .expect("changed fields attach");
+
+        let value = dispatch(
+            &context,
+            "schematify/write-node",
+            Some(json!({
+                "actor": "human",
+                "node": changed_sign,
+                "at": "2026-09-03T12:00:00Z",
+            })),
+        )
+        .expect("write-node succeeds and the cascade runs");
+
+        let staled = value["staled"].as_array().expect("staled is an array");
+        assert_eq!(
+            staled.len(),
+            1,
+            "only the accepted dependent goes stale: {staled:?}"
+        );
+        assert_eq!(staled[0]["node"], token_issuer.id().to_string());
+        assert_eq!(staled[0]["audit"]["from"], "accepted");
+        assert_eq!(staled[0]["audit"]["to"], "stale");
+        assert_eq!(staled[0]["audit"]["actor"], "system");
+
+        let written: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(token_issuer.id()))
+                .expect("the dependent's file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(written.envelope.lifecycle, Lifecycle::Stale);
+        let staleness = written
+            .envelope
+            .stale
+            .expect("the dependent carries why it is stale");
+        assert_eq!(staleness.source, crypto.id());
+        assert_eq!(staleness.member.as_deref(), Some("sign"));
+        assert_eq!(staleness.at, "2026-09-03T12:00:00Z");
+
+        let untouched: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(rate_limiter.id()))
+                .expect("the draft dependent's file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(
+            untouched.envelope.lifecycle,
+            Lifecycle::Draft,
+            "a draft dependent is not staled"
+        );
+    }
+
+    #[test]
+    fn write_node_does_not_cascade_when_nothing_but_a_comment_changed() {
+        use schematify_core::ContractMethodFields;
+
+        let dir = TempDir::new("write-node-no-cascade");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let crypto = sample_module("crypto-primitives", Lifecycle::Accepted, None);
+        store.write_node(&crypto).expect("seed module");
+
+        let fields = ContractMethodFields {
+            signature: "sign(bytes: Bytes)".to_owned(),
+            params: vec!["bytes: Bytes".to_owned()],
+            returns: Some("Signature".to_owned()),
+            errors: vec!["SignError".to_owned()],
+            semantics: Some("Signs the payload.".to_owned()),
+            exported: true,
+        };
+        let sign = sample_contract_method("sign", crypto.id(), &fields);
+        store.write_node(&sign).expect("seed sign");
+
+        // Same contract fields, a retitled node — `contract_fields_changed`
+        // does not count this, per its own doc comment, so no `at` is
+        // required and the cascade never runs.
+        let mut retitled_envelope = sign.envelope.clone();
+        retitled_envelope.title = "Sign the payload".to_string();
+        let retitled = Node::new(retitled_envelope)
+            .with_fields(&fields)
+            .expect("fields attach");
+
+        let value = dispatch(
+            &context,
+            "schematify/write-node",
+            Some(json!({ "actor": "human", "node": retitled })),
+        )
+        .expect("write-node succeeds with no `at` supplied");
+
+        assert_eq!(
+            value["staled"].as_array().expect("array"),
+            &Vec::<Value>::new()
+        );
+    }
+
+    #[test]
+    fn write_node_refuses_a_contract_change_with_no_at_and_writes_nothing() {
+        use schematify_core::ContractMethodFields;
+
+        let dir = TempDir::new("write-node-missing-at");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let crypto = sample_module("crypto-primitives", Lifecycle::Accepted, None);
+        store.write_node(&crypto).expect("seed module");
+
+        let before_fields = ContractMethodFields {
+            signature: "sign(bytes: Bytes)".to_owned(),
+            params: vec!["bytes: Bytes".to_owned()],
+            returns: Some("Signature".to_owned()),
+            errors: vec!["SignError".to_owned()],
+            semantics: Some("Signs the payload.".to_owned()),
+            exported: true,
+        };
+        let sign = sample_contract_method("sign", crypto.id(), &before_fields);
+        store.write_node(&sign).expect("seed sign");
+
+        let mut after_fields = before_fields;
+        after_fields.params.push("kid: Kid".to_owned());
+        let changed_sign = Node::new(sign.envelope.clone())
+            .with_fields(&after_fields)
+            .expect("changed fields attach");
+
+        let err = dispatch(
+            &context,
+            "schematify/write-node",
+            Some(json!({ "actor": "human", "node": changed_sign })),
+        )
+        .expect_err("a contract change with no `at` is refused");
+        assert_eq!(err.code, INVALID_PARAMS);
+
+        // Refused before the write, not after: the file on disk still holds
+        // the original params, not the changed ones.
+        let on_disk: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(sign.id())).expect("the original file exists"),
+        )
+        .expect("the file parses as a node");
+        let on_disk_fields = on_disk
+            .contract_method()
+            .expect("the file parses as a contract method");
+        assert_eq!(on_disk_fields.params, vec!["bytes: Bytes".to_owned()]);
     }
 
     #[test]
@@ -1064,6 +1453,156 @@ mod tests {
         )
         .expect_err("a malformed node id is refused");
         assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    #[test]
+    fn transition_moves_a_node_and_appends_the_audit_row_a_reader_gets_back() {
+        let dir = TempDir::new("transition-legal");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let node = sample_module("crypto-primitives", Lifecycle::Draft, None);
+        store.write_node(&node).expect("seed the node");
+
+        let value = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "human",
+                "node": node,
+                "to": "specified",
+                "actorName": "m.ross",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "The author completed the node.",
+            })),
+        )
+        .expect("a legal human transition succeeds");
+
+        assert_eq!(value["node"]["lifecycle"], "specified");
+        assert_eq!(value["audit"]["from"], "draft");
+        assert_eq!(value["audit"]["to"], "specified");
+        assert_eq!(value["audit"]["actor"], "human");
+        assert_eq!(value["audit"]["actor_name"], "m.ross");
+
+        let written: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(node.id())).expect("the node file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(written.envelope.lifecycle, Lifecycle::Specified);
+
+        let history = store.read_audit(node.id()).expect("audit reads back");
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].reason, "The author completed the node.");
+    }
+
+    /// PRD §7.3's human-only gate, proved at the RPC boundary — through
+    /// `dispatch`, exactly as a real `invoke` call would reach it — not by
+    /// calling `schematify_core::check_transition` directly. The core's
+    /// table being correct proves nothing about whether this file's own
+    /// dispatch arm actually calls it before writing anything; this test and
+    /// the file-untouched assertion at its end are what pin that.
+    #[test]
+    fn transition_rejects_an_agent_reaching_accepted_at_the_command_boundary() {
+        let dir = TempDir::new("transition-human-only");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let node = sample_module("crypto-primitives", Lifecycle::Reviewed, None);
+        store.write_node(&node).expect("seed the node");
+
+        let err = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "agent",
+                "node": node,
+                "to": "accepted",
+                "actorName": "claude-sdd",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "The agent believes the review is complete.",
+            })),
+        )
+        .expect_err("an agent may never reach accepted");
+        assert_eq!(err.code, INVALID_PARAMS);
+        assert!(
+            err.message.contains("human-only"),
+            "the refusal should name itself: {}",
+            err.message
+        );
+
+        // Nothing was written — the node file on disk still says `reviewed`,
+        // and the audit history is still empty.
+        let on_disk: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(node.id())).expect("the node file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(on_disk.envelope.lifecycle, Lifecycle::Reviewed);
+        assert!(store
+            .read_audit(node.id())
+            .expect("audit reads back")
+            .is_empty());
+    }
+
+    /// The same gate from `stale`, PRD §7.2's other agent-refused row into
+    /// `accepted`.
+    #[test]
+    fn transition_rejects_an_agent_reaching_accepted_from_stale_too() {
+        let dir = TempDir::new("transition-human-only-from-stale");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let node = sample_module("crypto-primitives", Lifecycle::Stale, None);
+        store.write_node(&node).expect("seed the node");
+
+        let err = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "agent",
+                "node": node,
+                "to": "accepted",
+                "actorName": "claude-sdd",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "The agent believes the review is complete.",
+            })),
+        )
+        .expect_err("an agent may never reach accepted, from stale either");
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    #[test]
+    fn transition_refuses_an_illegal_move_and_writes_nothing() {
+        let dir = TempDir::new("transition-illegal");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let node = sample_module("crypto-primitives", Lifecycle::Draft, None);
+        store.write_node(&node).expect("seed the node");
+
+        let err = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "human",
+                "node": node,
+                "to": "accepted",
+                "actorName": "m.ross",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "Skipping ahead.",
+            })),
+        )
+        .expect_err("draft to accepted is not a row in the table");
+        assert_eq!(err.code, INVALID_PARAMS);
+
+        let on_disk: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(node.id())).expect("the node file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(on_disk.envelope.lifecycle, Lifecycle::Draft);
     }
 
     /// Not a fabricated `Node` literal: `load-graph` against the real

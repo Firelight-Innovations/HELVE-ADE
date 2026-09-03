@@ -20,6 +20,7 @@ import { KaavaRpcError, invoke } from "@openkaava/bridge";
 import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
+import type { RawLintReport } from "./problems";
 import { projectServiceGraph, type RawGraph } from "./project";
 import type { ServiceGraph } from "./types";
 
@@ -158,6 +159,16 @@ export const productSeam: ProductSeam = {
   writeDecision: writeRealDecision,
   supersedeDecision: supersedeRealDecision,
 };
+
+/** `schematify/lint`. Wave 7a's own arm (`src-tauri/src/apps/schematify.rs`),
+ *  widened this wave to carry `Location.slug` and `Finding.rule_name` — the
+ *  2 fields the Problems panel needs that a Rust-only caller (a test, a
+ *  future CLI) had no reason to want. Lints the whole project on every call,
+ *  same as the Rust side: PRD §0.4 makes the finding count computed at read
+ *  time, never stored, so there is nothing to invalidate. */
+export function fetchLintReport(): Promise<RawLintReport> {
+  return invoke<RawLintReport>("schematify/lint", { actor: ACTOR });
+}
 
 /**
  * The seam the running application uses once a real project is open.
