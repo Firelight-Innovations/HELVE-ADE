@@ -35,10 +35,14 @@ import {
 import { SchematicCanvas } from "./engine/SchematicCanvas";
 import {
   fetchLintReport,
+  fetchModuleDashboard,
+  fetchRuns,
   projectFindings,
   resolveClickThrough,
   stackHeaderCounts,
+  type Dashboard,
   type Finding,
+  type RunsRow,
 } from "./graph";
 import { productSeam, reasonForFailure, type ProductGraph } from "./graph/backend";
 import { ProductPanel } from "./product/ProductPanel";
@@ -49,6 +53,7 @@ import { EmptyModule } from "./shell/EmptyModule";
 import { EmptyStack } from "./shell/EmptyStack";
 import { FacetPalette } from "./shell/FacetPalette";
 import { InspectorShell } from "./shell/InspectorShell";
+import { ModuleDashboard } from "./shell/ModuleDashboard";
 import { Outline, type Section } from "./shell/Outline";
 import { StatusBar } from "./shell/StatusBar";
 import { Toolbar } from "./shell/Toolbar";
@@ -141,6 +146,49 @@ export default function App() {
     }
   }
 
+  // The Runs dock tab's own data (PRD §12.2 S-14): every ingested run,
+  // project-wide, fetched once per app mount — the same "not once per tier
+  // switch" reasoning `findings` above already carries, and status bar cell
+  // 4 reads the newest row off the same fetch rather than a 2nd call.
+  const [runs, setRuns] = useState<RunsRow[] | null>(null);
+  const [runsError, setRunsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRuns()
+      .then((report) => {
+        if (!cancelled) setRuns([...report.runs]);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setRunsError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The Module dashboard (PRD §12.13, S-12): opened by a Runs row or the
+  // Module Schematic's own `Module dashboard` control, drawn as a full
+  // overlay over the shell rather than a 4th tier — it is a read-only
+  // record, not a Schematic, and PRD §12.1's breadcrumb/dock/status-bar
+  // frame has nothing to say about it.
+  const [dashboardModule, setDashboardModule] = useState<string | null>(null);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  function openDashboard(moduleIdOrSlug: string): void {
+    setDashboardModule(moduleIdOrSlug);
+    setDashboard(null);
+    setDashboardError(null);
+    fetchModuleDashboard(moduleIdOrSlug)
+      .then(setDashboard)
+      .catch((err: unknown) => setDashboardError(err instanceof Error ? err.message : String(err)));
+  }
+
+  function closeDashboard(): void {
+    setDashboardModule(null);
+  }
+
   // The condition is "the first frame is honest", the rule every app here
   // follows (`apps/home/ui/src/App.tsx` line 246, `apps/files/ui/src/App.tsx`
   // line 78) — the empty-stack and empty-module views have nothing to load,
@@ -190,9 +238,17 @@ export default function App() {
       path={path}
       findings={findings}
       lintError={lintError}
+      runs={runs}
+      runsError={runsError}
+      dashboardModule={dashboardModule}
+      dashboard={dashboard}
+      dashboardError={dashboardError}
       onNavigate={(index) => setPath(path.slice(0, index + 1))}
       onDrillTo={(dest) => setPath([...path, dest])}
       onSelectFinding={handleSelectFinding}
+      onSelectRun={openDashboard}
+      onOpenDashboard={openDashboard}
+      onCloseDashboard={closeDashboard}
     />
   );
 }
@@ -220,23 +276,42 @@ function Schematify({
   path,
   findings,
   lintError,
+  runs,
+  runsError,
+  dashboardModule,
+  dashboard,
+  dashboardError,
   onNavigate,
   onDrillTo,
   onSelectFinding,
+  onSelectRun,
+  onOpenDashboard,
+  onCloseDashboard,
 }: {
   engine: SchematicEngine;
   path: readonly DrillTarget[];
   findings: Finding[] | null;
   lintError: string | null;
+  runs: RunsRow[] | null;
+  runsError: string | null;
+  dashboardModule: string | null;
+  dashboard: Dashboard | null;
+  dashboardError: string | null;
   onNavigate: (index: number) => void;
   onDrillTo: (target: DrillTarget) => void;
   onSelectFinding: (finding: Finding) => void;
+  onSelectRun: (moduleId: string) => void;
+  onOpenDashboard: (moduleSlug: string) => void;
+  onCloseDashboard: () => void;
 }) {
   const state = useSyncExternalStore(
     (listener) => engine.subscribe(listener),
     () => engine.state,
   );
   const graph = useMemo(() => toGraph(state.doc), [state.doc]);
+  // `schematify/runs` sorts newest first (`list_runs` in
+  // `src-tauri/src/apps/schematify.rs`), so cell 4 needs no 2nd sort here.
+  const latestRun = runs && runs.length > 0 ? runs[0] : null;
 
   const onActivate = (drawn: DrawnNode) => {
     const dest = nextDrillTarget(engine.config.tier, drawn.node);
@@ -284,7 +359,19 @@ function Schematify({
         {graph.tier === "stack" ? (
           <span className="kv-schematic-header">{stackHeaderCounts(graph)}</span>
         ) : null}
+        {graph.tier === "module" ? (
+          <span className="kv-schematic-header">tier 3 — deepest drill-down</span>
+        ) : null}
         <Toolbar onAutoSort={() => engine.autoSort()} onFit={() => engine.fit()} />
+        {graph.tier === "module" ? (
+          <button
+            type="button"
+            className="kv-toolbar__button"
+            onClick={() => onOpenDashboard(graph.serviceSlug)}
+          >
+            Module dashboard
+          </button>
+        ) : null}
       </div>
       <div className="kv-shell__body">
         <Outline
@@ -349,8 +436,23 @@ function Schematify({
           <div className="kv-product-panel" />
         )}
       </div>
-      <Dock findings={findings} error={lintError} onSelectFinding={onSelectFinding} />
-      <StatusBar graph={graph} layoutClean={!engine.layoutDirty} findings={findings} />
+      <Dock
+        findings={findings}
+        error={lintError}
+        onSelectFinding={onSelectFinding}
+        runs={runs}
+        runsError={runsError}
+        onSelectRun={onSelectRun}
+      />
+      <StatusBar
+        graph={graph}
+        layoutClean={!engine.layoutDirty}
+        findings={findings}
+        latestRun={latestRun}
+      />
+      {dashboardModule !== null ? (
+        <ModuleDashboard dashboard={dashboard} error={dashboardError} onClose={onCloseDashboard} />
+      ) : null}
     </div>
   );
 }

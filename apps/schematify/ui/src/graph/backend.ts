@@ -5,9 +5,9 @@
  * `./index.ts`'s `defaultSeam` reaches everything below through a dynamic
  * `import("./backend")` for the same reason.
  *
- * Wraps the methods `src-tauri/src/apps/schematify.rs` answers as of this
- * wave, plus wave 10c's five product-layer writes (`write-screen`,
- * `write-flow`, `write-brief`, `write-decision`, `supersede-decision`) and
+ * Wraps the methods `src-tauri/src/apps/schematify.rs` answers, plus wave
+ * 10c's five product-layer writes (`write-screen`, `write-flow`,
+ * `write-brief`, `write-decision`, `supersede-decision`) and
  * `loadProductGraph`, which reads `schematify/load-graph`'s `screens`,
  * `flows`, `decisions` and `brief` fields — the ones `loadRealGraph` below
  * discards on its way to a `ServiceGraph`. `open-project` and `write-node`/
@@ -18,6 +18,7 @@
  */
 import { KaavaRpcError, invoke } from "@openkaava/bridge";
 import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
+import type { Dashboard, RawRunsReport } from "./dashboard";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import type { LayoutFile } from "./layout";
 import type { RawLintReport } from "./problems";
@@ -168,6 +169,29 @@ export const productSeam: ProductSeam = {
  *  time, never stored, so there is nothing to invalidate. */
 export function fetchLintReport(): Promise<RawLintReport> {
   return invoke<RawLintReport>("schematify/lint", { actor: ACTOR });
+}
+
+/** `schematify/module-dashboard` (wave 9d's own arm, PRD §12.13). `module`
+ *  accepts either a node id or a slug — see the Rust function's own doc
+ *  comment for why: the Module Schematic's own stand-in engine
+ *  (`./module.ts`) has no real backend uuid to hand this call yet. */
+export function fetchModuleDashboard(module: string): Promise<Dashboard> {
+  return invoke<Dashboard>("schematify/module-dashboard", { actor: ACTOR, module });
+}
+
+/** `schematify/runs` (wave 9d's own arm, PRD §12.2 S-14). Project-wide,
+ *  independent of which tier is open — same "whole project, not one tier"
+ *  scope `fetchLintReport` already draws for the Problems panel. */
+export function fetchRuns(): Promise<RawRunsReport> {
+  return invoke<RawRunsReport>("schematify/runs", { actor: ACTOR });
+}
+
+/** `schematify/ingest-run` (wave 9d's own arm): the Tauri wiring for wave
+ *  9b's `schematify_core::ingest_run_file`. `module` is the node whose CI
+ *  workflow produced the run; `path` is wherever CI dropped the
+ *  `kaava-bench-v1` artifact, outside `.kaava/`. */
+export function ingestRun(module: string, path: string): Promise<{ ingested: boolean }> {
+  return invoke<{ ingested: boolean }>("schematify/ingest-run", { actor: ACTOR, module, path });
 }
 
 /**
