@@ -241,6 +241,39 @@
   color: var(--kv-text-secondary);
 }
 
+/* Facet card content (PRD §12.11), tier 3 only. Drawn the same way a
+   caption already is — dim mono text, one line per row — since the content
+   here is prose (a signature, a threshold, a body) rather than a chip. */
+.kv-node__facet-content {
+  margin-top: 4px;
+}
+
+.kv-node__facet-line {
+  color: var(--kv-text-secondary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+/* An agent-drafted doc-block's 3 review controls (PRD §12.11). Drawn, not
+   wired — Wave 6 owns the review flow they feed into (this file's own
+   `SchematicCanvas.tsx` comment explains why they are `disabled`). */
+.kv-node__draft-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.kv-node__draft-action {
+  padding: 2px 7px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius-chip);
+  background: var(--kv-bg-raised);
+  color: var(--kv-text-secondary);
+  font-family: var(--kv-font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+}
+
 /* The lifecycle bottom-edge fill (PRD §12.7): a bar pinned to the box's own
    bottom edge, its own width and colour set inline per state. Border weight,
    this fill, and the overlay stripe are the 3 things WIREFRAME-EXTRACT.md
@@ -283,7 +316,9 @@
 .kv-node[data-zoom-tier="mid"] .kv-node__badges,
 .kv-node[data-zoom-tier="mid"] .kv-node__facets,
 .kv-node[data-zoom-tier="mid"] .kv-node__libraries,
-.kv-node[data-zoom-tier="mid"] .kv-node__caption {
+.kv-node[data-zoom-tier="mid"] .kv-node__caption,
+.kv-node[data-zoom-tier="mid"] .kv-node__facet-content,
+.kv-node[data-zoom-tier="mid"] .kv-node__draft-controls {
   display: none;
 }
 
@@ -294,6 +329,11 @@
 .kv-node[data-zoom-tier="geometry"] .kv-node__facets,
 .kv-node[data-zoom-tier="geometry"] .kv-node__libraries,
 .kv-node[data-zoom-tier="geometry"] .kv-node__caption,
+.kv-node[data-zoom-tier="geometry"] .kv-node__facet-content,
+.kv-node[data-zoom-tier="geometry"] .kv-node__draft-controls {
+  display: none;
+}
+
 /* The node menu is no longer a DOM descendant of `.kv-node__header` — it
    moved out so its position could come from `headerOccupants` (the
    health-wedge/node-menu overlap fix above) — so hiding the header alone no
@@ -419,4 +459,135 @@
 .kv-canvas__minimap-view {
   position: absolute;
   border: 1px solid var(--kv-accent);
+}
+
+/* --- free-floating annotation boxes (PRD §12.11, §4.3) ---------------------
+   The Module Schematic's `COVERAGE OF DESIGN` and `SATISFIES` callouts, and
+   the Stack Schematic's `WHY … SITS HERE` callout — 3 read-only text boxes
+   across 2 tiers, not nodes: nothing here is drawn by `NodeBox`, has a rect
+   in the document, or is selectable. Position is a fixed corner rather than
+   the wireframe's own measured coordinates (WIREFRAME-EXTRACT.md §4.6, §5.2)
+   since no browser was available to check the wireframe's placement against
+   a real canvas this wave — see the Wave 5 handoff's "what a human must look
+   at" list. */
+.kv-canvas__callouts {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 270px;
+  pointer-events: none;
+}
+
+.kv-canvas__callouts--shared {
+  top: auto;
+  bottom: 40px;
+}
+
+.kv-callout {
+  padding: 8px 10px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-raised);
+}
+
+.kv-callout__heading {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-callout__heading--ok {
+  color: var(--kv-ok);
+}
+
+.kv-callout__heading--neutral {
+  color: var(--kv-text-secondary);
+}
+
+.kv-callout__body {
+  margin-top: 4px;
+  color: var(--kv-text-dim);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+/* --- the export strip (PRD §12.10) ------------------------------------------
+   Pinned along the Schematic edge opposite the Outline. Position is a fixed
+   corner rather than the wireframe's own measured inset (`left:1160px`
+   inside a 1320-wide canvas) — see this file's callout-box comment above for
+   why: no browser was available to check placement against a real canvas. */
+.kv-export-strip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 160px;
+  padding: 6px 8px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-raised);
+  font-family: var(--kv-font-mono);
+}
+
+.kv-export-strip__header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--kv-text-tertiary);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-export-strip__rows {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-export-strip__row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  color: var(--kv-text-secondary);
+  font: inherit;
+  font-size: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kv-export-strip__method {
+  color: var(--kv-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-export-strip__arrow {
+  color: var(--kv-text-faint);
+}
+
+.kv-export-strip__module {
+  color: var(--kv-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-export-strip__marker {
+  color: var(--kv-accent);
+}
+
+.kv-export-strip__footer {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--kv-line);
+  color: var(--kv-text-faint);
+  font-size: 8px;
+  line-height: 1.4;
 }

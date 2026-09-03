@@ -44,10 +44,29 @@ export function arrange(doc: SchematicDoc, config: SchematicConfig): Arrangement
  * facet fans out to its right in one column, ordered by the palette's own
  * order, so the Schematic reads as a contract sheet rather than a free graph.
  *
- * A first cut. Wave 5 owns the facet cards themselves and will want to group
- * the column by card kind or split it in two; that is a change here and
- * nowhere else.
- */
+ * **Wave 5.** Grouped by card kind, in the facet palette's own reading order
+ * (PRD §12.11: `contract-method`, `test-case`, `budget`, `doc-block`,
+ * `external-dep`, then `comment`, `group`) — a mixed column read top to
+ * bottom as "3 methods, then a budget, then a test case, then a dep"
+ * scattered the contract-sheet reading Wave 3's own handoff (assumption 16)
+ * flagged as the improvement this wave owns. Grouping is the only change;
+ * every card still lands in the same 1 column at the same `FAN` offset from
+ * the root that Wave 3 built. */
+const FACET_KIND_ORDER = [
+  "contract-method",
+  "test-case",
+  "budget",
+  "doc-block",
+  "external-dep",
+  "comment",
+  "group",
+] as const;
+
+function facetRank(kind: string): number {
+  const at = FACET_KIND_ORDER.indexOf(kind as (typeof FACET_KIND_ORDER)[number]);
+  return at === -1 ? FACET_KIND_ORDER.length : at;
+}
+
 function contractSheet(doc: SchematicDoc, index: DocIndex, config: SchematicConfig): Arrangement {
   const out = new Map<string, Rect>();
   const roots = doc.nodes.filter((node) => node.role === "schematic-root");
@@ -56,9 +75,12 @@ function contractSheet(doc: SchematicDoc, index: DocIndex, config: SchematicConf
   if (rootNode) out.set(rootNode.id, { x: GAP, y: GAP, ...rootSize });
 
   const columnX = snap(GAP + rootSize.width + FAN, config.grid.size);
+  const facets = doc.nodes
+    .filter((node) => node.id !== rootNode?.id)
+    .slice()
+    .sort((a, b) => facetRank(a.kind) - facetRank(b.kind));
   let y = GAP;
-  for (const node of doc.nodes) {
-    if (node.id === rootNode?.id) continue;
+  for (const node of facets) {
     const size = config.nodeBox(node.kind);
     out.set(node.id, { x: columnX, y: snap(y, config.grid.size), ...size });
     y += size.height + GAP;

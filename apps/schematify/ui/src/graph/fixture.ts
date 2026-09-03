@@ -4,7 +4,7 @@
  * real graph loader exists. See `./index.ts`'s doc comment for what replaces
  * this file and how.
  */
-import type { GraphEdge, GraphNode, ServiceGraph } from "./types";
+import type { ExportRow, GraphEdge, GraphNode, ServiceGraph } from "./types";
 
 /**
  * PRD §16.1 "Service tier, `auth-service`" table: 12 module nodes,
@@ -165,10 +165,20 @@ const edges: GraphEdge[] = [
   { id: "e9", kind: "depends_on", from: "token-issuer", to: "session-store" },
 ];
 
+/** PRD §16.1's export strip: `4 · authored`, each method paired with the
+ *  module that owns it (PRD §12.10). Wave 5. */
+const exportsList: ExportRow[] = [
+  { method: "issue_pair", moduleSlug: "token-issuer" },
+  { method: "verify_signature", moduleSlug: "token-verifier" },
+  { method: "revoke", moduleSlug: "session-store" },
+  { method: "check_password", moduleSlug: "password-hasher" },
+];
+
 export const AUTH_SERVICE_GRAPH: ServiceGraph = {
   tier: "service",
   serviceSlug: "auth-service",
   serviceTitle: "Auth Service",
   nodes,
   edges,
+  exports: exportsList,
 };

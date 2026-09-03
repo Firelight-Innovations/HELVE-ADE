@@ -54,7 +54,51 @@
   color: var(--kv-text-primary);
 }
 
+/* Wave 5's breadcrumb walk-up: every segment but the active one is a
+   button. Reset to plain inline text so a click reads as navigation, not as
+   a form control. */
+.kv-breadcrumb__segment-group {
+  display: inline;
+}
+
+.kv-breadcrumb__sep {
+  color: var(--kv-text-tertiary);
+}
+
+.kv-breadcrumb__segment {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.kv-breadcrumb__segment--active {
+  color: var(--kv-text-primary);
+}
+
+.kv-breadcrumb__segment--link {
+  color: var(--kv-text-secondary);
+  cursor: pointer;
+}
+
+.kv-breadcrumb__segment--link:hover {
+  color: var(--kv-text-primary);
+  text-decoration: underline;
+}
+
 .kv-breadcrumb__slug {
+  color: var(--kv-text-tertiary);
+  font-size: 10.5px;
+}
+
+/* The Stack Schematic's own header line (PRD §12.9): `6 services · 7
+   dependency edges`, drawn beside the breadcrumb rather than replacing it —
+   no wireframe screen this app already draws shows the 2 together, so this
+   is this wave's own placement choice. `[P]`, recorded in the Wave 5
+   handoff. */
+.kv-schematic-header {
   color: var(--kv-text-tertiary);
   font-size: 10.5px;
 }
@@ -234,6 +278,95 @@
   font-size: 11px;
 }
 
+/* PRD §12.9's `CANVAS PROPERTIES` empty state and derived tech stack. */
+.kv-inspector--canvas-properties {
+  padding: 12px 10px;
+  gap: 10px;
+}
+
+.kv-inspector__header {
+  color: var(--kv-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-inspector__body {
+  margin: 6px 0 0;
+  color: var(--kv-text-secondary);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.kv-inspector__techstack {
+  margin-top: 16px;
+}
+
+.kv-inspector__techstack-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+}
+
+.kv-inspector__techstack-table td {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--kv-line);
+}
+
+.kv-inspector__footer {
+  margin: 8px 0 0;
+  color: var(--kv-text-dim);
+  font-size: 9.5px;
+}
+
+/* --- the Module Schematic's facet palette (PRD §12.11) --------------------- */
+
+.kv-facet-palette {
+  width: 172px;
+  flex: 0 0 auto;
+  padding: 10px;
+  background: var(--kv-bg-app);
+  border-right: 1px solid var(--kv-line);
+  overflow-y: auto;
+}
+
+.kv-facet-palette__header {
+  margin-top: 10px;
+  color: var(--kv-text-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-facet-palette__header:first-child {
+  margin-top: 0;
+}
+
+.kv-facet-palette__list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-facet-palette__entry {
+  padding: 4px 6px;
+  margin-bottom: 3px;
+  border: 1px dashed var(--kv-line-draft);
+  border-radius: var(--kv-radius-chip);
+  color: var(--kv-text-secondary);
+  font-size: 10px;
+  cursor: grab;
+}
+
+.kv-facet-palette__footer {
+  margin-top: 14px;
+  color: var(--kv-text-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 /* --- dock ------------------------------------------------------------------ */
 
 .kv-dock {
@@ -315,4 +448,79 @@
 .kv-empty-stack__action:disabled {
   background: var(--kv-bg-raised);
   color: var(--kv-text-faint);
+}
+
+/* --- Module Schematic first-run empty state (PRD §12.20) ------------------- */
+
+.kv-empty-module {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  color: var(--kv-text-secondary);
+}
+
+.kv-empty-module__heading {
+  color: var(--kv-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.kv-empty-module__lead {
+  margin: 10px 0 0;
+  color: var(--kv-text-primary);
+  font-size: 13px;
+}
+
+.kv-empty-module__body {
+  margin: 6px 0 0;
+  max-width: 520px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.kv-empty-module__cards {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.kv-empty-module__card {
+  width: 180px;
+  padding: 8px 10px;
+  border: 1px dashed var(--kv-line-draft);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-panel);
+}
+
+.kv-empty-module__card-kind {
+  color: var(--kv-text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-empty-module__card-placeholder {
+  margin-top: 6px;
+  color: var(--kv-text-faint);
+  font-size: 10.5px;
+}
+
+.kv-empty-module__boundary {
+  margin-top: 22px;
+  max-width: 520px;
+}
+
+.kv-empty-module__boundary-heading {
+  color: var(--kv-agent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-empty-module__boundary-body {
+  margin: 4px 0 0;
+  color: var(--kv-text-dim);
+  font-size: 10.5px;
+  line-height: 1.5;
 }

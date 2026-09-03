@@ -35,6 +35,16 @@ export type { SchematicDoc, SchematicEdge, SchematicNode } from "./doc";
 export type { Point, Rect } from "./geometry";
 export type { DrawnEdge, DrawnNode, Frame, LegendChip, Minimap } from "./frame";
 export { buildFrame } from "./frame";
+export type { Callout, CoverageReadout } from "./anatomy";
+export {
+  SATISFIES_CALLOUT,
+  coverageBody,
+  coverageOf,
+  facetContentFor,
+  sharedNodeCallout,
+} from "./anatomy";
+export type { DrillableNode, DrillTarget } from "./navigation";
+export { configFor, nextDrillTarget } from "./navigation";
 export type { Clipboard, EngineState, SemanticEffect, WriteLayer } from "./engine";
 export { SchematicEngine } from "./engine";
 export type { EdgeDraft } from "./rules";
@@ -45,7 +55,7 @@ export {
   validateEdge,
   validateReparent,
 } from "./rules";
-export { buildDoc, toLayoutFile, toServiceGraph } from "./layout";
+export { buildDoc, toGraph, toLayoutFile, toServiceGraph } from "./layout";
 export type { Viewport, ViewportSize } from "./viewport";
 export { toScreen, toWorld, zoomReadout } from "./viewport";
 
@@ -58,7 +68,10 @@ export async function openSchematic(
   config: SchematicConfig,
   seam: SchematifySeam = defaultSeam,
 ): Promise<SchematicEngine> {
-  const graph = await seam.loadGraph();
+  // Wave 5: which graph to load is no longer implicit. Every tier's own slug
+  // is `config.layoutSlug` already — the same value that names the layout
+  // file — so opening a Schematic still takes nothing beyond the config.
+  const graph = await seam.loadGraph(config.tier, config.layoutSlug);
   const layout = await seam.readLayout(config.layoutSlug);
   return new SchematicEngine(config, buildDoc(graph, layout, config), seam);
 }

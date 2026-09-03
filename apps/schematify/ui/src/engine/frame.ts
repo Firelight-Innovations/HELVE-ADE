@@ -26,16 +26,21 @@ import type { Route } from "./routing";
 import { routeEdge } from "./routing";
 import type { Viewport, ViewportSize } from "./viewport";
 import { visibleWorldRect, zoomReadout } from "./viewport";
-import type { Caption, HeaderOccupants, LifecycleTreatment, ZoomTier } from "./anatomy";
+import type { Callout, Caption, HeaderOccupants, LifecycleTreatment, ZoomTier } from "./anatomy";
 import {
   LIFECYCLE_TREATMENTS,
+  SATISFIES_CALLOUT,
   badgesFor,
   captionFor,
+  coverageBody,
+  coverageOf,
   countStringsFor,
   facetChipsFor,
+  facetContentFor,
   healthRollupFor,
   healthWedgeFor,
   headerOccupants,
+  sharedNodeCallout,
   zoomTierFor,
 } from "./anatomy";
 import type { HealthStatus } from "../graph";
@@ -84,6 +89,9 @@ export interface DrawnNode {
   headerOccupants: HeaderOccupants;
   /** Which of PRD §12.7's 3 zoom tiers this frame's viewport draws at. */
   zoomTier: ZoomTier;
+  /** PRD §12.11's per-facet-kind content lines (Wave 5), tier 3 only — empty
+   *  for every other kind, including the module root itself. */
+  facetContent: readonly string[];
 }
 
 /** An edge as drawn. `stored` separates a real graph edge from the tier-3
@@ -129,6 +137,16 @@ export interface Frame {
   /** The counts the status bar and the header draw, computed here. The
    *  containment renderings are not in `edges`. */
   counts: { nodes: number; edges: number };
+  /** PRD §12.11's coverage readout and `SATISFIES` callout — `null` on every
+   *  tier but the Module Schematic. Wave 5. */
+  moduleReadouts: { coverage: Callout; satisfies: Callout } | null;
+  /** PRD §4.3's `WHY … SITS HERE` callout for a properly-placed shared node —
+   *  `null` when this Schematic draws no such node. Built for the Stack
+   *  Schematic (PRD §4.3's own drawn example); the Service Schematic's own
+   *  shared-node fixture (`crypto-primitives`) is deliberately misplaced —
+   *  the linter's WARN example, not a correctly-at-LCA node — so it earns no
+   *  callout, only the badge every shared node draws regardless. Wave 5. */
+  sharedNodeCallout: Callout | null;
 }
 
 /** What `buildFrame` needs beyond the document. */
@@ -171,7 +189,33 @@ export function buildFrame(input: FrameInput): Frame {
       nodes: doc.nodes.filter((node) => !isAnnotation(node)).length,
       edges: doc.edges.length,
     },
+    moduleReadouts: config.calloutKind === "module-readouts" ? buildModuleReadouts(doc) : null,
+    sharedNodeCallout: config.calloutKind === "shared-node" ? buildSharedNodeCallout(doc) : null,
   };
+}
+
+/** PRD §12.11's coverage readout and `SATISFIES` callout, built from every
+ *  `contract-method` in the document — not only the visible ones, since a
+ *  scrolled-off method still counts (PRD §0.4's "computed, never stored"
+ *  extends to "computed over the whole document," not over the viewport). */
+function buildModuleReadouts(doc: SchematicDoc): Frame["moduleReadouts"] {
+  const methods = doc.nodes.filter((node) => node.kind === "contract-method");
+  if (methods.length === 0) return null;
+  const readout = coverageOf(methods);
+  return {
+    coverage: { heading: "COVERAGE OF DESIGN", body: coverageBody(readout) },
+    satisfies: SATISFIES_CALLOUT,
+  };
+}
+
+/** PRD §4.3's callout for whichever node this Schematic draws at its
+ *  dependents' LCA. At most 1 shared node is expected per Schematic in every
+ *  fixture this app draws; the first found wins if a document ever holds
+ *  more than 1. */
+function buildSharedNodeCallout(doc: SchematicDoc): Callout | null {
+  const shared = doc.nodes.find((node) => node.sharedAtLca);
+  if (!shared) return null;
+  return sharedNodeCallout(shared.slug, shared.dependentsCount ?? 0);
 }
 
 function drawNode(
@@ -192,6 +236,16 @@ function drawNode(
   // and carries a lifecycle reason, so the 2 never compete in practice, but
   // the roll-up is checked first because it is the more specific rule.
   const caption = node.kind === "service" ? healthRollupFor(node, index) : captionFor(node);
+  const counts = countStringsFor(node);
+  // PRD §12.11: the module root's own face draws `layer backend · N facets`
+  // and the screen-reference path — `N` computed from its own children
+  // (WIREFRAME-EXTRACT.md Resolution 10.2's ruling: the drawn `4` was a
+  // wireframe undercount, and every count here is computed rather than
+  // carried as a stored field).
+  if (node.role === "schematic-root" && tier === "module") {
+    if (node.layer) counts.push(`layer ${node.layer} · ${kids.length} facets`);
+    if (node.screenRef) counts.push(node.screenRef);
+  }
   return {
     node,
     rect: node.rect,
@@ -204,12 +258,13 @@ function drawNode(
     containsCaption: container ? `contains ${childCount}` : undefined,
     badges: badgesFor(node, tier),
     facetChips: facetChipsFor(node.facets),
-    counts: countStringsFor(node),
+    counts,
     caption,
     lifecycle: LIFECYCLE_TREATMENTS[node.lifecycle ?? "specified"],
     health,
     headerOccupants: headerOccupants(node.rect, health !== "passing"),
     zoomTier,
+    facetContent: facetContentFor(node),
   };
 }
 

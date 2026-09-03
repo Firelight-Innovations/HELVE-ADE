@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import type { ExportRow } from "../graph";
 import type { Refusal } from "./config";
 import type { SchematicEngine } from "./engine";
 import type { DrawnEdge, DrawnNode } from "./frame";
@@ -32,7 +33,7 @@ import "./engine.css";
 type Gesture =
   | { mode: "pan"; from: Point }
   | { mode: "box"; origin: Point; to: Point; additive: boolean }
-  | { mode: "move"; from: Point; to: Point }
+  | { mode: "move"; from: Point; to: Point; nodeId: string }
   | { mode: "edge"; fromId: string; to: Point; targetId: string | null };
 
 /** A refusal drawn at the cursor (PRD §12.5). */
@@ -40,7 +41,22 @@ interface CursorRefusal extends Refusal {
   at: Point;
 }
 
-export function SchematicCanvas({ engine }: { engine: SchematicEngine }) {
+export interface SchematicCanvasProps {
+  engine: SchematicEngine;
+  /** PRD §17 Wave 5's click-to-drill: called on a true click (pointer down
+   *  and up with no movement between) on a node's face, never on a drag or a
+   *  port drag. `engine/navigation.ts`'s `nextDrillTarget` is the pure
+   *  function that decides what a click on this node means, if anything —
+   *  this component only tells the caller a click happened and on which
+   *  node; it makes no drill decision itself. */
+  onActivate?: (node: DrawnNode) => void;
+  /** PRD §12.10's export strip, service tier only — omitted at every other
+   *  tier. Data, not canvas geometry, so it comes from the caller's own
+   *  projected graph rather than from `Frame`. */
+  exports?: readonly ExportRow[];
+}
+
+export function SchematicCanvas({ engine, onActivate, exports: exportRows }: SchematicCanvasProps) {
   const state = useSyncExternalStore(
     useCallback((listener: () => void) => engine.subscribe(listener), [engine]),
     () => engine.state,
@@ -112,7 +128,7 @@ export function SchematicCanvas({ engine }: { engine: SchematicEngine }) {
     setRefusal(null);
     if (!node.selected) engine.select([node.node.id], event.shiftKey);
     const world = pointAt(event);
-    setGesture({ mode: "move", from: world, to: world });
+    setGesture({ mode: "move", from: world, to: world, nodeId: node.node.id });
   };
 
   const onPortDown = (event: ReactPointerEvent<HTMLElement>, nodeId: string) => {
@@ -162,7 +178,16 @@ export function SchematicCanvas({ engine }: { engine: SchematicEngine }) {
     } else if (gesture.mode === "move") {
       const dx = world.x - gesture.from.x;
       const dy = world.y - gesture.from.y;
-      if (dx !== 0 || dy !== 0) engine.moveSelection(dx, dy);
+      if (dx !== 0 || dy !== 0) {
+        engine.moveSelection(dx, dy);
+      } else if (onActivate) {
+        // A click, not a drag: PRD §17 Wave 5's click-to-drill. The decision
+        // of where this leads (if anywhere) is `onActivate`'s caller's
+        // business, via `engine/navigation.ts`'s `nextDrillTarget` — this
+        // component only reports that a click landed, and on which node.
+        const drawn = frame.nodes.find((candidate) => candidate.node.id === gesture.nodeId);
+        if (drawn) onActivate(drawn);
+      }
     } else if (gesture.mode === "edge" && gesture.targetId) {
       const verdict = engine.createEdge({
         kind: engine.config.edgeKinds[0].kind,
@@ -284,6 +309,92 @@ export function SchematicCanvas({ engine }: { engine: SchematicEngine }) {
           <i className="kv-canvas__minimap-view" style={boxStyle(frame.minimap.viewport)} />
         </div>
       ) : null}
+
+      {frame.moduleReadouts ? (
+        <div className="kv-canvas__callouts">
+          <CalloutBox tone="ok" callout={frame.moduleReadouts.coverage} />
+          <CalloutBox tone="neutral" callout={frame.moduleReadouts.satisfies} />
+        </div>
+      ) : null}
+
+      {frame.sharedNodeCallout ? (
+        <div className="kv-canvas__callouts kv-canvas__callouts--shared">
+          <CalloutBox tone="neutral" callout={frame.sharedNodeCallout} />
+        </div>
+      ) : null}
+
+      {exportRows && exportRows.length > 0 ? (
+        <ExportStrip engine={engine} rows={exportRows} selection={state.selection} />
+      ) : null}
+    </div>
+  );
+}
+
+/** PRD §12.10's export strip: pinned along the Schematic edge opposite the
+ *  Outline, 1 row per authored method. The selected row draws a `←` marker
+ *  beside its owning module, and a click on a row selects that module —
+ *  lighting it the same way any other selection does, since `NodeBox`
+ *  already draws `kv-node--selected` off `engine.select`. */
+function ExportStrip({
+  engine,
+  rows,
+  selection,
+}: {
+  engine: SchematicEngine;
+  rows: readonly ExportRow[];
+  selection: readonly string[];
+}) {
+  const idForSlug = (slug: string) => engine.state.doc.nodes.find((node) => node.slug === slug)?.id;
+  return (
+    <div className="kv-export-strip">
+      <div className="kv-export-strip__header">
+        <span>EXPORTED INTERFACE</span>
+        <span>{rows.length} · authored</span>
+      </div>
+      <ul className="kv-export-strip__rows">
+        {rows.map((row) => {
+          const moduleId = idForSlug(row.moduleSlug);
+          const isSelected = moduleId !== undefined && selection.includes(moduleId);
+          return (
+            <li key={row.method}>
+              <button
+                type="button"
+                className="kv-export-strip__row"
+                onClick={() => {
+                  if (moduleId) engine.select([moduleId]);
+                }}
+              >
+                <span className="kv-export-strip__method">{row.method}</span>
+                <span className="kv-export-strip__arrow">→</span>
+                <span className="kv-export-strip__module">{row.moduleSlug}</span>
+                {isSelected ? <span className="kv-export-strip__marker">←</span> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="kv-export-strip__footer">
+        Everything not listed is internal by construction.
+      </div>
+    </div>
+  );
+}
+
+/** PRD §12.11's `COVERAGE OF DESIGN`/`SATISFIES` boxes and PRD §4.3's `WHY …
+ *  SITS HERE` box — 3 free-floating annotation boxes across 2 tiers, drawn
+ *  identically apart from their heading colour (WIREFRAME-EXTRACT.md §4.6:
+ *  the coverage heading draws in the `--kv-ok` family, the other 2 neutral). */
+function CalloutBox({
+  tone,
+  callout,
+}: {
+  tone: "ok" | "neutral";
+  callout: { heading: string; body: string };
+}) {
+  return (
+    <div className="kv-callout">
+      <div className={`kv-callout__heading kv-callout__heading--${tone}`}>{callout.heading}</div>
+      <div className="kv-callout__body">{callout.body}</div>
     </div>
   );
 }
@@ -415,6 +526,35 @@ function NodeBox({
           {line}
         </div>
       ))}
+
+      {drawn.facetContent.length > 0 ? (
+        <div className="kv-node__facet-content">
+          {drawn.facetContent.map((line, i) => (
+            <div key={`${line}-${i}`} className="kv-node__facet-line">
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {node.kind === "doc-block" && node.lifecycle === "draft" ? (
+        <div className="kv-node__draft-controls">
+          {/* PRD §12.11: "The facet stays dashed until a human takes one of
+              the 3 actions." No write side exists for any of the 3 this
+              wave — Wave 6 owns the Inspector-adjacent review flow these
+              feed into — so the controls are drawn, per this wave's own
+              acceptance list, and left inert rather than half-wired. */}
+          <button type="button" className="kv-node__draft-action" disabled>
+            Accept
+          </button>
+          <button type="button" className="kv-node__draft-action" disabled>
+            Edit
+          </button>
+          <button type="button" className="kv-node__draft-action" disabled>
+            Discard
+          </button>
+        </div>
+      ) : null}
 
       {drawn.caption ? (
         <div className="kv-node__caption kv-node__caption--reason">

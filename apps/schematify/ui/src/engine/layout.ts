@@ -10,7 +10,7 @@
  * — so keeping them out of `nodes/` is what makes "an annotation is not design
  * data" true on disk rather than only in the linter.
  */
-import type { GraphNode, LayoutAnnotation, LayoutFile, LayoutNode, ServiceGraph } from "../graph";
+import type { GraphNode, LayoutAnnotation, LayoutFile, LayoutNode, SchematicGraph } from "../graph";
 import type { NodeRole, SchematicConfig, SchematicNodeKind } from "./config";
 import { arrange } from "./arrange";
 import { contentOf } from "./anatomy";
@@ -24,7 +24,7 @@ import type { Viewport } from "./viewport";
  * has to be drawn and PRD §12.3 forbids running auto-sort on load.
  */
 export function buildDoc(
-  graph: ServiceGraph,
+  graph: SchematicGraph,
   layout: LayoutFile | null,
   config: SchematicConfig,
 ): SchematicDoc {
@@ -58,6 +58,19 @@ export function buildDoc(
     staleReason: node.staleReason,
     exported: node.exported,
     budgetTier: node.budgetTier,
+    signature: node.signature,
+    returns: node.returns,
+    coversCount: node.coversCount,
+    budgetThresholdText: node.budgetThresholdText,
+    budgetProbe: node.budgetProbe,
+    budgetValueText: node.budgetValueText,
+    testStatus: node.testStatus,
+    docAudience: node.docAudience,
+    docBody: node.docBody,
+    depVersion: node.depVersion,
+    depLicense: node.depLicense,
+    depRegistryOk: node.depRegistryOk,
+    screenRef: node.screenRef,
   }));
 
   const annotations: SchematicNode[] = (layout?.annotations ?? []).map(fromAnnotation);
@@ -65,6 +78,7 @@ export function buildDoc(
   const draft: SchematicDoc = {
     slug: config.layoutSlug,
     title: graph.serviceTitle,
+    tier: config.tier,
     nodes: [...semantic, ...annotations],
     edges: graph.edges.map((edge) => ({
       id: edge.id,
@@ -100,35 +114,65 @@ function roleOf(node: GraphNode, config: SchematicConfig): NodeRole | undefined 
 
 /**
  * The live graph, projected back out of the document — what the Outline and
- * the status bar read, so their counts move when the engine's do. Annotations
- * are dropped: a comment is not a node (PRD §11.3), and counting one would
- * make the status bar read 13 nodes for a 12-node service.
+ * the status bar read, so their counts move when the engine's do.
+ *
+ * **Wave 5 fix.** Before this wave every node's `kind` collapsed to
+ * `"service"` or `"module"`, silently correct only because `"module"` was
+ * the document's only other kind. A `contract-method` or `budget` facet
+ * would have collapsed to `"module"` too the moment the Module Schematic
+ * opened. This function carries every real `kind` through untouched and
+ * reads `tier` off the document instead of assuming `"service"`.
  */
-export function toServiceGraph(doc: SchematicDoc): ServiceGraph {
+export function toGraph(doc: SchematicDoc): SchematicGraph {
+  const withoutComments = doc.nodes.filter((node) => node.kind !== "comment");
+  const childCounts = new Map<string, number>();
+  for (const node of withoutComments) {
+    if (node.parentId === null) continue;
+    childCounts.set(node.parentId, (childCounts.get(node.parentId) ?? 0) + 1);
+  }
+  // A comment is always dropped (PRD §11.3). A group is dropped only when it
+  // has no children in the surviving projection: PRD §16.1's stack-tier
+  // `platform-core` is a real containment parent the Outline lists as its
+  // own row, while a cosmetic annotation group (`engine.ts`'s `addGroup`,
+  // e.g. tier 2's `Token pipeline`) never gains real children and never
+  // appears there. `[P]`, recorded in the Wave 5 handoff.
+  const kept = withoutComments.filter(
+    (node) => node.kind !== "group" || (childCounts.get(node.id) ?? 0) > 0,
+  );
+
   return {
-    tier: "service",
+    tier: doc.tier ?? "service",
     serviceSlug: doc.slug,
     serviceTitle: doc.title,
-    nodes: doc.nodes
-      .filter((node) => node.kind !== "comment" && node.kind !== "group")
-      .map((node) => ({
-        id: node.id,
-        slug: node.slug,
-        title: node.title,
-        kind: node.kind === "service" ? "service" : "module",
-        parentId: node.parentId,
-        badge: node.badge,
-        lifecycle: node.lifecycle,
-        collapsed: node.collapsed,
-      })),
+    nodes: kept.map((node) => ({
+      id: node.id,
+      slug: node.slug,
+      title: node.title,
+      kind: node.kind,
+      layer: node.layer,
+      parentId: node.parentId,
+      badge: node.badge,
+      lifecycle: node.lifecycle,
+      collapsed: node.collapsed,
+      exportsCount: node.exportsCount,
+      modulesCount: node.modulesCount,
+      dependentsCount: node.dependentsCount,
+      sharedAtLca: node.sharedAtLca,
+      schemasResolved: node.schemasResolved,
+      health: node.health,
+    })),
     edges: doc.edges.map((edge) => ({
       id: edge.id,
-      kind: edge.kind as "depends_on" | "implements" | "references_ui",
+      kind: edge.kind,
       from: edge.from,
       to: edge.to,
     })),
   };
 }
+
+/** @deprecated Use `toGraph` — kept as an alias so a caller that only ever
+ *  meant the service tier still reads naturally. */
+export const toServiceGraph = toGraph;
 
 function fromAnnotation(entry: LayoutAnnotation): SchematicNode {
   return {
