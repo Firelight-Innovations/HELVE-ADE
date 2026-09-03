@@ -226,12 +226,20 @@ wave made alone, and each is cheap to reverse.
 
 0. **A reparent is a semantic write; a move is not.** Position is cosmetic and
    parentage is not — containment is one of PRD §4.1's 2 relations, and it
-   lives in the node file. `reparent` writes `nodes/<uuid>.json` with the new
-   parent and undo removes it again. This was a review finding: the first
-   version of this wave stored parentage nowhere, so a legal reparent lived in
-   memory and vanished on the next open, and the test that called it cosmetic
-   passed because nothing was written at all rather than because nothing
-   semantic was. The drag rule is unchanged.
+   lives in the node file. `reparent` rewrites `nodes/<uuid>.json` with the new
+   parent, and undo rewrites it with the old one. The drag rule is unchanged.
+
+   Both halves were review findings, one after the other. First, parentage was
+   stored nowhere, so a legal reparent lived in memory and vanished on the next
+   open — and the test calling it cosmetic passed because nothing was written
+   at all rather than because nothing semantic was. Then the fix recorded the
+   reparent as a *creation*, and undo inverts a creation by deleting the file,
+   so undoing a reparent deleted a pre-existing node. A history step now
+   carries both payloads per file (`SemanticEffect`: `before: null` is a
+   creation, `after: null` a removal, 2 payloads an edit), and the test seeds
+   the seam with the node as it already existed so an undo that deleted it
+   cannot pass. That test fails against the previous engine, which is the
+   property it is there for.
 1. **Groups and comments persist to the layout file, not to `nodes/`.**
    PRD §6.1 names groups as layout content; §11.3 puts both kinds in the
    annotation tier, out of reconciliation and unable to carry a semantic edge.
@@ -296,13 +304,31 @@ wave made alone, and each is cheap to reverse.
     second list, so nothing has to be kept in step. If Wave 5 needs a role the
     graph does not already imply, `roleOf` in `engine/layout.ts` is the one
     place to widen.
-16. **The contract-sheet arrangement is a first cut.** PRD §12.11 asks for
+16. **The projection back to `ServiceGraph` is tier-2 shaped, and Wave 5 will
+    hit that at tier 3.** `toServiceGraph` in `engine/layout.ts` is what the
+    Outline and the status bar read, and it hardcodes `tier: "service"` and
+    collapses every kind that is not `service` to `module` — so a
+    `contract-method`, a `test-case` and a `budget` all come out as modules.
+    That is harmless while only the Service Schematic is drawn, and wrong the
+    moment the Module Schematic opens: the Outline is replaced by the facet
+    palette at tier 3 (PRD §12.1), but the status bar still counts, and it
+    would count facet cards as modules. **Wave 5 should widen this function, or
+    give the Outline and status bar a tier-aware view, when it builds the tier
+    switch.** It is 1 function and it has no other callers.
+17. **Undeletability changes wording, not behaviour, until a delete exists.**
+    There is no delete gesture on this engine, deliberately (PRD §6.6), so the
+    `undeletable` policy is enforced only by that absence — which is not
+    enforcement. `canDelete(id)` returns the refusal, naming an undeletable
+    node specially. **Wave 5's acceptance condition — "the module root node
+    cannot be deleted" — holds only if whatever delete affordance Wave 5 draws
+    asks `canDelete` first.**
+18. **The contract-sheet arrangement is a first cut.** PRD §12.11 asks for
     facets that "fan outward" reading "as a contract sheet, not as a free
     graph"; what ships is the root holding the left edge with every facet in
     one column to its right. Wave 5 owns the facet cards and will want the
     column grouped by card kind. That is a change in `arrange.ts` and nowhere
     else, behind the `arrangement` field.
-17. **`references_ui` targets a `screen` node kind** that no Schematic draws a
+19. **`references_ui` targets a `screen` node kind** that no Schematic draws a
     box for this wave. The kind is named in the vocabulary so the edge table
     stays honest rather than widening the rule to `*`.
 
@@ -325,6 +351,7 @@ view, no query parameter.
 | 2 | Any box | Title, slug beneath it, ports as small circles on the left and right edges at mid-height | A port drawn at a corner, or ports missing: the edge drag has no handle |
 | 2b | A comment or group box | The status bar's node count unchanged when one is added, and no containment arrow drawn to it at tier 3 | The count moving from 12 to 13, or an arrow reaching an annotation. Both were review findings and both are now asserted, so a visual failure here means the drawn model differs from the tested one |
 | 3 | `session-store` | Drawn collapsed, with `collapsed · 2 children` and `1 edge aggregated` | Either caption missing, or a count that is not 2 and 1. The counts are computed each frame, so a wrong number is a real defect, not stale data |
+| 3b | An undo after a reparent | Nothing on screen; this is a file-level check. If a project is ever opened with real storage, confirm `nodes/<uuid>.json` still exists after undoing a reparent | The file gone. Undo must rewrite it with the old parent, never delete it — a reparent edits a file it did not create |
 | 4 | `session-store`'s `▸` triangle | Click expands it, the box grows to hold both children, and the children draw inside its border | Children drawing outside the parent's border, or the box not growing |
 | 5 | `token-verifier` | Drawn as a container with `jwks-cache` and `clock-skew` nested inside it, edges leaving the child crossing the parent's border | An edge routed around the parent, or a child overlapping its parent's header row |
 | 6 | Wheel over a box | The box under the cursor stays under the cursor as the zoom changes, and the readout tracks it | The picture sliding out from under the pointer, which is the disorientation PRD §12.3 warns about |
@@ -345,7 +372,7 @@ view, no query parameter.
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass |
-| `pnpm test:js` | Pass — 475 in the workspace suite, 109 of them this app's, plus the bridge's own 28 |
+| `pnpm test:js` | Pass — 477 in the workspace suite, 111 of them this app's, plus the bridge's own 28 |
 | `pnpm lint:js` | Pass |
 | `pnpm lint:comments` | Pass, with no new baseline entry |
 | `pnpm lint:version`, `lint:identity`, `lint:branding` | Pass |

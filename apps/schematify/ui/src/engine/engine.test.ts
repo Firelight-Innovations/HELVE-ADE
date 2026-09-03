@@ -567,13 +567,56 @@ describe("reparenting", () => {
     });
   });
 
-  it("removes the node file again on undo", async () => {
+  it("restores the old parent on undo, and leaves the file where it was", async () => {
     const { engine, seam } = await open();
+    // The seam is seeded with the node as a real project would already hold
+    // it. Without this the file is absent before the step, and an undo that
+    // deleted it would look correct: the assertion has to start from a file
+    // that exists.
+    const original = {
+      id: "clock-skew",
+      slug: "clock-skew",
+      title: "Clock Skew",
+      kind: "module",
+      parent: "token-verifier",
+    };
+    seam.semantic.set("nodes/clock-skew.json", original);
+
     engine.reparent("clock-skew", "token-issuer");
     await engine.settled();
+    expect(seam.semantic.get("nodes/clock-skew.json")).toMatchObject({
+      parent: "token-issuer",
+    });
+
     engine.undo();
     await engine.settled();
     expect(engine.index.byId.get("clock-skew")?.parentId).toBe("token-verifier");
+    // Present, not deleted: a reparent edits a file it did not create, so its
+    // inverse is a rewrite carrying the old parent.
+    expect(seam.semantic.has("nodes/clock-skew.json")).toBe(true);
+    expect(seam.semantic.get("nodes/clock-skew.json")).toMatchObject(original);
+  });
+
+  it("puts the new parent back on redo", async () => {
+    const { engine, seam } = await open();
+    seam.semantic.set("nodes/clock-skew.json", { id: "clock-skew", parent: "token-verifier" });
+    engine.reparent("clock-skew", "token-issuer");
+    engine.undo();
+    engine.redo();
+    await engine.settled();
+    expect(engine.index.byId.get("clock-skew")?.parentId).toBe("token-issuer");
+    expect(seam.semantic.get("nodes/clock-skew.json")).toMatchObject({
+      parent: "token-issuer",
+    });
+  });
+
+  it("still removes a file the step did create, on undo", async () => {
+    const { engine, seam } = await open();
+    engine.createEdge({ kind: "depends_on", from: "clock-skew", to: "jwks-cache" });
+    await engine.settled();
+    expect(seam.semantic.size).toBe(1);
+    engine.undo();
+    await engine.settled();
     expect(seam.semantic.size).toBe(0);
   });
 });

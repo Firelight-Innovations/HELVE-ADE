@@ -35,7 +35,7 @@ export type { SchematicDoc, SchematicEdge, SchematicNode } from "./doc";
 export type { Point, Rect } from "./geometry";
 export type { DrawnEdge, DrawnNode, Frame, LegendChip, Minimap } from "./frame";
 export { buildFrame } from "./frame";
-export type { Clipboard, EngineState, SemanticWrite, WriteLayer } from "./engine";
+export type { Clipboard, EngineState, SemanticEffect, WriteLayer } from "./engine";
 export { SchematicEngine } from "./engine";
 export type { EdgeDraft } from "./rules";
 export {
