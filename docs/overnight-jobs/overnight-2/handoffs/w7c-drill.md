@@ -85,6 +85,24 @@ proving the real path, not just `createBackendSeam` 1 layer below it where
 the bug no longer lived. Made to fail on purpose the same way as round 1 —
 see §5.
 
+**Round 3 pushed on that test's own strength.** `backend.test.ts`'s
+`defaultSeam` cases assert on the *returned graph's* `tier`/`serviceSlug` —
+correct proof, but indirect: it passes because the whole pipeline
+(`defaultSeam` → `createBackendSeam` → `projectModuleGraph`) happens to
+agree, not because any one assertion pins what `defaultSeam.loadGraph`
+itself does with its arguments. Asked for a direct one: assert the backend
+*received* the exact values, not that it was called or that something
+plausible came back. New file, `graph/index.defaultSeam.test.ts`, mocks
+`./backend` itself (not `@openkaava/bridge` — the mocked `createBackendSeam`
+never reaches the real bridge, so nothing there needs faking) with a
+`vi.fn()` standing in for the whole backend seam's `loadGraph`, calls
+`defaultSeam.loadGraph("module", "token-verifier")`, and asserts
+`loadGraphSpy` was called exactly once, with exactly `("module",
+"token-verifier")` — a claim that can only be true if `index.ts`'s own
+wrapper forwarded both arguments unchanged, independent of anything
+`backend.ts` or `project.ts` do with them afterward. Made to fail on
+purpose — see §5.
+
 **The branch didn't compile against current `main`.** Wave 6 (PR #92)
 merged while this branch was open, and deleted `GraphNode.coversCount` as
 the PRD §0.4 breach it was — a stored count that could drift from the real
