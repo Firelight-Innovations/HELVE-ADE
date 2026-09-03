@@ -338,6 +338,8 @@ impl SearchIndex for GraphIndex {
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use crate::lifecycle::Lifecycle;
     use crate::node::{Authorship, NodeEnvelope};

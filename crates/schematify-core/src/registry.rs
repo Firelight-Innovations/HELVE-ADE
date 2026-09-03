@@ -808,7 +808,7 @@ mod tests {
 
     #[test]
     fn the_rule_document_reads_by_severity_and_by_slug_inside_it() {
-        let rules = vec![
+        let rules = [
             rule(1, "no-unwrap", Severity::Error),
             rule(2, "tokens-not-hex", Severity::Warning),
             rule(3, "append-only-audit", Severity::Error),
@@ -837,7 +837,7 @@ mod tests {
 
     #[test]
     fn a_severity_no_rule_carries_draws_no_empty_heading() {
-        let rules = vec![rule(1, "no-unwrap", Severity::Error)];
+        let rules = [rule(1, "no-unwrap", Severity::Error)];
         let document = RuleDocument::build(rules.iter());
         assert_eq!(document.sections.len(), 1);
         assert!(document
@@ -858,7 +858,7 @@ mod tests {
             actor_name: "m.ross".to_owned(),
             reason: "Written up.".to_owned(),
         }];
-        let rules = vec![held];
+        let rules = [held];
         let document = RuleDocument::build(rules.iter());
         let row = &document.sections[0].rules[0];
         assert_eq!(row.command.as_deref(), Some("pnpm verify"));
