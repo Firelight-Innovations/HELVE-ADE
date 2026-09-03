@@ -15,6 +15,7 @@
  * widening it to 2 modules: `SchematifySeam` at the foot of this file is every
  * read and every write the Schematic engine makes.
  */
+import type { Dashboard, RawRunsReport } from "./dashboard";
 import { DENSE_SERVICE_GRAPH } from "./dense";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
 import { MODULE_GRAPH } from "./module";
@@ -68,6 +69,45 @@ export {
   statusCell3,
   subjectId,
 } from "./problems";
+
+export type {
+  AuditLogRow,
+  BudgetHistoryRow,
+  ContractHistoryRow,
+  Dashboard,
+  DashboardBudgetCounter,
+  DashboardLinterCounter,
+  DashboardModule,
+  DashboardReconciliationCounter,
+  DashboardRun,
+  DashboardTestCounter,
+  RawRunsReport,
+  ReconciliationRow,
+  RunsRow,
+} from "./dashboard";
+export {
+  auditActorCell,
+  auditTransition,
+  budgetLatestValue,
+  budgetsCounter,
+  budgetsNote,
+  budgetThreshold,
+  contractHistory,
+  formatRunAt,
+  latestRunLine,
+  linterCounter,
+  linterNote,
+  noProbeCaption,
+  reconciliationCounter,
+  reconciliationNote,
+  relativeTime,
+  runsPathLine,
+  shortDate,
+  signOffCaption,
+  statusCell4,
+  testsCounter,
+  testsNote,
+} from "./dashboard";
 
 /** Every service-tier fixture this stand-in loader knows, keyed by slug.
  *  Wave 5 widens this from the 1 hardcoded service Wave 2/3 opened
@@ -364,4 +404,26 @@ function getBackendModule(): Promise<typeof import("./backend")> {
 }
 export function fetchLintReport(): Promise<RawLintReport> {
   return getBackendModule().then((m) => m.fetchLintReport());
+}
+
+/** `schematify/module-dashboard`, wave 9d's own read — see `fetchLintReport`
+ *  above for why this lives outside `SchematifySeam`: the Module dashboard
+ *  is a whole separate screen (PRD §12.13), not something the Schematic
+ *  engine reads. */
+export function fetchModuleDashboard(module: string): Promise<Dashboard> {
+  return getBackendModule().then((m) => m.fetchModuleDashboard(module));
+}
+
+/** `schematify/runs`, wave 9d's own read, for the Runs dock tab (PRD §12.2
+ *  S-14). Project-wide, same reasoning as `fetchLintReport`. */
+export function fetchRuns(): Promise<RawRunsReport> {
+  return getBackendModule().then((m) => m.fetchRuns());
+}
+
+/** `schematify/ingest-run`, wave 9d's own write — the one write in this file
+ *  outside `SchematifySeam`, because it is not a Schematic engine gesture
+ *  either: it is CI handing Schematify a file, the same "not the engine"
+ *  reasoning as the 2 reads above. */
+export function ingestRun(module: string, path: string): Promise<{ ingested: boolean }> {
+  return getBackendModule().then((m) => m.ingestRun(module, path));
 }
