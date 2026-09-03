@@ -439,6 +439,23 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the
+    /// environment of a test binary it launches over the one baked in at
+    /// compile time.
+    ///
+    /// Several worktrees sharing one `CARGO_TARGET_DIR` (a deliberate
+    /// convention for agents working this repo) hold identical sources, so
+    /// Cargo can reuse a test binary compiled in a worktree that has since
+    /// been removed, carrying that worktree's absolute path. Reading the
+    /// environment first avoids resolving fixtures against a directory that
+    /// no longer exists.
+    fn manifest_dir() -> PathBuf {
+        PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR")
+                .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+        )
+    }
+
     /// A temp directory that cleans itself up, following `apps/files.rs` and
     /// `project/marker.rs` — these tests are about what a real filesystem
     /// does (atomic writes, directory creation), and a fake one would only be
@@ -891,7 +908,7 @@ mod tests {
     /// carries the full comparison against the wave 2 stand-in fixture).
     #[test]
     fn load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let root = manifest_dir()
             .join("..")
             .join("crates")
             .join("schematify-core")

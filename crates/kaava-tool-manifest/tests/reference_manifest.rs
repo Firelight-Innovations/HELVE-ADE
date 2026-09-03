@@ -13,9 +13,20 @@ use std::path::PathBuf;
 
 fn echo_tool_checkout() -> PathBuf {
     // `CARGO_MANIFEST_DIR` is this crate's directory, so the example is two
-    // levels up and back down. Resolved at compile time, which means moving
-    // either directory breaks the build rather than the test at runtime.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/echo-tool")
+    // levels up and back down. Read from the environment rather than
+    // `env!`: Cargo sets the same variable at test-binary launch, and
+    // several worktrees sharing one `CARGO_TARGET_DIR` can otherwise reuse a
+    // test binary compiled in a worktree that has since been removed,
+    // baking in a path that no longer exists.
+    manifest_dir().join("../../examples/echo-tool")
+}
+
+/// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the environment
+/// of a test binary it launches over the one baked in at compile time.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+    )
 }
 
 #[test]

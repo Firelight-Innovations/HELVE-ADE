@@ -7,7 +7,7 @@
 //! an empty index would pass instantly and prove nothing, so this states what
 //! was indexed and what came back before it times anything.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use schematify_core::{
@@ -17,9 +17,21 @@ use schematify_core::{
 };
 
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(name)
+    manifest_dir().join("fixtures").join(name)
+}
+
+/// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the environment
+/// of a test binary it launches over the one baked in at compile time.
+///
+/// Several worktrees sharing one `CARGO_TARGET_DIR` (a deliberate convention
+/// for agents working this repo) hold identical sources, so Cargo can reuse
+/// a test binary compiled in a worktree that has since been removed,
+/// carrying that worktree's absolute path. Reading the environment first
+/// avoids resolving fixtures against a directory that no longer exists.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+    )
 }
 
 // ---------------------------------------------------------------------------

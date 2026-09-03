@@ -168,6 +168,23 @@ fn normalize(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the
+    /// environment of a test binary it launches over the one baked in at
+    /// compile time.
+    ///
+    /// Several worktrees sharing one `CARGO_TARGET_DIR` (a deliberate
+    /// convention for agents working this repo) hold identical sources, so
+    /// Cargo can reuse a test binary compiled in a worktree that has since
+    /// been removed, carrying that worktree's absolute path. Reading the
+    /// environment first avoids resolving fixtures against a directory that
+    /// no longer exists.
+    fn manifest_dir() -> PathBuf {
+        PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR")
+                .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+        )
+    }
+
     #[test]
     fn normalize_collapses_parent_segments() {
         let input = Path::new("C:/code/helve/orchestrator/../engine");
@@ -185,7 +202,7 @@ mod tests {
     /// `cargo test` time instead of at app launch.
     #[test]
     fn the_shipped_manifest_parses_and_resolves() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        let path = manifest_dir()
             .parent()
             .expect("src-tauri always has a parent")
             .join("kaava.toml");
