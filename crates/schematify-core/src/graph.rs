@@ -230,6 +230,33 @@ impl Graph {
         self.runs.get(&node).map_or(&[], Vec::as_slice)
     }
 
+    /// Every run that reports a result for this budget node.
+    ///
+    /// PRD section 6.1 keys `runs/` by one node per directory, and one CI
+    /// workflow answers several budgets at once (PRD section 8), so a run is
+    /// stored under the budget's containing module or service, never under
+    /// the budget itself. Finding a budget's runs by walking that
+    /// containment and matching `metric` strings by hand is the "path
+    /// convention" the wave 9b handoff calls out; this method is the
+    /// explicit link instead, so a caller never has to know the storage
+    /// fact to ask the question.
+    #[must_use]
+    pub fn runs_for_budget(&self, budget: Uuid) -> Vec<&RunArtifact> {
+        let Some(node) = self.node(budget) else {
+            return Vec::new();
+        };
+        let Ok(fields) = node.budget() else {
+            return Vec::new();
+        };
+        let Some(scope) = node.envelope.parent else {
+            return Vec::new();
+        };
+        self.runs(scope)
+            .iter()
+            .filter(|run| run.budgets.iter().any(|b| b.metric == fields.metric))
+            .collect()
+    }
+
     /// The audit history of a node.
     #[must_use]
     pub fn audit(&self, node: Uuid) -> &[AuditRow] {
@@ -527,7 +554,8 @@ impl Graph {
 mod tests {
     use super::*;
     use crate::lifecycle::Lifecycle;
-    use crate::node::{Authorship, NodeEnvelope, NodeKind};
+    use crate::node::{Authorship, BudgetFields, BudgetTier, NodeEnvelope, NodeKind};
+    use crate::run::{BudgetResult, RUN_SCHEMA_VERSION};
     use crate::slug::Slug;
 
     fn node(id: u128, slug: &str, kind: NodeKind, parent: Option<u128>) -> Node {
@@ -646,6 +674,63 @@ mod tests {
         graph.insert_node(node(5, "child-module", NodeKind::Module, Some(1)));
         graph.reindex();
         assert_eq!(graph.facet_count(Uuid::from_u128(1)), 3);
+    }
+
+    fn budget(id: u128, slug: &str, parent: u128, metric: &str) -> Node {
+        node(id, slug, NodeKind::Budget, Some(parent))
+            .with_fields(&BudgetFields {
+                metric: metric.to_owned(),
+                op: "<".to_owned(),
+                value: 3.0,
+                unit: "ms".to_owned(),
+                tier: BudgetTier::Hard,
+                probe: None,
+                sign_off: None,
+            })
+            .unwrap()
+    }
+
+    /// Two budget siblings under one scope, and a run naming only one of
+    /// their metrics. A filter that matched any run in the scope rather than
+    /// the metric itself would return the run for both, so this is the case
+    /// that tells the two apart.
+    #[test]
+    fn runs_for_budget_matches_by_metric_and_not_by_sharing_a_scope() {
+        let mut graph = Graph::new();
+        graph.insert_node(node(1, "token-verifier", NodeKind::Module, None));
+        graph.insert_node(budget(2, "verify-p95", 1, "verify_p95"));
+        graph.insert_node(budget(3, "cold-start-p95", 1, "cold_start_p95"));
+        graph.reindex();
+
+        graph.insert_run(
+            Uuid::from_u128(1),
+            RunArtifact {
+                schema: RUN_SCHEMA_VERSION.to_owned(),
+                run: 1,
+                at: "2026-08-25T00:00:00Z".to_owned(),
+                commit: "abc".to_owned(),
+                workflow: "ci/verify.yml".to_owned(),
+                budgets: vec![BudgetResult {
+                    metric: "verify_p95".to_owned(),
+                    value: 1.8,
+                    unit: "ms".to_owned(),
+                    pass: true,
+                }],
+                tests: Vec::new(),
+                linter: None,
+                reconcile: None,
+            },
+        );
+
+        assert_eq!(
+            graph.runs_for_budget(Uuid::from_u128(2)).len(),
+            1,
+            "verify_p95 is named in the run and should find it"
+        );
+        assert!(
+            graph.runs_for_budget(Uuid::from_u128(3)).is_empty(),
+            "cold_start_p95 shares the scope but is not named in the run"
+        );
     }
 
     #[test]
