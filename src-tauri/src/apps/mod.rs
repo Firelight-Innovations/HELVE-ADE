@@ -15,9 +15,8 @@
 
 mod design;
 mod files;
-mod forger;
 mod home;
-mod journeyman;
+mod schematify;
 mod trash;
 pub mod tutorial;
 
@@ -203,16 +202,19 @@ const REGISTRY: &[Registered] = &[
         call: design::call,
     },
     Registered {
-        id: "forger",
-        name: "Forger",
-        description: "Technical design software — specs out the stack and its boundaries.",
-        // Was going to ship as its own repository, installed as a tool. That
-        // plan is reversed: see `apps/forger.rs` for why what it will show
-        // belongs to the orchestrator rather than to a checkout beside it. This
-        // row is a skeleton — `forger::call` answers one placeholder method —
-        // registered now so the switcher, the Apps menu and boot all already
-        // know its shape before anything is built behind it.
-        call: forger::call,
+        id: "schematify",
+        name: "Schematify",
+        description: "The design layer of OpenKaava — draws the full-scale plan agents build from.",
+        // Was going to ship as two separate repositories, each installed as a
+        // tool. That plan is reversed and the two are folded into one: see
+        // `apps/schematify.rs` and
+        // `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` for
+        // why what it will show belongs to the orchestrator rather than to a
+        // checkout beside it. This row is a skeleton — `schematify::call`
+        // answers one placeholder method — registered now so the switcher, the
+        // Apps menu and boot all already know its shape before anything is
+        // built behind it.
+        call: schematify::call,
     },
     Registered {
         id: "tutorial",
@@ -223,17 +225,6 @@ const REGISTRY: &[Registered] = &[
         // cluster rather than taking a pane. This row is still what makes
         // `kaava/open` resolve a frontend. See `docs/tutorials.md` §8.
         call: tutorial::call,
-    },
-    Registered {
-        id: "journeyman",
-        name: "Journeyman",
-        description: "The build side of the stack, downstream of what Forger specifies.",
-        // Last in the switcher order, and last here to match: unlike Tutorials
-        // and Home above it, Journeyman is an ordinary pane app — it takes a
-        // tab and a spot in the Apps menu like Files or the Viewer, so there is
-        // nothing here for `openables`' filtering to do. It is a skeleton
-        // today; see the module doc for what that means and does not mean.
-        call: journeyman::call,
     },
 ];
 
@@ -405,7 +396,7 @@ fn compose_openables(installed: Vec<Openable>) -> Vec<Openable> {
 /// Looks through [`openables`] rather than `REGISTRY` alone so a plugin surface
 /// gets its declared name too. The fallback still matters and is now more
 /// reachable than it was: a plugin whose checkout has gone missing has no
-/// manifest to read a name out of, and a tab reading `forger.specs` is a better
+/// manifest to read a name out of, and a tab reading `acme.specs` is a better
 /// answer than an empty one.
 pub fn display_name(app: &AppHandle, id: &str) -> String {
     openables(app)
@@ -648,14 +639,14 @@ mod tests {
     /// [`compose_openables`] documents itself as preventing.
     #[test]
     fn the_terminal_stays_last_once_plugins_are_offered() {
-        let composed = compose_openables(vec![plugin_row("forger.specs")]);
+        let composed = compose_openables(vec![plugin_row("acme.specs")]);
 
         assert_eq!(composed.last().map(|o| o.id.as_str()), Some(TERMINAL_ID));
         assert_eq!(composed.len(), REGISTRY.len() + 2);
 
         let plugin_at = composed
             .iter()
-            .position(|o| o.id == "forger.specs")
+            .position(|o| o.id == "acme.specs")
             .expect("the plugin surface is offered");
         assert_eq!(
             plugin_at,
@@ -669,14 +660,14 @@ mod tests {
     /// `invoke` from the frame is answered in this process or over the broker.
     #[test]
     fn a_plugin_surface_is_not_an_app() {
-        let composed = compose_openables(vec![plugin_row("forger.specs")]);
+        let composed = compose_openables(vec![plugin_row("acme.specs")]);
         let row = composed
             .iter()
-            .find(|o| o.id == "forger.specs")
+            .find(|o| o.id == "acme.specs")
             .expect("offered");
 
         assert_eq!(row.kind, OpenableKind::Plugin);
-        assert!(!is_app("forger.specs"), "and `is_app` stays narrow");
+        assert!(!is_app("acme.specs"), "and `is_app` stays narrow");
     }
 
     /// The boot roster is what the splash blocks on until each app reports a

@@ -13,8 +13,8 @@ to.
 The obvious reason is "make it easy to change names and logos". That is a
 convenience and it would not have earned a work package.
 
-The real reason is that the source in this repository is Apache-2.0 while OpenKaava,
-Forger and Journeyman stay trademarks — the open-core split Rust, Docker and
+The real reason is that the source in this repository is Apache-2.0 while OpenKaava
+and Schematify stay trademarks — the open-core split Rust, Docker and
 Mozilla all use. That position is unenforceable, and worse than that
 *unfollowable*, unless somebody who forks the source can strip the marks in one
 place. Before this existed they would have had to find them by grep, and a

@@ -27,10 +27,11 @@ repository's branch tip happens to be today.
 
 ## Nothing is pinned today
 
-`kaava.toml`'s `[[tool]]` array is empty right now. Forger and Journeyman
-used to be its two entries; both have been reclassified as apps built into
-the orchestrator itself rather than separate tool repositories — see
-`apps/README.md` at the repository root for what they are now and why. The
+`kaava.toml`'s `[[tool]]` array is empty right now. Schematify's two
+predecessor applications used to be its two entries; both have been folded
+into one app built into the orchestrator itself rather than separate tool
+repositories — see `apps/README.md` at the repository root for what it is now
+and why. The
 mechanism below still runs, with nothing to say about: an empty list reads
 exactly like a stack where every pinned tool matches its version, because
 that is what it is — a stack with nothing unwell in it.
@@ -58,7 +59,7 @@ the checkout disagrees with the pin. `not tracked` means it is there, but
 carries no version to check at all.
 
 The orchestrator is usable entirely on its own regardless of what is pinned —
-Home, the File Explorer, the File Viewer, Tutorials, Forger and Journeyman are
+Home, the File Explorer, the File Viewer, Tutorials, and Schematify are
 all in the binary and need no checkout at all. A pinned tool's checkout is a
 separate, additional thing to have on the machine, not a requirement for the
 window to open.
@@ -79,7 +80,7 @@ running as a separate process. It can be missing, unbuilt, or the wrong
 version — which is the whole reason a tool has states at all.
 
 An **app** is code the orchestrator _is_. Home, the File Explorer, the File
-Viewer, Tutorials, Forger and Journeyman are all apps: they are compiled into
+Viewer, Tutorials, and Schematify are all apps: they are compiled into
 the binary. That leaves no version to disagree with and no way for one to be
 missing — which is why none of them can ever raise the badge.
 

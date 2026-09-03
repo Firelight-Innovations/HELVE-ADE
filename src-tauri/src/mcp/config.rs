@@ -178,12 +178,12 @@ mod tests {
 
     #[test]
     fn a_project_with_no_config_gets_one_naming_every_enabled_server() {
-        let merged = merge(None, &["echo".to_string(), "forger".to_string()]).unwrap();
+        let merged = merge(None, &["echo".to_string(), "acme".to_string()]).unwrap();
         let servers = servers_of(&merged);
 
         assert_eq!(servers.len(), 2);
         assert!(servers.contains_key("kaava-echo"));
-        assert!(servers.contains_key("kaava-forger"));
+        assert!(servers.contains_key("kaava-acme"));
     }
 
     /// The rule the rest of this module exists to protect: a project's own
@@ -279,10 +279,10 @@ mod tests {
     /// safe to commit — which is the whole reason it is shaped this way.
     #[test]
     fn an_entry_names_variables_rather_than_a_port_or_a_token() {
-        let row = entry("forger");
+        let row = entry("acme");
 
         assert_eq!(row["type"], "http");
-        assert_eq!(row["url"], "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/forger");
+        assert_eq!(row["url"], "http://127.0.0.1:${KAAVA_MCP_PORT}/mcp/acme");
         assert_eq!(row["headers"]["Authorization"], "Bearer ${KAAVA_MCP_TOKEN}");
 
         // `entry` is given neither the port nor the token, so the only digits

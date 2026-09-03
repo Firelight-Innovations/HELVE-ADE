@@ -1,10 +1,15 @@
 /**
- * Forger: technical design software, today an empty shell.
+ * Schematify: the design layer of OpenKaava, today an empty shell.
  *
- * There is no product surface yet — see `src-tauri/src/apps/forger.rs` for why
- * this app exists before there is anything to design. What this component owes
- * is the same thing every app owes: draw something honest and report
- * `reportPainted()` once it has, whether `forger/state` answered or failed.
+ * Schematify replaces the two predecessor applications this scaffold was
+ * built from (`docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md`),
+ * folded into one app rather than two — see
+ * `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md` §1.3 for the layers it
+ * now holds. There is no product surface yet: this wave is the rename and the
+ * scaffold, and the Schematic engine arrives in a later wave. What this
+ * component owes today is the same thing every app owes: draw something
+ * honest and report `reportPainted()` once it has, whether `schematify/state`
+ * answered or failed.
  */
 import { useEffect, useState } from "react";
 import { reportPainted } from "@openkaava/bridge";
@@ -39,19 +44,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__head">
-        <h1 className="app__title">Forger</h1>
-        <span className="app__sub">Technical design software</span>
+        <h1 className="app__title">Schematify</h1>
+        <span className="app__sub">The design layer of OpenKaava</span>
       </header>
       <div className="app__body">
         {error ? (
           <p className="app__error">{error}</p>
         ) : (
-          <div className="forger__empty">
-            <p>Forger is not built yet.</p>
+          <div className="schematify__empty">
+            <p>Schematify is not built yet.</p>
             <p className="app__note">
               {state?.project
-                ? `This cluster's project is ${state.project}, but there is nothing here to design against it with.`
-                : "This cluster has no project open, and there would be nothing to design against it yet either way."}
+                ? `This cluster's project is ${state.project}, but there is nothing here to draw a Schematic against it with.`
+                : "This cluster has no project open, and there would be nothing to draw a Schematic against it yet either way."}
             </p>
           </div>
         )}

@@ -7,7 +7,7 @@ import App from "./App";
 // them; a second copy of the palette is a second thing to forget to update.
 import "/src/tokens.css";
 import "/apps/shared/app.css";
-import "./forger.css";
+import "./schematify.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

@@ -49,8 +49,8 @@ presets.
 The bar also holds a warning-triangle badge, listing any tool whose health is
 not **ok** — **needs update**, **not tracked**, or **not installed**. It
 counts the stack's pinned authoring tools, of which there are none today —
-Forger and Journeyman, its two former entries, are now apps rather than
-pinned tools (see [The stack, end to end](the-stack.md)), so the badge is
+Schematify's two predecessor applications, its two former entries, are now
+one app rather than pinned tools (see [The stack, end to end](the-stack.md)), so the badge is
 silent rather than warning about anything. That is the badge's normal healthy
 state, not a sign it failed to load.
 

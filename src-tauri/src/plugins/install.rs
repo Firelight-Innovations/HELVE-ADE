@@ -404,15 +404,15 @@ mod tests {
 
     #[test]
     fn sanitize_leaves_a_valid_package_id_alone() {
-        assert_eq!(sanitize("forger"), "forger");
-        assert_eq!(sanitize("kaava-forger"), "kaava-forger");
+        assert_eq!(sanitize("acme"), "acme");
+        assert_eq!(sanitize("kaava-acme"), "kaava-acme");
     }
 
     #[test]
     fn sanitize_flattens_a_slug_into_one_segment() {
         assert_eq!(
-            sanitize("Firelight-Innovations/OpenKaava-Forger"),
-            "Firelight-Innovations-OpenKaava-Forger"
+            sanitize("Firelight-Innovations/OpenKaava-Acme"),
+            "Firelight-Innovations-OpenKaava-Acme"
         );
         assert!(!sanitize("../../etc").contains('.'));
         assert!(!sanitize("a/b").contains('/'));
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn a_key_prefers_the_catalog_id_over_the_slug() {
         let repo = Repo::parse("owner/name").expect("parses");
-        assert_eq!(key_of(Some("forger"), &repo), "forger");
+        assert_eq!(key_of(Some("acme"), &repo), "acme");
         assert_eq!(key_of(None, &repo), "owner/name");
     }
 

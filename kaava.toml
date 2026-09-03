@@ -26,10 +26,10 @@ checkout-root = ".."
 # and a schema that omits the question cannot answer it later without a
 # migration.
 #
-# This array is empty right now. Forger and Journeyman were its two entries;
-# both have been reclassified as first-party apps under `apps/` — see
-# `apps/README.md` — which puts them in the binary rather than in a sibling
-# checkout, so they are no longer a stack component this file needs to pin.
-# The array stays, working, with zero rows: it is still where a genuinely
-# separate-repository dev tool gets pinned, the day one exists.
+# This array is empty right now. Schematify's two predecessor applications
+# were its two entries; both have been reclassified as one first-party app
+# under `apps/` — see `apps/README.md` — which puts it in the binary rather
+# than in a sibling checkout, so it is no longer a stack component this file
+# needs to pin. The array stays, working, with zero rows: it is still where a
+# genuinely separate-repository dev tool gets pinned, the day one exists.
 

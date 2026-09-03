@@ -37,8 +37,7 @@ apps/
   viewer/ui/              File Viewer's frontend
   tutorial/ui/            Tutorials' frontend
   design/ui/              Design Mode's frontend
-  forger/ui/              Forger's frontend
-  journeyman/ui/          Journeyman's frontend
+  schematify/ui/          Schematify's frontend
 ```
 
 Each app's Rust half lives in `src-tauri/src/apps/<id>.rs`, and
@@ -109,7 +108,7 @@ therefore only ever reach its own cluster, and can only name a **kind** of app
 rather than a particular surface — which surface answers is a fact about the
 layout that only the shell can see.
 
-## The seven apps
+## The six apps
 
 **Home** (`home/state`, plus the project verbs) — where a session starts: New,
 Open and Clone on the left over a Recent list, tutorials on the right. It is the
@@ -185,22 +184,23 @@ in one with a checkout — which is the state a person reading "your first proje
 is most likely to be in. The catalog is in Rust because Home draws it too; the
 prose is in the frontend because it is a view.
 
-**Forger** — technical design software: specs out the stack and its boundaries
-before there is code to hold them to. It used to be planned as its own
-repository, installed the way a genuinely third-party tool is; it is an app
-instead for the same reason Home and Files are — what it shows is what the
-orchestrator already resolved, and a process boundary that only turns around
-and asks the shell for that again is an IPC hop with nothing of its own on the
-other end. Scope is intentionally loose until reached; `TODO.md` #11 is where
-that gets filled in.
-
-**Journeyman** — the build side of the stack, downstream of what Forger
-specifies: rough, interactive prototypes of the systems Forger designs, built
-fast rather than built right. Tackled after Forger is working, and
-reclassified as an app alongside it for the same reason; `TODO.md` #12.
-
 Like Home, it **covers** the cluster rather than taking a pane: no tab in the
 switcher, no row in the Apps menu or the `+`, and gone as soon as you choose
 something else. Home's cards are its door. It is still an ordinary registry entry
 all the same — that is what resolves its frontend when `kaava/open` asks for one,
 and the filtering is a fact about which menus offer it. `docs/tutorials.md` §8.
+
+**Schematify** — the design layer of OpenKaava: draws the full-scale plan,
+technical and product together, that coding agents build from. It replaces
+two predecessor applications this scaffold was built from, folded into one
+rather than two — see
+`docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` and
+`docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md` §1.3 for what each used to
+own. It used to be planned as separate repositories, installed the way a
+genuinely third-party tool is; it is an app instead for the same reason Home
+and Files are — what it shows is what the orchestrator already resolved, and a
+process boundary that only turns around and asks the shell for that again is
+an IPC hop with nothing of its own on the other end. It is an ordinary pane
+app — a tab in the switcher and a row in the Apps menu, like Files or the
+Viewer. Scope grows wave by wave; `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`
+§17 is where that gets filled in.

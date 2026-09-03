@@ -936,9 +936,9 @@ mod tests {
 
     const MULTI: &str = r#"
         [tool]
-        id      = "forger"
+        id      = "acme"
         version = "0.1.0"
-        name    = "Forger"
+        name    = "Acme"
         description = "Technical design software."
 
         [frontend]
@@ -958,14 +958,14 @@ mod tests {
         present = "cover"
 
         [core]
-        bin = "target/release/kaava-forger"
+        bin = "target/release/kaava-acme"
     "#;
 
     #[test]
     fn parses_several_surfaces_in_declaration_order() {
         let manifest = ToolManifest::parse(MULTI).expect("multi-surface manifest should parse");
 
-        assert_eq!(manifest.tool.name.as_deref(), Some("Forger"));
+        assert_eq!(manifest.tool.name.as_deref(), Some("Acme"));
         assert_eq!(manifest.tool.description, "Technical design software.");
 
         let ids: Vec<&str> = manifest.surfaces.iter().map(|s| s.id.as_str()).collect();

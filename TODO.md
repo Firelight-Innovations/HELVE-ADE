@@ -110,8 +110,8 @@ Still open from this item:
 - **Layout presets cannot hold a plugin surface.** `presets::normalized` filters
   slots through `is_app`. Not a regression — presets never held a tool either —
   but it bites the first time somebody saves a preset with an installed plugin
-  in it. Forger and Journeyman no longer trigger this: both moved to `apps/`
-  (see #11, #12), and `is_app` already covers them.
+  in it. Schematify no longer triggers this: it moved to `apps/`
+  (see #11), and `is_app` already covers it.
 - **A backend-only package installs and spawns, but nothing calls it.**
   `mcp::Registry` holds `&'static` servers, so a plugin-provided MCP server
   cannot be one. The manifest reserves the space; the plumbing does not exist.
@@ -128,11 +128,11 @@ author actually installs". It is not published — `npm view @openkaava/bridge` 
 404 as of 2026-08-21 — so there is nothing to install, and the sentence in the
 protocol document is currently false.
 
-That is what stopped the Forger and Journeyman scaffolds from landing with #27,
-back when both were planned as separate repositories that would install like
-any other tool. That is no longer why they wait: both have since been
-reclassified as in-repo apps under `apps/` (see #11, #12), which pull
-`@openkaava/bridge` from the pnpm workspace rather than from npm, so neither is
+That is what stopped the Schematify scaffold from landing with #27, back when
+its two predecessors were planned as separate repositories that would install
+like any other tool. That is no longer why it waits: it has since been
+reclassified as an in-repo app under `apps/` (see #11), which pulls
+`@openkaava/bridge` from the pnpm workspace rather than from npm, so it is not
 blocked on this item any more. This still blocks the first genuinely
 third-party tool repository, which is the case it was written for.
 
@@ -176,8 +176,8 @@ Publishing `kaava-rpc` to crates.io is tidier and optional. This is neither.
 5. **Then scaffold the first genuinely third-party tool**, whenever one shows
    up. `docs/dev/app-releases.md` carries the manifest shape and the exact
    release workflow a separate repository needs — zip plus `.sha256`, no
-   installer, published as a draft. Forger and Journeyman no longer go through
-   this path; see #11 and #12.
+   installer, published as a draft. Schematify no longer goes through this
+   path; see #11.
 
 ### Also outstanding, and unrelated to npm
 
@@ -193,33 +193,36 @@ change it is checking; CODEOWNERS is the only boundary GitHub evaluates
 server-side, out of reach of the branch. Create the team, add the maintainer,
 and turn on "Require review from Code Owners".
 
-## 11. Forger (vague for now)
+## 11. Schematify
 
-**No longer blocked on #10b.** Forger was originally planned as its own
-repository, installed like any other tool. It has since been reclassified as
-an in-repo app under `apps/forger/`, alongside Home, Files and the rest, whose
-frontend pulls `@openkaava/bridge` straight from the pnpm workspace rather than
-from npm — see `apps/README.md`. #10b still stands, and still blocks the first
-genuinely third-party tool repository; it just no longer blocks this one.
+**No longer vague.** This item used to track two separate, undefined
+placeholders — one for the technical design tool, one for the product design
+tool, each planned as its own repository installed like any other tool. The
+overnight Schematify build (`docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`)
+replaced both with one specced application, folded into one rather than two —
+see `docs/overnight-jobs/overnight-2/OpenKaava-naming-decision.md` for why.
 
-**Built by the maintainer, like #10 and #12.** Not because outside help is
+**No longer blocked on #10b.** It is an in-repo app under `apps/schematify/`,
+alongside Home, Files and the rest, whose frontend pulls `@openkaava/bridge`
+straight from the pnpm workspace rather than from npm — see `apps/README.md`.
+#10b still stands, and still blocks the first genuinely third-party tool
+repository; it just no longer blocks this one.
+
+**Built by the maintainer, like #10.** Not because outside help is
 unwelcome — so that nobody spends a weekend on a foundation that is already
-half-written. Once each of the three exists, features and quality-of-life work
-on top of it is where an outside change lands best, and a roadmap and a set of
-starter issues are coming to say where. This is stated in `CONTRIBUTING.md` and
-in the "What should we build next?" discussion, and the three places should
-keep agreeing.
+half-written. Once it exists, features and quality-of-life work on top of it
+is where an outside change lands best, and a roadmap and a set of starter
+issues are coming to say where. This is stated in `CONTRIBUTING.md` and in the
+"What should we build next?" discussion, and the two places should keep
+agreeing.
 
-Scope intentionally undefined until reached — flesh out in-depth at that point.
-One idea is worth carrying: the architecture linter and Forger's editor are the
-same boundary model, one checking it and one authoring it, and building the
-checker first is what forces the model to be precise before it has to be
-pretty.
-
-## 12. Journeyman
-
-Tackled after Forger is working. Reclassified the same way and for the same
-reason — see #11 — so it is not blocked on #10b either.
+Scope is no longer undefined: `docs/overnight-jobs/overnight-2/SCHEMATIFY-PRD.md`
+§17 lays out the build waves, from the rename and scaffold through the
+Schematic engine, the linter, and reconciliation with running code. One idea
+carries over from the old placeholder text: the architecture linter and
+Schematify's own editor are the same boundary model, one checking it and one
+authoring it, and building the checker first is what forces the model to be
+precise before it has to be pretty.
 
 ---
 

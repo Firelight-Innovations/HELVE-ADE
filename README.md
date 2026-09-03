@@ -74,10 +74,11 @@ of code back to the decision that produced it.
 This traceability is the idea that sets OpenKaava apart from other development
 environments.
 
-**Forger** builds the technical design tool. **Journeyman** builds the product
-design tool. Both ship as apps inside this repository rather than as separate
-downloads — see [`apps/README.md`](apps/README.md) — and neither is built yet.
-[What does not work yet](#what-does-not-work-yet) has the full list.
+**Schematify** is the design layer — the technical design and the product
+design in one application. It ships as an app inside this repository rather
+than as a separate download — see [`apps/README.md`](apps/README.md) — and it
+is not built yet. [What does not work yet](#what-does-not-work-yet) has the
+full list.
 
 </td>
 </tr>
@@ -215,10 +216,10 @@ that something reads.
 
 OpenKaava is pre-alpha. The honest list is short.
 
-- **The design tools are not built yet.** Forger and Journeyman are apps that
-  live in this repository (see [`apps/README.md`](apps/README.md)) and neither
-  has a working screen behind it yet. The switcher bar shows only the
-  orchestrator's other apps in the meantime.
+- **The design layer is not built yet.** Schematify is an app that lives in
+  this repository (see [`apps/README.md`](apps/README.md)) and has no working
+  screen behind it yet. The switcher bar shows only the orchestrator's other
+  apps in the meantime.
 - **Nothing is signed.** Windows SmartScreen warns about the installer. You
   have to click through it.
 - **Windows only.** macOS and Linux are untested, not excluded. Nothing in the
@@ -289,8 +290,8 @@ cadence, and its own checkout beside this one, pinned to an exact version in
 `kaava.toml` and `catalog.toml` both keep working with zero rows rather than
 being deleted (see their headers).
 
-Forger and Journeyman are not that kind of tool, though. Both live in this
-repository, under `apps/`, and ship in the same binary as Home and the File
+Schematify is not that kind of tool, though. It lives in this
+repository, under `apps/`, and ships in the same binary as Home and the File
 Explorer rather than as a separate checkout — see
 [`apps/README.md`](apps/README.md) for what that distinction means. That
 leaves `kaava.toml`'s `[[tool]]` array empty today: there is nothing pinned,
@@ -313,10 +314,10 @@ technical details:
 - [The tool protocol](docs/tool-protocol.md)
 - [What exists around releases](docs/dev/releases.md)
 
-The maintainer builds three pieces directly: the app download system, Forger,
-and Journeyman. This is not a closed door. Nobody should spend a weekend on a
+The maintainer builds two pieces directly: the app download system and
+Schematify. This is not a closed door. Nobody should spend a weekend on a
 foundation that already has an owner. Outside contributions fit best as
-features and quality-of-life work on top of those three pieces. A roadmap and
+features and quality-of-life work on top of those two pieces. A roadmap and
 a set of starter issues are coming. They will point to exactly where.
 
 Found a bug? Open an issue. Want something that is not here? Open an issue
@@ -334,8 +335,8 @@ OpenKaava does not use GPL or AGPL, under any circumstances. A copyleft license
 would give someone a real argument that private tools mounting into OpenKaava are
 derivative works.
 
-The license covers the code. It does not cover the names. OpenKaava, Forger, and
-Journeyman, and the marks that go with them, are trademarks of Firelight
+The license covers the code. It does not cover the names. OpenKaava and
+Schematify, and the marks that go with them, are trademarks of Firelight
 Innovations.
 
 You can fork OpenKaava. You can sell what you build on it. State plainly that your

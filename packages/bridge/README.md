@@ -19,7 +19,7 @@ import { invoke, on, session, reportPainted } from "@openkaava/bridge";
 
 // Call your app's Rust half. The method name is yours; the shell routes it to
 // your package's core by which frame the call came from, never by the string.
-const specs = await invoke<Spec[]>("forger/list-specs");
+const specs = await invoke<Spec[]>("schematify/list-specs");
 
 // Which project this frame is placed in. Null until a project is open.
 const { projectPath } = await session();

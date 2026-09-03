@@ -409,25 +409,25 @@ mod tests {
 
     #[test]
     fn a_bare_slug_parses() {
-        let repo = Repo::parse("Firelight-Innovations/OpenKaava-Forger").expect("parses");
+        let repo = Repo::parse("Firelight-Innovations/OpenKaava-Acme").expect("parses");
         assert_eq!(repo.owner, "Firelight-Innovations");
-        assert_eq!(repo.name, "OpenKaava-Forger");
+        assert_eq!(repo.name, "OpenKaava-Acme");
     }
 
     #[test]
     fn every_url_form_reaches_the_same_repo() {
         let expected = Repo {
             owner: "Firelight-Innovations".to_string(),
-            name: "OpenKaava-Forger".to_string(),
+            name: "OpenKaava-Acme".to_string(),
         };
         for input in [
-            "https://github.com/Firelight-Innovations/OpenKaava-Forger",
-            "https://github.com/Firelight-Innovations/OpenKaava-Forger/",
-            "https://github.com/Firelight-Innovations/OpenKaava-Forger.git",
-            "http://github.com/Firelight-Innovations/OpenKaava-Forger",
-            "github.com/Firelight-Innovations/OpenKaava-Forger",
-            "git@github.com:Firelight-Innovations/OpenKaava-Forger.git",
-            "  Firelight-Innovations/OpenKaava-Forger  ",
+            "https://github.com/Firelight-Innovations/OpenKaava-Acme",
+            "https://github.com/Firelight-Innovations/OpenKaava-Acme/",
+            "https://github.com/Firelight-Innovations/OpenKaava-Acme.git",
+            "http://github.com/Firelight-Innovations/OpenKaava-Acme",
+            "github.com/Firelight-Innovations/OpenKaava-Acme",
+            "git@github.com:Firelight-Innovations/OpenKaava-Acme.git",
+            "  Firelight-Innovations/OpenKaava-Acme  ",
         ] {
             assert_eq!(Repo::parse(input).as_ref(), Some(&expected), "for {input}");
         }
@@ -465,7 +465,7 @@ mod tests {
     fn a_repo_word_rejects_a_path_separator_or_a_space() {
         assert!(!is_repo_word("a b"));
         assert!(!is_repo_word("a\\b"));
-        assert!(is_repo_word("OpenKaava-Forger"));
+        assert!(is_repo_word("OpenKaava-Acme"));
         assert!(is_repo_word("some_tool.rs"));
     }
 
@@ -483,7 +483,7 @@ mod tests {
         let hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
         assert_eq!(parse_checksum(hash).as_deref(), Some(hash));
         assert_eq!(
-            parse_checksum(&format!("{hash}  forger-0.1.0.zip\n")).as_deref(),
+            parse_checksum(&format!("{hash}  acme-0.1.0.zip\n")).as_deref(),
             Some(hash)
         );
         assert_eq!(

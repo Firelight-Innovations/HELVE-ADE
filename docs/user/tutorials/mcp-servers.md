@@ -39,9 +39,9 @@ Turn on a server → Lands in `.mcp.json` → Connect an agent from a terminal
    gets the server into a file your agent will actually read.
 
 > **Not yet:** One server exists today: **Echo**, with a `ping` and an
-> `echo` tool. It exists to prove the transport end to end. Forger's is the
-> first real one, and it is not written yet. What you are turning on right
-> now is a working pipe with a toy on the end of it.
+> `echo` tool. It exists to prove the transport end to end. Schematify's is
+> the first real one, and it is not written yet. What you are turning on
+> right now is a working pipe with a toy on the end of it.
 
 ## What lands in your project
 
