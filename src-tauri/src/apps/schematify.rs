@@ -666,6 +666,78 @@ mod tests {
         assert!(value.is_null());
     }
 
+    /// Not a fabricated `Node` literal: `load-graph` against the real
+    /// committed fixture (`crates/schematify-core/fixtures/saas-backend/`).
+    /// This is what caught the wiring bug worth recording — a first version
+    /// of `apps/schematify/ui/src/graph/project.ts` collapsed every
+    /// non-`group` kind to `"module"`, so `auth-service`'s 12 real modules
+    /// plus 58 of its own facets (contract methods, test cases, budgets)
+    /// all drew as one flat 70-node service. `report.clean` and the raw
+    /// kind distribution below are what a fixed `project.ts` must agree
+    /// with; see `docs/overnight-jobs/overnight-2/handoffs/wiring.md` for
+    /// the full comparison against the wave 2 stand-in fixture.
+    #[test]
+    fn load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("crates")
+            .join("schematify-core")
+            .join("fixtures")
+            .join("saas-backend");
+        let context = context_at(&root);
+        let value = dispatch(
+            &context,
+            "schematify/load-graph",
+            Some(json!({ "actor": "human" })),
+        )
+        .expect("load-graph succeeds against the real fixture");
+
+        assert_eq!(value["report"]["clean"], true);
+
+        let nodes = value["graph"]["nodes"]
+            .as_array()
+            .expect("nodes is an array");
+        let auth_service = nodes
+            .iter()
+            .find(|n| n["kind"] == "service" && n["slug"] == "auth-service")
+            .expect("fixtures/saas-backend/ names an auth-service, per PRD §16.1");
+        assert_eq!(auth_service["title"], "Auth Service");
+
+        // The Service Schematic's own subtree: 12 modules, 1 group, and a
+        // pile of tier-3 facets a Module Schematic draws instead — the
+        // count `project.ts`'s `SERVICE_SCHEMATIC_KINDS` filter exists to
+        // separate out. This assertion pins the raw material, not the
+        // filter; `project.test.ts` pins the filter itself.
+        let auth_id = auth_service["id"].as_str().unwrap();
+        let by_id: std::collections::HashMap<&str, &Value> = nodes
+            .iter()
+            .map(|n| (n["id"].as_str().unwrap(), n))
+            .collect();
+        fn is_descendant<'a>(
+            mut node: &'a Value,
+            auth_id: &str,
+            by_id: &std::collections::HashMap<&str, &'a Value>,
+        ) -> bool {
+            loop {
+                match node["parent"].as_str() {
+                    Some(p) if p == auth_id => return true,
+                    Some(p) => match by_id.get(p) {
+                        Some(parent) => node = parent,
+                        None => return false,
+                    },
+                    None => return false,
+                }
+            }
+        }
+        let descendants: Vec<&Value> = nodes
+            .iter()
+            .filter(|n| n["id"] != auth_service["id"] && is_descendant(n, auth_id, &by_id))
+            .collect();
+        let modules = descendants.iter().filter(|n| n["kind"] == "module").count();
+        let groups = descendants.iter().filter(|n| n["kind"] == "group").count();
+        assert_eq!((modules, groups), (12, 1));
+    }
+
     fn sample_service_node() -> Node {
         use schematify_core::{Authorship, Lifecycle, NodeEnvelope, NodeKind, Slug};
 

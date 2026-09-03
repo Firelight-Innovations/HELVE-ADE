@@ -109,21 +109,109 @@ project from the real graph. This is not an independent guess:
 named node in PRD 16.1 exists in `fixtures/saas-backend/`" — and its
 generator, `fixtures/saas-backend.mjs`, literally sets
 `parent: service.id` on every top-level module, confirmed by reading it).
-Against `fixtures/saas-backend/`, the app should draw the same graph it drew
-against the hand-typed fixture. Against a project with no `auth-service`,
-`loadRealGraph()` throws a named error, which `App.tsx`'s existing rejection
-handling (wave 2 review round 2's fix) already renders as
-`.kv-shell__error` rather than hanging. Wave 5's tier switch is where a real,
-non-hardcoded service picker belongs.
+Against a project with no `auth-service`, `loadRealGraph()` throws a named
+error, which `App.tsx`'s existing rejection handling (wave 2 review round 2's
+fix) already renders as `.kv-shell__error` rather than hanging. Wave 5's tier
+switch is where a real, non-hardcoded service picker belongs.
 
-### The ENTRY badge has no real source yet
+## The real fixture vs. the wave 2 stand-in — verified, not assumed
 
-`schematify_core` has no structural "this module is the service's entry
-point" flag — `ServiceFields.entry_point` is prose ("how the service
-starts"), not a module reference. `project.ts` derives `STALE` from
-`lifecycle` but never derives `ENTRY`; a real project's Outline will show no
-`ENTRY` badge until a later wave adds that concept to the schema or derives
-it some other way. Documented at the point of derivation in `project.ts`.
+Another review confirmed no front-end wave has ever read
+`crates/schematify-core/fixtures/saas-backend/` — every badge, count and
+caption assertion up to this wave passed against
+`apps/schematify/ui/src/graph/fixture.ts`'s hand-typed `AUTH_SERVICE_GRAPH`,
+written to look like the wireframe rather than read from anything. This
+wave's job — connecting the real loader — is what makes checking the two
+against each other possible for the first time, so it was done: the real
+fixture's `auth-service` was run through `schematify/load-graph` and then
+through `projectServiceGraph`, and the result compared field by field against
+the stand-in. **The stand-in fixture was not touched** — a fixture bent to
+match a drawing is a defect, per this job's standing rule, and nothing here
+edits `fixture.ts`.
+
+### A wiring bug this comparison caught, and fixed
+
+The first version of `projectServiceGraph` collapsed every node kind except
+`group` to `"module"` — modeled on `engine/layout.ts`'s `toServiceGraph`,
+misread as precedent for this direction too. Against the real fixture,
+`auth-service`'s 12 real modules plus 58 of their own tier-3 facets
+(contract methods, test cases, budgets, a doc block, an external dependency)
+all drew as one flat 70-node service — PRD's Module Schematic content
+leaking into the Service Schematic. Fixed: `project.ts`'s
+`SERVICE_SCHEMATIC_KINDS` now keeps only `module` and `group`, dropping
+facets and comments entirely rather than collapsing them.
+`load_graph_against_the_real_fixture_reports_a_clean_project_and_auth_service`
+in `schematify.rs` pins the real fixture's shape (12 modules, 1 group under
+`auth-service`) as a permanent regression test; `project.test.ts` pins the
+filter itself against synthetic data including a comment and 3 facet kinds.
+
+### What still agrees, once fixed
+
+Every one of the 12 module slugs and their parent structure matches the
+stand-in exactly — same containment tree, same depth (`http-entry`,
+`token-issuer`, `token-verifier` top-level; `jwks-cache`/`clock-skew` under
+`token-verifier`; `session-store` top-level with `session-codec`/
+`session-index` under it; `crypto-primitives`, `password-hasher`,
+`rate-limiter`, `audit-emitter` top-level). `audit-emitter`'s `STALE` badge
+matches. Both report exactly 9 `depends_on` edges — the *count* PRD §16.1
+states is correct.
+
+### What actually differs
+
+- **A 13th top-level element the stand-in never modeled.** The real service
+  carries a `group` node, `token-pipeline` (containing `token-issuer` and
+  `token-verifier`), that `fixture.ts` has no counterpart for. Real
+  `countNodes()` is 13, not 12 — **the wave 2 acceptance condition's exact
+  string, `.kaava/ · 12 nodes · 9 edges`, is true against the stand-in
+  fixture `index.test.ts` still checks, and false against real data.** That
+  is not a defect in this wave's code; it is the fixture and the wireframe
+  disagreeing, recorded rather than papered over.
+- **The edge topology matches on count (9=9) but not on content.** 5 of the
+  9 real edges have no counterpart in the stand-in, and 5 of the stand-in's
+  9 have no counterpart in the real data — 4 edges are shared. Real-only:
+  `session-store → session-codec`, `jwks-cache → crypto-primitives`,
+  `clock-skew → crypto-primitives`, `audit-emitter → token-verifier`,
+  `rate-limiter → session-index`. Stand-in-only: `token-issuer →
+  crypto-primitives`, `token-verifier → crypto-primitives`, `password-hasher
+  → crypto-primitives`, `rate-limiter → token-verifier`, `audit-emitter →
+  crypto-primitives`. This is exactly the topology `fixture.ts`'s own
+  comment already admits was invented ("All 9 were invented by this agent,
+  not read from any specification") — now confirmed against the real
+  answer, not just flagged as a risk.
+- **Lifecycle values mostly weren't set at all in the stand-in.** Real:
+  `http-entry` `specified`, `token-issuer` `specified`, `token-verifier`
+  `accepted`, `jwks-cache` `specified`, `session-store` `specified`,
+  `session-codec` `specified`, `session-index` `specified`. `fixture.ts`
+  leaves all 7 of those `undefined` — no lifecycle dot or treatment was ever
+  wrong for them because none was ever drawn. One real disagreement where
+  the stand-in *did* commit to a value: `rate-limiter` is real `draft`,
+  stand-in `assigned`.
+- **No structural ENTRY badge exists in the real schema.** The stand-in
+  hardcodes `http-entry`'s `ENTRY` badge (PRD §12.1). `schematify_core` has
+  no "this module is the service's entry point" flag —
+  `ServiceFields.entry_point` is prose on the *service* ("Started by the
+  platform supervisor."), not a reference to a module. `project.ts` derives
+  `STALE` from `lifecycle` but can derive no `ENTRY` from anything today; a
+  real project's Outline draws zero `ENTRY` badges until a later wave adds
+  the concept to the schema.
+- **A `comment` annotation exists in the real data with nowhere to go.**
+  `two-caches-on-purpose`, authored `m.ross`, anchored to `jwks-cache`, sits
+  directly under `auth-service`. `apps/schematify/ui/src/graph/types.ts`'s
+  `NodeKind` union is `"service" | "group" | "module"` — there is no
+  `"comment"` member at all, so this annotation is dropped from the
+  projection entirely rather than misdrawn as a module. Widening that union
+  is a design decision (does a comment get an Outline row? a canvas box
+  only?) this wave did not make unilaterally.
+
+None of this is pushed through silently. `index.test.ts` and `fixture.ts`
+are untouched and still pass — they are testing the stand-in, honestly
+labeled as such by wave 2's own header comment, and stay useful for running
+without a backend. What changed is that the gap between the stand-in and
+reality is now measured rather than assumed, and a human opening a real
+project tonight should expect the status bar, the edge lines, and the
+lifecycle dots (once wave 4 draws them) to read differently than they did
+against the fixture — that is the real graph telling the truth, not a
+regression.
 
 ### What still doesn't persist against a real project
 
@@ -182,15 +270,16 @@ stay backend-free":
 | Check | Result |
 |---|---|
 | `pnpm build` | Pass. `dist/assets/schematify-*.js` built, 35.13 kB. |
-| `pnpm test:js` | Pass — 490 + 28 (bridge), including 13 new `project.test.ts` assertions on real projected content, not just "did not throw". |
+| `pnpm test:js` | Pass — 492 + 28 (bridge), including 15 `project.test.ts` assertions on real projected content (not just "did not throw") plus the facet-exclusion and comment-exclusion cases the real-fixture discovery added. |
 | `pnpm typecheck` (`tsc`) | Pass, plus re-run as `npx tsc -p tsconfig.json --noEmit --typeRoots ./__no_types__` (wave 2's technique for ruling out this machine's stray home-directory `@types/node`) — also clean. No Node builtin, no post-ES2020 API in any new file. |
 | `pnpm lint:js` | Pass — 0 errors, the same 8 pre-existing React-hook warnings named in the wave 2/3 handoffs, none in a file this wave touched. |
 | `pnpm lint:comments` | Pass after trimming 3 files that first exceeded the 20-consecutive-comment-line cap (`backend.ts`, `index.ts`, `schematify.rs`) — moved detail into this handoff instead of re-baselining. 0 grandfathered. |
 | `pnpm lint:version`/`lint:identity`/`lint:branding` | Pass. |
 | `pnpm format:check` | Pass, after `cargo fmt --all` (rustfmt wanted several lines in the new test module rewrapped). |
-| `cargo test --workspace` | Pass — 811 passed, 1 pre-existing ignored, 0 failed. Run twice: once piped through `tail` (masked the real per-crate totals — a lesson worth naming so it isn't repeated), once captured whole to confirm the untruncated result. |
+| `cargo test --workspace` | Pass — 812 passed, 1 pre-existing ignored, 0 failed, including the permanent regression test against the real fixture. Run twice: once piped through `tail` (masked the real per-crate totals — a lesson worth naming so it isn't repeated), once captured whole to confirm the untruncated result; run a third time after the facet-inclusion fix, same result. |
 | `cargo clippy` (`node scripts/clippy-baseline.mjs`) | Pass — 0 warnings, at the baseline of 0. |
 | `pnpm baseline` | Never run. |
+| Real fixture vs. stand-in, by hand | See "The real fixture vs. the wave 2 stand-in" above — the one check no script runs, and the one that found the facet-inclusion bug. |
 
 No test was deleted or skipped.
 
@@ -219,8 +308,9 @@ No test was deleted or skipped.
 6. **`auth-service` is the one service slug this wave projects**, matching
    `SERVICE_CONFIG`'s hardcoded `layoutSlug` and confirmed against the real
    fixture generator, not guessed independently.
-7. **No ENTRY badge for real data.** No structural source for it exists in
-   `crates/schematify-core` yet.
+7. **No ENTRY badge for real data**, and **only `module`/`group` kinds ever
+   reach the Outline** — both confirmed, not merely assumed, against the
+   real fixture; see "The real fixture vs. the wave 2 stand-in" above.
 8. **A contains, covers, satisfies, or documents edge is dropped from the
    real-graph projection.** `./types.ts`'s `GraphEdge` union only names 3
    kinds; containment is `parentId`, and the other 2 have no drawing yet.
@@ -247,10 +337,15 @@ project with an `auth-service`):
    the partial-payload gap. If a human decides this gap should close sooner,
    it is `engine/engine.ts`'s `nodeJson`/`edgeJson` that need widening, not
    this file.
-4. Compare the real `auth-service` Outline tree against the fixture's —
-   PRD §16.1's numbers (12 modules, 9 edges, depth 3) should still hold if
-   `fixtures/saas-backend/` matches its own acceptance condition; a mismatch
-   points at `project.ts`'s subtree walk, not at the fixture.
+4. Look at the Outline against `fixtures/saas-backend/`: **13 rows**, not
+   12 — the 12 modules named in PRD §16.1 plus a `token-pipeline` group the
+   wireframe never draws, and status bar cell 1 should read
+   `.kaava/ · 13 nodes · 9 edges`. If it reads 12, `project.ts`'s
+   `SERVICE_SCHEMATIC_KINDS` filter regressed; if it reads more than 13,
+   something is leaking facets again. `http-entry` should carry no `ENTRY`
+   badge (expected — see above), and the edge lines will not match the
+   stand-in's shape (also expected — "What actually differs" above lists
+   which 5 of 9 changed).
 
 ---
 

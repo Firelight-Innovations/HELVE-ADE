@@ -50,15 +50,16 @@ const RAW: RawGraph = {
     // ever appear in `auth-service`'s projection.
     node({ id: "svc2", slug: "billing-service", kind: "service", title: "Billing Service" }),
     node({ id: "n1", slug: "invoicer", kind: "module", title: "Invoicer", parent: "svc2" }),
-    // A method whose signature-holding kind collapses to "module" per
-    // `w3-engine.md` assumption 16.
-    node({
-      id: "f1",
-      slug: "verify",
-      kind: "contract-method",
-      title: "verify",
-      parent: "m2",
-    }),
+    // A module's tier-3 facets. The Module Schematic draws these, not the
+    // Service one — dropped entirely, not collapsed to "module" (that
+    // collapse was tried first and inflated a 12-module real service into
+    // 70 nodes on contact with `fixtures/saas-backend/`; see the wiring
+    // handoff).
+    node({ id: "f1", slug: "verify", kind: "contract-method", title: "verify", parent: "m2" }),
+    node({ id: "f2", slug: "verify-case-1", kind: "test-case", title: "Case 1", parent: "m2" }),
+    node({ id: "f3", slug: "verify-p95", kind: "budget", title: "verify_p95", parent: "m2" }),
+    // An annotation this app's `NodeKind` has no member for at all.
+    node({ id: "c1", slug: "watch-out", kind: "comment", title: "Watch out", parent: "svc" }),
   ],
   edges: [
     { id: "e1", kind: "depends_on", source: "m1", target: "m2" },
@@ -78,9 +79,20 @@ describe("projectServiceGraph", () => {
     expect(graph.tier).toBe("service");
   });
 
-  it("includes only auth-service's own subtree, not billing-service's", () => {
+  it("includes only auth-service's own modules and groups, not billing-service's", () => {
     const ids = graph.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual(["f1", "g1", "m1", "m2", "m3", "m4"].sort());
+    expect(ids).toEqual(["g1", "m1", "m2", "m3", "m4"].sort());
+  });
+
+  it("drops every tier-3 facet under a module — the Module Schematic's content, not the Service one's", () => {
+    const ids = graph.nodes.map((n) => n.id);
+    expect(ids).not.toContain("f1");
+    expect(ids).not.toContain("f2");
+    expect(ids).not.toContain("f3");
+  });
+
+  it("drops a comment — an annotation this app's NodeKind cannot represent", () => {
+    expect(graph.nodes.map((n) => n.id)).not.toContain("c1");
   });
 
   it("maps a top-level module's parent to null, matching the fixture convention", () => {
@@ -93,11 +105,10 @@ describe("projectServiceGraph", () => {
     expect(jwksCache?.parentId).toBe("m2");
   });
 
-  it("keeps the group kind, and collapses every other kind to module", () => {
+  it("keeps the group and module kinds as-is", () => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     expect(byId.get("g1")?.kind).toBe("group");
     expect(byId.get("m1")?.kind).toBe("module");
-    expect(byId.get("f1")?.kind).toBe("module");
   });
 
   it("carries layer through when the raw node has one", () => {

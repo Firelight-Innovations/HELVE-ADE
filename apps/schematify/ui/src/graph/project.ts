@@ -77,19 +77,26 @@ function asLifecycle(value: string): Lifecycle {
 }
 
 /**
- * core's `NodeKind` is `#[serde(rename_all = "kebab-case")]` over 9 named
- * variants plus an arbitrary custom string (PRD §11.2, `NodeKind::Custom`).
- * This app's own `NodeKind` only names 3 — `service` is never a member of
- * `ServiceGraph.nodes` (it is the root the whole graph is drawn under,
- * carried separately as `serviceSlug`/`serviceTitle`), `group` keeps its own
- * word, and everything else collapses to `module`. This is the same
- * collapse `engine/layout.ts`'s `toServiceGraph` already makes in the other
- * direction (`docs/overnight-jobs/overnight-2/handoffs/w3-engine.md`
- * assumption 16): real facet kinds (`contract-method`, `budget`, …) draw as
- * modules until a tier-aware Outline and status bar exist.
+ * The 2 raw kinds that belong on a Service Schematic: `module` (PRD tier 2,
+ * this app's own `"module"`) and `group` (the annotation-tier containment
+ * box PRD §12.4 draws, this app's own `"group"`). `service` is never a
+ * member — it is the root the whole graph is drawn under, carried
+ * separately as `serviceSlug`/`serviceTitle`.
+ *
+ * Every other kind is a tier-3 facet (`contract-method`, `test-case`,
+ * `budget`, `doc-block`, `external-dep`) or an annotation this app's
+ * `NodeKind` cannot represent at all (`comment`, which has no member of
+ * that name) — PRD's Module Schematic draws facets, not the Service one,
+ * and drawing them here inflated a 12-module, 1-group real service into 70
+ * nodes on first contact with real data (see the wiring handoff). Filtered
+ * out entirely rather than collapsed to `"module"`, which is what an
+ * earlier version of this function did and which is the exact bug that
+ * discovery caught.
  */
-function asNodeKind(rawKind: string): NodeKind {
-  return rawKind === "group" ? "group" : "module";
+const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module", "group"]);
+
+function asNodeKind(rawKind: "module" | "group"): NodeKind {
+  return rawKind;
 }
 
 /**
@@ -131,9 +138,15 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     throw new Error(`no service named "${serviceSlug}" in this project`);
   }
 
+  // `byId` stays the full node set — a containment walk has to be able to
+  // pass through every node on the way up, kind notwithstanding. Only the
+  // *output* is limited to `SERVICE_SCHEMATIC_KINDS`.
   const byId = new Map(raw.nodes.map((node) => [node.id, node]));
   const included = raw.nodes.filter(
-    (node) => node.id !== serviceNode.id && isDescendantOfService(node, serviceNode.id, byId),
+    (node) =>
+      node.id !== serviceNode.id &&
+      SERVICE_SCHEMATIC_KINDS.has(node.kind) &&
+      isDescendantOfService(node, serviceNode.id, byId),
   );
   const includedIds = new Set(included.map((node) => node.id));
 
@@ -141,7 +154,7 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     id: node.id,
     slug: node.slug,
     title: node.title,
-    kind: asNodeKind(node.kind),
+    kind: asNodeKind(node.kind as "module" | "group"),
     layer: asLayer(node.layer),
     lifecycle: asLifecycle(node.lifecycle),
     parentId: node.parent === serviceNode.id ? null : (node.parent ?? null),
