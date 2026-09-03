@@ -168,6 +168,34 @@ fn normalize(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// `CARGO_MANIFEST_DIR`, preferring the value Cargo puts in the
+    /// environment of a test binary it launches over the one baked in at
+    /// compile time.
+    ///
+    /// Several worktrees sharing one `CARGO_TARGET_DIR` (a deliberate
+    /// convention for agents working this repo) hold identical sources, so
+    /// Cargo can reuse a test binary compiled in a worktree that has since
+    /// been removed, carrying that worktree's absolute path. Reading the
+    /// environment first avoids resolving fixtures against a directory that
+    /// no longer exists; the check below catches the rarer case where a
+    /// stale binary somehow still ran, and names the problem instead of
+    /// leaving a bare `NotFound` for the next agent to puzzle over.
+    fn manifest_dir() -> PathBuf {
+        let dir = PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR")
+                .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+        );
+        assert!(
+            dir.is_dir(),
+            "CARGO_MANIFEST_DIR resolved to {}, which does not exist -- this looks like a \
+             stale cross-worktree build (a test binary compiled in a worktree that has \
+             since been removed and reused from a shared CARGO_TARGET_DIR); rerun \
+             `cargo test` from this worktree to force a rebuild",
+            dir.display()
+        );
+        dir
+    }
+
     #[test]
     fn normalize_collapses_parent_segments() {
         let input = Path::new("C:/code/helve/orchestrator/../engine");
@@ -185,7 +213,7 @@ mod tests {
     /// `cargo test` time instead of at app launch.
     #[test]
     fn the_shipped_manifest_parses_and_resolves() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        let path = manifest_dir()
             .parent()
             .expect("src-tauri always has a parent")
             .join("kaava.toml");
