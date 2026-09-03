@@ -41,6 +41,7 @@ import {
   healthRollupFor,
   healthWedgeFor,
   headerOccupants,
+  screenReferenceId,
   sharedNodeCallout,
   zoomTierFor,
 } from "./anatomy";
@@ -93,6 +94,12 @@ export interface DrawnNode {
   /** PRD §12.11's per-facet-kind content lines (Wave 5), tier 3 only — empty
    *  for every other kind, including the module root itself. */
   facetContent: readonly string[];
+  /** The module root's own screen-reference path (PRD §12.5, §12.11), parsed
+   *  to the id the click-through opens in the Screen registry —
+   *  `undefined` when this node carries no `screenRef` at all, or when the
+   *  string does not parse as a `schematify://screen/<id>` reference. Wave
+   *  10c. */
+  screenReferenceId?: string;
 }
 
 /** An edge as drawn. `stored` separates a real graph edge from the tier-3
@@ -270,6 +277,9 @@ function drawNode(
       node,
       node.kind === "contract-method" ? coversCountFor(node.id, edges) : 0,
     ),
+    screenReferenceId: node.screenRef
+      ? (screenReferenceId(node.screenRef) ?? undefined)
+      : undefined,
   };
 }
 

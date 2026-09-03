@@ -1,18 +1,17 @@
-//! Schematify's Rust half — the design layer of OpenKaava. A module here,
-//! registered like Home and Files, per `docs/design/SCHEMATIFY-PRD.md` §1.3.
+//! Schematify's Rust half — the design layer of OpenKaava, registered like
+//! Home and Files (`docs/design/SCHEMATIFY-PRD.md` §1.3). A thin JSON-RPC
+//! layer over `schematify-core`: resolves a project root from
+//! [`CallContext`], turns `params` into typed arguments, calls the crate,
+//! and shapes the answer back into JSON — one dispatch function rather than
+//! one `#[tauri::command]` per operation, matching `home.rs`/`files.rs`
+//! (`docs/audits/schematify-baseline.md` §11).
 //!
-//! A thin JSON-RPC layer over `schematify-core`: this file resolves a
-//! project root from [`CallContext`], turns request `params` into typed
-//! arguments, calls the crate, and shapes the answer back into JSON. One
-//! dispatch function rather than one `#[tauri::command]` per operation,
-//! matching `home.rs` and `files.rs` (`docs/audits/schematify-baseline.md` §11).
-//!
-//! PRD §14.5 lists ten operations, wired to ten: open a project, load the
-//! graph and its report, write a node or an edge, read/write a layout, run
-//! the linter, apply one lifecycle transition, ingest a CI run artifact, and
-//! read one reconcile status — plus `schematify/state` from wave 1a and
-//! `schematify/module-dashboard` (wave 9d's own addition, not one of the ten
-//! named operations). `search` stays unwired.
+//! PRD §14.5 lists ten operations, wired to all ten, plus `schematify/state`
+//! from wave 1a and `schematify/module-dashboard`/`schematify/runs` (wave
+//! 9d's own additions) — `search` stays unwired. Wave 10c adds the product
+//! layer's 5 writes ([`write_screen`], [`write_flow`], [`write_brief`],
+//! [`write_decision`], [`supersede_decision`]) — see the last 2 for how
+//! PRD §5.9's append-only rule is enforced here, not merely drawn.
 //!
 //! Decision SCH-API-003 puts an `actor` (`"human"` or `"agent"`) on every
 //! operation. [`actor_param`] refuses a call that omits it, and never admits
@@ -26,7 +25,8 @@ use crate::apps::CallContext;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use schematify_core::{
     contract_fields_changed, ingest_run_file, lint, load_project, stale_cascade, Actor, BudgetTier,
-    CoreError, Edge, Graph, Lifecycle, Node, NodeKind, Store, TestStatus, Uuid,
+    CoreError, Decision, DecisionStatus, Edge, Flow, Graph, Lifecycle, Node, NodeKind,
+    ProjectBrief, Screen, Store, TestStatus, Uuid,
 };
 use serde_json::{json, Value};
 use tauri::AppHandle;
@@ -76,6 +76,11 @@ fn dispatch(context: &CallContext, method: &str, params: Option<Value>) -> Resul
         "schematify/lint" => lint_graph(context, params.as_ref()),
         "schematify/transition" => transition(context, params.as_ref()),
         "schematify/reconcile-status" => reconcile_status(context, params.as_ref()),
+        "schematify/write-screen" => write_screen(context, params.as_ref()),
+        "schematify/write-flow" => write_flow(context, params.as_ref()),
+        "schematify/write-brief" => write_brief(context, params.as_ref()),
+        "schematify/write-decision" => write_decision(context, params.as_ref()),
+        "schematify/supersede-decision" => supersede_decision(context, params.as_ref()),
         "schematify/ingest-run" => ingest_run(context, params.as_ref()),
         "schematify/module-dashboard" => module_dashboard(context, params.as_ref()),
         "schematify/runs" => list_runs(context, params.as_ref()),
@@ -576,6 +581,176 @@ fn reconcile_status(context: &CallContext, params: Option<&Value>) -> Result<Val
         .join(node_id.to_string())
         .join("reconcile.json");
     read_json_object_or_null(&path)
+}
+
+// --- The product layer: screens, flows, the brief, and the decision log ---
+
+/// `schematify/write-screen`. Writes one screen file (PRD §5.7). A screen
+/// carries no append-only rule — PRD §12.17 draws a per-screen editor with
+/// no such restriction, unlike the decision log — so this upserts by id,
+/// the same shape as `write_node`.
+fn write_screen(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let screen: Screen = typed_param(params, "screen")?;
+
+    let store = Store::open(root);
+    let path = store.screen_path(screen.id);
+    store.write_screen(&screen).map_err(core_rpc)?;
+
+    Ok(json!({ "id": screen.id, "path": path.display().to_string() }))
+}
+
+/// `schematify/write-flow`. Writes one flow file (PRD §5.8). Freely
+/// editable, the same reasoning as `write_screen`.
+fn write_flow(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let flow: Flow = typed_param(params, "flow")?;
+
+    let store = Store::open(root);
+    let path = store.flow_path(flow.id);
+    store.write_flow(&flow).map_err(core_rpc)?;
+
+    Ok(json!({ "id": flow.id, "path": path.display().to_string() }))
+}
+
+/// `schematify/write-brief`. Writes `brief.json` (PRD §5.12) — the one
+/// semantic file addressed by no UUID, so a caller supplies no id and this
+/// method always writes the same path.
+fn write_brief(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let brief: ProjectBrief = typed_param(params, "brief")?;
+
+    let store = Store::open(root);
+    let path = store.brief_path();
+    store.write_brief(&brief).map_err(core_rpc)?;
+
+    Ok(json!({ "path": path.display().to_string() }))
+}
+
+/// `schematify/write-decision`. Creates exactly one new, standing decision
+/// row — never a second write to an existing one. PRD §5.9: "Schematify
+/// shall never edit a decision row in place." A disabled edit control (PRD
+/// §12.18) proves nothing about a JSON-RPC caller, so the refusal lives
+/// here: a payload naming an id that already has a file is refused outright,
+/// and so is a payload that arrives already claiming a supersession — the
+/// only door to `SUPERSEDED` is `schematify/supersede_decision` below, which
+/// is also the only method allowed to touch a second, existing file.
+fn write_decision(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let decision: Decision = typed_param(params, "decision")?;
+
+    if decision.status != DecisionStatus::Active
+        || decision.supersedes.is_some()
+        || decision.superseded_by.is_some()
+    {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "a new decision must be active and name no supersession — use schematify/supersede-decision to replace one",
+        ));
+    }
+
+    let store = Store::open(root);
+    let path = store.decision_path(decision.id);
+    if path.is_file() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "a decision row already exists at this id and cannot be edited in place",
+        ));
+    }
+
+    store.write_decision(&decision).map_err(core_rpc)?;
+    Ok(json!({ "id": decision.id, "path": path.display().to_string() }))
+}
+
+/// `schematify/supersede-decision`. The one path PRD §5.9's "a change adds a
+/// new row and marks the prior row `SUPERSEDED`" reaches. Writes a brand new
+/// decision (the same pre-conditions as `write_decision`, plus the server —
+/// never the caller — deciding its `supersedes`/`superseded_by`), then
+/// rewrites the prior row from the copy already on disk, changing only
+/// `status` and `superseded_by`. A caller cannot smuggle a changed title,
+/// context, decision, consequences or date onto the prior row through this
+/// method: every other field on it comes back off the file that was already
+/// there, never off the request body.
+///
+/// The successor is written before the prior row is updated. A failure
+/// between the two leaves two `ACTIVE` rows rather than a `SUPERSEDED` row
+/// whose `superseded_by` names a file that was never written — the second
+/// shape is `Decision::is_superseded_without_successor`, a condition the
+/// linter already reports (PRD §5.9's rule L07); the first is not, and is
+/// also the state a retried call heals on its own.
+fn supersede_decision(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
+    actor_param(params)?;
+    let root = require_project(context)?;
+    let prior_id = string_param(params, "priorId")?;
+    let prior_id = Uuid::parse_str(&prior_id)
+        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("priorId must be a UUID: {e}")))?;
+    let mut successor: Decision = typed_param(params, "decision")?;
+
+    let store = Store::open(root);
+    let prior_path = store.decision_path(prior_id);
+    let prior_text = fs::read_to_string(&prior_path).map_err(|_| {
+        RpcError::new(
+            INVALID_PARAMS,
+            format!("no decision row exists at {prior_id} to supersede"),
+        )
+    })?;
+    let mut prior: Decision = serde_json::from_str(&prior_text).map_err(|e| {
+        RpcError::new(
+            INTERNAL_ERROR,
+            format!(
+                "{} does not hold a valid decision: {e}",
+                prior_path.display()
+            ),
+        )
+    })?;
+    if prior.status != DecisionStatus::Active {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("decision {prior_id} is already superseded and cannot be superseded again"),
+        ));
+    }
+
+    // The server decides the successor's own supersession fields, never the
+    // caller — a payload naming a different `supersedes`, or one already
+    // claiming `superseded_by`, is overwritten rather than trusted, since
+    // trusting it would let a client point a new row at the wrong prior
+    // decision or fabricate a chain that never happened.
+    successor.status = DecisionStatus::Active;
+    successor.supersedes = Some(prior_id);
+    successor.superseded_by = None;
+    if successor.id == prior_id {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "a successor decision needs its own id, distinct from the row it supersedes",
+        ));
+    }
+    let successor_path = store.decision_path(successor.id);
+    if successor_path.is_file() {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "a decision row already exists at this id and cannot be edited in place",
+        ));
+    }
+
+    // Only these 2 fields move on the prior row. Everything else — title,
+    // context, decision, consequences, date, supersedes — is the value
+    // already on disk, read above, never the caller's payload.
+    prior.status = DecisionStatus::Superseded;
+    prior.superseded_by = Some(successor.id);
+
+    store.write_decision(&successor).map_err(core_rpc)?;
+    store.write_decision(&prior).map_err(core_rpc)?;
+
+    Ok(json!({
+        "id": successor.id,
+        "path": successor_path.display().to_string(),
+        "priorId": prior_id,
+        "priorPath": prior_path.display().to_string(),
+    }))
 }
 
 /// `schematify/ingest-run`. The Tauri wiring for wave 9b's
@@ -1106,6 +1281,11 @@ mod tests {
             "schematify/lint",
             "schematify/transition",
             "schematify/reconcile-status",
+            "schematify/write-screen",
+            "schematify/write-flow",
+            "schematify/write-brief",
+            "schematify/write-decision",
+            "schematify/supersede-decision",
             "schematify/ingest-run",
             "schematify/module-dashboard",
             "schematify/runs",
@@ -1129,6 +1309,11 @@ mod tests {
             "schematify/lint",
             "schematify/transition",
             "schematify/reconcile-status",
+            "schematify/write-screen",
+            "schematify/write-flow",
+            "schematify/write-brief",
+            "schematify/write-decision",
+            "schematify/supersede-decision",
             "schematify/ingest-run",
             "schematify/module-dashboard",
             "schematify/runs",
@@ -1949,6 +2134,414 @@ mod tests {
         let modules = descendants.iter().filter(|n| n["kind"] == "module").count();
         let groups = descendants.iter().filter(|n| n["kind"] == "group").count();
         assert_eq!((modules, groups), (12, 1));
+    }
+
+    #[test]
+    fn write_screen_writes_the_content_a_reader_gets_back() {
+        let dir = TempDir::new("write-screen");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let screen = sample_screen();
+        let params = json!({ "actor": "human", "screen": screen });
+
+        dispatch(&context, "schematify/write-screen", Some(params)).expect("write-screen succeeds");
+
+        let path = Store::open(dir.path()).screen_path(screen.id);
+        let text = fs::read_to_string(path).expect("the screen file exists");
+        let written: Screen = serde_json::from_str(&text).expect("the file parses as a screen");
+        assert_eq!(written, screen);
+    }
+
+    #[test]
+    fn write_screen_upserts_an_existing_screen() {
+        // Unlike a decision row, a screen carries no append-only rule (PRD
+        // §12.17 draws a per-screen editor, and nothing in §5.7 restricts a
+        // second write) — a screen is exactly what `write_decision` below is
+        // deliberately not.
+        let dir = TempDir::new("write-screen-upsert");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut screen = sample_screen();
+        dispatch(
+            &context,
+            "schematify/write-screen",
+            Some(json!({ "actor": "human", "screen": screen })),
+        )
+        .expect("first write succeeds");
+
+        screen.purpose = "A revised purpose.".to_owned();
+        dispatch(
+            &context,
+            "schematify/write-screen",
+            Some(json!({ "actor": "human", "screen": screen })),
+        )
+        .expect("second write to the same id succeeds");
+
+        let path = Store::open(dir.path()).screen_path(screen.id);
+        let written: Screen =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).expect("parses");
+        assert_eq!(written.purpose, "A revised purpose.");
+    }
+
+    #[test]
+    fn write_flow_writes_the_content_a_reader_gets_back() {
+        let dir = TempDir::new("write-flow");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let flow = sample_flow();
+        let params = json!({ "actor": "agent", "flow": flow });
+
+        dispatch(&context, "schematify/write-flow", Some(params)).expect("write-flow succeeds");
+
+        let path = Store::open(dir.path()).flow_path(flow.id);
+        let text = fs::read_to_string(path).expect("the flow file exists");
+        let written: Flow = serde_json::from_str(&text).expect("the file parses as a flow");
+        assert_eq!(written, flow);
+    }
+
+    #[test]
+    fn write_brief_writes_the_content_a_reader_gets_back() {
+        let dir = TempDir::new("write-brief");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let brief = ProjectBrief {
+            product_name: "saas-backend".to_owned(),
+            problem: "Teams rebuild the same account layer each time.".to_owned(),
+            users: vec!["Platform engineers".to_owned()],
+            goals: Vec::new(),
+            non_goals: Vec::new(),
+            constraints: Vec::new(),
+            success_metrics: Vec::new(),
+        };
+        let params = json!({ "actor": "human", "brief": brief });
+
+        dispatch(&context, "schematify/write-brief", Some(params)).expect("write-brief succeeds");
+
+        let path = Store::open(dir.path()).brief_path();
+        let text = fs::read_to_string(path).expect("the brief file exists");
+        let written: ProjectBrief =
+            serde_json::from_str(&text).expect("the file parses as a brief");
+        assert_eq!(written, brief);
+    }
+
+    #[test]
+    fn write_decision_creates_a_new_standing_row() {
+        let dir = TempDir::new("write-decision-new");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let decision = sample_decision(1, DecisionStatus::Active);
+        let params = json!({ "actor": "human", "decision": decision });
+
+        dispatch(&context, "schematify/write-decision", Some(params))
+            .expect("write-decision succeeds for a fresh id");
+
+        let path = Store::open(dir.path()).decision_path(decision.id);
+        let written: Decision =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).expect("parses");
+        assert_eq!(written, decision);
+    }
+
+    /// The boundary proof PRD §5.9 and wave 10c's own acceptance condition
+    /// ask for: a decision row cannot be edited in place, checked against
+    /// the RPC dispatcher rather than only a disabled UI button. Sending the
+    /// same id back with a changed title is a plain edit attempt, and it is
+    /// refused before anything on disk changes.
+    #[test]
+    fn write_decision_refuses_to_edit_an_existing_row_in_place() {
+        let dir = TempDir::new("write-decision-edit-blocked");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let original = sample_decision(1, DecisionStatus::Active);
+        dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": original })),
+        )
+        .expect("first write succeeds");
+
+        let mut tampered = original.clone();
+        tampered.title = "A quietly rewritten title".to_owned();
+        let err = dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": tampered })),
+        )
+        .expect_err("a second write to the same id is refused");
+        assert_eq!(err.code, INVALID_PARAMS);
+
+        let path = Store::open(dir.path()).decision_path(original.id);
+        let written: Decision =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).expect("parses");
+        assert_eq!(
+            written, original,
+            "the file on disk must be untouched by the refused write"
+        );
+    }
+
+    #[test]
+    fn write_decision_refuses_a_payload_that_already_claims_a_supersession() {
+        let dir = TempDir::new("write-decision-preclaimed");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut superseded = sample_decision(1, DecisionStatus::Superseded);
+        superseded.superseded_by = Some(Uuid::from_u128(2));
+        let err = dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": superseded })),
+        )
+        .expect_err("a fresh decision cannot arrive already superseded");
+        assert_eq!(err.code, INVALID_PARAMS);
+
+        let mut pre_linked = sample_decision(1, DecisionStatus::Active);
+        pre_linked.supersedes = Some(Uuid::from_u128(3));
+        let err = dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": pre_linked })),
+        )
+        .expect_err("a fresh decision cannot arrive already claiming a prior row");
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    /// The other half of "cannot be edited or removed": no method on this
+    /// dispatcher deletes a decision file at all, proven the same way an
+    /// unknown method is proven — by dispatching it and reading the error.
+    #[test]
+    fn no_method_removes_a_decision_row() {
+        let context = CallContext::default();
+        for method in [
+            "schematify/delete-decision",
+            "schematify/remove-decision",
+            "schematify/edit-decision",
+        ] {
+            let err = dispatch(&context, method, None).expect_err("no such method exists");
+            assert_eq!(err.code, METHOD_NOT_FOUND, "method: {method}");
+        }
+    }
+
+    #[test]
+    fn supersede_decision_adds_a_row_and_marks_the_prior_superseded() {
+        let dir = TempDir::new("supersede-decision");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let prior = sample_decision(1, DecisionStatus::Active);
+        dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": prior })),
+        )
+        .expect("seed write succeeds");
+
+        let mut successor = sample_decision(2, DecisionStatus::Active);
+        successor.title = "Verify against a wider key set".to_owned();
+        let value = dispatch(
+            &context,
+            "schematify/supersede-decision",
+            Some(json!({
+                "actor": "human",
+                "priorId": prior.id,
+                "decision": successor,
+            })),
+        )
+        .expect("supersede-decision succeeds");
+        assert_eq!(value["id"], successor.id.to_string());
+
+        let store = Store::open(dir.path());
+        let written_successor: Decision =
+            serde_json::from_str(&fs::read_to_string(store.decision_path(successor.id)).unwrap())
+                .unwrap();
+        assert_eq!(written_successor.status, DecisionStatus::Active);
+        assert_eq!(written_successor.supersedes, Some(prior.id));
+        assert_eq!(written_successor.title, "Verify against a wider key set");
+
+        let written_prior: Decision =
+            serde_json::from_str(&fs::read_to_string(store.decision_path(prior.id)).unwrap())
+                .unwrap();
+        assert_eq!(written_prior.status, DecisionStatus::Superseded);
+        assert_eq!(written_prior.superseded_by, Some(successor.id));
+        // Every other field on the prior row is untouched — the point of
+        // routing this through the file already on disk rather than any
+        // payload the caller sent.
+        assert_eq!(written_prior.title, prior.title);
+        assert_eq!(written_prior.context, prior.context);
+        assert_eq!(written_prior.decision, prior.decision);
+        assert_eq!(written_prior.consequences, prior.consequences);
+        assert_eq!(written_prior.date, prior.date);
+    }
+
+    /// The successor's own `supersedes`/`superseded_by` are server-decided,
+    /// not caller-decided — a payload naming the wrong prior id, or one
+    /// already claiming a superseded_by, is overwritten rather than trusted.
+    #[test]
+    fn supersede_decision_ignores_a_forged_supersession_on_the_successor_payload() {
+        let dir = TempDir::new("supersede-decision-forged");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let prior = sample_decision(1, DecisionStatus::Active);
+        dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": prior })),
+        )
+        .expect("seed write succeeds");
+
+        let mut forged = sample_decision(2, DecisionStatus::Superseded);
+        forged.supersedes = Some(Uuid::from_u128(999));
+        forged.superseded_by = Some(Uuid::from_u128(998));
+        dispatch(
+            &context,
+            "schematify/supersede-decision",
+            Some(json!({ "actor": "human", "priorId": prior.id, "decision": forged })),
+        )
+        .expect("supersede-decision succeeds despite the forged fields");
+
+        let store = Store::open(dir.path());
+        let written: Decision =
+            serde_json::from_str(&fs::read_to_string(store.decision_path(forged.id)).unwrap())
+                .unwrap();
+        assert_eq!(written.status, DecisionStatus::Active);
+        assert_eq!(written.supersedes, Some(prior.id));
+        assert_eq!(written.superseded_by, None);
+    }
+
+    #[test]
+    fn supersede_decision_refuses_a_prior_id_with_no_file() {
+        let dir = TempDir::new("supersede-decision-no-prior");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let successor = sample_decision(2, DecisionStatus::Active);
+        let err = dispatch(
+            &context,
+            "schematify/supersede-decision",
+            Some(json!({
+                "actor": "human",
+                "priorId": Uuid::from_u128(999),
+                "decision": successor,
+            })),
+        )
+        .expect_err("no row exists to supersede");
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    #[test]
+    fn supersede_decision_refuses_a_prior_row_that_is_already_superseded() {
+        let dir = TempDir::new("supersede-decision-double");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut prior = sample_decision(1, DecisionStatus::Superseded);
+        prior.superseded_by = Some(Uuid::from_u128(2));
+        // Written directly, bypassing `write_decision`'s own refusal of a
+        // pre-superseded payload — this test is about `supersede_decision`'s
+        // own guard, not `write_decision`'s.
+        Store::open(dir.path())
+            .write_decision(&prior)
+            .expect("seed write succeeds");
+
+        let successor = sample_decision(3, DecisionStatus::Active);
+        let err = dispatch(
+            &context,
+            "schematify/supersede-decision",
+            Some(json!({
+                "actor": "human",
+                "priorId": prior.id,
+                "decision": successor,
+            })),
+        )
+        .expect_err("a row already superseded cannot be superseded again");
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    #[test]
+    fn supersede_decision_refuses_a_successor_id_that_already_exists() {
+        let dir = TempDir::new("supersede-decision-collision");
+        Store::open(dir.path()).init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let prior = sample_decision(1, DecisionStatus::Active);
+        let already_there = sample_decision(2, DecisionStatus::Active);
+        dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": prior })),
+        )
+        .expect("seed prior succeeds");
+        dispatch(
+            &context,
+            "schematify/write-decision",
+            Some(json!({ "actor": "human", "decision": already_there })),
+        )
+        .expect("seed already_there succeeds");
+
+        let colliding = sample_decision(2, DecisionStatus::Active);
+        let err = dispatch(
+            &context,
+            "schematify/supersede-decision",
+            Some(json!({
+                "actor": "human",
+                "priorId": prior.id,
+                "decision": colliding,
+            })),
+        )
+        .expect_err("a successor id that already exists is refused, same as write-decision");
+        assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    fn sample_screen() -> Screen {
+        use schematify_core::mint_id;
+
+        Screen {
+            id: mint_id(),
+            kind: schematify_core::ScreenKind::default(),
+            slug: schematify_core::Slug::new("login-form").expect("legal slug"),
+            title: "Login form".to_owned(),
+            purpose: "Collects credentials and starts a session.".to_owned(),
+            states: vec!["empty".to_owned(), "locked".to_owned()],
+            acceptance: vec!["A locked account shall show the recovery path.".to_owned()],
+            design_ref: None,
+            backed_by: Vec::new(),
+        }
+    }
+
+    fn sample_flow() -> Flow {
+        use schematify_core::mint_id;
+
+        Flow {
+            id: mint_id(),
+            kind: schematify_core::FlowKind::default(),
+            slug: schematify_core::Slug::new("first-run-signup").expect("legal slug"),
+            title: "First-run signup".to_owned(),
+            trigger: "A visitor opens the product with no account.".to_owned(),
+            steps: Vec::new(),
+            outcome: "The visitor holds an active session.".to_owned(),
+        }
+    }
+
+    fn sample_decision(id: u128, status: DecisionStatus) -> Decision {
+        Decision {
+            id: Uuid::from_u128(id),
+            kind: schematify_core::DecisionKind::default(),
+            slug: schematify_core::Slug::new("DEC-TEC-AUTH-004").expect("legal decision slug"),
+            title: "Verify signatures against a rotating key set".to_owned(),
+            context: "The prior design pinned one signing key.".to_owned(),
+            decision: "Schematify shall verify against the published key set.".to_owned(),
+            consequences: "Key rotation adds a network fetch to the cold path.".to_owned(),
+            status,
+            supersedes: None,
+            superseded_by: None,
+            date: "2026-08-19".to_owned(),
+        }
     }
 
     fn sample_service_node() -> Node {

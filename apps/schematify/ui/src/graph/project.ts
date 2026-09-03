@@ -14,6 +14,8 @@
  * there (`docs/overnight-jobs/overnight-2/handoffs/w3-engine.md` assumption
  * 16 names the same seam on the engine's side of the join).
  */
+import type { RawDecision, RawFlow, RawProjectBrief, RawScreen } from "../product/types";
+import { staleCaption, type RawStaleness } from "./staleness";
 import type {
   GraphEdge,
   GraphNode,
@@ -23,7 +25,6 @@ import type {
   SchematicGraph,
   ServiceGraph,
 } from "./types";
-import { staleCaption, type RawStaleness } from "./staleness";
 
 /**
  * One node exactly as `schematify_core::Node` serializes it: the envelope
@@ -69,14 +70,21 @@ export interface RawLibraryEntry {
   license: string;
 }
 
-/** The `graph` half of `schematify/load-graph`'s response. `screens`,
- *  `flows`, `decisions`, `rules`, and `brief` come back too and no view this
- *  wave draws reads any of them; `libraries` is read by
- *  [`projectModuleGraph`] alone. */
+/** The `graph` half of `schematify/load-graph`'s response. `rules` is not
+ *  declared — no view any wave has built yet reads it. `libraries` is read
+ *  by [`projectModuleGraph`] alone. `screens`, `flows`, `decisions` and
+ *  `brief` are declared as optional so a caller built against an older,
+ *  narrower fixture object (every test file that predates wave 10c) keeps
+ *  compiling unchanged; the product layer (`../product/`) is what actually
+ *  reads them. */
 export interface RawGraph {
   nodes: RawNode[];
   edges: RawEdge[];
   libraries?: { libraries: RawLibraryEntry[] };
+  screens?: RawScreen[];
+  flows?: RawFlow[];
+  decisions?: RawDecision[];
+  brief?: RawProjectBrief | null;
 }
 
 /** The 3 dependency-family edge kinds `./types.ts`'s `GraphEdge` can hold.

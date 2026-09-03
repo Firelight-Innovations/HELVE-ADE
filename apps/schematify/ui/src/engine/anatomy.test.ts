@@ -28,6 +28,7 @@ import {
   healthRollupFor,
   healthWedgeFor,
   lifecycleSignature,
+  screenReferenceId,
   zoomTierFor,
 } from "./anatomy";
 import type { AnatomyNode } from "./anatomy";
@@ -471,5 +472,24 @@ describe("contentOf and contentBox — sizing a node from its content", () => {
     const node = bareNode({ lifecycle: "draft", health: "no-data" });
     expect(contentOf(node).hasCaption).toBe(true);
     expect(contentOf(bareNode({ lifecycle: "accepted" })).hasCaption).toBe(false);
+  });
+});
+
+describe("screenReferenceId", () => {
+  it("extracts the id half of a schematify://screen/<id> reference", () => {
+    expect(screenReferenceId("schematify://screen/login-form")).toBe("login-form");
+    expect(screenReferenceId("schematify://screen/0192f4a1-4c3d")).toBe("0192f4a1-4c3d");
+  });
+
+  it("returns null for the retired journeyman:// scheme, per PRD §12.5", () => {
+    expect(screenReferenceId("journeyman://screen/login-form")).toBeNull();
+  });
+
+  it("returns null for a reference naming a different kind", () => {
+    expect(screenReferenceId("schematify://node/token-verifier")).toBeNull();
+  });
+
+  it("returns null for a string that is not a reference at all", () => {
+    expect(screenReferenceId("not a reference")).toBeNull();
   });
 });

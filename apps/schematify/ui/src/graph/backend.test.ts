@@ -28,7 +28,7 @@ vi.mock("@openkaava/bridge", () => ({
 // `import { invoke } from "@openkaava/bridge"` resolves to the mock above,
 // never the real bridge — whether reached directly (`createBackendSeam`) or
 // through `./index.ts`'s lazy `import("./backend")` (`defaultSeam`).
-const { createBackendSeam } = await import("./backend");
+const { createBackendSeam, productSeam } = await import("./backend");
 const { defaultSeam } = await import("./index");
 
 function response(nodes: Record<string, unknown>[]) {
@@ -129,5 +129,57 @@ describe("defaultSeam.loadGraph (the real path a click-through calls)", () => {
     const graph = await defaultSeam.loadGraph("service", "billing-service");
     expect(graph.tier).toBe("service");
     expect(graph.serviceSlug).toBe("billing-service");
+  });
+});
+
+/**
+ * `productSeam.loadProduct` — wave 10c's own seam, parallel to but
+ * independent of `SchematifySeam` above. Unlike `loadGraph`, it takes no
+ * `tier`/`slug`: PRD §12.17/§12.18 describe the Product and Decisions
+ * sections as project-wide (one screen registry, one flow editor, one
+ * decision log per project, not one per Schematic), and
+ * `src-tauri/src/apps/schematify.rs`'s own `load_graph` has no scope
+ * parameter to forward one to — it always walks the whole `.kaava/` tree
+ * (see that function's own doc comment). This is not the round-2
+ * `loadGraph` defect in a new place: there is no narrower call to make.
+ * Asserted directly, the same way the suites above assert on `invokeMock`'s
+ * own call arguments rather than only on a returned shape, so a future
+ * regression that starts sending a scope silently (or drops one that turns
+ * out to matter) shows up here.
+ */
+describe("productSeam.loadProduct", () => {
+  it("calls schematify/load-graph with only actor — no tier, no slug, no scope", async () => {
+    invokeMock.mockResolvedValue({
+      graph: { nodes: [], edges: [], screens: [], flows: [], decisions: [], brief: null },
+      report: { clean: true },
+    });
+
+    await productSeam.loadProduct();
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("schematify/load-graph", { actor: "human" });
+  });
+
+  it("projects the whole-project response's product collections and node ids", async () => {
+    invokeMock.mockResolvedValue({
+      graph: {
+        nodes: [AUTH_SERVICE, TOKEN_VERIFIER],
+        edges: [],
+        screens: [{ id: "s1", slug: "login-form" }],
+        flows: [{ id: "f1", slug: "first-run-signup" }],
+        decisions: [{ id: "d1", slug: "DEC-TEC-AUTH-004" }],
+        brief: { product_name: "saas-backend" },
+      },
+      report: { clean: true },
+    });
+
+    const product = await productSeam.loadProduct();
+
+    expect(product.nodeIds.has("svc-auth")).toBe(true);
+    expect(product.nodeIds.has("mod-verifier")).toBe(true);
+    expect(product.screens).toHaveLength(1);
+    expect(product.flows).toHaveLength(1);
+    expect(product.decisions).toHaveLength(1);
+    expect(product.brief).toEqual({ product_name: "saas-backend" });
   });
 });
