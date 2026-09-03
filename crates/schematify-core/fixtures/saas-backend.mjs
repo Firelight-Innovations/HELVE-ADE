@@ -152,8 +152,42 @@ export function buildSaasBackend() {
   addScreen(f, auth);
   addRunAndAudit(f, auth);
   addLayouts(f, stack, auth);
+  leaveOneUncoveredMethod(f);
 
   return f.write();
+}
+
+/**
+ * Cover every contract method the Problems panel does not draw a row for.
+ *
+ * PRD section 16.1 lists exactly one `Contract method with no covers edge`
+ * row, against `token-issuer.mint`. Three other methods on modules that
+ * declare test cases carried no covers edge either, so rule L11 drew four
+ * rows where the wireframe draws one. These three edges take the other three
+ * away and leave `mint` standing, which is the row the wave 7 acceptance
+ * condition names.
+ *
+ * They are appended after every other entity is built, so the seeded minter
+ * hands the same identifier to everything that came before and a regeneration
+ * adds three files rather than rewriting five thousand.
+ *
+ * The `skew-window` edge is the one that contradicts a drawn detail: section
+ * 16.1 also says that method holds 0 covers edges. The two halves of that
+ * section cannot both hold, and the wave 7a handoff records why the Problems
+ * table is the half that wins.
+ */
+function leaveOneUncoveredMethod(f) {
+  const bySlug = (slug) => f.nodes.find((n) => n.slug === slug);
+  const testsOf = (module) =>
+    f.nodes.filter((n) => n.kind === "test-case" && n.parent === module.id);
+
+  const issuerTests = testsOf(bySlug("token-issuer"));
+  const verifierTests = testsOf(bySlug("token-verifier"));
+
+  f.edge("covers", issuerTests[0], bySlug("issue-pair"));
+  f.edge("covers", issuerTests[1], bySlug("refresh-pair"));
+  // `clock-skew-at-the-boundary` is the declared case for this method.
+  f.edge("covers", verifierTests[2], bySlug("skew-window"));
 }
 
 function buildStack(f) {
