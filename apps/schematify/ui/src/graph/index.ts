@@ -80,7 +80,10 @@ function emptyGraph(tier: Tier, slug: string): SchematicGraph {
  * `seam.loadGraph()` with no arguments, all across this app's test suite —
  * keeps reading exactly what it always has.
  */
-export function loadGraph(tier: Tier = "service", slug: string = "auth-service"): Promise<SchematicGraph> {
+export function loadGraph(
+  tier: Tier = "service",
+  slug: string = "auth-service",
+): Promise<SchematicGraph> {
   if (tier === "stack") return Promise.resolve(STACK_GRAPH);
   if (tier === "module") return Promise.resolve(MODULE_GRAPHS[slug] ?? emptyGraph("module", slug));
   return Promise.resolve(SERVICE_GRAPHS[slug] ?? emptyGraph("service", slug));

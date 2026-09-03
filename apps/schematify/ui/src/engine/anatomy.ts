@@ -630,15 +630,17 @@ const DEPENDENT_WORDS: Record<number, string> = {
 };
 
 /** PRD §4.3's callout, generalised off its 1 drawn example (`event-bus`,
- *  4 dependents) to any shared node's own dependent count and title. Reduces
- *  to the wireframe's exact literal string when `title` is `Event Bus` and
+ *  4 dependents) to any shared node's own dependent count and slug. The
+ *  heading names the *slug*, not the title — PRD §4.3's own literal text is
+ *  `WHY EVENT-BUS SITS HERE`, the hyphenated slug form, not `EVENT BUS`.
+ *  Reduces to that exact string when `slug` is `event-bus` and
  *  `dependentsCount` is 4. `[P]`: the numeral-to-word table and the heading
  *  template are this wave's own generalisation, not a second wireframe
  *  example to copy from; recorded in the Wave 5 handoff. */
-export function sharedNodeCallout(title: string, dependentsCount: number): Callout {
+export function sharedNodeCallout(slug: string, dependentsCount: number): Callout {
   const word = DEPENDENT_WORDS[dependentsCount] ?? String(dependentsCount);
   return {
-    heading: `WHY ${title.toUpperCase()} SITS HERE`,
+    heading: `WHY ${slug.toUpperCase()} SITS HERE`,
     body: `${word} consumers, so its containment parent is their lowest common ancestor — the stack root — not any one of them. Same rule at tier 2.`,
   };
 }

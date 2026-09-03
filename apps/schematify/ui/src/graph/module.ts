@@ -3,23 +3,18 @@
  * "Module tier, `token-verifier`" paragraph and WIREFRAME-EXTRACT.md §4.
  * Standing in for `fixtures/saas-backend/` until a real graph loader exists —
  * same reasoning as `./fixture.ts` and `./stack.ts`.
- *
- * **Facet counts are stored, the same way `exportsCount` and `dependentsCount`
- * already are on every other node in this app** (`./types.ts`'s `GraphNode`).
- * `coversCount` on a `contract-method` is PRD §16.1's own number (4, 3, 0) —
- * the count Wave 5's coverage readout sums, in `engine/anatomy.ts`'s
- * `coverageOf`. The 2 test-case facet cards this fixture actually draws each
- * carry their own real `covers` edge in `edges` below, so the canvas draws an
- * actual line for at least 1 of each covered method's edges; the remaining 3
- * (`verify_signature`) and 2 (`refresh_keys`) live only in `coversCount`,
- * standing in for the 5 further test cases PRD §16.1 names ("Four further
- * cases bring the total to 7") but this canvas does not draw as their own
- * cards — the same curated-subset choice the wireframe itself makes for
- * `budget` (1 of 3 drawn) and originally made for `contract-method` before
- * WIREFRAME-EXTRACT.md Resolution 10.1 row 8.2 ruled `skew_window` back in.
- * `[P]`, recorded in the Wave 5 handoff.
  */
 import type { GraphEdge, GraphNode, SchematicGraph } from "./types";
+
+// Facet counts are stored, the same way `exportsCount` is on every other
+// node in this app. `coversCount` on a `contract-method` is PRD §16.1's own
+// number (4, 3, 0), the count `engine/anatomy.ts`'s `coverageOf` sums. Only
+// `verify_signature` and `refresh_keys` get their own drawn `test-case`
+// card, each with a real `covers` edge below; the rest of each method's
+// count lives only in `coversCount`, standing in for PRD §16.1's 5 further
+// test cases this canvas does not draw as their own cards — the same
+// curated-subset choice the wireframe makes for `budget` (1 of 3 drawn).
+// `[P]`, recorded in the Wave 5 handoff.
 
 const nodes: GraphNode[] = [
   {

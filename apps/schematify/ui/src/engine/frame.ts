@@ -215,7 +215,7 @@ function buildModuleReadouts(doc: SchematicDoc): Frame["moduleReadouts"] {
 function buildSharedNodeCallout(doc: SchematicDoc): Callout | null {
   const shared = doc.nodes.find((node) => node.sharedAtLca);
   if (!shared) return null;
-  return sharedNodeCallout(shared.title, shared.dependentsCount ?? 0);
+  return sharedNodeCallout(shared.slug, shared.dependentsCount ?? 0);
 }
 
 function drawNode(

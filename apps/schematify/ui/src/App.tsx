@@ -10,21 +10,19 @@
  *
  * **The graph is read once per open Schematic.** `openSchematic` does the
  * reading, and the breadcrumb, the Outline and the status bar draw from the
- * engine's live document projected back to a graph
- * (`engine/layout.ts`'s `toGraph`), so a duplicate moves their counts at the
- * moment it appears on the canvas.
- *
- * **Wave 5's tier switch.** `path` is the breadcrumb's own history: the
- * Stack Schematic first, whichever Service Schematic is open, and — once a
- * module has been clicked — the Module Schematic. A click on a service or a
- * module (`engine/navigation.ts`'s `nextDrillTarget` decides which) appends
- * to it; a click on an earlier breadcrumb segment truncates back to it. Each
- * entry re-opens its own Schematic through `openSchematic`, so switching
- * tiers is exactly the same "open a Schematic" path the first paint already
- * used — no 2nd code path for navigation.
+ * engine's live document projected back to a graph (`engine/layout.ts`'s
+ * `toGraph`), so a duplicate moves their counts the moment it appears.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { reportPainted } from "@openkaava/bridge";
+
+// **Wave 5's tier switch.** `path` is the breadcrumb's own history: the
+// Stack Schematic first, whichever Service Schematic is open, and — once a
+// module has been clicked — the Module Schematic. A click on a service or a
+// module (`engine/navigation.ts`'s `nextDrillTarget` decides which) appends
+// to it; a click on an earlier breadcrumb segment truncates back to it. Each
+// entry re-opens its own Schematic through `openSchematic`, so switching
+// tiers is exactly the same "open a Schematic" path the first paint uses.
 import {
   configFor,
   nextDrillTarget,
@@ -175,7 +173,7 @@ function Schematify({
       </div>
       <div className="kv-shell__body">
         <Outline graph={graph} />
-        <SchematicCanvas engine={engine} onActivate={onActivate} />
+        <SchematicCanvas engine={engine} onActivate={onActivate} exports={graph.exports} />
         <InspectorShell graph={graph} selectionCount={state.selection.length} />
       </div>
       <Dock />

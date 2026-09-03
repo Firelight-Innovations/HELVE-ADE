@@ -2,30 +2,23 @@
  * The `saas-backend` Stack Schematic, hand-typed from PRD §16.1's "Stack tier"
  * table and WIREFRAME-EXTRACT.md §5. Standing in for `fixtures/saas-backend/`
  * until a real graph loader exists — same reasoning as `./fixture.ts`'s own
- * header comment, and the same gap Wave 3's handoff (assumption 10) and Wave
- * 4's handoff (assumption 0) already recorded for the service tier.
+ * header comment.
  *
  * **`platform-core` is a real containment parent, not a cosmetic annotation
- * box.** PRD §16.1 states plainly that "`platform-core` contains `auth-service`
- * and `session-service`" — `auth-service` and `session-service` carry it as
- * their actual `parentId`, the same as any other parent-child pair. That it
- * also carries `kind: "group"`, the same string PRD §11.3 names for the
- * annotation tier's cosmetic overlay boxes, is a vocabulary coincidence: the
- * 2 things share a kind because both are "a titled box things sit inside"
- * (PRD §12.4), not because they are the same mechanism. `engine/layout.ts`'s
- * `toGraph` is the one place that has to act on the difference, and its own
- * comment explains how it tells them apart (a group with real children is
- * kept; an empty one, like tier 2's `Token pipeline`, is not).
- *
- * **`ledger-store` nests inside `session-service`**, per the same PRD
- * sentence — a `service`-kind node with a `service`-kind parent. Odd on
- * first read, plainly stated by the source: nothing in PRD §4.1 restricts
- * containment to same-kind pairs, and the fixture is what WIREFRAME-EXTRACT.md
- * §8.2 already flags as the wireframe's own Outline omission (`ledger-store`
- * drawn on canvas but missing from the Outline tree) — Resolution 10.2's
- * ruling is to list it, not to reshape where it sits.
+ * box.** PRD §16.1: "`platform-core` contains `auth-service` and
+ * `session-service`" — they carry it as their actual `parentId`. It also
+ * carries `kind: "group"`, the same string PRD §11.3 uses for the annotation
+ * tier's cosmetic overlay, by vocabulary coincidence rather than shared
+ * mechanism — `engine/layout.ts`'s `toGraph` is the one place that tells the
+ * 2 apart (a group with real children is kept; an empty one is not).
  */
 import type { GraphEdge, GraphNode, SchematicGraph, TechStackRow } from "./types";
+
+// `ledger-store` nests inside `session-service` — a `service`-kind node with
+// a `service`-kind parent, per the same PRD sentence above. Nothing in PRD
+// §4.1 restricts containment to same-kind pairs; the wireframe's own Outline
+// omits it (WIREFRAME-EXTRACT.md §8.2), and Resolution 10.2 rules to list it
+// rather than to reshape where it sits.
 
 /**
  * PRD §16.1's Stack tier table: 7 `service`-kind nodes and 1 `group`. The

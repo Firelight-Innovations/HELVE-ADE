@@ -12,16 +12,10 @@ export type Tier = "stack" | "service" | "module";
 
 /** A node's containment kind. Widened by Wave 5 to match `engine/config.ts`'s
  *  `SchematicNodeKind`: the Module Schematic's 5 facet kinds (PRD §12.11) and
- *  the `screen` kind `references_ui` terminates at. Restated here rather than
- *  imported from the engine layer — `../engine` imports from `../graph`,
- *  never the other way, the same direction this file's own header comment
- *  already commits to. `"group"` covers 2 different things that happen to
- *  share a kind string: PRD §16.1's `platform-core` is a real containment
- *  parent loaded from the graph (Wave 5's stack fixture), while PRD §11.3's
- *  annotation-tier group is a cosmetic overlay a gesture adds to the layout
- *  file (`engine/engine.ts`'s `addGroup`). Nothing here or in the engine
- *  needs to tell the 2 apart by kind alone — see `engine/layout.ts`'s
- *  `toGraph` for the one place that does, and why. */
+ *  the `screen` kind `references_ui` terminates at. `"group"` covers 2 things
+ *  sharing 1 kind string — PRD §16.1's `platform-core` (a real containment
+ *  parent) and PRD §11.3's cosmetic annotation overlay — told apart by
+ *  `engine/layout.ts`'s `toGraph`, not by kind alone. */
 export type NodeKind =
   | "service"
   | "group"
@@ -153,12 +147,10 @@ export interface GraphNode {
   screenRef?: string;
 }
 
-/** One typed edge. `contains` is deliberately absent as a storable kind —
- *  containment is `GraphNode.parentId`, never an edge (PRD §4.1); tier 3's
- *  *drawing* of a containment arrow is synthesised at draw time by
- *  `engine/frame.ts` and is never one of these (PRD §11.1, WIREFRAME-EXTRACT.md
- *  Resolution 10.1 row 7.1). Tiers 1 and 2 use the first 3 kinds; tier 3 uses
- *  the last 3 (PRD §11.1's table). */
+/** One typed edge. `contains` is deliberately absent — containment is
+ *  `GraphNode.parentId`, never an edge (PRD §4.1); tier 3's drawn containment
+ *  arrow is synthesised at draw time (`engine/frame.ts`) and is never one of
+ *  these. Tiers 1-2 use the first 3 kinds; tier 3 uses the last 3. */
 export interface GraphEdge {
   id: string;
   kind: "depends_on" | "implements" | "references_ui" | "covers" | "satisfies" | "documents";
@@ -182,17 +174,10 @@ export interface TechStackRow {
 }
 
 /**
- * One open Schematic's whole graph, at any of the 3 tiers. Named `SchematicGraph`
- * since Wave 5 widened it off the service-only original; `ServiceGraph` stays as
- * an alias below so a caller that only ever meant the service tier keeps reading
- * that way.
- *
- * `serviceSlug`/`serviceTitle` name the Schematic's own root regardless of
- * tier — the stack itself at tier 1, the service at tier 2, the module at
- * tier 3 — kept under their original names rather than renamed, since every
- * existing caller (`Outline`, `StatusBar`, `App`) already reads them that
- * way and a tier-generic name would touch every one of those call sites for
- * no behavioural change. `[P]`, recorded in the Wave 5 handoff.
+ * One open Schematic's whole graph, at any of the 3 tiers. `serviceSlug`/
+ * `serviceTitle` name the Schematic's own root regardless of tier — kept
+ * under their original names rather than renamed, since every existing
+ * caller reads them that way. `[P]`, recorded in the Wave 5 handoff.
  */
 export interface SchematicGraph {
   tier: Tier;

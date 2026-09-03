@@ -500,3 +500,81 @@
   font-size: 9.5px;
   line-height: 1.4;
 }
+
+/* --- the export strip (PRD §12.10) ------------------------------------------
+   Pinned along the Schematic edge opposite the Outline. Position is a fixed
+   corner rather than the wireframe's own measured inset (`left:1160px`
+   inside a 1320-wide canvas) — see this file's callout-box comment above for
+   why: no browser was available to check placement against a real canvas. */
+.kv-export-strip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 160px;
+  padding: 6px 8px;
+  border: 1px solid var(--kv-line);
+  border-radius: var(--kv-radius);
+  background: var(--kv-bg-raised);
+  font-family: var(--kv-font-mono);
+}
+
+.kv-export-strip__header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--kv-text-tertiary);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.kv-export-strip__rows {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kv-export-strip__row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  color: var(--kv-text-secondary);
+  font: inherit;
+  font-size: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kv-export-strip__method {
+  color: var(--kv-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-export-strip__arrow {
+  color: var(--kv-text-faint);
+}
+
+.kv-export-strip__module {
+  color: var(--kv-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv-export-strip__marker {
+  color: var(--kv-accent);
+}
+
+.kv-export-strip__footer {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--kv-line);
+  color: var(--kv-text-faint);
+  font-size: 8px;
+  line-height: 1.4;
+}

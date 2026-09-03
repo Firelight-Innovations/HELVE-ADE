@@ -10,13 +10,7 @@
  * — so keeping them out of `nodes/` is what makes "an annotation is not design
  * data" true on disk rather than only in the linter.
  */
-import type {
-  GraphNode,
-  LayoutAnnotation,
-  LayoutFile,
-  LayoutNode,
-  SchematicGraph,
-} from "../graph";
+import type { GraphNode, LayoutAnnotation, LayoutFile, LayoutNode, SchematicGraph } from "../graph";
 import type { NodeRole, SchematicConfig, SchematicNodeKind } from "./config";
 import { arrange } from "./arrange";
 import { contentOf } from "./anatomy";
@@ -122,30 +116,12 @@ function roleOf(node: GraphNode, config: SchematicConfig): NodeRole | undefined 
  * The live graph, projected back out of the document — what the Outline and
  * the status bar read, so their counts move when the engine's do.
  *
- * **Wave 5 fix.** Before this wave the projection was shaped for the one
- * tier the engine ever opened: every node's `kind` collapsed to `"service"`
- * or `"module"` (`node.kind === "service" ? "service" : "module"`), and
- * `tier` was hardcoded `"service"`. That was silently correct as long as
- * `"module"` was the only other kind a document ever held. The moment the
- * Module Schematic opens, a `contract-method` or `test-case` facet node
- * would have collapsed to `"module"` too — the Outline would have called a
- * `budget` card a module, and `countServices` (stack tier) would have
- * miscounted every facet as a module rather than not counting it at all.
- * This function now carries every node's real `kind` through untouched, and
- * reads `tier` off the document rather than assuming.
- *
- * A comment is always dropped: PRD §11.3 keeps it out of reconciliation, and
- * counting one would make the status bar read 13 nodes for a 12-node
- * service, which Wave 3 already established. A `group` is dropped only when
- * it has no children in the surviving projection — PRD §16.1's stack-tier
- * `platform-core` (2 real children, `auth-service` and `session-service`) is
- * a real containment parent the Outline lists as its own row
- * (WIREFRAME-EXTRACT.md §5.1), while a cosmetic annotation group added by a
- * gesture (`engine/engine.ts`'s `addGroup`, e.g. tier 2's `Token pipeline`)
- * never gains real children and never appears in the Outline
- * (WIREFRAME-EXTRACT.md §1.1's Outline rows have no such entry). The 2 share
- * a kind string but not this behaviour — `./presets.ts`'s and `../graph`'s
- * own comments say more about why. `[P]`, recorded in the Wave 5 handoff.
+ * **Wave 5 fix.** Before this wave every node's `kind` collapsed to
+ * `"service"` or `"module"`, silently correct only because `"module"` was
+ * the document's only other kind. A `contract-method` or `budget` facet
+ * would have collapsed to `"module"` too the moment the Module Schematic
+ * opened. This function carries every real `kind` through untouched and
+ * reads `tier` off the document instead of assuming `"service"`.
  */
 export function toGraph(doc: SchematicDoc): SchematicGraph {
   const withoutComments = doc.nodes.filter((node) => node.kind !== "comment");
@@ -154,6 +130,12 @@ export function toGraph(doc: SchematicDoc): SchematicGraph {
     if (node.parentId === null) continue;
     childCounts.set(node.parentId, (childCounts.get(node.parentId) ?? 0) + 1);
   }
+  // A comment is always dropped (PRD §11.3). A group is dropped only when it
+  // has no children in the surviving projection: PRD §16.1's stack-tier
+  // `platform-core` is a real containment parent the Outline lists as its
+  // own row, while a cosmetic annotation group (`engine.ts`'s `addGroup`,
+  // e.g. tier 2's `Token pipeline`) never gains real children and never
+  // appears there. `[P]`, recorded in the Wave 5 handoff.
   const kept = withoutComments.filter(
     (node) => node.kind !== "group" || (childCounts.get(node.id) ?? 0) > 0,
   );

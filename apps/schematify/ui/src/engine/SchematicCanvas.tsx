@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import type { ExportRow } from "../graph";
 import type { Refusal } from "./config";
 import type { SchematicEngine } from "./engine";
 import type { DrawnEdge, DrawnNode } from "./frame";
@@ -49,9 +50,13 @@ export interface SchematicCanvasProps {
    *  this component only tells the caller a click happened and on which
    *  node; it makes no drill decision itself. */
   onActivate?: (node: DrawnNode) => void;
+  /** PRD §12.10's export strip, service tier only — omitted at every other
+   *  tier. Data, not canvas geometry, so it comes from the caller's own
+   *  projected graph rather than from `Frame`. */
+  exports?: readonly ExportRow[];
 }
 
-export function SchematicCanvas({ engine, onActivate }: SchematicCanvasProps) {
+export function SchematicCanvas({ engine, onActivate, exports: exportRows }: SchematicCanvasProps) {
   const state = useSyncExternalStore(
     useCallback((listener: () => void) => engine.subscribe(listener), [engine]),
     () => engine.state,
@@ -317,6 +322,60 @@ export function SchematicCanvas({ engine, onActivate }: SchematicCanvasProps) {
           <CalloutBox tone="neutral" callout={frame.sharedNodeCallout} />
         </div>
       ) : null}
+
+      {exportRows && exportRows.length > 0 ? (
+        <ExportStrip engine={engine} rows={exportRows} selection={state.selection} />
+      ) : null}
+    </div>
+  );
+}
+
+/** PRD §12.10's export strip: pinned along the Schematic edge opposite the
+ *  Outline, 1 row per authored method. The selected row draws a `←` marker
+ *  beside its owning module, and a click on a row selects that module —
+ *  lighting it the same way any other selection does, since `NodeBox`
+ *  already draws `kv-node--selected` off `engine.select`. */
+function ExportStrip({
+  engine,
+  rows,
+  selection,
+}: {
+  engine: SchematicEngine;
+  rows: readonly ExportRow[];
+  selection: readonly string[];
+}) {
+  const idForSlug = (slug: string) => engine.state.doc.nodes.find((node) => node.slug === slug)?.id;
+  return (
+    <div className="kv-export-strip">
+      <div className="kv-export-strip__header">
+        <span>EXPORTED INTERFACE</span>
+        <span>{rows.length} · authored</span>
+      </div>
+      <ul className="kv-export-strip__rows">
+        {rows.map((row) => {
+          const moduleId = idForSlug(row.moduleSlug);
+          const isSelected = moduleId !== undefined && selection.includes(moduleId);
+          return (
+            <li key={row.method}>
+              <button
+                type="button"
+                className="kv-export-strip__row"
+                onClick={() => {
+                  if (moduleId) engine.select([moduleId]);
+                }}
+              >
+                <span className="kv-export-strip__method">{row.method}</span>
+                <span className="kv-export-strip__arrow">→</span>
+                <span className="kv-export-strip__module">{row.moduleSlug}</span>
+                {isSelected ? <span className="kv-export-strip__marker">←</span> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="kv-export-strip__footer">
+        Everything not listed is internal by construction.
+      </div>
     </div>
   );
 }

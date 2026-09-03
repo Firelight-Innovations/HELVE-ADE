@@ -9,8 +9,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { createMemorySeam, layoutPath } from "../graph";
-import { buildDoc, toLayoutFile } from "./layout";
-import { SERVICE_CONFIG } from "./presets";
+import { SchematicEngine } from "./engine";
+import { buildDoc, toGraph, toLayoutFile } from "./layout";
+import { MODULE_CONFIG, SERVICE_CONFIG, STACK_CONFIG } from "./presets";
 
 async function fixtureDoc() {
   const seam = createMemorySeam();
@@ -76,5 +77,67 @@ describe("the layout file", () => {
     expect((child?.rect.x ?? 0) + (child?.rect.width ?? 0)).toBeLessThanOrEqual(
       (parent?.rect.x ?? 0) + (parent?.rect.width ?? 0),
     );
+  });
+});
+
+describe("toGraph — the projection Outline and StatusBar read", () => {
+  // Wave 5 fix: before this wave the projection collapsed every node's kind
+  // to "service" or "module" (`node.kind === "service" ? "service" :
+  // "module"`), silently correct only because "module" was the only other
+  // kind a document ever held. The Wave 4 handoff flagged this in advance —
+  // "the projection... collapses every non-service kind to a module, so
+  // facet cards would be counted as modules the moment the Module Schematic
+  // opens" — and this block is the regression test for exactly that.
+  it("carries a facet's real kind through, not collapsed to module", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph("module", "token-verifier");
+    const doc = buildDoc(graph, null, MODULE_CONFIG);
+    const projected = toGraph(doc);
+    const kinds = new Set(projected.nodes.map((node) => node.kind));
+    expect(kinds).toContain("contract-method");
+    expect(kinds).toContain("budget");
+    expect(kinds).toContain("test-case");
+    expect(kinds).toContain("doc-block");
+    expect(kinds).toContain("external-dep");
+    expect(kinds).not.toContain("service");
+  });
+
+  it("reads tier off the document rather than assuming service", async () => {
+    const seam = createMemorySeam();
+    const stackDoc = buildDoc(await seam.loadGraph("stack", "saas-backend"), null, STACK_CONFIG);
+    expect(toGraph(stackDoc).tier).toBe("stack");
+    const moduleDoc = buildDoc(
+      await seam.loadGraph("module", "token-verifier"),
+      null,
+      MODULE_CONFIG,
+    );
+    expect(toGraph(moduleDoc).tier).toBe("module");
+  });
+
+  it("keeps a group with real children, so the Stack Outline lists platform-core", async () => {
+    const seam = createMemorySeam();
+    const doc = buildDoc(await seam.loadGraph("stack", "saas-backend"), null, STACK_CONFIG);
+    const projected = toGraph(doc);
+    const group = projected.nodes.find((node) => node.id === "platform-core");
+    expect(group).toBeDefined();
+    expect(group?.kind).toBe("group");
+  });
+
+  it("drops a group with no children, so a cosmetic annotation box never appears in the Outline", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph();
+    const engine = new SchematicEngine(SERVICE_CONFIG, buildDoc(graph, null, SERVICE_CONFIG), seam);
+    engine.addGroup({ x: 0, y: 0, width: 100, height: 100 }, "Empty annotation");
+    const projected = toGraph(engine.state.doc);
+    expect(projected.nodes.some((node) => node.kind === "group")).toBe(false);
+  });
+
+  it("still drops every comment, regardless of children", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph();
+    const engine = new SchematicEngine(SERVICE_CONFIG, buildDoc(graph, null, SERVICE_CONFIG), seam);
+    engine.addComment({ x: 0, y: 0, width: 230, height: 100 }, "m.ross", "note");
+    const projected = toGraph(engine.state.doc);
+    expect(projected.nodes.some((node) => node.kind === "comment")).toBe(false);
   });
 });
