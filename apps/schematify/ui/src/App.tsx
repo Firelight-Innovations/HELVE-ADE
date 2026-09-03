@@ -14,7 +14,9 @@
  * (`./engine/presets.ts`) rather than by reaching into the engine.
  *
  * `?view=empty-stack` swaps the whole body for the Stack Schematic's
- * first-run empty state (`./shell/EmptyStack`) instead.
+ * first-run empty state (`./shell/EmptyStack`) instead — see that module's
+ * doc comment for why this wave reaches it by query param rather than by
+ * building the tier switch that would otherwise show it.
  */
 import { useEffect, useState } from "react";
 import { reportPainted } from "@openkaava/bridge";
@@ -38,12 +40,17 @@ export default function App() {
   const [graph, setGraph] = useState<ServiceGraph | null>(null);
   const [engine, setEngine] = useState<SchematicEngine | null>(null);
   const [layoutClean, setLayoutClean] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadGraph().then((result) => {
-      if (!cancelled) setGraph(result);
-    });
+    loadGraph()
+      .then((result) => {
+        if (!cancelled) setGraph(result);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
     openSchematic(SERVICE_CONFIG).then((opened) => {
       if (!cancelled) setEngine(opened);
     });
@@ -59,17 +66,29 @@ export default function App() {
   }, [engine]);
 
   // The condition is "the first frame is honest", the rule every app here
-  // follows (`apps/README.md`, `apps/schematify/ui/src/rpc.ts`'s own
-  // precedent) — the empty-stack view has nothing to load, so it paints
-  // immediately; the populated view paints once the graph resolves.
+  // follows (`apps/home/ui/src/App.tsx` line 246, `apps/files/ui/src/App.tsx`
+  // line 78) — the empty-stack view has nothing to load, so it paints
+  // immediately; the populated view paints once `loadGraph()` settles,
+  // whether it resolved or rejected. `loadGraph()` cannot reject today (it
+  // resolves a local fixture), but the seam it will become
+  // (`./graph/index.ts`'s doc comment) can, and a rejection that never
+  // reports painted would hang the splash screen rather than show an error.
   useEffect(() => {
-    if (SHOW_EMPTY_STACK || graph !== null) reportPainted();
-  }, [graph]);
+    if (SHOW_EMPTY_STACK || graph !== null || error !== null) reportPainted();
+  }, [graph, error]);
 
   if (SHOW_EMPTY_STACK) {
     return (
       <div className="kv-shell">
         <EmptyStack />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="kv-shell">
+        <p className="kv-shell__error">{error}</p>
       </div>
     );
   }

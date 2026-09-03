@@ -40,7 +40,7 @@ export function Outline({ graph }: OutlineProps) {
       {section === "Design" ? (
         <>
           <div className="kv-outline__header">OUTLINE — CONTAINMENT</div>
-          <div className="kv-outline__root">{graph.serviceTitle}</div>
+          <div className="kv-outline__root">{graph.serviceSlug}</div>
           <ul className="kv-outline__tree">
             {rows.map(({ node, depth, hasChildren, hiddenChildCount }) => (
               <li
@@ -53,10 +53,7 @@ export function Outline({ graph }: OutlineProps) {
                 ) : (
                   <span className="kv-outline__triangle" aria-hidden="true" />
                 )}
-                <span
-                  className={`kv-outline__dot kv-outline__dot--${node.lifecycle ?? "specified"}`}
-                />
-                <span className="kv-outline__title">{node.title}</span>
+                <span className="kv-outline__title">{node.slug}</span>
                 {node.badge ? <span className="kv-outline__badge">{node.badge}</span> : null}
                 {hiddenChildCount !== undefined ? (
                   <span className="kv-outline__count">{hiddenChildCount}</span>
