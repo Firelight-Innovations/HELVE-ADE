@@ -244,14 +244,43 @@ Section 16.1 states, in its module-tier paragraph, that `skew_window` holds
 Both cannot hold: L11 fires on any uncovered contract method, and `skew_window`
 is on `token-verifier`, a module that declares seven test cases.
 
-The wave acceptance names the Problems rows, so the Problems table wins.
+The Problems table wins, on the only criterion anyone checks. The wave 7
+acceptance condition names those five rows as the thing a test asserts. No test
+asserts the module-tier prose and nothing in the build reads it, so the table
+is the half with a consequence and the paragraph is the half without one.
+
+This is not PRD section 0.4, and the argument does not need it. That rule
+settles a count drawn on a wireframe against a count the build computes. Both
+halves here are prose in the requirements document's own fixture
+specification, and nothing computes either of them.
+
 `skew_window` gains one covers edge, from `clock-skew-at-the-boundary`, which
-is the test case section 16.1 declares for exactly that behaviour. The
-module-tier sentence is now the half of section 16.1 that carries the conflict.
+is the test case section 16.1 declares for exactly that behaviour.
 
 This is conflict 4 in the wave 1b handoff, which recorded it and left it for
 this wave. It is resolved the other way round from that handoff's guess: 1b
 expected wave 7 to report two rows.
+
+---
+
+## 4a. Open item for the owner: the L11 scope clause
+
+**This one wants a decision rather than a note.** Scoping L11 to modules that
+declare at least one test case narrows the rule materially beyond the literal
+text of PRD section 10.4, which says only that a contract method holding 0
+inbound `covers` edges fires it. No wireframe backs the narrowing. It was
+chosen because it is the reading that makes the reference fixture produce the
+stated rows, which is what the wave prompt asks for when a rule is ambiguous,
+and because the rule reads better narrowed. Both are judgement calls.
+
+| | |
+|---|---|
+| **What ships** | L11 fires on an uncovered contract method whose module declares at least one test case. One row on the reference fixture: `token-issuer.mint`. |
+| **The literal reading** | Every uncovered contract method fires. **27 rows** on `fixtures/saas-backend/`, against a Problems panel PRD section 12.14 designs for five. 22 of the 27 are the export methods of the six services that carry no test cases at all. |
+| **If the owner overrules this** | Delete the `test_cases_by_parent` check in `contract_method_without_covers` in `lint.rs`, which is four lines. Then either the fixture grows about 24 test-case nodes so the counts stay at five, or the wave 7 acceptance row is restated. The three `covers` edges added in section 4 stay correct under either reading. |
+
+The narrowing is separable from the section 16.1 contradiction above. That one
+had to be resolved somehow; this one did not.
 
 ---
 

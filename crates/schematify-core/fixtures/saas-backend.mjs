@@ -446,9 +446,17 @@ function buildTokenVerifierFacets(f, tokenVerifier, lib) {
     }),
   );
 
-  // Four covers edges onto verify_signature and three onto refresh_keys, which
-  // leaves skew_window with none. Rule L11 fires on it, and the Problems panel
-  // in the wireframe draws one L11 row rather than two. The handoff records it.
+  // Four covers edges onto verify_signature and three onto refresh_keys.
+  // `skew_window` is covered as well, by `leaveOneUncoveredMethod` at the end
+  // of the build, which is where every remaining covers edge is added.
+  //
+  // Section 16.1 contradicts itself here. Its module-tier paragraph says
+  // `skew_window` holds 0 covers edges; its Problems table draws exactly one
+  // L11 row, against `token-issuer.mint`. Both cannot hold, because L11 fires
+  // on an uncovered contract method and this module declares seven test cases.
+  // The wave 7 acceptance condition names the five Problems rows as the thing
+  // a test asserts, and nothing asserts the module-tier prose, so the table is
+  // the half that wins and this method carries a covers edge.
   for (const test of tests.slice(0, 4)) {
     f.edge("covers", test, verifySignature);
   }
