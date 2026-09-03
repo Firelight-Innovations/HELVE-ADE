@@ -293,7 +293,14 @@
 .kv-node[data-zoom-tier="geometry"] .kv-node__badges,
 .kv-node[data-zoom-tier="geometry"] .kv-node__facets,
 .kv-node[data-zoom-tier="geometry"] .kv-node__libraries,
-.kv-node[data-zoom-tier="geometry"] .kv-node__caption {
+.kv-node[data-zoom-tier="geometry"] .kv-node__caption,
+/* The node menu is no longer a DOM descendant of `.kv-node__header` — it
+   moved out so its position could come from `headerOccupants` (the
+   health-wedge/node-menu overlap fix above) — so hiding the header alone no
+   longer reaches it. Named here explicitly rather than relying on nesting a
+   2nd time. The health wedge is deliberately absent from every rule in this
+   block: it is the one occupant of this corner that survives every tier. */
+.kv-node[data-zoom-tier="geometry"] .kv-node__menu {
   display: none;
 }
 
