@@ -203,6 +203,11 @@ fn the_stress_fixture_lints_inside_the_wave_seven_budget() {
          mean the input changed under the budget"
     );
 
+    // Printed rather than only asserted, matching fixtures.rs's load-budget
+    // test — so `cargo test -- --nocapture` reports the number, and Wave 9's
+    // `pnpm bench:lint` can read it off this run rather than re-timing the
+    // linter itself.
+    println!("stress-2000 lint in {} ms", elapsed.as_millis());
     assert!(
         elapsed.as_millis() < 500,
         "PRD section 14.7 gives the full graph lint 500 ms against \
