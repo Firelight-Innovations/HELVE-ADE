@@ -1,8 +1,13 @@
 /**
  * Schematify's shell — PRD §17 Wave 2. Opens the `auth-service` Service
- * Schematic (`../graph`) and draws the title bar, the tab strip, the
- * breadcrumb, the toolbar, the Outline, the Schematic host frame, the
- * Inspector shell, the dock frame, and the status bar around it.
+ * Schematic (`../graph`) and draws the breadcrumb, the toolbar, the Outline,
+ * the Schematic host frame, the Inspector shell, the dock frame, and the
+ * status bar around it.
+ *
+ * No title bar and no application tab strip: the real shell already draws
+ * both, once, outside this iframe (`src/shell/titlebar/TitleBar.tsx`,
+ * `src/shell/switcher/ClusterBar.tsx`) — see the handoff doc for the ruling
+ * and why the status bar stays anyway.
  *
  * `?view=empty-stack` swaps the whole body for the Stack Schematic's
  * first-run empty state (`./shell/EmptyStack`) instead — see that module's
@@ -19,8 +24,6 @@ import { InspectorShell } from "./shell/InspectorShell";
 import { Outline } from "./shell/Outline";
 import { SchematicHost } from "./shell/SchematicHost";
 import { StatusBar } from "./shell/StatusBar";
-import { TabStrip } from "./shell/TabStrip";
-import { TitleBar } from "./shell/TitleBar";
 import { Toolbar } from "./shell/Toolbar";
 import "./shell/shell.css";
 
@@ -61,13 +64,6 @@ export default function App() {
 
   return (
     <div className="kv-shell">
-      <TitleBar
-        project="saas-backend"
-        path="~/work/saas-backend"
-        branch="main"
-        uncommittedCount={3}
-      />
-      <TabStrip />
       <div className="kv-chrome-row">
         <Breadcrumb segments={["Stack", graph.serviceTitle]} activeSlug={graph.serviceSlug} />
         <Toolbar />

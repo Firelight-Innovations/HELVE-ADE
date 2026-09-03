@@ -1,11 +1,13 @@
 /*
- * The application shell (PRD §12.1, §17 Wave 2) — title bar, tab strip,
- * breadcrumb, toolbar, Outline, Schematic host frame, Inspector shell, dock
- * frame, and status bar. Every colour is a `--kv-*` custom property from
- * `../tokens.css`; every dimension named as a token in PRD §13.5 uses that
- * token, and every other dimension (tab strip height, breadcrumb/toolbar
- * height, status bar height) is a literal `px` value, since PRD §13 does not
- * name a token for those 3 — only colour is required to be tokenised.
+ * The application shell (PRD §12.1, §17 Wave 2) — breadcrumb, toolbar,
+ * Outline, Schematic host frame, Inspector shell, dock frame, and status
+ * bar. No title bar and no application tab strip: the real shell draws both
+ * once, outside this iframe (see `../App.tsx`'s doc comment). Every colour
+ * is a `--kv-*` custom property from `../tokens.css`; every dimension named
+ * as a token in PRD §13.5 uses that token, and every other dimension
+ * (breadcrumb/toolbar height, status bar height) is a literal `px` value,
+ * since PRD §13 does not name a token for those — only colour is required
+ * to be tokenised.
  */
 
 .kv-shell {
@@ -17,83 +19,6 @@
   color: var(--kv-text-primary);
   font-family: var(--kv-font-sans);
   font-size: 12px;
-}
-
-/* --- title bar ------------------------------------------------------------ */
-
-.kv-titlebar {
-  height: var(--kv-titlebar-height);
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  background: var(--kv-bg-panel);
-  border-bottom: 1px solid var(--kv-line);
-  font-family: var(--kv-font-mono);
-}
-
-.kv-titlebar__project {
-  font-weight: 600;
-  color: var(--kv-text-primary);
-}
-
-.kv-titlebar__path {
-  flex: 1;
-  color: var(--kv-text-tertiary);
-  font-size: 11px;
-}
-
-.kv-titlebar__controls {
-  display: flex;
-  gap: 8px;
-  color: var(--kv-text-dim);
-}
-
-/* --- application tab strip ------------------------------------------------ */
-
-.kv-tabstrip {
-  height: 36px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  background: var(--kv-bg-app);
-  border-bottom: 1px solid var(--kv-line);
-}
-
-.kv-tabstrip__tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.kv-tabstrip__tab {
-  padding: 4px 10px;
-  border-radius: var(--kv-radius);
-  color: var(--kv-text-secondary);
-  font-weight: 500;
-}
-
-.kv-tabstrip__tab--active {
-  background: var(--kv-bg-raised);
-  color: var(--kv-accent);
-}
-
-.kv-tabstrip__search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--kv-text-faint);
-  font-size: 11px;
-}
-
-.kv-tabstrip__search kbd {
-  border: 1px solid var(--kv-line);
-  border-radius: var(--kv-radius-chip);
-  padding: 1px 5px;
-  color: var(--kv-text-faint);
-  font-family: var(--kv-font-mono);
 }
 
 /* --- breadcrumb + toolbar row ---------------------------------------------- */

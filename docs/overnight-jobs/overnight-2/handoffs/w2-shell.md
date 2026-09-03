@@ -31,12 +31,32 @@ All under `apps/schematify/ui/src/`:
   merges is the entire wiring change; nothing else in `apps/schematify/ui/`
   needs to move. All counts are computed from the graph at call time (PRD
   §0.4) — none is stored.
-- **`shell/`** — `TitleBar`, `TabStrip`, `Breadcrumb`, `Toolbar`, `Outline`
-  (with its 3-entry `Design`/`Product`/`Decisions` section switcher),
-  `SchematicHost` (an empty frame — Wave 3 builds the engine inside it),
-  `InspectorShell` (the 5-tab frame, no tab content — Wave 6), `Dock` (the
-  4-tab frame, no tab content — Waves 7 through 9), `StatusBar`, and
-  `EmptyStack` (the Stack Schematic first-run state, PRD §12.20).
+- **`shell/`** — `Breadcrumb`, `Toolbar`, `Outline` (with its 3-entry
+  `Design`/`Product`/`Decisions` section switcher), `SchematicHost` (an
+  empty frame — Wave 3 builds the engine inside it), `InspectorShell` (the
+  5-tab frame, no tab content — Wave 6), `Dock` (the 4-tab frame, no tab
+  content — Waves 7 through 9), `StatusBar`, and `EmptyStack` (the Stack
+  Schematic first-run state, PRD §12.20).
+
+  **No title bar and no application tab strip.** An earlier version of this
+  wave built both inside Schematify's own iframe, following PRD §17 Wave 2's
+  literal bullet list. The team lead ruled that out after checking the real
+  shell directly: it already draws a title bar
+  (`src/shell/titlebar/TitleBar.tsx`), the application tab strip
+  (`src/shell/switcher/ClusterBar.tsx`), and its own status bar
+  (`src/shell/statusbar/StatusBar.tsx`), and Schematify runs inside a frame
+  that already sits under all three. The PRD's author did not know this
+  repository, and the standing rule for this whole build is that existing
+  convention wins — a second title bar and a second tab strip drawn inside
+  an application frame is not a feature anyone wants, so both were deleted
+  rather than hidden behind a flag. **Wave 3 and Wave 5 should not rebuild
+  either.** Schematify's own `StatusBar` stays: unlike the title bar and tab
+  strip, it is not the shell's status bar wearing a different hat — its
+  cells carry Schematify's own content (the `.kaava/` node/edge counts, the
+  layout file's clean state), the acceptance conditions name the exact
+  strings, and every count is computed from the graph. It is an
+  application-local strip at the bottom of Schematify's own frame, the same
+  way the Problems dock and the Outline are application-local.
 - **`App.tsx`** — composes the shell around `loadGraph()`'s result. A
   `?view=empty-stack` query param swaps the whole body for `EmptyStack`
   instead, since this wave builds no tier switch to reach it otherwise (see
@@ -66,11 +86,18 @@ function's return type (`ServiceGraph`) and is unaffected by the swap.
 
 1. **The 9 `auth-service` dependency edges' exact topology.** PRD §16.1 states
    the count (9) and names 1 edge (`session-codec → token-issuer`, part of
-   the cycle finding) but never enumerates all 9. `fixture.ts` invents a
-   plausible set reproducing the named edge and the count; no acceptance
-   condition this wave checks the topology, only `countEdges() === 9`. A
-   real loader (Wave 1 → wiring wave) replaces this with whatever
-   `fixtures/saas-backend/` actually encodes.
+   the cycle finding) but never enumerates all 9. **All 9 were invented by
+   this agent, not read from any specification** — the wiring wave must
+   treat every one as a placeholder, not as fixture-specified data. The full
+   list, all `depends_on`, all in `graph/fixture.ts`:
+   `http-entry → token-issuer`, `http-entry → token-verifier`,
+   `token-issuer → crypto-primitives`, `token-verifier → crypto-primitives`,
+   `password-hasher → crypto-primitives`, `rate-limiter → token-verifier`,
+   `audit-emitter → crypto-primitives`, `session-codec → token-issuer` (the
+   1 edge PRD §16.1 names directly), and `token-issuer → session-store`.
+   No acceptance condition this wave checks the topology, only
+   `countEdges() === 9`. A real loader (Wave 1b → wiring wave) replaces this
+   with whatever `fixtures/saas-backend/` actually encodes.
 2. **Containment depth counts the service root as level 1.** PRD §16.1 says
    "containment depth 3" for a service whose deepest nodes sit exactly 1
    level under a top-level module. `computeDepth()` in `graph/index.ts`
@@ -78,17 +105,11 @@ function's return type (`ServiceGraph`) and is unaffected by the swap.
 3. **`--kv-bg-root` and `--kv-accent-hover` are derived, not `[W]`.** Per
    `WIREFRAME-EXTRACT.md` Resolutions 7.3a/7.3b — taken as binding per that
    document's own status, not re-argued here.
-4. **The title bar, tab strip, breadcrumb, and toolbar are drawn by
-   Schematify itself, inside its own iframe**, even though
-   `docs/audits/schematify-baseline.md` §3 documents that the real shell
-   chrome (title bar, tab strip) is drawn once by the orchestrator's own
-   `ClusterBar.tsx`, and no other first-party app draws a second copy of
-   either. This wave built what PRD §17 Wave 2 and the task brief explicitly
-   ask for ("Build the title bar, the application tab strip, the breadcrumb,
-   and the toolbar") rather than resolving that tension unilaterally. A human
-   should decide whether Schematify's own title bar and tab strip stay as
-   wireframe-faithful chrome inside the iframe, or get cut once a real shell
-   integration is scoped — this is a product decision, not a code defect.
+4. **Resolved: no title bar, no application tab strip, drawn by Schematify
+   itself.** See the "No title bar and no application tab strip" note above
+   — the team lead ruled this after checking the real shell directly. The
+   breadcrumb and toolbar stay, drawn by Schematify, because neither
+   duplicates a piece of real shell chrome.
 5. **Status bar cell 2's "clean" is unconditional.** No layout file writer
    exists yet (Wave 3 builds `schematify_write_layout`), so there is no dirty
    state to report; `statusCell2()` takes a `clean` parameter (default
@@ -117,15 +138,14 @@ No browser was available this wave (`00-AGENT-CONTEXT.md` forbids
 render-adjacent check run). Once safe to do so:
 
 1. Open Schematify (`pnpm app`, the `Schematify` tab) and confirm the shell
-   renders as described: title bar, tab strip, breadcrumb/toolbar row,
-   Outline (with the section switcher, tree, badges, triangles, footer),
+   renders as described inside the real shell's own frame: breadcrumb/toolbar
+   row, Outline (with the section switcher, tree, badges, triangles, footer),
    an empty dotted Schematic frame, an inert Inspector frame, an inert dock
-   frame, and a status bar with cells 1 and 2 filled and cells 3 and 4 blank.
+   frame, and a status bar with cells 1 and 2 filled and cells 3 and 4 blank
+   — with no second title bar or tab strip drawn inside it.
 2. Load `?view=empty-stack` in the same window and confirm the Stack
    Schematic first-run empty state draws (assumption 8 above).
-3. Decide on assumption 4 — whether Schematify's own title bar/tab strip
-   chrome should stay, given the real shell already draws one.
-4. Sanity-check the Outline tree's visual density and the disabled-control
+3. Sanity-check the Outline tree's visual density and the disabled-control
    styling (search field, `Auto-sort`, `Fit`, tab labels) against the
    wireframe screenshots in `Forger Wireframes.html` / `WIREFRAME-EXTRACT.md`
    §1 — this wave verified strings and counts by unit test, never by eye.
