@@ -9,6 +9,46 @@ header. Read `docs/design/SCHEMATIFY-PRD.md` §12.13, §12.1, §5.10, §8, §0.4
 the wave 9b handoff (`handoffs/w9b-runs.md`); and the wave 7b handoff for the
 dock-tab and status-bar-cell pattern this wave follows.
 
+## 0. Merged onto `main` after review feedback
+
+`main` moved 3 times after this branch was cut (wave 6/PR #92 — Inspector,
+`coversCount` deletion; wave 10b/PR #94 — the `transition` arm and the
+human-only gate; wave 7b/PR #91 — Problems panel, already the pattern this
+wave followed). Merged `origin/main` in (1 real conflict, in
+`src-tauri/src/apps/schematify.rs`'s header doc comment and import list —
+the dispatch match, every function body, and the 2 test method-list arrays
+auto-merged cleanly), re-verified the merged result end to end (`cargo test
+--workspace`, `pnpm typecheck`, `npx vitest run apps/schematify`, clippy,
+eslint, prettier, `cargo fmt`), and fixed one thing the review round flagged
+as the same defect shape this wave's own surfaces could have carried:
+
+**`Dock.tsx`'s Problems badges drew a guessed `0`/`0`.** `problemBadges(findings
+?? [])` computed and drew `{errors: 0, warnings: 0}` both while the first
+`schematify/lint` call was in flight and forever on failure — pre-existing
+from wave 7b, not introduced by this wave, but directly in the file this
+wave already touches for the Runs tab and named as the exact anti-pattern to
+avoid. Changed to `findings ? problemBadges(findings) : null`, drawing blank
+until real data lands, the same `findings ? … : ""` convention
+`StatusBar.tsx`'s cell 3 already uses. This wave's own 2 new surfaces
+(`RunsPanel.tsx`, `StatusBar.tsx` cell 4) never had this defect — both
+already drew blank on `null`, verified again after the merge.
+
+No `coversCount` usage anywhere in this wave's own files (`ModuleDashboard.tsx`,
+`RunsPanel.tsx`, `graph/dashboard.ts`) — nothing here draws a covers count,
+so wave 6's consolidation onto `engine/anatomy.ts::coversCountFor` needed no
+follow-up. The `ingest-run` arm stays a plain method arm with no lifecycle
+gate of its own (it never moves a node's `lifecycle`), so it did not need
+wave 10b's human-only enforcement pattern — that gate lives entirely inside
+`transition`, untouched by this wave.
+
+One merge-time build hazard, not a code defect: `cargo check` first failed
+with `no ingest_run_file in the root` immediately after merging, despite
+`lib.rs` visibly re-exporting it — a stale fingerprint in the
+`CARGO_TARGET_DIR` shared across every worktree tonight (`cargo clean -p
+schematify-core -p openkaava-orchestrator` reported "Blocking waiting for
+file lock on build directory", confirming concurrent-build contention).
+Cleared and rebuilt clean; not a rebase/merge conflict.
+
 ## 1. What was built
 
 ### Rust (`src-tauri/src/apps/schematify.rs`) — 3 new dispatch arms
