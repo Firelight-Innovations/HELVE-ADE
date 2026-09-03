@@ -81,6 +81,12 @@ kaava-tool-manifest = { path = "../crates/kaava-tool-manifest" }
 # the drift this crate exists to prevent.
 kaava-rpc = { path = "../crates/kaava-rpc" }
 
+# The Schematify design graph: schemas, atomic storage, the loader, and the
+# lifecycle rules. `src-tauri/src/apps/schematify.rs` is the thin JSON-RPC
+# layer over this; every schema, every write and every load rule lives there,
+# not here.
+schematify-core = { path = "../crates/schematify-core" }
+
 # `files/read-bytes` has to hand bytes to the frontend through a JSON value,
 # which has no byte variant — see the doc on that method for why the answer is
 # base64 today and an asset protocol later.
