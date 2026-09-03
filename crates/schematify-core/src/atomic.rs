@@ -326,10 +326,7 @@ mod tests {
         assert!(!is_transient_lock(&error));
         // A wall-clock budget flakes on a loaded runner even when nothing was
         // slept on; the attempt count proves the same thing directly.
-        assert_eq!(
-            attempts, 1,
-            "a failure the retry cannot fix is not retried"
-        );
+        assert_eq!(attempts, 1, "a failure the retry cannot fix is not retried");
     }
 
     #[test]

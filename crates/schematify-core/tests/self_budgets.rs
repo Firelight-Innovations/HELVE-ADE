@@ -33,7 +33,8 @@ fn self_project() -> PathBuf {
 /// next agent to puzzle over.
 fn manifest_dir() -> PathBuf {
     let dir = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
+        std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string()),
     );
     assert!(
         dir.is_dir(),
