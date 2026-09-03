@@ -42,7 +42,7 @@ mod uri;
 
 pub use atomic::{write_json_atomic, AtomicWriteError};
 pub use brief::{ProjectBrief, SuccessMetric};
-pub use decision::{Decision, DecisionStatus};
+pub use decision::{Decision, DecisionKind, DecisionStatus};
 pub use edge::{Edge, EdgeKind, EdgeTier};
 pub use error::{CoreError, Result};
 pub use graph::Graph;
@@ -61,7 +61,7 @@ pub use node::{
     DocBlockFields, ExternalDepFields, GroupFields, Layer, ModuleFields, Node, NodeEnvelope,
     NodeKind, Probe, ServiceFields, TestCaseFields, TestStatus,
 };
-pub use product::{Flow, FlowStep, Screen};
+pub use product::{Flow, FlowKind, FlowStep, Screen, ScreenKind};
 pub use registry::{LibraryEntry, LibraryRegistry, Rule, Severity};
 pub use run::{
     BudgetResult, LinterResult, ReconcileResult, RunArtifact, TestResult, RUN_SCHEMA_VERSION,

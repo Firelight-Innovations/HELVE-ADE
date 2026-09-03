@@ -11,13 +11,13 @@ use std::path::Path;
 use uuid::Uuid;
 
 use crate::atomic::write_json_atomic;
-use crate::decision::{Decision, DecisionStatus};
+use crate::decision::{Decision, DecisionKind, DecisionStatus};
 use crate::edge::{Edge, EdgeKind};
 use crate::error::CoreError;
 use crate::lifecycle::{Actor, Lifecycle};
-use crate::load::{load_project, QuarantineReason};
+use crate::load::{json_files, load_project, QuarantineReason};
 use crate::node::{Authorship, ExternalDepFields, ModuleFields, Node, NodeEnvelope, NodeKind};
-use crate::product::{Flow, FlowStep, Screen};
+use crate::product::{Flow, FlowKind, FlowStep, Screen, ScreenKind};
 use crate::registry::{LibraryEntry, LibraryRegistry};
 use crate::run::{RunArtifact, RUN_SCHEMA_VERSION};
 use crate::slug::{Slug, SlugScope};
@@ -174,7 +174,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_screen(&Screen {
             id: Uuid::from_u128(3),
-            kind: Screen::KIND.to_owned(),
+            kind: ScreenKind::Screen,
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials.".to_owned(),
@@ -188,7 +188,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_flow(&Flow {
             id: Uuid::from_u128(4),
-            kind: Flow::KIND.to_owned(),
+            kind: FlowKind::Flow,
             slug: Slug::new("first-run").unwrap(),
             title: "First run".to_owned(),
             trigger: "A visitor arrives.".to_owned(),
@@ -203,7 +203,7 @@ fn every_kind_of_dangling_reference_is_reported_rather_than_dropped() {
     store
         .write_decision(&Decision {
             id: Uuid::from_u128(5),
-            kind: Decision::KIND.to_owned(),
+            kind: DecisionKind::Decision,
             slug: Slug::new("DEC-TEC-AUTH-004").unwrap(),
             title: "A decision".to_owned(),
             context: "Context.".to_owned(),
@@ -246,7 +246,7 @@ fn a_references_ui_edge_resolves_its_target_against_the_screens() {
     store
         .write_screen(&Screen {
             id: Uuid::from_u128(2),
-            kind: Screen::KIND.to_owned(),
+            kind: ScreenKind::Screen,
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials.".to_owned(),
@@ -370,33 +370,91 @@ fn a_run_and_its_audit_history_load_beside_the_node() {
 }
 
 #[test]
-fn a_run_with_an_unknown_schema_is_quarantined_rather_than_read() {
+fn a_future_run_format_is_quarantined_by_version_rather_than_failing_to_parse() {
     let (directory, store) = project();
     store
         .write_node(&node(1, "token-verifier", NodeKind::Module, None))
         .unwrap();
-    let path = store.run_path(Uuid::from_u128(1), 9);
+
+    // A later version adds a field. That is the only reason anyone bumps a
+    // version, so a file carrying nothing but current fields would not test
+    // this at all: the loader has to read the version before the artifact, or
+    // the closed schema turns a version it could report into a parse error it
+    // cannot. PRD section 5.10 requires the version be named.
     write_json_atomic(
-        &path,
+        &store.run_path(Uuid::from_u128(1), 9),
         &serde_json::json!({
             "schema": "kaava-bench-v9",
             "run": 9,
             "at": "2026-08-25T00:00:00Z",
             "commit": "abc",
-            "workflow": "ci/verify.yml"
+            "workflow": "ci/verify.yml",
+            "flakes": [{ "impl_ref": "@kaava:x", "retries": 3 }],
+            "carbon_grams": 4.2
         }),
     )
     .unwrap();
 
     let outcome = load_project(directory.path()).unwrap();
     assert!(outcome.graph.runs(Uuid::from_u128(1)).is_empty());
+    assert!(
+        outcome.report.unreadable.is_empty(),
+        "a future version is quarantined, not reported as unreadable: {:?}",
+        outcome.report.unreadable
+    );
     let record = outcome
         .report
         .quarantined
         .iter()
         .find(|q| q.reason == QuarantineReason::UnknownRunSchema)
-        .unwrap();
+        .expect("the version is reported");
     assert_eq!(record.reference, "kaava-bench-v9");
+    assert_eq!(record.subject, Uuid::from_u128(1));
+    assert!(record.file.ends_with("run-9.json"));
+}
+
+#[test]
+fn a_current_version_run_with_an_unknown_field_still_fails_loudly() {
+    let (directory, store) = project();
+    store
+        .write_node(&node(1, "token-verifier", NodeKind::Module, None))
+        .unwrap();
+
+    // Same shape, current version. The closed schema is what catches a typo
+    // in a field name at the version this build actually reads.
+    write_json_atomic(
+        &store.run_path(Uuid::from_u128(1), 10),
+        &serde_json::json!({
+            "schema": RUN_SCHEMA_VERSION,
+            "run": 10,
+            "at": "2026-08-25T00:00:00Z",
+            "commit": "abc",
+            "workflow": "ci/verify.yml",
+            "carbon_grams": 4.2
+        }),
+    )
+    .unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert!(outcome.graph.runs(Uuid::from_u128(1)).is_empty());
+    assert_eq!(outcome.report.unreadable.len(), 1);
+    assert!(outcome.report.quarantined.is_empty());
+}
+
+#[test]
+fn a_run_file_with_no_version_at_all_is_reported_as_unreadable() {
+    let (directory, store) = project();
+    store
+        .write_node(&node(1, "token-verifier", NodeKind::Module, None))
+        .unwrap();
+    write_json_atomic(
+        &store.run_path(Uuid::from_u128(1), 11),
+        &serde_json::json!({ "run": 11 }),
+    )
+    .unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(outcome.report.unreadable.len(), 1);
 }
 
 #[test]
@@ -587,7 +645,7 @@ fn the_three_product_schemas_carry_their_kind() {
     store
         .write_screen(&Screen {
             id: Uuid::from_u128(1),
-            kind: Screen::KIND.to_owned(),
+            kind: ScreenKind::Screen,
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials.".to_owned(),
@@ -608,5 +666,95 @@ fn the_three_product_schemas_carry_their_kind() {
             .screens()
             .count(),
         1
+    );
+}
+
+#[test]
+fn a_file_declaring_the_wrong_kind_is_refused() {
+    let (directory, store) = project();
+    write_json_atomic(
+        &store.kaava_dir().join("screens").join("s.json"),
+        &serde_json::json!({
+            "id": "00000000-0000-0000-0000-000000000001",
+            "kind": "flow",
+            "slug": "login-form",
+            "title": "Login form",
+            "purpose": "Collects credentials."
+        }),
+    )
+    .unwrap();
+
+    let outcome = load_project(directory.path()).unwrap();
+    assert_eq!(
+        outcome.report.unreadable.len(),
+        1,
+        "a screen file calling itself a flow does not parse as a screen"
+    );
+    assert_eq!(outcome.graph.screens().count(), 0);
+}
+
+#[test]
+fn the_surviving_file_of_a_collision_is_the_same_for_every_kind() {
+    let (directory, store) = project();
+    for name in ["b", "c", "a"] {
+        let mut edge = Edge::new(
+            Uuid::from_u128(50),
+            EdgeKind::DependsOn,
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            "2026-08-25T00:00:00Z",
+        );
+        edge.source_port = Some(name.to_owned());
+        write_json_atomic(
+            &store.kaava_dir().join("edges").join(format!("{name}.json")),
+            &edge,
+        )
+        .unwrap();
+    }
+    store
+        .write_node(&node(1, "a", NodeKind::Module, None))
+        .unwrap();
+    store
+        .write_node(&node(2, "b", NodeKind::Module, None))
+        .unwrap();
+
+    for _ in 0..5 {
+        let outcome = load_project(directory.path()).unwrap();
+        assert_eq!(
+            outcome
+                .graph
+                .edge(Uuid::from_u128(50))
+                .unwrap()
+                .source_port
+                .as_deref(),
+            Some("a"),
+            "edges pick a winner by path order, like nodes"
+        );
+        assert_eq!(outcome.report.id_collisions.len(), 2);
+    }
+}
+
+#[test]
+fn a_directory_listing_comes_back_in_path_order() {
+    let directory = tempfile::tempdir().unwrap();
+    for name in ["zulu", "alpha", "mike", "bravo", "yankee"] {
+        std::fs::write(directory.path().join(format!("{name}.json")), "{}").unwrap();
+    }
+    std::fs::write(directory.path().join("ignored.txt"), "x").unwrap();
+
+    let files = json_files(directory.path());
+    let names: Vec<String> = files
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "alpha.json",
+            "bravo.json",
+            "mike.json",
+            "yankee.json",
+            "zulu.json"
+        ]
     );
 }

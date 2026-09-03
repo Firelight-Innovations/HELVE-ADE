@@ -89,19 +89,20 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), Ato
 /// waiting cannot fix either.
 fn rename_with_retry(from: &Path, to: &Path) -> Result<(), std::io::Error> {
     let mut pause = RENAME_BACKOFF;
-    for attempt in 1..=RENAME_ATTEMPTS {
+    let mut attempt = 1;
+    loop {
         match fs::rename(from, to) {
             Ok(()) => return Ok(()),
             Err(error) if attempt < RENAME_ATTEMPTS && is_transient_lock(&error) => {
                 std::thread::sleep(pause);
                 pause *= 2;
+                attempt += 1;
             }
+            // The last attempt takes this arm whatever went wrong, so the
+            // error a caller sees is always one a rename actually returned.
             Err(error) => return Err(error),
         }
     }
-    // Unreachable: the loop either returns or exhausts its attempts through
-    // the final arm, which returns too.
-    fs::rename(from, to)
 }
 
 /// Whether an error is the kind another process releases on its own.

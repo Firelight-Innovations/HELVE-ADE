@@ -44,8 +44,8 @@ differ.
 | `ServiceFields`, `ModuleFields`, `ContractMethodFields`, `TestCaseFields`, `BudgetFields`, `DocBlockFields`, `ExternalDepFields`, `CommentFields`, `GroupFields` | The added fields of PRD 5.3 to 5.5. |
 | `BudgetTier`, `TestStatus`, `DocAudience`, `Probe` | The enumerations those fields take. |
 | `Edge`, `EdgeKind`, `EdgeTier` | PRD 5.6 and 11.1. `Edge::new`, `.is_stored()`, `.is_live()`; `EdgeKind::all()`, `.tier()`, `.is_semantic()`. |
-| `Screen`, `Flow`, `FlowStep` | PRD 5.7 and 5.8. Each carries `kind`, with `Screen::KIND` and `Flow::KIND` as the words. |
-| `Decision`, `DecisionStatus` | PRD 5.9, carrying `kind` (`Decision::KIND`), plus `.is_superseded_without_successor()` for rule L07. |
+| `Screen`, `Flow`, `FlowStep` | PRD 5.7 and 5.8. `kind` is a one-variant `ScreenKind` or `FlowKind`, checked when the file is read. |
+| `Decision`, `DecisionStatus`, `DecisionKind` | PRD 5.9, plus `.is_superseded_without_successor()` for rule L07. |
 | `Rule`, `Severity`, `LibraryEntry`, `LibraryRegistry` | PRD 5.10 and 10. `LibraryRegistry::get`, `.contains`, `.by_name`. |
 | `Layout`, `Placement` | PRD 5.10. `Layout::new(slug)`, `.file_name()`. |
 | `RunArtifact`, `BudgetResult`, `TestResult`, `LinterResult`, `ReconcileResult`, `RUN_SCHEMA_VERSION` | PRD 5.10. `.is_known_schema()`, `.budgets_passing()`, `.tests_passing()`, `ReconcileResult::drawn()`, `.error_count(bool)`. |
@@ -106,6 +106,12 @@ open map; nothing else has anywhere to put it, so a field a later wave writes
 into a `Screen` would be dropped on the next rewrite. Failing the parse is
 louder than losing the data.
 
+`RunArtifact` is closed too, and the loader reads its `schema` field through a
+probe before deserializing it. A later bench format adds a field, which is the
+only reason anyone bumps a version, and deserializing first would turn the one
+thing PRD 5.10 requires a reader to report, the version, into a parse error
+that names nothing.
+
 ---
 
 ## 2. Acceptance conditions
@@ -126,7 +132,7 @@ dangling reference; every legal and every illegal cell of the PRD 7.2 table
 rule at both tiers, including a node above and a node below the lowest common
 ancestor.
 
-**154 tests**: 136 unit and 18 integration, 22 of them added by the review fixes. The whole workspace is 796 and all pass.
+**159 tests**: 141 unit and 18 integration, 27 of them added across the two review rounds. The whole workspace is 801 and all pass.
 
 ---
 
@@ -140,7 +146,7 @@ per STANDARDS section 8.
 |---|---|---|---|
 | 1 | `modules_of_service` walked containment with no visited set, so two node files whose parents point at each other hung the process. | Visited set, seeded with the starting node. `descendants` is seeded the same way now, so a chain that loops back does not report a node as its own descendant. | `a_parent_cycle_terminates_every_containment_walk` |
 | 2 | A duplicate identifier was inserted over the first file, silently, and which file survived varied with the parallel chunk order. | Files are sorted by path before insertion, the first wins, and the loser is reported in `Report::id_collisions`. The real path is carried from the parse through to every quarantine row, so `Quarantine::file` names a file that exists. A filename disagreeing with the identifier inside it is reported in `Report::misnamed`. | `two_files_claiming_one_identifier_are_both_reported`, `the_surviving_file_of_a_collision_is_the_same_on_every_load`, `a_filename_that_disagrees_with_its_identifier_is_reported`, `a_quarantine_row_names_the_file_the_reference_was_read_from` |
-| 3 | `Screen`, `Flow` and `Decision` dropped the `kind` field, and no schema denied unknown fields, so anything a later wave wrote into the seven closed types was discarded on the next rewrite. | `kind` restored on all three, with a `KIND` constant and a serde default. `deny_unknown_fields` on every schema except `Node`, whose open map is what makes it the exception. | `a_closed_schema_refuses_a_field_it_does_not_model`, `the_three_product_schemas_carry_their_kind` |
+| 3 | `Screen`, `Flow` and `Decision` dropped the `kind` field, and no schema denied unknown fields, so anything a later wave wrote into the seven closed types was discarded on the next rewrite. | `kind` restored on all three as a one-variant enum, so the word is checked at parse time. `deny_unknown_fields` on every schema except `Node`, whose open map is what makes it the exception. | `a_closed_schema_refuses_a_field_it_does_not_model`, `the_three_product_schemas_carry_their_kind`, `a_file_declaring_the_wrong_kind_is_refused` |
 | 4 | `write_transition` wrote the node first and the audit second, so a corrupt audit advanced the node on disk and in memory while returning an error. | The audit is read before anything is written. A failed node write restores the field. A failed audit append rewrites the node with the old state, and reports `CoreError::TransitionTornWrite` when even that fails. | `an_unreadable_audit_leaves_the_node_where_it_was`, `an_illegal_transition_leaves_the_audit_alone` |
 | 5 | `stale_cascade` and `contract_fields_changed` had no tests, so nothing pinned the direction of a dependency edge. | Six tests, including one asserting that the node that changed does not stale itself and one asserting the cascade is direct rather than transitive. | `a_contract_change_stales_the_accepted_nodes_that_read_it`, `only_the_four_contract_fields_count_as_a_contract_change`, and four more |
 | 6 | `check_transition` accepted `deprecated` to `deprecated` through the wildcard row while `transitions_from` offered nothing, and the self-loop appended a row to an append-only audit. | A move to the state a node is already in is refused, for every state. | `a_state_never_transitions_to_itself`, `a_node_never_transitions_to_the_state_it_is_in` |
@@ -150,6 +156,15 @@ per STANDARDS section 8.
 | 10 | The `is_facet` doc sentence called the two annotation kinds tier-3. | The sentence now says what the code does and cites PRD 5.4's "annotation facets included". | `the_annotation_tier_and_the_facet_tier_are_named` |
 | 11 | The rename had no retry, so on a Windows-only product a scanner holding the file for a moment was a hard error. | Five attempts with doubling backoff, 75 ms in the worst case, on a permission error or Windows error 32 or 33 alone. The bytes are already synced by then, so a retry repeats a rename and never a write. | `a_sharing_violation_is_treated_as_transient_and_a_real_failure_is_not`, `a_rename_onto_a_missing_directory_fails_without_waiting` |
 | 12 | `crates/schematify-reconcile` landed on main pinning `uuid` and `tempfile` literally, ignoring the workspace pins this branch added. | Nothing changed, deliberately. Both specifications resolve to the same version today, so nothing breaks. See section 9. | None |
+
+A second round found four more, all fixed here.
+
+| # | Finding | Fix | Test |
+|---|---|---|---|
+| 13 | Closing `RunArtifact` broke the thing its version field exists for: the loader deserialized before checking the version, so a future bench file that added a field failed to parse and landed in `unreadable` with its version unnamed. The test that appeared to cover this carried only current fields, so it could not fail. | The version is read through a small probe struct before the artifact. An unknown version is quarantined and named; a current-version file with an unknown field still fails loudly. The test now uses a file that genuinely adds fields. | `a_future_run_format_is_quarantined_by_version_rather_than_failing_to_parse`, `a_current_version_run_with_an_unknown_field_still_fails_loudly`, `a_run_file_with_no_version_at_all_is_reported_as_unreadable` |
+| 14 | Determinism was fixed for nodes alone. Edges, screens, flows, decisions and rules still arrived in directory order. | The sort moved into `json_files`, so every kind gets it, and a `SortByPath` trait puts each collection back in that order after the parallel chunks rejoin. A seventh kind cannot miss it. | `a_directory_listing_comes_back_in_path_order`, `the_surviving_file_of_a_collision_is_the_same_for_every_kind` |
+| 15 | `kind` was a string with a default and was never compared against the constants, so a file in `screens/` declaring itself a flow parsed happily. | `ScreenKind`, `FlowKind` and `DecisionKind`: one variant each, checked by serde. The string constants are gone rather than left as decoration. | `a_file_declaring_the_wrong_kind_is_refused` |
+| 16 | The rename after the retry loop was unreachable, because the final attempt returns through the error arm. | The loop no longer falls through. | The two existing retry tests |
 
 ---
 
@@ -271,7 +286,7 @@ on its entry-point module, and the fixture computes it from `auth-service`.
 |---|---|
 | `pnpm build` | Pass |
 | `pnpm test:js` | Pass, unchanged by this wave |
-| `pnpm test:rust` | Pass, 796 across the workspace, 154 of them new |
+| `pnpm test:rust` | Pass, 801 across the workspace, 159 of them new |
 | `pnpm lint:js` | Pass, 0 errors and the 8 pre-existing React hook warnings |
 | `pnpm lint:rust` | Pass, no new clippy findings and no baseline change |
 | `pnpm lint:comments` | Pass, 0 grandfathered |

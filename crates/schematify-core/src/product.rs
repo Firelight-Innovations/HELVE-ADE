@@ -33,8 +33,8 @@ pub struct Screen {
     /// Always `screen`. PRD section 5.7 writes it as the first key, and a
     /// reader holding a file from outside its own directory needs it to tell
     /// what the file is.
-    #[serde(default = "screen_kind")]
-    pub kind: String,
+    #[serde(default)]
+    pub kind: ScreenKind,
     /// The name, unique across the screen collection.
     pub slug: Slug,
     /// The name drawn on the screen entry.
@@ -74,8 +74,8 @@ pub struct Flow {
     /// The UUIDv7 every reference stores.
     pub id: Uuid,
     /// Always `flow`, per PRD section 5.8.
-    #[serde(default = "flow_kind")]
-    pub kind: String,
+    #[serde(default)]
+    pub kind: FlowKind,
     /// The name, unique across the flow collection.
     pub slug: Slug,
     /// The name drawn on the flow entry.
@@ -89,22 +89,26 @@ pub struct Flow {
     pub outcome: String,
 }
 
-fn screen_kind() -> String {
-    Screen::KIND.to_owned()
+/// The one value a screen's `kind` field takes.
+///
+/// A one-variant enum rather than a string with a default, so the word is
+/// checked when the file is read. As a string it was decoration: a file in
+/// `screens/` declaring itself a flow parsed happily and drew as a screen.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScreenKind {
+    /// A product screen.
+    #[default]
+    Screen,
 }
 
-fn flow_kind() -> String {
-    Flow::KIND.to_owned()
-}
-
-impl Screen {
-    /// The word a screen file writes into its `kind` field.
-    pub const KIND: &str = "screen";
-}
-
-impl Flow {
-    /// The word a flow file writes into its `kind` field.
-    pub const KIND: &str = "flow";
+/// The one value a flow's `kind` field takes. See [`ScreenKind`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FlowKind {
+    /// A product flow.
+    #[default]
+    Flow,
 }
 
 #[cfg(test)]
@@ -116,7 +120,7 @@ mod tests {
     fn a_screen_round_trips() {
         let screen = Screen {
             id: Uuid::from_u128(1),
-            kind: Screen::KIND.to_owned(),
+            kind: ScreenKind::Screen,
             slug: Slug::new("login-form").unwrap(),
             title: "Login form".to_owned(),
             purpose: "Collects credentials and starts a session.".to_owned(),
@@ -133,7 +137,7 @@ mod tests {
     fn a_flow_round_trips_with_its_steps() {
         let flow = Flow {
             id: Uuid::from_u128(1),
-            kind: Flow::KIND.to_owned(),
+            kind: FlowKind::Flow,
             slug: Slug::new("first-run-signup").unwrap(),
             title: "First-run signup".to_owned(),
             trigger: "A visitor opens the product with no account.".to_owned(),
@@ -153,7 +157,7 @@ mod tests {
     fn a_screen_with_no_design_reference_omits_the_field() {
         let screen = Screen {
             id: Uuid::from_u128(1),
-            kind: Screen::KIND.to_owned(),
+            kind: ScreenKind::Screen,
             slug: Slug::new("empty-state").unwrap(),
             title: "Empty state".to_owned(),
             purpose: "Nothing yet.".to_owned(),

@@ -35,7 +35,7 @@ use crate::lifecycle::AuditRow;
 use crate::node::Node;
 use crate::product::{Flow, Screen};
 use crate::registry::{LibraryRegistry, Rule};
-use crate::run::RunArtifact;
+use crate::run::{RunArtifact, RUN_SCHEMA_VERSION};
 use crate::slug::{SlugIndex, SlugScope};
 use crate::uri::{Uri, UriKind};
 
@@ -233,10 +233,26 @@ pub fn load_project(project_root: &Path) -> Result<LoadOutcome> {
         graph.set_brief(brief);
     }
 
-    // Sorted before insertion, so which file wins a collision is decided by
-    // path order rather than by whichever parse worker finished first.
+    // `json_files` reads in path order, and the parallel chunks then finish in
+    // whatever order they finish, so each collection is put back into path
+    // order here. That is what makes the winner of an identifier collision the
+    // same on every load, for every kind rather than only for nodes.
     let mut nodes = nodes;
-    nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut edges = edges;
+    let mut screens = screens;
+    let mut flows = flows;
+    let mut decisions = decisions;
+    let mut rules = rules;
+    for collection in [
+        &mut nodes as &mut dyn SortByPath,
+        &mut edges,
+        &mut screens,
+        &mut flows,
+        &mut decisions,
+        &mut rules,
+    ] {
+        collection.sort_by_path();
+    }
     let mut origins: HashMap<Uuid, PathBuf> = HashMap::new();
 
     for (path, node) in nodes {
@@ -284,6 +300,20 @@ pub fn load_project(project_root: &Path) -> Result<LoadOutcome> {
 
     report.duration_ms = started.elapsed().as_millis();
     Ok(LoadOutcome { graph, report })
+}
+
+/// Put one parsed collection back into the path order `json_files` read it in.
+///
+/// A trait rather than six calls to the same `sort_by`, so a seventh kind
+/// cannot be added to the loader and quietly miss the sort.
+trait SortByPath {
+    fn sort_by_path(&mut self);
+}
+
+impl<T> SortByPath for Vec<(PathBuf, T)> {
+    fn sort_by_path(&mut self) {
+        self.sort_by(|a, b| a.0.cmp(&b.0));
+    }
 }
 
 /// Record where one value came from, and say whether to keep it.
@@ -427,15 +457,23 @@ fn parse_all<T: DeserializeOwned>(
     (values, problems)
 }
 
-fn json_files(directory: &Path) -> Vec<PathBuf> {
+/// Every `.json` file in a directory, in path order.
+///
+/// Sorted here rather than at one call site, because the order decides which
+/// file survives an identifier collision and every kind needs the same answer
+/// on every load. A directory listing is in whatever order the filesystem
+/// hands back, and the parse workers finish in whatever order they finish.
+pub(crate) fn json_files(directory: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(directory) else {
         return Vec::new();
     };
-    entries
+    let mut paths: Vec<PathBuf> = entries
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
-        .collect()
+        .collect();
+    paths.sort();
+    paths
 }
 
 fn read_one<T: DeserializeOwned>(
@@ -498,32 +536,78 @@ fn read_runs(directory: &Path, graph: &mut Graph, report: &mut Report) {
         // `audit.json` sits in this directory too and holds an array of
         // transition rows rather than a run. Reading every file here would
         // report it as a broken run on every load.
-        let (runs, problems) = read_files::<RunArtifact>(
-            &json_files(&path)
-                .into_iter()
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("run-"))
-                })
-                .collect::<Vec<_>>(),
-            "run",
-        );
-        report.unreadable.extend(problems);
-        for (file, run) in runs {
-            if run.is_known_schema() {
-                graph.insert_run(node, run);
-            } else {
+        let files: Vec<PathBuf> = json_files(&path)
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("run-"))
+            })
+            .collect();
+
+        for file in files {
+            let bytes = match fs::read(&file) {
+                Ok(bytes) => bytes,
+                Err(source) => {
+                    report.unreadable.push(ReadProblem {
+                        file: file.clone(),
+                        error: CoreError::Io { path: file, source },
+                    });
+                    continue;
+                }
+            };
+
+            // The version is read on its own, before the artifact. A later
+            // format adds a field, which is the only reason anyone bumps a
+            // version, and `RunArtifact` is closed to unknown fields like
+            // every other schema here. Deserializing first would turn that
+            // file into a parse error and lose the one thing PRD section 5.10
+            // requires a reader to report: the version it could not read.
+            let version = match serde_json::from_slice::<SchemaProbe>(&bytes) {
+                Ok(probe) => probe.schema,
+                Err(source) => {
+                    report.unreadable.push(ReadProblem {
+                        file: file.clone(),
+                        error: CoreError::Parse {
+                            path: file,
+                            schema: "run",
+                            source,
+                        },
+                    });
+                    continue;
+                }
+            };
+
+            if version != RUN_SCHEMA_VERSION {
                 report.quarantined.push(Quarantine {
                     subject: node,
                     field: "schema".to_owned(),
-                    reference: run.schema.clone(),
+                    reference: version,
                     reason: QuarantineReason::UnknownRunSchema,
                     file,
                 });
+                continue;
+            }
+
+            match serde_json::from_slice::<RunArtifact>(&bytes) {
+                Ok(run) => graph.insert_run(node, run),
+                Err(source) => report.unreadable.push(ReadProblem {
+                    file: file.clone(),
+                    error: CoreError::Parse {
+                        path: file,
+                        schema: "run",
+                        source,
+                    },
+                }),
             }
         }
     }
+}
+
+/// Just enough of a run artifact to read its version.
+#[derive(serde::Deserialize)]
+struct SchemaProbe {
+    schema: String,
 }
 
 /// Resolve every stored reference, quarantining what does not land.
