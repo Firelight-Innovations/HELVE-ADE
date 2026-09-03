@@ -195,7 +195,11 @@ mod tests {
         assert!(store.run_path(Uuid::from_u128(1), 1184).exists());
 
         let reloaded = load_project(directory.path()).unwrap();
-        assert!(reloaded.report.is_clean(), "{:?}", reloaded.report.quarantined);
+        assert!(
+            reloaded.report.is_clean(),
+            "{:?}",
+            reloaded.report.quarantined
+        );
         let found = reloaded.graph.runs_for_budget(Uuid::from_u128(2));
         assert_eq!(found.len(), 1);
         assert_eq!(found[0], &artifact);
@@ -207,7 +211,9 @@ mod tests {
         let graph = Graph::new();
         let error =
             ingest_run(&graph, &store, Uuid::from_u128(9), sample_artifact(1, &[])).unwrap_err();
-        assert!(matches!(error, CoreError::UnknownRunScope { scope } if scope == Uuid::from_u128(9)));
+        assert!(
+            matches!(error, CoreError::UnknownRunScope { scope } if scope == Uuid::from_u128(9))
+        );
         assert!(!store.run_path(Uuid::from_u128(9), 1).exists());
     }
 
@@ -253,8 +259,7 @@ mod tests {
 
         let mut corrupt = sample_artifact(1184, &["verify_p95"]);
         corrupt.commit = "different-commit".to_owned();
-        let error =
-            ingest_run(&outcome.graph, &store, Uuid::from_u128(1), corrupt).unwrap_err();
+        let error = ingest_run(&outcome.graph, &store, Uuid::from_u128(1), corrupt).unwrap_err();
         assert!(matches!(
             error,
             CoreError::RunAlreadyIngested { scope, run }
@@ -263,7 +268,10 @@ mod tests {
 
         let bytes = fs::read(store.run_path(Uuid::from_u128(1), 1184)).unwrap();
         let on_disk = read_run_artifact(&bytes).unwrap();
-        assert_eq!(on_disk, first, "the first run is exactly what is still on disk");
+        assert_eq!(
+            on_disk, first,
+            "the first run is exactly what is still on disk"
+        );
     }
 
     #[test]

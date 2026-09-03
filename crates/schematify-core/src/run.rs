@@ -15,10 +15,8 @@
 //! per PRD section 9.2. The JSON key is what this module holds;
 //! [`ReconcileResult::drawn`] is the mapping to the drawn form.
 //!
-//! [`read_run_artifact`] is the version-probe reader itself, factored out so
-//! [`crate::load_project`] and [`crate::ingest_run_file`] read a file the
-//! same way whether it is already sitting in `runs/` or is what CI just
-//! handed to ingestion.
+//! [`read_run_artifact`] is the probe reader itself, shared by the loader and
+//! by ingestion so both read a file's version the same way.
 
 use serde::{Deserialize, Serialize};
 
@@ -178,8 +176,7 @@ struct SchemaProbe {
 /// when a current-version file fails the full parse (an unknown field, most
 /// often).
 pub fn read_run_artifact(bytes: &[u8]) -> std::result::Result<RunArtifact, RunReadError> {
-    let probe: SchemaProbe =
-        serde_json::from_slice(bytes).map_err(RunReadError::Malformed)?;
+    let probe: SchemaProbe = serde_json::from_slice(bytes).map_err(RunReadError::Malformed)?;
     if probe.schema != RUN_SCHEMA_VERSION {
         return Err(RunReadError::UnknownSchema(probe.schema));
     }
