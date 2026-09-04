@@ -100,10 +100,25 @@ Schematify instance recovers it.
 **The data is fine** — `schematify/load-graph` on the same cluster returns the
 full graph with a clean report. This is entirely frontend view state.
 
-`NaN%` is the diagnosis: fit derives a scale from an invalid bounding box, and
-every later comparison against `NaN` is false, so everything is culled. A
-`Number.isFinite` guard before committing a scale would floor the whole class,
-independently of the root cause.
+**Root cause, found while fixing it (PR #105), and it is the sharpest example
+of this document's theme.**
+
+`fitTo` in `viewport.ts` validated its bounding box with
+`bounds.width <= 0 || bounds.height <= 0`. **`NaN` fails every relational
+comparison** — `NaN <= 0` is `false` — so a `NaN` box walked straight through a
+guard written to stop exactly this, into the scale division, and out into
+`Viewport`. It never self-corrects, because every later culling comparison
+against a `NaN` zoom is also `false`. That is why the canvas stayed dead
+through navigation and Auto-sort.
+
+The `NaN` came from `buildDoc` in `layout.ts`, which copied a stored node's
+`x`/`y`/`width`/`height` straight off parsed layout JSON with no runtime check.
+One missing field is `undefined`, and `undefined` arithmetic becomes `NaN`
+through `unionRect`/`boundsOf`. Reproduced from the repo's own `auth-service`
+fixture plus a layout file missing one node's `width`.
+
+So the validation existed, ran, and was structurally incapable of catching the
+value it was written for.
 
 Note a related signal: a plain Fit on a fresh canvas moves zoom to `200%` and
 drops visible nodes 9 → 7. `200%` is a strange answer for "fit" and may be the
