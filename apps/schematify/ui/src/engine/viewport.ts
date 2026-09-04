@@ -8,6 +8,7 @@
  * percentage (PRD §12.1).
  */
 import type { Point, Rect } from "./geometry";
+import { isFiniteRect } from "./geometry";
 import type { ZoomConfig } from "./config";
 
 export interface Viewport {
@@ -71,6 +72,16 @@ export interface ViewportSize {
  * end state of zoom-to-fit and zoom-to-choice (PRD §12.3). Returns the current
  * viewport unchanged when there is nothing to fit, rather than snapping to an
  * arbitrary corner.
+ *
+ * Every input is validated with `Number.isFinite`, not just `<= 0`: a `NaN`
+ * bounds or size fails a `<= 0` check silently (`NaN <= 0` is `false`, the
+ * same as every other comparison against `NaN`), so a plain sign check lets a
+ * bad box straight through to the division below. And even with valid
+ * inputs, the result is checked again before it is returned — a floor under
+ * the whole class of "the math went wrong somewhere" bug, since a `NaN` or
+ * `Infinity` zoom committed to the viewport never self-corrects: every later
+ * comparison against it is `false`, so every node fails culling and the
+ * Schematic renders permanently empty.
  */
 export function fitTo(
   viewport: Viewport,
@@ -79,18 +90,21 @@ export function fitTo(
   limits: ZoomConfig,
   margin = 40,
 ): Viewport {
-  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return viewport;
+  if (!bounds || !isFiniteRect(bounds) || bounds.width <= 0 || bounds.height <= 0) return viewport;
+  if (!Number.isFinite(size.width) || !Number.isFinite(size.height)) return viewport;
   if (size.width <= 0 || size.height <= 0) return viewport;
   const scale = Math.min(
     (size.width - margin * 2) / bounds.width,
     (size.height - margin * 2) / bounds.height,
   );
   const zoom = clampZoom(scale, limits);
-  return {
+  const next: Viewport = {
     zoom,
     x: bounds.x + bounds.width / 2 - size.width / 2 / zoom,
     y: bounds.y + bounds.height / 2 - size.height / 2 / zoom,
   };
+  const finite = Number.isFinite(next.zoom) && Number.isFinite(next.x) && Number.isFinite(next.y);
+  return finite ? next : viewport;
 }
 
 /** The world rectangle currently on screen. Culling and the minimap both read
