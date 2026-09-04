@@ -27,8 +27,9 @@ pub const TOKEN_PREFIX: &str = "@kaava:";
 /// a line of text. Compiled once per scan (by the caller) rather than once
 /// per line — `Regex::new` is not cheap enough to call in a hot loop.
 pub fn token_pattern() -> Regex {
-    // A fixed, hand-checked pattern: `token_pattern_compiles` below is what
-    // would catch a typo here, at test time rather than in a scanner run.
+    // A fixed, hand-checked pattern: `pattern_has_exactly_the_id_and_slug_groups`
+    // below is what would catch an extra or reordered capture group here, at
+    // test time rather than in a scanner run.
     #[allow(clippy::unwrap_used)]
     Regex::new(
         r"@kaava:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[ \t]+([A-Za-z0-9_][A-Za-z0-9_.\-]*))?",
@@ -71,8 +72,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn token_pattern_compiles() {
-        let _ = token_pattern();
+    fn pattern_has_exactly_the_id_and_slug_groups() {
+        // `parse_captures` reads the id from group 1 and the slug from
+        // group 2 by position, not by name. `finds_a_token_anywhere_in_a_line_via_captures_iter`
+        // and the parse tests below would catch a group that shifts what
+        // position 1 or 2 hold, but not one that is added or removed
+        // without disturbing those two — an appended trailing group, say.
+        // `captures_len()` (the whole match plus every capturing group)
+        // pins the count so that stays caught too.
+        let re = token_pattern();
+        assert_eq!(re.captures_len(), 3);
     }
 
     #[test]
