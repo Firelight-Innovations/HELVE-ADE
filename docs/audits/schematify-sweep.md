@@ -349,4 +349,12 @@ Recorded because each was believed before it was checked.
   dirties the tree continuously and can be swept into an unrelated commit.
 - `.mcp.json` is committed with duplicate keys — `kaava-debug` and `kaava-echo`
   each appear twice — and a running app rewrote it to `{"mcpServers":{}}`
-  mid-sweep.
+  mid-sweep. **The writer is not at fault**, which is worth stating because it
+  is the natural suspicion: `mcp::config`'s `merge`/`sync` build the table as a
+  `serde_json::Map`, which structurally cannot hold two entries under one key.
+  The duplication came from commit `9f5e300`, a merge of two branches that had
+  each independently renamed `helve-*` to `kaava-*`; git's line-based merge
+  interleaved both sides' near-identical insertions into one object rather than
+  reporting a conflict, and JSON's last-key-wins meant the file kept parsing, so
+  nothing downstream ever complained. A structurally invalid file survived
+  because every consumer was tolerant of it.
