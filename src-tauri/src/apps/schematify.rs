@@ -3345,6 +3345,90 @@ mod tests {
         );
     }
 
+    /// The 4 `ReconcileRow`s share one `count_mismatch` expression, mirrored
+    /// per outcome kind — but 3 of those 4 mirrors had a test forcing a real,
+    /// non-zero disagreement before this test existed (`matched` via
+    /// `reconciliation_count_and_site_are_computed_independently_and_can_visibly_disagree`,
+    /// `duplicate` via `a_reconcile_json_that_contradicts_a_zero_declared_count_is_flagged`,
+    /// `declared, absent` via the real fixture's own 1-vs-1 evidence) and
+    /// `present, unknown` did not — the real fixture carries 0 declared and 0
+    /// evidence for that outcome, so its own row only ever proves `0 != 0`
+    /// stays `false`, never that a real mismatch on this specific line would
+    /// be caught. This closes that gap the same way the `duplicate` test
+    /// does: a `present_unknown` `reconcile.json` on disk against a run
+    /// artifact that declares none.
+    #[test]
+    fn a_present_unknown_reconcile_json_against_a_zero_declared_count_is_flagged() {
+        use schematify_core::{RunArtifact, RUN_SCHEMA_VERSION};
+
+        let dir = TempDir::new("reconciliation-present-unknown-mismatch");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let scope = sample_service_node();
+        store.write_node(&scope).expect("seed write succeeds");
+        let scope_id = scope.id();
+
+        let run = RunArtifact {
+            schema: RUN_SCHEMA_VERSION.to_string(),
+            run: 1,
+            at: "2026-09-03T00:00:00Z".to_string(),
+            commit: "abc1234".to_string(),
+            workflow: "ci/verify.yml".to_string(),
+            budgets: Vec::new(),
+            tests: Vec::new(),
+            linter: None,
+            reconcile: Some(schematify_core::ReconcileResult {
+                matched: 0,
+                declared_absent: 0,
+                present_unknown: 0,
+                duplicate: 0,
+            }),
+        };
+        store.write_run(scope_id, &run).expect("seed run write");
+
+        let runs_dir = dir
+            .path()
+            .join(".kaava")
+            .join("runs")
+            .join(scope_id.to_string());
+        fs::write(
+            runs_dir.join("reconcile.json"),
+            json!({
+                "schema": "kaava-reconcile-v1",
+                "at": "2026-09-03T00:00:00Z",
+                "outcome": "present_unknown",
+                "node_id": scope_id.to_string(),
+                "site": { "file": "src/unclaimed_marker.rs", "line": 7 },
+            })
+            .to_string(),
+        )
+        .expect("seed the contradicting reconcile.json");
+
+        let value = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": scope_id.to_string() })),
+        )
+        .expect("module-dashboard succeeds even over contradictory evidence");
+
+        let present_unknown_row = &value["reconciliationRows"][2];
+        assert_eq!(present_unknown_row["outcome"], "present, unknown");
+        assert_eq!(
+            present_unknown_row["count"], 0,
+            "count still reads the run artifact's own declared 0"
+        );
+        assert_eq!(
+            present_unknown_row["site"], "src/unclaimed_marker.rs",
+            "SITE still reads the 1 real reconcile.json file on disk"
+        );
+        assert_eq!(
+            present_unknown_row["countMismatch"], true,
+            "1 real present-unknown entry against a declared count of 0 must be flagged, not silently drawn as agreement"
+        );
+    }
+
     #[test]
     fn list_runs_against_the_real_fixture_finds_the_one_ingested_run() {
         let root = manifest_dir()
