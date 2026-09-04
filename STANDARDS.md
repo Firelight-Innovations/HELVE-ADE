@@ -334,14 +334,22 @@ What is expected going forward:
    the module it tests, named for it — `query.ts` is tested by `query.test.ts`
    in the same directory, which keeps it inside the same region and so under
    the same import rules as §1.2 gives the source. The root `vitest.config.ts`
-   picks up `src/**/*.test.ts` and `apps/*/ui/src/**/*.test.ts`; the workspace
-   packages keep their own configs and their own runs.
+   picks up `src/**/*.test.{ts,tsx}` and `apps/*/ui/src/**/*.test.{ts,tsx}`; the
+   workspace packages keep their own configs and their own runs.
 
-   The runner is `node`, with no jsdom and no rendering library, so a component
-   test is not merely absent but currently impossible. That is deliberate: the
-   shell's testable weight is in pure modules, and adding a DOM is a real
-   dependency decision that belongs to the first pull request that needs to
-   render something rather than to the commit that switched the runner on.
+   **A component test is now possible.** The default environment is still
+   `node` — a pure module should not pay for a DOM, and `scripts/**/*.test.mjs`
+   must not have one at all — but a file may ask for jsdom and React Testing
+   Library by opening with `// @vitest-environment jsdom`. `vitest.config.ts`
+   carries the reasoning: jsdom over happy-dom, RTL over rendering by hand, and
+   why the scope is per file rather than per config.
+
+   What that environment can and cannot hold is worth knowing before writing
+   one. jsdom does no layout and no hit-testing: elements have no size, nothing
+   scrolls, and nothing is on top of anything else. So it reaches a handler, an
+   event's `defaultPrevented`, what has focus and what was rendered — and it
+   cannot reach anything whose cause is a position on screen. A test for one of
+   those asserts the mechanism a fix uses and says so, or it is not written.
 4. **A bug fix comes with the test that would have caught it.** This is the only
    test rule that is non-negotiable.
 
