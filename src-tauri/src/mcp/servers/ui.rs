@@ -13,6 +13,14 @@
 //!
 //! Why the protocol reaches the webview through COM rather than a debug port,
 //! and what that buys: `docs/design-notes/agent-ui-driving.md`.
+//!
+//! **Prefer [`super::agent`].** It hosts these six tools — literally these, by
+//! delegation — alongside the shell reads and a direct line into any app's Rust
+//! half, which is what an agent driving this window actually needs at once.
+//! This module stays registered because the capability is its, because a client
+//! that wants only input has no reason to be handed twelve tools, and because
+//! its tests are the ones that hold this code to account. Neither server is
+//! reachable without developer mode.
 
 use crate::devtools;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
@@ -58,7 +66,16 @@ const KEYS: &[(&str, u32, &str)] = &[
     ("ArrowRight", 39, ""),
 ];
 
-static TOOLS: &[McpTool] = &[
+static TOOLS: &[McpTool] = &TOOL_LIST;
+
+/// The same six tools, as a const array the `agent` server can index.
+///
+/// A `const` beside the `static` rather than instead of it: `McpServer.tools`
+/// needs a `&'static [McpTool]`, and a const array cannot be borrowed for one
+/// without a static to anchor it. Naming the array is what lets
+/// [`super::agent`] build its twelve-tool list out of these six and `debug`'s
+/// three without a second copy of any description.
+pub(super) const TOOL_LIST: [McpTool; 6] = [
     McpTool {
         name: "screenshot",
         description: "A PNG of the window as it is drawn right now, app content included. The \
@@ -191,7 +208,15 @@ fn eval_schema() -> Value {
 
 /// An unknown tool cannot arrive here — `Registry::call` checks the name against
 /// `TOOLS` first — so the final arm is a genuine impossibility.
-fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer, RpcError> {
+///
+/// `pub(super)` so [`super::agent`] can hand its six borrowed tool names
+/// straight through. Delegating rather than moving these handlers into the
+/// unified server keeps this module's own tests testing the code that runs.
+pub(super) fn call(
+    app: &AppHandle,
+    tool: &str,
+    params: Option<Value>,
+) -> Result<ToolAnswer, RpcError> {
     let params = params.unwrap_or(Value::Null);
     let window = params.get("window").and_then(Value::as_str);
 
