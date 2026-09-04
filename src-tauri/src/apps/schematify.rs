@@ -3366,7 +3366,14 @@ mod tests {
         store.init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let scope = sample_service_node();
+        // A **module**, because that is what `schematify/module-dashboard`
+        // takes. The version recovered from the overnight worktree seeded
+        // `sample_service_node()` here and passed — not because a service is a
+        // legal scope, but because nothing checked the kind at all. That gap is
+        // a defect of its own, being closed separately; a test that only passes
+        // while it stays open would go red the moment it was fixed, which is
+        // the wrong reason for a test to fail.
+        let scope = sample_module("present-unknown-scope", Lifecycle::Accepted, None);
         store.write_node(&scope).expect("seed write succeeds");
         let scope_id = scope.id();
 
