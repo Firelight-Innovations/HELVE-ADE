@@ -120,6 +120,28 @@ fixture plus a layout file missing one node's `width`.
 So the validation existed, ran, and was structurally incapable of catching the
 value it was written for.
 
+**The live trigger is a second route into the same hole.** Measured in the
+running app, the canvas element does not exist for a window after a breadcrumb
+navigation — the component remounts:
+
+```
+after drill:                  canvas=738x678  nodes=5
+immediately after breadcrumb: canvas=none     nodes=0  zoom=undefined
+```
+
+So `fitTo`'s `size` comes from a missing element and `size.width` is
+`undefined` — and `undefined <= 0` is `false` for the same reason `NaN <= 0`
+is. The fixture's own layout JSON is well formed (every node rect has all four
+fields, the stored viewport is a correct `{x, y, zoom}`), so the stored-geometry
+path was never the one firing here.
+
+Two different malformed inputs, one guard that cannot reject either. The
+`Number.isFinite` floor is what actually closes it; validating stored geometry
+closes a second, latent route. It also gives the likeliest account of the
+milder `200%` signal: a canvas caught *partially* measured yields a
+small-but-finite size, and a finite-but-wrong size yields a finite-but-absurd
+zoom.
+
 Note a related signal: a plain Fit on a fresh canvas moves zoom to `200%` and
 drops visible nodes 9 → 7. `200%` is a strange answer for "fit" and may be the
 same arithmetic in a milder form.
