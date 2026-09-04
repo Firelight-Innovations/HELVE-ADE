@@ -15,6 +15,8 @@ import type { NodeRole, SchematicConfig, SchematicNodeKind } from "./config";
 import { arrange } from "./arrange";
 import { contentOf } from "./anatomy";
 import type { SchematicDoc, SchematicNode } from "./doc";
+import { isFiniteRect } from "./geometry";
+import type { Rect } from "./geometry";
 import type { Viewport } from "./viewport";
 
 /**
@@ -91,7 +93,9 @@ export function buildDoc(
     danglingReferences: node.danglingReferences,
   }));
 
-  const annotations: SchematicNode[] = (layout?.annotations ?? []).map(fromAnnotation);
+  const annotations: SchematicNode[] = (layout?.annotations ?? []).map((entry) =>
+    fromAnnotation(entry, config),
+  );
 
   const draft: SchematicDoc = {
     slug: config.layoutSlug,
@@ -111,11 +115,26 @@ export function buildDoc(
     ...draft,
     nodes: draft.nodes.map((node) => {
       const stored = layout?.nodes[node.id];
-      if (stored) return withStored(node, stored);
+      // A stored record with a malformed field (missing, or written by
+      // something other than this engine) is treated as though the node had
+      // no stored position at all, rather than trusted: `withStored` used to
+      // copy `x`/`y`/`width`/`height` straight off disk, so one bad number
+      // produced a node with a non-finite rect, which poisoned every bounding
+      // box the node was ever part of — `boundsOf` (`geometry.ts`) has no way
+      // to know a `NaN` came from here rather than from real geometry, and
+      // `fitTo` (`viewport.ts`) is where that surfaced as a zoom that could
+      // never be fixed by clicking Fit again.
+      if (stored && isStoredRectValid(stored)) return withStored(node, stored);
       if (node.kind === "group" || node.kind === "comment") return node;
       return { ...node, rect: arranged.get(node.id) ?? node.rect };
     }),
   };
+}
+
+/** True when a stored node's geometry is 4 real, finite numbers. Guards the
+ *  one place this document trusts a number it did not compute itself. */
+function isStoredRectValid(stored: LayoutNode): boolean {
+  return isFiniteRect({ x: stored.x, y: stored.y, width: stored.width, height: stored.height });
 }
 
 /**
@@ -236,14 +255,22 @@ export function toGraph(doc: SchematicDoc): SchematicGraph {
  *  meant the service tier still reads naturally. */
 export const toServiceGraph = toGraph;
 
-function fromAnnotation(entry: LayoutAnnotation): SchematicNode {
+/** An annotation exists nowhere but the layout file (PRD §11.3), so unlike a
+ *  semantic node it has no `arrange`d fallback position to drop back to when
+ *  its stored rect is malformed — this falls back to the kind's default box
+ *  at the origin instead, the same "somewhere finite, not exactly where it
+ *  was" trade `buildDoc` already makes for a semantic node with no stored
+ *  position. */
+function fromAnnotation(entry: LayoutAnnotation, config: SchematicConfig): SchematicNode {
+  const stored: Rect = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
+  const rect = isFiniteRect(stored) ? stored : { x: 0, y: 0, ...config.nodeBox(entry.kind) };
   return {
     id: entry.id,
     slug: entry.slug,
     title: entry.title,
     kind: entry.kind,
     parentId: entry.parentId,
-    rect: { x: entry.x, y: entry.y, width: entry.width, height: entry.height },
+    rect,
     collapsed: entry.collapsed ?? false,
     author: entry.author,
     body: entry.body,

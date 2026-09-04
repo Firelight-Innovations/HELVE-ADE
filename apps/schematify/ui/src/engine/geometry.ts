@@ -37,6 +37,21 @@ export function centerOf(rect: Rect): Point {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
+/** True when every field is a real, finite number. A rect built from
+ *  untrusted input — a stored layout file's own JSON, in practice — can carry
+ *  `NaN` or `Infinity` if a field was missing or malformed, and those pass a
+ *  plain `<= 0` bounds check silently (a `NaN` comparison is always false).
+ *  `fitTo` (`viewport.ts`) is the caller that most needs this: a `NaN` scale
+ *  it commits to the viewport never self-corrects. */
+export function isFiniteRect(rect: Rect): boolean {
+  return (
+    Number.isFinite(rect.x) &&
+    Number.isFinite(rect.y) &&
+    Number.isFinite(rect.width) &&
+    Number.isFinite(rect.height)
+  );
+}
+
 /** True when the two boxes share any area. Touching edges do not overlap —
  *  a node parked exactly against another is not inside it. */
 export function rectsOverlap(a: Rect, b: Rect): boolean {
