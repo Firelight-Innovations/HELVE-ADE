@@ -207,6 +207,29 @@ already treats them as annotation-tier. Only the projection discards them.
 A *missing* field is refused; an empty one succeeds and writes. No non-empty
 check exists on any field. Inconsistent contract rather than data loss.
 
+### W8 — the staleness caption is correct and cannot be read
+
+`apps/schematify/ui/src/engine/` (node card sizing)
+
+The last of the summary's six, and the only one nobody had ever seen. It exists
+and its content is right:
+
+> ⚠ STALE — upstream contract changed
+> token-verifier.verify-signature changed 9d ago. Re-review required.
+
+That matches the node's real `stale` metadata exactly — source, member and a
+correctly computed "9d ago".
+
+But the node card is `overflow: hidden` at a fixed height (128px measured at
+tier 3) and the caption element has room for roughly 1.3 lines at that width.
+On screen the card cuts off mid-sentence after
+`token-verifier.verify-signature`; the rest is in the DOM and never visible. In
+the compact grid the whole second line is gone, cut after "upstream contract
+changed".
+
+So the feature works and its output is unreadable. Nothing in the card's layout
+accounts for its own longest content.
+
 ---
 
 ## Rough
@@ -227,10 +250,14 @@ check exists on any field. Inconsistent contract rather than data loss.
   By design, but compounds W4.
 - **R5 — the loader accepts a hand-written `contains` edge file** even though
   the writer refuses to create one. Not reachable through the app.
-- **R6 — outline rows do not select.** Clicking a row — including one carrying
-  a STALE badge — leaves the Inspector on "Nothing selected". Possibly by
-  design; recorded because a badge that reports a problem on a row that will
-  not take you to it is a poor outcome either way.
+- **R6 — outline rows do not select, and this looks deliberate.** Two rows were
+  tested: `audit-emitter` (carrying a STALE badge) and `http-entry` (an
+  unremarkable module). Both are fully inert — no selection, no drill, no
+  breadcrumb change. The group-expand toggles beside them do work, so the
+  surface is not broken, just not a selector. Filed as design rather than
+  defect on that evidence. It is still a poor outcome that the badge telling
+  you a node is stale sits on a row that will not take you to it — and with W8,
+  the caption you would go there to read is clipped anyway.
 
 ---
 
@@ -312,9 +339,6 @@ placeholders rather than looking broken.
 
 ## Not reached
 
-- The **staleness caption** on a stale node — the one item of the summary's six
-  not seen. The outline row carrying the STALE badge does not select (R6), and
-  no other route was found in time.
 - **Token Verifier's module dashboard**, which is where the two real sparklines
   and the "No probe declared" caption would appear. The module tested had no
   budgets declared.
