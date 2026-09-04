@@ -451,9 +451,22 @@ fn sync_ui_refs(store: &Store, root: &Path, module: Uuid) -> Result<(), RpcError
         .collect();
     refs.sort_unstable();
     refs.dedup();
-    fields.ui_refs = refs.into_iter().map(Uri::screen).collect();
+    let derived: Vec<Uri> = refs.into_iter().map(Uri::screen).collect();
+    if fields.ui_refs == derived {
+        return Ok(());
+    }
+    fields.ui_refs = derived;
 
-    let updated = Node::new(node.envelope.clone())
+    // Built from the loaded node rather than from `Node::new`, so that
+    // `with_fields` overwrites `ui_refs` on top of the map that was on disk
+    // instead of replacing it. A module node may legally carry keys
+    // `ModuleFields` does not model — PRD §11.2 registers kinds this build has
+    // never seen, and `Node::fields` is an open map precisely so a round trip
+    // through this crate cannot drop them. Rebuilding from an empty envelope
+    // would delete every one of them as a side effect of caching a screen
+    // reference.
+    let updated = node
+        .clone()
         .with_fields(&fields)
         .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not shape ui_refs: {e}")))?;
     store.write_node(&updated).map_err(core_rpc)
@@ -1757,20 +1770,23 @@ mod tests {
         assert_eq!(written.kind, schematify_core::EdgeKind::DependsOn);
     }
 
-    /// A screen, for the `ui_refs` sync tests below. `backed_by` is left
-    /// empty — the reverse direction (a screen naming its backing modules)
-    /// is not part of what `sync_ui_refs` derives.
-    fn sample_screen(slug: &str) -> schematify_core::Screen {
-        use schematify_core::{Screen, ScreenKind, Slug};
+    /// A screen, shared by the product-layer write tests and the `ui_refs`
+    /// sync tests. The slug is a parameter because the sync tests need two
+    /// distinct screens to prove the cache is rebuilt from the whole live edge
+    /// set rather than appended to. `backed_by` is left empty — the reverse
+    /// direction (a screen naming its backing modules) is not part of what
+    /// `sync_ui_refs` derives.
+    fn sample_screen(slug: &str) -> Screen {
+        use schematify_core::{mint_id, ScreenKind, Slug};
 
         Screen {
-            id: schematify_core::mint_id(),
+            id: mint_id(),
             kind: ScreenKind::default(),
             slug: Slug::new(slug).expect("legal slug"),
-            title: slug.to_string(),
-            purpose: "why this screen exists".to_string(),
-            states: Vec::new(),
-            acceptance: Vec::new(),
+            title: "Login form".to_owned(),
+            purpose: "Collects credentials and starts a session.".to_owned(),
+            states: vec!["empty".to_owned(), "locked".to_owned()],
+            acceptance: vec!["A locked account shall show the recovery path.".to_owned()],
             design_ref: None,
             backed_by: Vec::new(),
         }
@@ -1898,6 +1914,13 @@ mod tests {
         );
     }
 
+    /// The sync fires on `references_ui` and on nothing else. `a` is seeded
+    /// with a cache already in it and then made the *source* of a `depends_on`
+    /// edge, so a sync that ignored `kind` would derive an empty reference set
+    /// for `a` and wipe that cache. Asserting the surviving cache, not only the
+    /// `uiRefsSynced` flag: the flag is computed from `edge.kind` in
+    /// [`write_edge`] itself and would still read `false` with the call to
+    /// [`sync_ui_refs`] deleted outright.
     #[test]
     fn write_edge_does_not_touch_ui_refs_for_a_non_references_ui_edge() {
         let dir = TempDir::new("write-edge-ui-refs-unrelated");
@@ -1905,7 +1928,15 @@ mod tests {
         store.init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let a = sample_module("a", Lifecycle::Draft, None);
+        let screen = sample_screen("login-form");
+        store.write_screen(&screen).expect("seed screen");
+        let mut a = sample_module("a", Lifecycle::Draft, None);
+        a = a
+            .with_fields(&schematify_core::ModuleFields {
+                allowed_libraries: Vec::new(),
+                ui_refs: vec![schematify_core::Uri::screen(screen.id)],
+            })
+            .expect("module fields shape");
         let b = sample_module("b", Lifecycle::Draft, None);
         store.write_node(&a).expect("seed a");
         store.write_node(&b).expect("seed b");
@@ -1924,6 +1955,68 @@ mod tests {
         )
         .expect("write-edge succeeds");
         assert_eq!(value["uiRefsSynced"], false);
+
+        let after: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(a.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            after.module().expect("parses as module fields").ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "an unrelated edge write leaves the cache exactly as it found it"
+        );
+    }
+
+    /// A module node may carry keys `ModuleFields` does not model — PRD §11.2
+    /// registers kinds this build has never seen, and `Node::fields` is an open
+    /// map so that a round trip cannot drop them. The sync rewrites the node
+    /// file, so it is the round trip most able to lose them: it must overwrite
+    /// `ui_refs` on the map that was on disk, not rebuild the map from the two
+    /// fields it happens to know about.
+    #[test]
+    fn write_edge_keeps_module_fields_the_sync_does_not_model() {
+        let dir = TempDir::new("write-edge-ui-refs-unmodelled");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut module = sample_module("login-form-backend", Lifecycle::Draft, None);
+        module.fields.insert(
+            "runbook".to_string(),
+            json!("https://example.invalid/runbook"),
+        );
+        store.write_node(&module).expect("seed module");
+        let screen = sample_screen("login-form");
+        store.write_screen(&screen).expect("seed screen");
+
+        let edge = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::ReferencesUi,
+            module.id(),
+            screen.id,
+            "2026-09-03T00:00:00Z",
+        );
+        dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge })),
+        )
+        .expect("write-edge succeeds");
+
+        let after: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            after.module().expect("parses as module fields").ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "the cache is still written"
+        );
+        assert_eq!(
+            after.fields.get("runbook"),
+            Some(&json!("https://example.invalid/runbook")),
+            "caching a screen reference does not delete a field this build does not model"
+        );
     }
 
     #[test]
@@ -2364,7 +2457,7 @@ mod tests {
         Store::open(dir.path()).init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let screen = sample_screen();
+        let screen = sample_screen("login-form");
         let params = json!({ "actor": "human", "screen": screen });
 
         dispatch(&context, "schematify/write-screen", Some(params)).expect("write-screen succeeds");
@@ -2385,7 +2478,7 @@ mod tests {
         Store::open(dir.path()).init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let mut screen = sample_screen();
+        let mut screen = sample_screen("login-form");
         dispatch(
             &context,
             "schematify/write-screen",
@@ -2720,21 +2813,6 @@ mod tests {
         assert_eq!(err.code, INVALID_PARAMS);
     }
 
-    fn sample_screen() -> Screen {
-        use schematify_core::mint_id;
-
-        Screen {
-            id: mint_id(),
-            kind: schematify_core::ScreenKind::default(),
-            slug: schematify_core::Slug::new("login-form").expect("legal slug"),
-            title: "Login form".to_owned(),
-            purpose: "Collects credentials and starts a session.".to_owned(),
-            states: vec!["empty".to_owned(), "locked".to_owned()],
-            acceptance: vec!["A locked account shall show the recovery path.".to_owned()],
-            design_ref: None,
-            backed_by: Vec::new(),
-        }
-    }
 
     fn sample_flow() -> Flow {
         use schematify_core::mint_id;
