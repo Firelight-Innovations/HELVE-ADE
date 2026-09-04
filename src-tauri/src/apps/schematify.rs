@@ -175,6 +175,12 @@ fn core_rpc(error: CoreError) -> RpcError {
     if let CoreError::Lifecycle(lifecycle_error) = &error {
         return RpcError::new(INVALID_PARAMS, lifecycle_error.to_string());
     }
+    // A caller's claimed starting lifecycle disagreeing with disk is a
+    // client-caused refusal too - a stale snapshot or a forged `node`, never
+    // a server fault - so it gets the same code as the table check above.
+    if matches!(error, CoreError::StaleTransitionClaim { .. }) {
+        return RpcError::new(INVALID_PARAMS, error.to_string());
+    }
     RpcError::new(INTERNAL_ERROR, error.to_string())
 }
 
@@ -567,10 +573,14 @@ fn read_json_object_or_null(path: &std::path::Path) -> Result<Value, RpcError> {
 
 /// `schematify/transition`. Applies one lifecycle move and appends one row
 /// to `runs/<node-uuid>/audit.json` — the pair PRD §6.3 allows as a single
-/// write. `params.node` carries the node's current shape exactly as
-/// `schematify/write-node`'s does: `Store::write_transition` rewrites the
-/// whole file, and this handler has no second source of truth to fill in
-/// the rest of it from.
+/// write. `params.node` carries the same shape `schematify/write-node`'s
+/// does, but this handler is not `write-node`'s second entry point:
+/// `Store::write_transition` treats `node` as untrusted past its id, reads
+/// the real node from disk, and checks `node.lifecycle` only as the
+/// caller's *claim* of where the transition starts — refused outright on
+/// disagreement (a stale client, or a forged one). See its doc comment for
+/// what is and is not persisted. `node` in the response below is the real,
+/// disk-sourced node `Store::write_transition` wrote, not the caller's copy.
 ///
 /// PRD §7.3's human-only gate is enforced here by construction, not by a
 /// special case in this function: [`actor_param`] admits only `"human"` or
@@ -2400,6 +2410,121 @@ mod tests {
         )
         .expect("the file parses as a node");
         assert_eq!(on_disk.envelope.lifecycle, Lifecycle::Draft);
+    }
+
+    /// Reproduces the bug report at the RPC boundary: `rate-limiter`,
+    /// genuinely `draft` on disk, called through `schematify/transition`
+    /// with its own node JSON edited to claim `lifecycle: "reviewed"`,
+    /// `to: "accepted"`, `actor: "human"` — the exact request that used to
+    /// land a draft node on `accepted` in one call, skipping `specified`,
+    /// `assigned`, `implemented`, and `reviewed`, and the human-review gate
+    /// along with them. This is the RPC-level twin of
+    /// `schematify_core::store::tests::write_transition_refuses_a_claim_that_disagrees_with_disk`;
+    /// this one proves the dispatch arm passes the caller's claim through
+    /// unmassaged, the same way `transition_rejects_an_agent_reaching_accepted_at_the_command_boundary`
+    /// proves the actor gate at this boundary rather than trusting the
+    /// core crate's own tests to speak for it.
+    #[test]
+    fn transition_refuses_a_lifecycle_claim_that_disagrees_with_disk() {
+        let dir = TempDir::new("transition-forged-claim");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut node = sample_module("rate-limiter", Lifecycle::Draft, None);
+        store
+            .write_node(&node)
+            .expect("seed the node, genuinely draft");
+
+        // The caller's copy lies about where the node starts, and also
+        // carries an edit to a field a lifecycle move has no business
+        // touching.
+        node.envelope.lifecycle = Lifecycle::Reviewed;
+        node.envelope.title = "CANARY-TITLE-OVERWRITE".to_string();
+
+        let err = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "human",
+                "node": node,
+                "to": "accepted",
+                "actorName": "human",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "Accepted.",
+            })),
+        )
+        .expect_err("a claimed lifecycle that disagrees with disk is refused");
+        assert_eq!(err.code, INVALID_PARAMS);
+
+        let on_disk: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(node.id())).expect("the node file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(
+            on_disk.envelope.lifecycle,
+            Lifecycle::Draft,
+            "the node on disk never left draft"
+        );
+        assert_eq!(
+            on_disk.envelope.title, "rate-limiter",
+            "the forged title was never written"
+        );
+        assert!(store
+            .read_audit(node.id())
+            .expect("audit reads back")
+            .is_empty());
+    }
+
+    /// The other half of the same report: a legal transition — the claimed
+    /// lifecycle agrees with disk — whose payload also carries an edited
+    /// `title`. This is what let a lifecycle-only endpoint double as a
+    /// silent whole-node overwrite: `write_transition` used to persist the
+    /// caller's entire node, forged fields included, once the (unchecked)
+    /// `from` happened to be legal.
+    #[test]
+    fn transition_never_writes_a_field_other_than_lifecycle() {
+        let dir = TempDir::new("transition-field-smuggle");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut node = sample_module("rate-limiter", Lifecycle::Reviewed, None);
+        store.write_node(&node).expect("seed the node");
+
+        // The claim agrees with disk this time - an otherwise legal move -
+        // but the same payload smuggles a title edit alongside it.
+        node.envelope.title = "CANARY-TITLE-OVERWRITE".to_string();
+
+        let value = dispatch(
+            &context,
+            "schematify/transition",
+            Some(json!({
+                "actor": "human",
+                "node": node,
+                "to": "accepted",
+                "actorName": "human",
+                "at": "2026-09-03T12:00:00Z",
+                "reason": "Accepted.",
+            })),
+        )
+        .expect("a legal human transition still succeeds");
+
+        assert_eq!(value["node"]["lifecycle"], "accepted");
+        assert_eq!(
+            value["node"]["title"], "rate-limiter",
+            "the response reflects the real, disk-sourced node, not the caller's forged copy"
+        );
+
+        let on_disk: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(node.id())).expect("the node file exists"),
+        )
+        .expect("the file parses as a node");
+        assert_eq!(on_disk.envelope.lifecycle, Lifecycle::Accepted);
+        assert_eq!(
+            on_disk.envelope.title, "rate-limiter",
+            "the forged title in the caller's payload was never written"
+        );
     }
 
     /// Not a fabricated `Node` literal: `load-graph` against the real
