@@ -454,7 +454,9 @@ Recorded because each was believed before it was checked.
   dirties the tree continuously and can be swept into an unrelated commit.
 - `.mcp.json` is committed with duplicate keys — `kaava-debug` and `kaava-echo`
   each appear twice — and a running app rewrote it to `{"mcpServers":{}}`
-  mid-sweep. **The writer is not at fault**, which is worth stating because it
+  mid-sweep — though that rewrite turned out **not** to be a second bug: it is
+  what `sync()` does when `mcp.writeProjectConfig` is off or nothing is enabled
+  in that instance. **The writer is not at fault**, which is worth stating because it
   is the natural suspicion: `mcp::config`'s `merge`/`sync` build the table as a
   `serde_json::Map`, which structurally cannot hold two entries under one key.
   The duplication came from commit `9f5e300`, a merge of two branches that had
@@ -463,3 +465,10 @@ Recorded because each was believed before it was checked.
   reporting a conflict, and JSON's last-key-wins meant the file kept parsing, so
   nothing downstream ever complained. A structurally invalid file survived
   because every consumer was tolerant of it.
+
+  The fix (PR #107) closes the class rather than the instance: a test now
+  compares the tracked file against `merge(None, enabled_ids)`, so any drift
+  between what is committed and what `sync()` actually produces fails the build.
+  That immediately caught a second, separate defect — `kaava-design` was
+  **missing** from the tracked file entirely, having shipped enabled by default
+  after the file was last hand-edited.
