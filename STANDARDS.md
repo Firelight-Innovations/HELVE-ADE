@@ -344,8 +344,17 @@ What is expected going forward:
    `node` — a pure module should not pay for a DOM, and `scripts/**/*.test.mjs`
    must not have one at all — but a file may ask for jsdom and React Testing
    Library by opening with `// @vitest-environment jsdom`. `vitest.config.ts`
-   carries the reasoning: jsdom over happy-dom, RTL over rendering by hand, and
-   why the scope is per file rather than per config.
+   carries the reasoning: jsdom over happy-dom, RTL over rendering by hand, why
+   the scope is per file rather than per config, and why jsdom is held at 29 by
+   a `pnpm.overrides` entry rather than left to float.
+
+   **The Node the workflows run is the Node that counts.** Every workflow pins
+   `node-version: 20`; `.nvmrc` and `engines` in package.json say the same, so a
+   dependency that needs a newer one is a decision rather than an accident. This
+   matters more for a DOM test than for a pure one: a jsdom file whose worker
+   cannot start is not a failing test, it is an absent one, and the run's summary
+   reads as a smaller suite that passed. Check the file count after touching
+   either.
 
    What that environment can and cannot hold is worth knowing before writing
    one. jsdom does no layout and no hit-testing: elements have no size, nothing
