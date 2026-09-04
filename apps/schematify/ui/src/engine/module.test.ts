@@ -275,4 +275,11 @@ describe("the module root", () => {
     expect(root?.counts).toContain("layer backend · 15 facets");
     expect(root?.counts).toContain("schematify://screen/login-form");
   });
+
+  it("resolves its screen-reference path to the id the click-through opens (wave 10c)", async () => {
+    const frame = await moduleFrame();
+    const root = frame.nodes.find((node) => node.node.role === "schematic-root");
+    expect(root?.node.screenRef).toBe("schematify://screen/login-form");
+    expect(root?.screenReferenceId).toBe("login-form");
+  });
 });

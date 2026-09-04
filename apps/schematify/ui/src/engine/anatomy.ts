@@ -444,6 +444,33 @@ export function zoomTierFor(zoom: number): ZoomTier {
   return "geometry";
 }
 
+// --- the screen reference (PRD §12.5), wave 10c -----------------------------
+
+/**
+ * The Service Schematic's own form of a `references_ui` reference: a
+ * labelled chip, `◈ SCREEN` above `screen/<slug>` — PRD §12.5, renamed from
+ * the wireframe's own `◈ JOURNEYMAN`. A `kind: "screen"` node draws as this
+ * chip and nothing else (`SchematicCanvas.tsx`'s `NodeBox`): "a screen
+ * reference is a reference and never an editor," so it carries no lifecycle
+ * treatment, no ports, no badges.
+ */
+export const SCREEN_CHIP_LABEL = "◈ SCREEN";
+
+/**
+ * The id half of a `schematify://screen/<id>` reference, or `null` for
+ * anything that does not parse as one. Used for the module root's own
+ * screen-reference path (`frame.ts`'s `screenReferenceId`, PRD §12.11) —
+ * the plain-text form, as opposed to the chip above, which already carries
+ * its own id as a real node. Restated rather than imported from
+ * `../product/index.ts`'s `uriId`: `engine/` stays self-contained, the same
+ * layering `product/` already respects by depending on `engine/ids` and
+ * never the reverse.
+ */
+export function screenReferenceId(uri: string): string | null {
+  const match = /^schematify:\/\/screen\/(.+)$/i.exec(uri);
+  return match ? match[1] : null;
+}
+
 // --- header geometry: the health wedge never reaches the node menu ---------
 
 /** The wireframe's own corner triangle (WIREFRAME-EXTRACT.md §1.3: "14px

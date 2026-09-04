@@ -11,12 +11,16 @@
  * semantic write this wave's seam does not yet make (`schematify_write_node`
  * lands with a later wiring wave), the same reasoning `EmptyStack.tsx`
  * already gives for its own disabled action.
+ *
+ * **The `◈ NOT HERE` boundary note** is rewritten per PRD §12.20's own
+ * closing line: `Journeyman` becomes the Screen registry (§12.17, S-20),
+ * which this app now holds itself, and `Forger` becomes `Schematify`.
  */
 const LEAD = "A module is one unit of implementable work.";
 const BODY =
   "It carries a public contract, the test cases that cover it, resource budgets with probes, and the libraries it may use. Three facets are pre-seeded so the shape is obvious.";
 const BOUNDARY_NOTE =
-  "User-facing behaviour, flows and wireframes belong in Journeyman. Forger references them; it does not hold them.";
+  "User-facing behaviour, flows and screens belong in the Screen registry. Schematify references them; it does not hold them.";
 
 const PLACEHOLDERS = [
   { kind: "CONTRACT-METHOD", placeholder: "name the first method…" },

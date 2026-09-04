@@ -7,8 +7,9 @@
  * worse than none.
  */
 import { describe, expect, it, vi } from "vitest";
+import { coversCountFor } from "../engine/anatomy";
 import { countNodes } from "./index";
-import { projectServiceGraph, type RawGraph, type RawNode } from "./project";
+import { projectModuleGraph, projectServiceGraph, type RawGraph, type RawNode } from "./project";
 
 function node(partial: Partial<RawNode> & Pick<RawNode, "id" | "slug" | "kind">): RawNode {
   return {
@@ -257,5 +258,227 @@ describe("projectServiceGraph", () => {
     };
     const result = projectServiceGraph(cyclic, "auth-service");
     expect(result.nodes).toHaveLength(0);
+  });
+});
+
+/**
+ * `projectModuleGraph` — the wave 7c counterpart of `projectServiceGraph`
+ * above. Shaped after PRD §16.1's `token-verifier` module paragraph: a
+ * `cold_start_p95` budget with no probe (the exact node an L03 Problems row's
+ * click-through has to land on, per the wave 7b handoff's known gap) and a
+ * `verify_signature` contract method with 2 live `covers` edges.
+ */
+describe("projectModuleGraph", () => {
+  const RAW: RawGraph = {
+    nodes: [
+      node({ id: "svc", slug: "auth-service", kind: "service", title: "Auth Service" }),
+      node({
+        id: "mod",
+        slug: "token-verifier",
+        kind: "module",
+        title: "Token Verifier",
+        parent: "svc",
+        layer: "backend",
+        description: "Verifies JWT signatures against the rotating key set.",
+        ui_refs: ["schematify://screen/login-form"],
+      }),
+      node({
+        id: "verify",
+        slug: "verify_signature",
+        kind: "contract-method",
+        title: "verify_signature",
+        parent: "mod",
+        signature: "(token: string, jwks: KeySet)",
+        returns: "Result<Claims, VerifyError>",
+        exported: true,
+      }),
+      node({
+        id: "budget",
+        slug: "cold_start_p95",
+        kind: "budget",
+        title: "cold_start_p95",
+        parent: "mod",
+        metric: "cold_start_p95",
+        op: "<",
+        value: 800,
+        unit: "ms",
+        tier: "hard",
+      }),
+      node({
+        id: "test1",
+        slug: "test-expired-token",
+        kind: "test-case",
+        title: "expired token is rejected",
+        parent: "mod",
+        status: "passing",
+      }),
+      node({
+        id: "doc",
+        slug: "doc-verify",
+        kind: "doc-block",
+        title: "Usage note",
+        parent: "mod",
+        audience: "agent",
+        body: "Call verify_signature before any session lookup.",
+      }),
+      node({
+        id: "dep",
+        slug: "jose",
+        kind: "external-dep",
+        title: "jose",
+        parent: "mod",
+        registry_ref: "lib-jose",
+      }),
+      // A different module entirely — nothing here should leak in.
+      node({ id: "mod2", slug: "token-issuer", kind: "module", parent: "svc" }),
+      node({
+        id: "other-method",
+        slug: "mint",
+        kind: "contract-method",
+        title: "mint",
+        parent: "mod2",
+      }),
+    ],
+    edges: [
+      { id: "e1", kind: "covers", source: "test1", target: "verify" },
+      { id: "e2", kind: "covers", source: "test1", target: "verify" }, // 2nd case, same method
+      { id: "e3", kind: "covers", source: "test1", target: "other-method" }, // wrong module — dropped
+      { id: "e4", kind: "depends_on", source: "verify", target: "budget" }, // not a tier-3 kind — dropped
+    ],
+    libraries: { libraries: [{ id: "lib-jose", name: "jose", version: "5.2.4", license: "MIT" }] },
+  };
+
+  const graph = projectModuleGraph(RAW, "token-verifier");
+
+  it("names the module by its slug and title, tier module", () => {
+    expect(graph.serviceSlug).toBe("token-verifier");
+    expect(graph.serviceTitle).toBe("Token Verifier");
+    expect(graph.tier).toBe("module");
+  });
+
+  it("draws the module root as its own node, parentId null, unlike a service root", () => {
+    const root = graph.nodes.find((n) => n.id === "mod");
+    expect(root).toBeDefined();
+    expect(root?.parentId).toBeNull();
+    expect(root?.description).toBe("Verifies JWT signatures against the rotating key set.");
+    expect(root?.screenRef).toBe("schematify://screen/login-form");
+    expect(root?.layer).toBe("backend");
+  });
+
+  it("includes only token-verifier's own facets, not token-issuer's", () => {
+    const ids = graph.nodes.map((n) => n.id).sort();
+    expect(ids).toEqual(["budget", "doc", "mod", "test1", "verify", "dep"].sort());
+  });
+
+  it("keeps a facet's real parent id — the module's own, not null", () => {
+    expect(graph.nodes.find((n) => n.id === "verify")?.parentId).toBe("mod");
+  });
+
+  it("draws a contract method's signature, returns, and exported flag — not a stored covers count", () => {
+    const verify = graph.nodes.find((n) => n.id === "verify");
+    expect(verify?.signature).toBe("(token: string, jwks: KeySet)");
+    expect(verify?.returns).toBe("Result<Claims, VerifyError>");
+    expect(verify?.exported).toBe(true);
+    // Wave 6 removed GraphNode.coversCount as a PRD §0.4 breach — a caller
+    // computes it from the real edges via coversCountFor, below, not from a
+    // field this projection would otherwise be storing a 2nd time.
+  });
+
+  it("returns real covers edges a caller can compute coversCountFor from — 2 for this module, not the 3rd targeting a different module's facet", () => {
+    const coversTargetingVerify = graph.edges.filter(
+      (e) => e.kind === "covers" && e.to === "verify",
+    );
+    expect(coversTargetingVerify).toHaveLength(2);
+    expect(coversCountFor("verify", graph.edges)).toBe(2);
+  });
+
+  it("draws a budget's tier, threshold text, and leaves budgetValueText undefined — no probe, PRD §16.1's exact node", () => {
+    const budget = graph.nodes.find((n) => n.id === "budget");
+    expect(budget?.budgetTier).toBe("hard");
+    expect(budget?.budgetThresholdText).toBe("< 800 ms");
+    expect(budget?.budgetProbe).toBeUndefined();
+    expect(budget?.budgetValueText).toBeUndefined();
+  });
+
+  it("draws a test case's status", () => {
+    expect(graph.nodes.find((n) => n.id === "test1")?.testStatus).toBe("passing");
+  });
+
+  it("draws a doc block's audience and body", () => {
+    const doc = graph.nodes.find((n) => n.id === "doc");
+    expect(doc?.docAudience).toBe("agent");
+    expect(doc?.docBody).toBe("Call verify_signature before any session lookup.");
+  });
+
+  it("resolves an external dep's version and license off the library registry", () => {
+    const dep = graph.nodes.find((n) => n.id === "dep");
+    expect(dep?.depVersion).toBe("5.2.4");
+    expect(dep?.depLicense).toBe("MIT");
+    expect(dep?.depRegistryOk).toBe(true);
+  });
+
+  it("marks an external dep unresolved when its registry_ref names nothing in libraries", () => {
+    const withUnresolvedDep: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service" }),
+        node({ id: "mod", slug: "token-verifier", kind: "module", parent: "svc" }),
+        node({
+          id: "dep",
+          slug: "ghost",
+          kind: "external-dep",
+          parent: "mod",
+          registry_ref: "no-such-library",
+        }),
+      ],
+      edges: [],
+    };
+    const result = projectModuleGraph(withUnresolvedDep, "token-verifier");
+    const dep = result.nodes.find((n) => n.id === "dep");
+    expect(dep?.depRegistryOk).toBe(false);
+    expect(dep?.depVersion).toBeUndefined();
+  });
+
+  it("keeps a covers edge between 2 included facets", () => {
+    expect(graph.edges.filter((e) => e.kind === "covers")).toHaveLength(2);
+  });
+
+  it("drops a covers edge that reaches outside this module", () => {
+    expect(graph.edges.some((e) => e.id === "e3")).toBe(false);
+  });
+
+  it("drops an edge kind tier 3 does not carry", () => {
+    expect(graph.edges.some((e) => e.id === "e4")).toBe(false);
+  });
+
+  it("throws when no module carries the requested slug", () => {
+    expect(() => projectModuleGraph(RAW, "no-such-module")).toThrow(/no-such-module/);
+  });
+
+  it("draws PRD §7.4's caption on a stale module root, the same as a stale service-tier module", () => {
+    const withStale: RawGraph = {
+      nodes: [
+        node({ id: "svc", slug: "auth-service", kind: "service" }),
+        node({ id: "dep-src", slug: "crypto-primitives", kind: "module", parent: "svc" }),
+        node({
+          id: "mod",
+          slug: "audit-emitter",
+          kind: "module",
+          parent: "svc",
+          lifecycle: "stale",
+          stale: { source: "dep-src", member: "sign", at: "2026-08-25T12:00:00Z" },
+        }),
+      ],
+      edges: [],
+    };
+    const now = Date.parse("2026-08-25T14:00:00Z");
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const result = projectModuleGraph(withStale, "audit-emitter");
+      const root = result.nodes.find((n) => n.id === "mod");
+      expect(root?.badge).toBe("STALE");
+      expect(root?.staleReason).toBe("crypto-primitives.sign changed 2h ago. Re-review required.");
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 });

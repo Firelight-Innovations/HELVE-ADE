@@ -44,6 +44,9 @@ import {
   type Finding,
   type RunsRow,
 } from "./graph";
+import { productSeam, reasonForFailure, type ProductGraph } from "./graph/backend";
+import { ProductPanel } from "./product/ProductPanel";
+import "./product/product.css";
 import { Breadcrumb } from "./shell/Breadcrumb";
 import { Dock } from "./shell/Dock";
 import { EmptyModule } from "./shell/EmptyModule";
@@ -51,7 +54,7 @@ import { EmptyStack } from "./shell/EmptyStack";
 import { FacetPalette } from "./shell/FacetPalette";
 import { InspectorShell } from "./shell/InspectorShell";
 import { ModuleDashboard } from "./shell/ModuleDashboard";
-import { Outline } from "./shell/Outline";
+import { Outline, type Section } from "./shell/Outline";
 import { StatusBar } from "./shell/StatusBar";
 import { Toolbar } from "./shell/Toolbar";
 import "./shell/shell.css";
@@ -257,7 +260,17 @@ export default function App() {
  * and the Inspector's `Open module canvas` footer control (PRD §12.12, §17
  * Wave 6) push through — a click on the canvas resolves a `DrawnNode` to a
  * `DrillTarget` first (`onActivate`, below), the footer control already
- * holds one. */
+ * holds one.
+ *
+ * **Wave 10c's section switch.** `section` names which of the Outline's 3
+ * entries (PRD §12.1) is active. `Design` draws the Schematic + Inspector,
+ * exactly as before this wave; `Product` and `Decisions` swap the whole
+ * center body for `./product/ProductPanel` instead — see that component's
+ * own doc comment for why swapping the body was chosen over drawing 4
+ * surfaces inside the 238px Outline column. `productGraph` is loaded once,
+ * lazily, the first time either section is opened, and re-loaded after
+ * every write so the Outline's own summary line and the panel's table both
+ * read the file that was just saved. */
 function Schematify({
   engine,
   path,
@@ -305,6 +318,36 @@ function Schematify({
     if (dest) onDrillTo(dest);
   };
 
+  const [section, setSection] = useState<Section>("Design");
+  const [productGraph, setProductGraph] = useState<ProductGraph | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
+  const [initialScreenId, setInitialScreenId] = useState<string | null>(null);
+
+  const loadProduct = () => {
+    productSeam
+      .loadProduct()
+      .then((next) => {
+        setProductGraph(next);
+        setProductError(null);
+      })
+      .catch((err: unknown) => setProductError(reasonForFailure(err)));
+  };
+
+  useEffect(() => {
+    // Loaded once per open Schematic, lazily, the first time either
+    // non-Design section is reached — the same "read once, project many
+    // views" rule this file's own header states for the design graph,
+    // applied to the product layer. A later switch back to `Product` or
+    // `Decisions` reuses what is already in state rather than reloading.
+    if (section !== "Design" && !productGraph && !productError) loadProduct();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
+  function openScreen(screenId: string) {
+    setInitialScreenId(screenId);
+    setSection("Product");
+    if (!productGraph && !productError) loadProduct();
+  }
   return (
     <div className="kv-shell">
       <div className="kv-chrome-row">
@@ -331,15 +374,67 @@ function Schematify({
         ) : null}
       </div>
       <div className="kv-shell__body">
-        <Outline graph={graph} />
-        {graph.tier === "module" ? <FacetPalette /> : null}
-        <SchematicCanvas engine={engine} onActivate={onActivate} exports={graph.exports} />
-        <InspectorShell
+        <Outline
           graph={graph}
-          selection={state.selection}
-          engine={engine}
-          onOpenModuleCanvas={onDrillTo}
+          section={section}
+          onSectionChange={setSection}
+          productCounts={
+            productGraph
+              ? {
+                  screens: productGraph.screens.length,
+                  flows: productGraph.flows.length,
+                  decisions: productGraph.decisions.length,
+                }
+              : undefined
+          }
         />
+        {section === "Design" ? (
+          <>
+            {graph.tier === "module" ? <FacetPalette /> : null}
+            <SchematicCanvas
+              engine={engine}
+              onActivate={onActivate}
+              exports={graph.exports}
+              onOpenScreen={openScreen}
+            />
+            <InspectorShell
+              graph={graph}
+              selection={state.selection}
+              engine={engine}
+              onOpenModuleCanvas={onDrillTo}
+            />
+          </>
+        ) : productError ? (
+          <p className="kv-shell__error">{productError}</p>
+        ) : productGraph ? (
+          <ProductPanel
+            section={section}
+            graph={productGraph}
+            initialScreenId={initialScreenId}
+            onSaveBrief={async (brief) => {
+              await productSeam.writeBrief(brief);
+              loadProduct();
+            }}
+            onSaveScreen={async (screen) => {
+              await productSeam.writeScreen(screen);
+              loadProduct();
+            }}
+            onSaveFlow={async (flow) => {
+              await productSeam.writeFlow(flow);
+              loadProduct();
+            }}
+            onCreateDecision={async (decision) => {
+              await productSeam.writeDecision(decision);
+              loadProduct();
+            }}
+            onSupersedeDecision={async (priorId, decision) => {
+              await productSeam.supersedeDecision(priorId, decision);
+              loadProduct();
+            }}
+          />
+        ) : (
+          <div className="kv-product-panel" />
+        )}
       </div>
       <Dock
         findings={findings}
