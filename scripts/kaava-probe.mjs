@@ -11,8 +11,8 @@
  *
  * `--server agent` is the one to reach for while working on OpenKaava; `ui` and
  * `debug` host subsets of it. Prints the tool's JSON on stdout and nothing else,
- * so it pipes into `jq`; explanation goes to stderr, and an image answer is
- * written to a PNG whose path is printed rather than put through a terminal.
+ * so it pipes into `jq`; explanation goes to stderr, and an image answer goes to
+ * a PNG in the OS temp dir (not this repo) whose path is printed to both.
  *
  * The endpoint speaks MCP over streamable HTTP — a three-step handshake and a
  * session header, silently wrong under `curl` unless you get all of it right.
@@ -21,6 +21,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 /**
  * Matches `tauri::path::app_config_dir` on Windows, and the identifier in
@@ -258,8 +259,9 @@ async function main() {
 
   const image = message?.result?.content?.find((block) => block.type === "image");
   if (image) {
-    const path = process.env.KAAVA_SHOT || "kaava-shot.png";
+    const path = process.env.KAAVA_SHOT || join(tmpdir(), "kaava-shot.png");
     writeFileSync(path, Buffer.from(image.data, "base64"));
+    process.stderr.write(`kaava-probe: screenshot written to ${path}\n`);
     process.stdout.write(`${path}\n`);
     return;
   }

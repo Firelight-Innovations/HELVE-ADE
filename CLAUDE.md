@@ -79,7 +79,7 @@ tools, the three `kaava-debug` reads, and three more that reach the backend
 directly:
 
 ```sh
-pnpm probe --agent --server agent screenshot     # writes kaava-shot.png — then Read it
+pnpm probe --agent --server agent screenshot     # a PNG in the OS temp dir; the path is printed — then Read it
 pnpm probe --agent --server agent snapshot       # every clickable element, with refs
 pnpm probe --agent --server agent click '{"target":"e12"}'
 pnpm probe --agent --server agent type_text '{"text":"hello"}'

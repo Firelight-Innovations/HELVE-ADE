@@ -141,7 +141,7 @@ const HELP = `kaava-ui — an agent-owned OpenKaava to drive
 
 Driving it is \`pnpm probe --agent --server agent <tool>\`:
 
-  screenshot                          a PNG, written to kaava-shot.png
+  screenshot                          a PNG, written to the OS temp dir (path printed)
   snapshot                            what can be clicked, with refs
   click '{"target":"e12"}'
   type_text '{"text":"hello"}'
