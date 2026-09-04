@@ -47,8 +47,9 @@ __pycache__/
 # Worktrees an agent works in. A second checkout of this repository, inside it.
 .claude/worktrees/
 
-# What `pnpm probe --server ui screenshot` writes, into whatever directory it
-# was run from. It is a picture of somebody's session taken while they were
-# debugging, and it has been swept into a commit by `git add -A` more than once
-# already.
+# `pnpm probe ... screenshot` writes here by default only if KAAVA_SHOT points
+# into the repo (its own default is now the OS temp dir, precisely so this
+# never happens on its own). Kept as a safety net: it is a picture of
+# somebody's debugging session, and it has been swept into a commit by
+# `git add -A` more than once already.
 kaava-shot.png
