@@ -4,6 +4,9 @@
   "version": "0.3.0",
   "type": "module",
   "packageManager": "pnpm@10.19.0",
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:agent": "vite --mode agent",
@@ -69,12 +72,15 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.9.6",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.67.0",
@@ -83,7 +89,8 @@
   },
   "pnpm": {
     "overrides": {
-      "dompurify": "^3.4.13"
+      "dompurify": "^3.4.13",
+      "jsdom": "^29.1.1"
     }
   }
 }
