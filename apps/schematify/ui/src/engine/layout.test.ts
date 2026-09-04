@@ -8,6 +8,7 @@
  * a lifecycle state would be a hole in it.
  */
 import { describe, expect, it } from "vitest";
+import type { LayoutFile } from "../graph";
 import { createMemorySeam, layoutPath } from "../graph";
 import { SchematicEngine } from "./engine";
 import { buildDoc, toGraph, toLayoutFile } from "./layout";
@@ -77,6 +78,65 @@ describe("the layout file", () => {
     expect((child?.rect.x ?? 0) + (child?.rect.width ?? 0)).toBeLessThanOrEqual(
       (parent?.rect.x ?? 0) + (parent?.rect.width ?? 0),
     );
+  });
+
+  // The Fit corruption traced to here: a stored node whose geometry is not 4
+  // real numbers used to be trusted verbatim (`withStored` copied `x`/`y`/
+  // `width`/`height` straight off the parsed JSON), so a single missing field
+  // put a `NaN` into the node's rect. `boundsOf` (`geometry.ts`) then unioned
+  // it into every bounding box the node was part of, and `fitTo`
+  // (`viewport.ts`) turned that into a zoom that never recovered — clicking
+  // Fit again just recomputed the same poisoned bounds from the same doc.
+  // Mutation that must turn this red: in `buildDoc`, change
+  // `if (stored && isStoredRectValid(stored))` back to `if (stored)`.
+  it("falls back to an arranged position when a stored node's geometry is not finite", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph();
+    const malformed: LayoutFile = {
+      version: 1,
+      schematic: "auth-service",
+      nodes: {
+        "http-entry": { x: 44, y: 44, width: NaN, height: 118 },
+      },
+      annotations: [],
+    };
+    const doc = buildDoc(graph, malformed, SERVICE_CONFIG);
+    const node = doc.nodes.find((n) => n.id === "http-entry");
+    expect(node?.rect.x).toBeDefined();
+    expect(Number.isFinite(node?.rect.width)).toBe(true);
+    expect(Number.isFinite(node?.rect.height)).toBe(true);
+  });
+
+  // Same defect, the annotation path: an annotation has no `arrange`d
+  // fallback (PRD §11.3 keeps it out of the semantic graph entirely), so
+  // `fromAnnotation` used to trust its stored rect with nothing to fall back
+  // to at all. Mutation that must turn this red: in `fromAnnotation`, change
+  // `isFiniteRect(stored) ? stored : ...` to just `stored`.
+  it("falls back to a default box when a stored annotation's geometry is not finite", async () => {
+    const seam = createMemorySeam();
+    const graph = await seam.loadGraph();
+    const malformed: LayoutFile = {
+      version: 1,
+      schematic: "auth-service",
+      nodes: {},
+      annotations: [
+        {
+          id: "group-1",
+          kind: "group",
+          slug: "group-1",
+          title: "Bad group",
+          parentId: null,
+          x: 0,
+          y: 0,
+          width: undefined as unknown as number,
+          height: 200,
+        },
+      ],
+    };
+    const doc = buildDoc(graph, malformed, SERVICE_CONFIG);
+    const group = doc.nodes.find((n) => n.id === "group-1");
+    expect(Number.isFinite(group?.rect.width)).toBe(true);
+    expect(Number.isFinite(group?.rect.height)).toBe(true);
   });
 });
 
