@@ -210,6 +210,28 @@ export function statusCell2(graph: SchematicGraph, clean = true): string {
   return `layout/${graph.serviceSlug}.json ${clean ? "clean" : "modified"}`;
 }
 
+/**
+ * Status bar cell 5: the honest half of the deliberate deferral
+ * `graph/backend.ts`'s `createBackendSeam` doc comment and
+ * `docs/overnight-jobs/overnight-2/handoffs/wiring.md` describe. A reparent,
+ * a duplicate, or a dragged-in edge calls `seam.writeSemantic`/
+ * `removeSemantic`, which stays an in-memory `Map` rather than a real
+ * `nodes/`/`edges/` file — the engine's `semanticWrites` getter is exactly
+ * the paths that map has touched this session. Blank once nothing has
+ * touched it; once anything has, this cell says so in words rather than
+ * leaving the gesture looking saved. `Set` rather than `.length` on the raw
+ * array, because `semanticWrites` records one entry per write *event*
+ * (including undo/redo replays of the same path), and what a person needs to
+ * know is how many files are at risk, not how many times the engine wrote to
+ * one.
+ */
+export function statusCell5(semanticWrites: readonly string[]): string {
+  const affected = new Set(semanticWrites).size;
+  if (affected === 0) return "";
+  const noun = affected === 1 ? "change" : "changes";
+  return `${affected} unsaved ${noun} — session only, lost on reload`;
+}
+
 /** Containment depth counting the service root itself as level 1, so a
  *  top-level module is level 2 and a module nested one level deeper is level
  *  3 — matching PRD §16.1's "Twelve module nodes, containment depth 3" for a
