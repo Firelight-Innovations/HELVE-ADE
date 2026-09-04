@@ -7,8 +7,10 @@
  * generated. **The scroll is Chromium's own — nothing here calls
  * `scrollIntoView` — so grepping for one finds nothing and proves nothing.**
  *
- * The full account, the two rejected alternatives, and why no test covers it:
- * `docs/design-notes/shell-worktree.md`, under this path.
+ * The full account and the two rejected alternatives:
+ * `docs/design-notes/shell-worktree.md`, under this path. `rowFocus.test.tsx`
+ * beside this file holds both lines below to their contract; the symptom itself
+ * needs layout and is still uncovered, which that test's own header says.
  */
 import type { MouseEvent } from "react";
 

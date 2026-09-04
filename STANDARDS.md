@@ -308,16 +308,19 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 371 tests, all passing:
+What exists today — 1761 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
-| `src-tauri/src/**` | 276 | `cargo test` |
-| `crates/kaava-rpc` | 15 | `cargo test` |
-| `crates/kaava-tool-manifest` | 11 | `cargo test` |
-| `examples/echo-tool` | 5 | `cargo test` |
+| `src-tauri/src/**` | 631 | `cargo test` |
+| `crates/kaava-rpc` | 11 | `cargo test` |
+| `crates/kaava-tool-manifest` | 28 | `cargo test` |
+| `crates/schematify-core` | 228 | `cargo test` |
+| `crates/schematify-reconcile` | 41 | `cargo test` |
+| `examples/echo-tool` | 3 | `cargo test` |
 | `packages/bridge` | 28 | vitest |
-| `src/**` | 36 | vitest |
+| `src/**` | 350 | vitest |
+| `apps/*/ui/src/**` | 441 | vitest |
 
 The protocol layer is covered because it is a published contract. The state
 machines are now covered too: `shell_state.rs` has 35 tests, `layout.rs` has 32,
@@ -349,7 +352,8 @@ What is expected going forward:
    scrolls, and nothing is on top of anything else. So it reaches a handler, an
    event's `defaultPrevented`, what has focus and what was rendered — and it
    cannot reach anything whose cause is a position on screen. A test for one of
-   those asserts the mechanism a fix uses and says so, or it is not written.
+   those asserts the mechanism a fix uses and says so, or it is not written;
+   `src/shell/worktree/rowFocus.test.tsx` is the worked example of the first.
 4. **A bug fix comes with the test that would have caught it.** This is the only
    test rule that is non-negotiable.
 
@@ -365,7 +369,7 @@ Before a pull request is ready:
    | Step | Covers |
    |---|---|
    | `pnpm build` | `tsc` runs first, so this covers types |
-   | `pnpm test` | all 240 tests, both runners (§8) |
+   | `pnpm test` | every test, both runners (§8) |
    | `pnpm lint` | ESLint, clippy, comment density (§10) |
    | `pnpm format:check` | Prettier and rustfmt |
 

@@ -194,9 +194,19 @@ Rejected, and why:
 - **Leaving focus alone and giving the rows `scroll-margin`.** Changes where a
   scroll lands, not whether one happens, so the row still moves.
 
-### What is not covered by a test
+### What a test covers, and what it still cannot
 
 The defect is a `mousedown`/`mouseup` pairing inside a scroll container: it needs
-layout and hit-testing to reproduce. The vitest runner is `node` with no DOM and
-no rendering library (STANDARDS.md §8.3), so nothing in this repository can hold
-it. `selection.test.ts` sits underneath this and would not have caught it.
+layout and hit-testing to reproduce, and **that part is still not covered.** No
+jsdom test can be: jsdom gives elements no size and scrolls nothing, so the
+browser focus-scroll behind the bug cannot occur there, and a click on a row at
+the "edge" of a list succeeds whether the fix is present or not. Only a real
+browser — Vitest's browser mode, which this repository does not run — reaches
+the symptom itself.
+
+`rowFocus.test.tsx` covers the fix's **mechanism** instead, which is the strongest
+claim available short of that: the row cancels `mousedown`'s default, and focuses
+itself with `preventScroll`. Unwiring the handler, dropping the `preventDefault`
+or dropping the `preventScroll` each turn it red, so neither half of the helper
+can be deleted quietly. `selection.test.ts` sits underneath both and would not
+have caught any of it.
