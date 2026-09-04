@@ -211,12 +211,20 @@ fn now_rfc3339() -> String {
 mod tests {
     use super::*;
     use crate::graph::{GraphLookup, InMemoryGraph, NodeFacts};
+    use crate::outcome::EvidenceSite;
     use crate::reconcile::reconcile;
     use std::fs;
     use uuid::Uuid;
 
     fn id() -> Uuid {
         Uuid::parse_str("0192f4a1-4c3d-7890-a1b2-c3d4e5f6a7b8").unwrap()
+    }
+
+    fn site() -> EvidenceSite {
+        EvidenceSite {
+            file: PathBuf::from("src/lib.rs"),
+            line: 1,
+        }
     }
 
     #[test]
@@ -269,6 +277,56 @@ mod tests {
         assert_eq!(summary.declared_absent, 0);
         assert_eq!(summary.present_unknown, 0);
         assert_eq!(summary.duplicate, 0);
+    }
+
+    #[test]
+    fn summary_counts_a_mixed_run_into_its_own_buckets() {
+        // The empty-run case above passes even if `summarize` puts every
+        // outcome into the wrong bucket, as long as it puts zero of them
+        // there. This is the case that would catch that: a known number of
+        // each of the four kinds, each landing in its own count.
+        let run = ReconcileRun {
+            outcomes: vec![
+                ReconcileOutcome::Matched {
+                    node_id: id(),
+                    slug: "a".into(),
+                    site: site(),
+                },
+                ReconcileOutcome::Matched {
+                    node_id: id(),
+                    slug: "b".into(),
+                    site: site(),
+                },
+                ReconcileOutcome::DeclaredAbsent {
+                    node_id: id(),
+                    slug: "c".into(),
+                    lifecycle: "implemented".into(),
+                    error: true,
+                },
+                ReconcileOutcome::PresentUnknown {
+                    node_id: id(),
+                    site: site(),
+                },
+                ReconcileOutcome::PresentUnknown {
+                    node_id: id(),
+                    site: site(),
+                },
+                ReconcileOutcome::PresentUnknown {
+                    node_id: id(),
+                    site: site(),
+                },
+                ReconcileOutcome::Duplicate {
+                    node_id: id(),
+                    sites: vec![site(), site()],
+                },
+            ],
+            skipped: Vec::new(),
+        };
+        let summary = summarize(&run);
+        assert_eq!(summary.matched, 2);
+        assert_eq!(summary.declared_absent, 1);
+        assert_eq!(summary.present_unknown, 3);
+        assert_eq!(summary.duplicate, 1);
     }
 
     #[test]
