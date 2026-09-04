@@ -5,7 +5,7 @@ current as of the last line; the "Still open" section is the part that changes.
 
 ## What landed
 
-Twenty-three pull requests merged to `main`, each one its own worktree and its own
+Twenty-four pull requests merged to `main`, each one its own worktree and its own
 branch, every one reviewed by a separate agent before merge except where noted.
 
 | PR | Wave | What it built |
@@ -32,6 +32,7 @@ branch, every one reviewed by a separate agent before merge except where noted.
 | #96 | 9d | The Runs tab, the Module dashboard, and run ingestion |
 | #95 | 7c | Drill-through scope routing and the Dock badges' loading state |
 | #93 | 10c | The product layer — screens, flows, decisions, project brief |
+| #98 | 11b | The `ui_refs` write — the derived cache nothing ever wrote |
 
 ## Two things needing your decision
 
@@ -129,10 +130,31 @@ of code that would not build.
 
 ## Still open
 
-Every PR opened tonight is merged. `main` is at `d2f9fd0`, which is exactly the
-twenty-three PRs above. One branch is still building:
+Nothing. Every PR opened tonight is merged and no branch is outstanding. `main`
+is at `339bd99`.
 
-`schematify/w11b-ui-refs` — the `ui_refs` write described below. Not yet a PR.
+### What #98 found in its own inherited code
+
+Worth reading, because it is the clearest example of the night's dominant
+defect pattern and of why the mutation rule earns its cost.
+
+The session that started the `ui_refs` write was killed before it committed, so
+a second agent inherited 224 uncommitted lines. Auditing rather than shipping
+them, it found two things:
+
+- **A silent data-loss defect.** The sync rebuilt the module node from
+  `Node::new(envelope)` — an empty field map — so caching a screen reference
+  would have deleted every module-node key `ModuleFields` does not model.
+  `Node::fields` is an open map precisely so PRD §11.2's unregistered kinds
+  survive a round trip, and `Store::write_node` is a plain atomic overwrite, so
+  nothing downstream would have caught it.
+- **A test that could not fail** — the tenth of the night. Deleting the
+  production call left the supersede test green, because it asserted only that
+  `ui_refs` ended up empty, which is trivially true when the sync never runs.
+
+It also found that a clean `git merge` proved nothing here: the merge silently
+combined two `sample_screen` test helpers into a duplicate definition that did
+not compile. It only surfaced on the next build.
 
 ### What #96 changed after review, because it matters (now merged)
 
