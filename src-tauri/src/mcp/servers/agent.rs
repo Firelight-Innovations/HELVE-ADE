@@ -38,6 +38,21 @@
 //! `files/save-as` by name for that reason — see [`NEEDS_A_PERSON`], which also
 //! explains why this path needs the guard when the frontend's does not.
 //!
+//! ## What [`app_call`] does not do that `commands::app_call` does
+//!
+//! That command moves every dispatch onto `spawn_blocking`, and its doc says
+//! why: an app's Rust half does blocking work — a quarter-megabyte `files/read`
+//! off a slow disk — that has no business on the thread it was called from.
+//! This path has no such hop. `mcp::listener::call_tool` is an `async fn` that
+//! calls `Registry::call` inline, so a slow app method occupies a runtime
+//! worker for its duration.
+//!
+//! That is survivable and the dialog case is not, which is why one is a guard
+//! and the other is this paragraph: a worker busy for 200ms is a worker busy
+//! for 200ms, where a worker parked on a modal dialog is parked until a person
+//! who is not there dismisses it. If a tool here ever grows genuinely slow, the
+//! fix is to make `Call` async rather than to widen [`NEEDS_A_PERSON`].
+//!
 //! ## What is not tested here
 //!
 //! The three handlers all need an `AppHandle`, and `registry.rs` says plainly
