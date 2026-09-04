@@ -169,6 +169,19 @@ Note a related signal: a plain Fit on a fresh canvas moves zoom to `200%` and
 drops visible nodes 9 → 7. `200%` is a strange answer for "fit" and may be the
 same arithmetic in a milder form.
 
+**One unresolved disagreement, recorded rather than settled.** Reviewing PR
+#105, a second reader traced `SchematicCanvas.tsx` and could not find a code
+path that produces `size.width === undefined`: `ResizeObserver` reports
+`contentRect.width` as a real number by spec, and `engine.ts` seeds `size` with
+`{1320, 700}`, so on that reading the field should never be undefined. The
+measurement above is empirical and the trace is analytical, and they have not
+been reconciled — most likely because the observer never fires at all for an
+element that is not there, leaving something else to explain the `undefined`
+that was actually read back. Nothing turns on it for the fix, whose
+`Number.isFinite` floor covers a non-finite `size` however it arises; it matters
+because the live trigger should not be recorded as confirmed when only its
+effect was seen.
+
 ### B4 — two tests that cannot fail
 
 `crates/schematify-reconcile/`
