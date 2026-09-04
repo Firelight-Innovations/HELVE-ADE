@@ -99,6 +99,25 @@ pub enum CoreError {
         inbound: usize,
     },
 
+    /// A transition's caller claimed a starting lifecycle that disagrees
+    /// with the node on disk.
+    ///
+    /// [`crate::Store::write_transition`] checks the table
+    /// ([`crate::check_transition`]) against the node it reads from disk,
+    /// never against a caller's copy - a claim that disagrees means the
+    /// caller is working from a stale snapshot, or is not telling the truth
+    /// about where the node stands, and either way the transition is
+    /// refused before anything is written.
+    #[error("cannot transition node {id} from {claimed}: the node on disk is {actual}, not {claimed} - reload the node and retry")]
+    StaleTransitionClaim {
+        /// The node the caller tried to move.
+        id: uuid::Uuid,
+        /// The lifecycle the caller's copy claimed.
+        claimed: crate::lifecycle::Lifecycle,
+        /// The lifecycle the node actually holds on disk.
+        actual: crate::lifecycle::Lifecycle,
+    },
+
     /// PRD section 6.3's pair came apart: the node file was written, the
     /// audit append failed, and the rollback of the node file failed too.
     ///

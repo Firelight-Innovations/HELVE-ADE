@@ -259,6 +259,30 @@ impl Store {
         Ok(())
     }
 
+    /// Read one node from disk by id alone.
+    ///
+    /// [`Store::write_transition`] uses this to establish a node's real
+    /// lifecycle. A caller's own copy of a node is never the source of truth
+    /// for what state it is in - only its id says which file to read.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Io`] when the file cannot be read, including
+    /// when no node exists at this id, and [`CoreError::Parse`] when it does
+    /// not hold a node.
+    pub fn read_node(&self, id: Uuid) -> Result<Node> {
+        let path = self.node_path(id);
+        let text = fs::read_to_string(&path).map_err(|source| CoreError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        serde_json::from_str(&text).map_err(|source| CoreError::Parse {
+            path,
+            schema: "node",
+            source,
+        })
+    }
+
     /// Write one edge. A `contains` edge is refused, because containment lives
     /// on the child node and a second copy would be a second truth.
     ///
@@ -366,12 +390,22 @@ impl Store {
     /// Move a node's lifecycle on, writing the node and appending the audit
     /// row as the one action PRD section 6.3 allows.
     ///
+    /// `node` supplies an id and nothing else trusted: the real lifecycle
+    /// comes from disk ([`Store::read_node`]), checked against the table
+    /// ([`check_transition`]). `node.lifecycle` is compared against that
+    /// read only as the caller's claimed starting state, refused on
+    /// disagreement ([`CoreError::StaleTransitionClaim`]). Only the disk
+    /// copy, the lifecycle move, and the two side-fields a transition may
+    /// carry (`stale`, `superseded_by`) are persisted - never the rest of
+    /// the caller's copy. `node` becomes the real result on success.
+    ///
     /// # Errors
     ///
-    /// Returns [`CoreError::Lifecycle`] when the transition is illegal or the
-    /// actor is not allowed it, and the node file is left untouched. Returns
-    /// [`CoreError::Io`] or [`CoreError::AtomicWrite`] when either write
-    /// fails.
+    /// [`CoreError::Io`]/[`CoreError::Parse`] when the node cannot be read;
+    /// [`CoreError::StaleTransitionClaim`] on a disagreeing claim;
+    /// [`CoreError::Lifecycle`] when the move or actor is illegal - none of
+    /// these write anything. A write failure once checks pass returns
+    /// [`CoreError::Io`] or [`CoreError::AtomicWrite`].
     pub fn write_transition(
         &self,
         node: &mut Node,
@@ -381,11 +415,24 @@ impl Store {
         at: &str,
         reason: &str,
     ) -> Result<AuditRow> {
-        let from = node.envelope.lifecycle;
+        let id = node.id();
+        let claimed_from = node.envelope.lifecycle;
+
+        let before = self.read_node(id)?;
+        let from = before.envelope.lifecycle;
+
+        if claimed_from != from {
+            return Err(CoreError::StaleTransitionClaim {
+                id,
+                claimed: claimed_from,
+                actual: from,
+            });
+        }
+
         check_transition(from, to, actor)?;
 
         let row = AuditRow {
-            node: node.id(),
+            node: id,
             at: at.to_owned(),
             from,
             to,
@@ -395,34 +442,45 @@ impl Store {
         };
 
         // The audit is read before anything is written, so an unreadable
-        // history fails while the node file and the in-memory node are still
-        // untouched. PRD section 6.3 calls this pair one action, and a node
-        // advanced on disk with no audit row is exactly the half-applied state
-        // the append-only rule exists to prevent.
-        let mut history = self.read_audit(node.id())?;
+        // history fails while the node file on disk is still untouched.
+        // PRD section 6.3 calls this pair one action, and a node advanced on
+        // disk with no audit row is exactly the half-applied state the
+        // append-only rule exists to prevent.
+        let mut history = self.read_audit(id)?;
         history.push(row.clone());
 
-        node.envelope.lifecycle = to;
-        if let Err(error) = self.write_node(node) {
-            node.envelope.lifecycle = from;
-            return Err(error);
+        // Built from `before`, the disk copy, not from the caller's `node` -
+        // see the doc comment above for why. `stale` and `superseded_by` are
+        // the two fields a transition is documented to carry alongside the
+        // lifecycle move, each gated to the one row of the table that
+        // reaches it, so neither can be smuggled in on an unrelated move.
+        let mut after = before.clone();
+        after.envelope.lifecycle = to;
+        if to == Lifecycle::Stale {
+            after.envelope.stale = node.envelope.stale.clone();
         }
+        if to == Lifecycle::Deprecated {
+            after.envelope.superseded_by = node.envelope.superseded_by;
+        }
+
+        self.write_node(&after)?;
 
         // The node landed and the audit did not. The node file is rewritten
         // with the old state rather than left ahead of its history: a failed
         // rewrite is reported through `TransitionTornWrite`, which names both
         // halves so a person knows the file needs looking at.
-        if let Err(error) = write_json_atomic(&self.audit_path(node.id()), &history) {
-            node.envelope.lifecycle = from;
-            return match self.write_node(node) {
+        if let Err(error) = write_json_atomic(&self.audit_path(id), &history) {
+            return match self.write_node(&before) {
                 Ok(()) => Err(error.into()),
                 Err(rollback) => Err(CoreError::TransitionTornWrite {
-                    id: node.id(),
+                    id,
                     audit: error.to_string(),
                     rollback: rollback.to_string(),
                 }),
             };
         }
+
+        *node = after;
         Ok(row)
     }
 
@@ -610,6 +668,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Reviewed);
+        store.write_node(&value).unwrap();
 
         store
             .write_transition(
@@ -638,6 +697,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Reviewed);
+        store.write_node(&value).unwrap();
 
         let error = store
             .write_transition(
@@ -652,8 +712,108 @@ mod tests {
 
         assert!(matches!(error, CoreError::Lifecycle(_)));
         assert_eq!(value.envelope.lifecycle, Lifecycle::Reviewed);
-        assert!(!store.node_path(value.id()).exists());
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(
+            on_disk.envelope.lifecycle,
+            Lifecycle::Reviewed,
+            "the node file on disk did not advance"
+        );
         assert!(store.read_audit(value.id()).unwrap().is_empty());
+    }
+
+    /// The exact reproduction from the bug report: a node genuinely `draft`
+    /// on disk, a caller claiming it is already `reviewed`, and a legal
+    /// `reviewed -> accepted` human move on top of that lie. Before this
+    /// fix, `check_transition` validated the table against the caller's
+    /// claim rather than disk, so this sailed through and the node reached
+    /// `accepted` in one call, skipping every gate along the way - including
+    /// the human-review gate `check_transition` exists to enforce.
+    #[test]
+    fn write_transition_refuses_a_claim_that_disagrees_with_disk() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Draft);
+        store.write_node(&value).unwrap();
+
+        // The caller's copy lies about where the node starts.
+        value.envelope.lifecycle = Lifecycle::Reviewed;
+
+        let error = store
+            .write_transition(
+                &mut value,
+                Lifecycle::Accepted,
+                Actor::Human,
+                "human",
+                "2026-08-25T14:02:00Z",
+                "Accepted.",
+            )
+            .unwrap_err();
+
+        assert!(
+            matches!(
+                error,
+                CoreError::StaleTransitionClaim {
+                    claimed: Lifecycle::Reviewed,
+                    actual: Lifecycle::Draft,
+                    ..
+                }
+            ),
+            "expected a stale-claim refusal, got {error:?}"
+        );
+        assert!(store.read_audit(value.id()).unwrap().is_empty());
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(
+            on_disk.envelope.lifecycle,
+            Lifecycle::Draft,
+            "the node on disk never left draft"
+        );
+    }
+
+    /// The second half of the same report: a legal transition (the claim
+    /// agrees with disk) whose caller also snuck an edit to `title` into the
+    /// same `node` payload. Before this fix, `write_transition` persisted
+    /// the caller's whole node, so the title landed on disk alongside the
+    /// lifecycle move even though nothing about a lifecycle-only endpoint
+    /// asked for that. This proves only the lifecycle field moves.
+    #[test]
+    fn write_transition_never_persists_the_callers_other_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Reviewed);
+        store.write_node(&value).unwrap();
+
+        // The claim agrees with disk - this is otherwise a wholly legal
+        // transition - but the payload also carries a forged title.
+        value.envelope.title = "CANARY-TITLE-OVERWRITE".to_owned();
+
+        store
+            .write_transition(
+                &mut value,
+                Lifecycle::Accepted,
+                Actor::Human,
+                "human",
+                "2026-08-25T14:02:00Z",
+                "Accepted.",
+            )
+            .unwrap();
+
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(on_disk.envelope.lifecycle, Lifecycle::Accepted);
+        assert_eq!(
+            on_disk.envelope.title, "Token Verifier",
+            "the forged title in the caller's payload was never written"
+        );
+        // `node` is overwritten with the real, disk-sourced result, so a
+        // caller cannot even read its own forged copy back as if it had won.
+        assert_eq!(value.envelope.title, "Token Verifier");
     }
 
     #[test]
@@ -703,6 +863,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Draft);
+        store.write_node(&value).unwrap();
 
         let error = store
             .write_transition(
@@ -717,7 +878,14 @@ mod tests {
 
         assert!(matches!(error, CoreError::Lifecycle(_)));
         assert!(store.read_audit(value.id()).unwrap().is_empty());
-        assert!(!store.node_path(value.id()).exists());
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(
+            on_disk.envelope.lifecycle,
+            Lifecycle::Draft,
+            "the node file on disk did not advance"
+        );
     }
 
     #[test]
@@ -726,6 +894,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Deprecated);
+        store.write_node(&value).unwrap();
 
         let error = store
             .write_transition(
@@ -748,6 +917,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Draft);
+        store.write_node(&value).unwrap();
         for (to, actor) in [
             (Lifecycle::Specified, Actor::Human),
             (Lifecycle::Assigned, Actor::Human),
@@ -827,6 +997,7 @@ mod tests {
         let store = Store::open(directory.path());
         store.init().unwrap();
         let mut value = node(1, Lifecycle::Accepted);
+        store.write_node(&value).unwrap();
         let row = store
             .deprecate(
                 &mut value,
