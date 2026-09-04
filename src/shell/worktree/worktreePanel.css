@@ -62,6 +62,22 @@
   overflow: hidden;
 }
 
+/* The one exception, and it is what makes the bottom section's `min-height`
+   mean anything. That min-height comes from `clipFloorPx` (`sectionFloor.ts`)
+   and stands for the children a failing git operation has to be reported in.
+   Flexbox can only honour a min-height by taking the difference out of some
+   other item, and with every item inflexible it instead overflows the column
+   and clips the very box the min-height exists to protect. So the graph gives
+   way — it scrolls its own contents and loses nothing but rows, which is what
+   makes it the right one to squeeze.
+
+   Shrinking still never happens on its own: `sectionBasis` keeps the two bases
+   summing to the column exactly, so there is no negative free space to
+   distribute until the min-height creates some. */
+.worktreepanel__section--top {
+  flex-shrink: 1;
+}
+
 .worktreepanel__graph-scroll {
   flex: 1;
   min-height: 0;

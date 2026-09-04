@@ -37,6 +37,7 @@ import { GIT_KIND_LETTER, GIT_KIND_TOKEN } from "../contract";
 import { GitBranch as BranchGlyph } from "../../ui/Icon";
 import CommitGraph from "./CommitGraph";
 import { focusWithoutScrolling } from "./rowFocus";
+import { clampTopRatio, clipFloorPx, type PanelSection } from "./sectionFloor";
 import SourceControlView from "./SourceControlView";
 import { gitMessage, type GitStatusHandle } from "./useGitStatus";
 import "./worktreePanel.css";
@@ -55,12 +56,6 @@ const AnnotatedDiff = lazy(() => import("../diff/AnnotatedDiff"));
  *  a `git log` has to walk. */
 const GRAPH_LIMIT = 200;
 
-/** The smallest a section may be dragged to, in pixels rather than a
- *  fraction: a narrow-but-nonzero panel width already forces short lines of
- *  text, and a percentage minimum would let one section shrink to nothing
- *  readable on a panel dragged down toward `--w-panel-collapsed`. */
-const MIN_SECTION_PX = 120;
-
 const DEFAULT_TOP_RATIO = 0.45;
 
 /** The divider's own height in the flex column, mirroring
@@ -73,11 +68,12 @@ const DIVIDER_PX = 1;
 /**
  * One section's `flex-basis`.
  *
- * The subtraction is the whole point. Both sections are `flex-shrink: 0` — see
- * the note in `worktreePanel.css` for why — so two bases summing to a plain
- * `100%` plus a divider between them overflows the column by exactly the
- * divider's height, and the panel grows a scrollbar whose entire scrollable
- * range is one pixel. Splitting the divider between the two keeps the sum
+ * The subtraction is the whole point. Neither section grows and only the top
+ * shrinks, and only under the bottom's `min-height` — see the note in
+ * `worktreePanel.css` for why — so two bases summing to a plain `100%` plus a
+ * divider between them overflows the column by exactly the divider's height,
+ * and the panel grows a scrollbar whose entire scrollable range is one pixel.
+ * Splitting the divider between the two keeps the sum
  * exact at every ratio, which is the difference between the scrollbar not
  * being *reachable* and it not *existing*.
  */
@@ -223,6 +219,15 @@ export default function WorktreePanel({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [topRatio, setTopRatio] = useState(DEFAULT_TOP_RATIO);
 
+  // Which view the bottom section is drawing, which is what its floor is
+  // derived from: only `SourceControlView` has a commit box, and only a commit
+  // box can push `.worktree__error` out of an `overflow: hidden` section. The
+  // stricter of the two while the first fetch is outstanding, since the answer
+  // arriving cannot then make the floor jump upward under a divider already
+  // dragged.
+  const bottomSection: PanelSection =
+    data === null || data.divergence === null ? "source-control" : "divergence";
+
   const onDividerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const container = containerRef.current;
@@ -242,13 +247,11 @@ export default function WorktreePanel({
 
       const startY = e.clientY;
       const startRatio = topRatio;
-      const minRatio = MIN_SECTION_PX / total;
-      const maxRatio = 1 - MIN_SECTION_PX / total;
       let nextRatio = startRatio;
 
       const onMove = (ev: PointerEvent) => {
         const delta = (ev.clientY - startY) / total;
-        nextRatio = Math.min(Math.max(startRatio + delta, minRatio), maxRatio);
+        nextRatio = clampTopRatio(startRatio + delta, total, bottomSection);
         if (topRef.current) topRef.current.style.flexBasis = sectionBasis(nextRatio);
         if (bottomRef.current) bottomRef.current.style.flexBasis = sectionBasis(1 - nextRatio);
       };
@@ -269,7 +272,7 @@ export default function WorktreePanel({
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [topRatio],
+    [bottomSection, topRatio],
   );
 
   if (clusterId === null) {
@@ -332,7 +335,11 @@ export default function WorktreePanel({
       <div
         className="worktreepanel__section worktreepanel__section--bottom"
         ref={bottomRef}
-        style={{ flexBasis: sectionBasis(1 - topRatio) }}
+        // The floor the divider's clamp cannot reach: the ratio React starts
+        // at, and a window shrunk after the divider was placed. Flexbox
+        // enforces it over the basis and takes the difference out of the top,
+        // which is the only section here that shrinks.
+        style={{ flexBasis: sectionBasis(1 - topRatio), minHeight: clipFloorPx(bottomSection) }}
       >
         {data.divergence === null ? (
           <SourceControlView

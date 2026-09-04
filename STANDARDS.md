@@ -308,18 +308,18 @@ in a command is logic that cannot be tested without Tauri.
 both halves; `pnpm verify` runs tests alongside the build, the linters and the
 formatters. A failing test is never fixed by deleting or skipping it.
 
-What exists today — 1761 tests, all passing:
+What exists today — 1773 tests, all passing:
 
 | Where | Count | Runner |
 |---|---|---|
-| `src-tauri/src/**` | 631 | `cargo test` |
+| `src-tauri/src/**` | 632 | `cargo test` |
 | `crates/kaava-rpc` | 11 | `cargo test` |
 | `crates/kaava-tool-manifest` | 28 | `cargo test` |
 | `crates/schematify-core` | 228 | `cargo test` |
 | `crates/schematify-reconcile` | 41 | `cargo test` |
 | `examples/echo-tool` | 3 | `cargo test` |
 | `packages/bridge` | 28 | vitest |
-| `src/**` | 350 | vitest |
+| `src/**` | 361 | vitest |
 | `apps/*/ui/src/**` | 441 | vitest |
 
 The protocol layer is covered because it is a published contract. The state

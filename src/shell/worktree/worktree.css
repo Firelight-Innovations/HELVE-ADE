@@ -17,11 +17,43 @@
 
 /* Column, because the commit box is pinned to the bottom and the lists take
    whatever is left. `min-height: 0` on the scrolling child is what actually
-   lets it scroll instead of pushing the box off the panel. */
+   lets it scroll instead of pushing the box off the panel.
+
+   The heights of `.worktree__branch`, `.worktree__commit` and one line of
+   `.worktree__error` are mirrored as pixel constants in `sectionFloor.ts`,
+   which sums them into the floor this view is never dragged below. CSS cannot
+   hand a number to JavaScript, so a change to the padding, the type scale or
+   the textarea's `rows` in any of the three is a change to a pair. */
 .worktree {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* --- the content between the branch row and the commit box ----------------
+   One flexible child holding the lists and the diff pane, and it exists for
+   exactly one reason: to be the only thing in this column that gives way.
+
+   The lists always could — `flex: 1; min-height: 0`. The diff pane could not:
+   `flex: none` with a `min-height` measured in hundreds of pixels, sitting
+   directly in this column, meant that opening a diff added an unshrinkable
+   220px to a section that is `overflow: hidden`. Past a certain divider
+   position the arithmetic ran out and the last child was pushed out of the
+   box — the commit box, and with it `.worktree__error`, the only surface a
+   failed commit is reported on. A git failure at that height said nothing at
+   all.
+
+   Wrapped, the same 220px overflows *this* box instead, where it is bounded
+   below (see `.worktree__diff`) and where the thing it squeezes is the file
+   list rather than the error line. The commit box's height stops depending on
+   whether a diff is open, which is what lets `sectionFloor.ts` state a floor
+   at all. */
+.worktree__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* --- the branch row -------------------------------------------------------
@@ -248,12 +280,20 @@
   flex: none;
   display: flex;
   flex-direction: column;
+  /* Both percentages are of `.worktree__body`, not of the whole view — the
+     share is now of the space there is for content, which is the honest
+     denominator now that one exists. */
   height: 45%;
   /* Raised from 140px when the diff gained a notes list under it. The list is
      capped at half of what it is given (`reviewNotes.css`), so at 140 the diff
      itself came out around 70 pixels — three or four lines of code, which is
-     not enough of a diff to write a note about. */
-  min-height: 220px;
+     not enough of a diff to write a note about.
+
+     `min()` rather than the bare 220px, so the floor stops being a floor once
+     there is less than 220px to stand on. Without it the pane is taller than
+     its own parent on a short panel and the overflow goes somewhere: before
+     the parent existed, that was the commit box. */
+  min-height: min(220px, 100%);
   border-top: 1px solid var(--line);
 }
 
