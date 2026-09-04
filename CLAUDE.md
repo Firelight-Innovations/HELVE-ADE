@@ -74,16 +74,44 @@ pnpm ui launch                # starts it, with developer mode and the server on
 pnpm ui close                 # stops it, by pid, leaving anyone else's alone
 ```
 
-Then drive it:
+Then drive it. **`--server agent` is the one to use** — it hosts the six input
+tools, the three `kaava-debug` reads, and three more that reach the backend
+directly:
 
 ```sh
-pnpm probe --agent --server ui screenshot     # writes kaava-shot.png — then Read it
-pnpm probe --agent --server ui snapshot       # every clickable element, with refs
-pnpm probe --agent --server ui click '{"target":"e12"}'
-pnpm probe --agent --server ui type_text '{"text":"hello"}'
-pnpm probe --agent --server ui press_key '{"key":"Enter"}'
-pnpm probe --agent --server ui eval '{"expression":"document.title"}'
+pnpm probe --agent --server agent screenshot     # writes kaava-shot.png — then Read it
+pnpm probe --agent --server agent snapshot       # every clickable element, with refs
+pnpm probe --agent --server agent click '{"target":"e12"}'
+pnpm probe --agent --server agent type_text '{"text":"hello"}'
+pnpm probe --agent --server agent press_key '{"key":"Enter"}'
+pnpm probe --agent --server agent eval '{"expression":"document.title"}'
+
+pnpm probe --agent --server agent shell_snapshot  # windows, clusters, panes, instances
+pnpm probe --agent --server agent recent_errors   # same buffer kaava-debug reads
 ```
+
+The three that had no equivalent before — **an app's Rust half is now reachable
+without going through its frontend**:
+
+```sh
+# Point a cluster at a project. No folder picker, so nothing blocks.
+pnpm probe --agent --server agent set_project '{"path":"C:/…/fixtures/saas-backend"}'
+
+# Mount an app into a pane; answers with the instance id.
+pnpm probe --agent --server agent open_app '{"appId":"schematify"}'
+
+# Call any method any app answers — all 18 of Schematify's, Home's, Files'.
+pnpm probe --agent --server agent app_call \
+  '{"app":"schematify","method":"schematify/lint","params":{"actor":"agent"}}'
+```
+
+Every `schematify/*` method except `schematify/state` needs an open project, so
+`set_project` comes first. All of them except `state` also require an `actor` of
+`"human"` or `"agent"` — send `"agent"`; `"system"` is never accepted.
+
+`kaava-ui` and `kaava-debug` are still registered and still work. Prefer
+`kaava-debug` for a **release** build — it is the one that is there without
+developer mode.
 
 `--agent` is what points the probe at the instance `pnpm ui launch` started
 rather than at an OpenKaava Braden is using. **Do not drop it**, and do not drive his
@@ -97,7 +125,9 @@ fresh one before clicking.
 **Avoid clicking anything that opens a native dialog.** Folder pickers block the
 webview, and every tool then times out after 20s until someone dismisses it by
 hand. `New Project`, `Open Project` and `Clone Project` on the Home screen are
-the ones to leave alone.
+the ones to leave alone — use `set_project` above instead, which is what they
+would have called anyway minus the picker. `app_call` refuses `home/open-project`,
+`home/new-project` and `files/save-as` by name for the same reason.
 
 There is no live console tail. `pnpm probe recent_errors` is what remembers
 failures, including the webview's — see above.

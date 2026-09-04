@@ -13,6 +13,11 @@
 //!
 //! Full argument, including why this ships in release builds:
 //! `docs/design-notes/agent-debugging.md`.
+//!
+//! [`super::agent`] hosts these three by delegation, next to the tools that
+//! drive the window; prefer it while *working on* OpenKaava. This module is what
+//! diagnoses a shipped build, being the one there without developer mode —
+//! which is why both are registered rather than one replacing the other.
 
 use crate::diagnostics::diagnostics;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
@@ -42,7 +47,11 @@ const DEFAULT_ERROR_LIMIT: usize = 100;
 /// them", and a truncated answer serves that better than an error does.
 const MAX_ERROR_LIMIT: usize = 500;
 
-static TOOLS: &[McpTool] = &[
+static TOOLS: &[McpTool] = &TOOL_LIST;
+
+/// The same three reads, as a const array the `agent` server can index. See
+/// [`super::ui::TOOL_LIST`] for why the array is named rather than inlined.
+pub(super) const TOOL_LIST: [McpTool; 3] = [
     McpTool {
         name: "shell_snapshot",
         description: "The live shell layout: every window, cluster, pane tree, mounted surface \
@@ -99,7 +108,14 @@ fn recent_errors_schema() -> Value {
 /// An unknown tool cannot arrive here — `Registry::call` checks the name against
 /// `TOOLS` first — so the final arm is a genuine impossibility rather than a
 /// second copy of that error message.
-fn call(app: &AppHandle, tool: &str, params: Option<Value>) -> Result<ToolAnswer, RpcError> {
+///
+/// `pub(super)` so [`super::agent`] can hand its three borrowed tool names
+/// straight through rather than keeping a second copy of these three reads.
+pub(super) fn call(
+    app: &AppHandle,
+    tool: &str,
+    params: Option<Value>,
+) -> Result<ToolAnswer, RpcError> {
     match tool {
         "shell_snapshot" => shell_snapshot(app).map(Into::into),
         "recent_errors" => Ok(recent_errors(params.as_ref()).into()),

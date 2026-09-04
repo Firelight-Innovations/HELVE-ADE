@@ -5,18 +5,18 @@
  *   node scripts/kaava-probe.mjs                     list the debug tools
  *   node scripts/kaava-probe.mjs shell_snapshot
  *   node scripts/kaava-probe.mjs recent_errors '{"after":12}'
- *   node scripts/kaava-probe.mjs --server ui snapshot
- *   node scripts/kaava-probe.mjs --agent --server ui click '{"target":"e12"}'
+ *   node scripts/kaava-probe.mjs --agent --server agent click '{"target":"e12"}'
+ *   node scripts/kaava-probe.mjs --agent --server agent app_call \
+ *     '{"app":"schematify","method":"schematify/lint","params":{"actor":"agent"}}'
  *
- * Prints the tool's JSON result on stdout and nothing else, so it can be piped
- * into `jq` or read straight by an agent. Everything explanatory goes to stderr.
- * A tool that answers with an image is written to a PNG instead, and the path
- * printed — a screenshot is not something to put through a terminal.
+ * `--server agent` is the one to reach for while working on OpenKaava; `ui` and
+ * `debug` host subsets of it. Prints the tool's JSON on stdout and nothing else,
+ * so it pipes into `jq`; explanation goes to stderr, and an image answer is
+ * written to a PNG whose path is printed rather than put through a terminal.
  *
- * This exists because the endpoint speaks MCP over streamable HTTP, which is a
- * three-step handshake and a session header — reachable with `curl` only if you
- * get all of it right, and silently wrong if you do not. See
- * `docs/design-notes/agent-debugging.md` for how the port and token are found.
+ * The endpoint speaks MCP over streamable HTTP — a three-step handshake and a
+ * session header, silently wrong under `curl` unless you get all of it right.
+ * `docs/design-notes/agent-debugging.md` covers how the port and token are found.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

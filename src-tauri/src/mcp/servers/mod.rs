@@ -3,8 +3,6 @@
 //! One module each, owning its tool descriptors, schemas and handler, and
 //! declaring a single `pub static SERVER` for [`seed`] to register.
 //!
-//! ## Before adding one
-//!
 //! **If the harness can already do it, it does not get a server.** No file
 //! reading, writing or listing, no search, no git. Every agent worth pointing at
 //! OpenKaava arrives with those, and a second worse copy costs a permission surface
@@ -13,10 +11,15 @@
 //! What earns a server is something that exists only inside OpenKaava and has no
 //! filesystem equivalent — Schematify's design model is the first real case, because
 //! an agent cannot read a spec's *boundaries* by opening a file. [`debug`] is
-//! the second, [`design`] the third and [`ui`] the fourth. Each module's own doc
-//! says which fact about it earns its place, and — for the two that write —
-//! which fact decides its gate, because "it writes" is not on its own one.
+//! the second, [`design`] the third and [`ui`] the fourth; each module's doc says
+//! what earns its place, and what decides its gate where it writes.
+//!
+//! [`agent`] is the fifth and the exception, earning its place on the client's
+//! axis rather than a capability's: nine of its twelve tools are [`ui`]'s and
+//! [`debug`]'s, composed so one job needs one connection instead of four. It
+//! indexes their arrays and delegates, so nothing here is a second copy.
 
+pub mod agent;
 pub mod debug;
 pub mod design;
 pub mod echo;
@@ -32,22 +35,24 @@ use super::Registry;
 /// line that should grow a `cfg` — left alone so that switching echo off is its
 /// own decision rather than a side effect of adding something beside it.
 ///
-/// `debug` is likewise unconditional, and for a reason that will outlast echo's:
-/// the builds worth debugging include the release one. A shipped OpenKaava that
-/// misbehaves on a machine none of us have is exactly the case where reading its
-/// layout and its failures is worth the most, and a server compiled out of that
-/// build cannot answer.
+/// `debug` is likewise unconditional, for a reason that will outlast echo's: a
+/// shipped OpenKaava misbehaving on a machine none of us have is exactly where
+/// reading its layout and its failures is worth the most, and a server compiled
+/// out of that build cannot answer.
 ///
 /// `design` ships for the ordinary user rather than for us — the comments it
-/// serves are theirs, left in a release build — which is why it is the one write
-/// surface with no gate. `ui` ships too and is the one that can click; what makes
-/// that safe is not a `cfg` but `dev_only`, a gate the tests below can hold to
-/// account where a missing module cannot.
+/// serves are theirs — which is why it is the one write surface with no gate.
+/// `ui` ships too and can click; what makes that safe is not a `cfg` but
+/// `dev_only`, a gate the tests below can hold to account.
+///
+/// `agent` is last because it is the one that composes the others, and it
+/// carries `ui`'s gate for `ui`'s reason: it can click too.
 pub fn seed(registry: &Registry) {
     registry.register(&echo::SERVER);
     registry.register(&debug::SERVER);
     registry.register(&design::SERVER);
     registry.register(&ui::SERVER);
+    registry.register(&agent::SERVER);
 }
 
 #[cfg(test)]
@@ -60,7 +65,7 @@ mod tests {
         seed(&registry);
 
         let ids: Vec<String> = registry.list(true).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids, vec!["echo", "debug", "design", "ui"]);
+        assert_eq!(ids, vec!["echo", "debug", "design", "ui", "agent"]);
     }
 
     /// Every ordinary server is usable the moment OpenKaava starts. The one that
@@ -82,12 +87,16 @@ mod tests {
 
     /// With developer mode off, the shipped build looks exactly as it did before
     /// the UI server existed. This is the assertion that would fail if a future
-    /// change leaked it into the ordinary list.
+    /// change leaked one of them into the ordinary list.
     ///
     /// `design` is in this list and is meant to be: it is the one write surface
     /// an ordinary user is supposed to have, for the reasons in its module doc.
+    /// Two servers are now absent rather than one — `agent` can click for the
+    /// same reason `ui` can, and composing `debug`'s three reads into it does
+    /// not pull them out from behind that gate, which is why `debug` itself
+    /// stays registered and stays in the list below.
     #[test]
-    fn a_default_install_sees_every_server_except_the_one_that_can_click() {
+    fn a_default_install_sees_no_server_that_can_click() {
         let registry = Registry::default();
         seed(&registry);
 
@@ -117,7 +126,7 @@ mod tests {
         seed(&registry);
         seed(&registry);
 
-        assert_eq!(registry.list(true).len(), 4);
+        assert_eq!(registry.list(true).len(), 5);
     }
 
     /// Held against the servers this build actually registers, not against a

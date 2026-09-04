@@ -20,6 +20,14 @@ use tauri::AppHandle;
 /// cannot hold one, and rather than a `&'static str` of JSON because that moves
 /// a malformed schema from a compile error to a runtime one nobody would see
 /// until a client asked for `tools/list`.
+///
+/// `Copy` because a tool belongs to more than one server now: `agent` composes
+/// its list out of `ui`'s and `debug`'s entries rather than restating them, and
+/// a const array cannot be indexed to build another one unless the element type
+/// can be copied out. Every field is already a `&'static str` or a fn pointer,
+/// so this costs nothing and prevents the alternative — the same description
+/// written twice, drifting the first time one of them is edited.
+#[derive(Clone, Copy)]
 pub struct McpTool {
     pub name: &'static str,
     pub description: &'static str,

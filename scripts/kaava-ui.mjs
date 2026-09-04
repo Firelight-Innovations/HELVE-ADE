@@ -62,7 +62,7 @@ function read(path) {
 }
 
 /**
- * Switch on developer mode and the UI server, before the first launch.
+ * Switch on developer mode and the agent server, before the first launch.
  *
  * Written rather than clicked, because of a chicken and egg: the server is what
  * an agent would use to click the switch, and the switch is what turns the
@@ -83,12 +83,16 @@ function enable() {
   settings.values = { ...settings.values, "developer.mode": true };
   writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 
+  // Both, deliberately. `agent` is what these scripts point at now, and it
+  // hosts `ui`'s six tools by delegation — but `ui` costs nothing to leave on
+  // and is what an older handoff or a half-remembered command line asks for. A
+  // launch that answers both spellings is worth the second key.
   const mcpPath = join(dir, "mcp.json");
   const mcp = read(mcpPath);
-  mcp.switched = { ...mcp.switched, ui: true };
+  mcp.switched = { ...mcp.switched, ui: true, agent: true };
   writeFileSync(mcpPath, `${JSON.stringify(mcp, null, 2)}\n`);
 
-  note(`developer mode and the UI server switched on in ${dir}`);
+  note(`developer mode and the agent server switched on in ${dir}`);
 }
 
 function launch() {
@@ -106,7 +110,7 @@ function launch() {
   child.unref();
 
   note(`launched ${EXE}`);
-  note("give it a few seconds, then: pnpm probe --agent --server ui screenshot");
+  note("give it a few seconds, then: pnpm probe --agent --server agent screenshot");
 }
 
 /**
@@ -132,10 +136,10 @@ async function close() {
 
 const HELP = `kaava-ui — an agent-owned OpenKaava to drive
 
-  launch    start one, with developer mode and the UI server switched on
+  launch    start one, with developer mode and the agent server switched on
   close     stop it, by pid, leaving anyone else's OpenKaava alone
 
-Driving it is \`pnpm probe --agent --server ui <tool>\`:
+Driving it is \`pnpm probe --agent --server agent <tool>\`:
 
   screenshot                          a PNG, written to kaava-shot.png
   snapshot                            what can be clicked, with refs
@@ -143,6 +147,14 @@ Driving it is \`pnpm probe --agent --server ui <tool>\`:
   type_text '{"text":"hello"}'
   press_key '{"key":"Enter"}'
   eval '{"expression":"document.title"}'
+
+  shell_snapshot                      windows, clusters, panes, instances
+  recent_errors                       what has failed since launch
+  boot_status                         how far startup got
+
+  set_project '{"path":"C:\\path\\to\\project"}'
+  open_app '{"appId":"schematify"}'
+  app_call '{"app":"schematify","method":"schematify/lint","params":{"actor":"agent"}}'
 `;
 
 async function main() {
