@@ -383,6 +383,27 @@ placeholders rather than looking broken.
 - **"A real project draws zero ENTRY badges"** — no ENTRY badge was seen
   anywhere, which is circumstantial, not confirmation.
 
+## A note on mutation testing, learned the hard way
+
+The countermeasure this repo adopted for tests that cannot fail is: break the
+production code, watch the test go red, restore, and say so in the commit
+message. It works. But it has a failure mode of its own, found while fixing B3.
+
+`fitTo` ended up with **two independent safety nets** — a `Number.isFinite`
+check on the inputs and a second on the computed result. Either one alone saves
+every bad case. So dropping the guard a test *names* left the test green, and
+the mutation appeared to prove nothing was being tested.
+
+The agent caught this in its own work, corrected three misleading mutation
+comments, and re-verified properly: it checked out the fully pre-fix versions of
+`viewport.ts`, `layout.ts` and `geometry.ts` wholesale and confirmed all five
+non-finite-input tests go red **together**, then restored to 20/20 green.
+
+**So: where redundant guards exist, mutating one proves nothing.** Mutate the
+whole pre-fix state, or the mutation evidence is itself the thing it was meant
+to rule out. A mutation comment that names one line and was never checked
+against the others is a claim, not a proof.
+
 ## Corrections made during the sweep
 
 Recorded because each was believed before it was checked.
