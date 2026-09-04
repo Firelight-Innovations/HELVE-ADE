@@ -60,8 +60,27 @@ const RAW: RawGraph = {
     node({ id: "f1", slug: "verify", kind: "contract-method", title: "verify", parent: "m2" }),
     node({ id: "f2", slug: "verify-case-1", kind: "test-case", title: "Case 1", parent: "m2" }),
     node({ id: "f3", slug: "verify-p95", kind: "budget", title: "verify_p95", parent: "m2" }),
-    // An annotation this app's `NodeKind` has no member for at all.
-    node({ id: "c1", slug: "watch-out", kind: "comment", title: "Watch out", parent: "svc" }),
+    // A comment anchored to a module in this service — its drawn position
+    // comes from `anchor` (PRD §11.3), not from this `parent` field, which
+    // only says the comment belongs under `auth-service` at all.
+    node({
+      id: "c1",
+      slug: "watch-out",
+      kind: "comment",
+      title: "Watch out",
+      parent: "svc",
+      anchor: "m2",
+      body: "This one gets paged on.",
+      author: "m.ross",
+    }),
+    // A floating comment: no anchor at all.
+    node({
+      id: "c2",
+      slug: "floating-note",
+      kind: "comment",
+      title: "Floating note",
+      parent: "svc",
+    }),
   ],
   edges: [
     { id: "e1", kind: "depends_on", source: "m1", target: "m2" },
@@ -70,6 +89,7 @@ const RAW: RawGraph = {
     { id: "e4", kind: "implements", source: "m4", target: "m2" },
     { id: "e5", kind: "depends_on", source: "n1", target: "svc2" }, // wrong service entirely
     { id: "e6", kind: "depends_on", source: "m1", target: "g1" }, // a group is drawn, never an edge endpoint
+    { id: "e7", kind: "depends_on", source: "m1", target: "c1" }, // a comment is drawn, never an edge endpoint
   ],
 };
 
@@ -82,9 +102,9 @@ describe("projectServiceGraph", () => {
     expect(graph.tier).toBe("service");
   });
 
-  it("includes auth-service's own modules and its group, not billing-service's", () => {
+  it("includes auth-service's own modules, group, and comments, not billing-service's", () => {
     const ids = graph.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual(["g1", "m1", "m2", "m3", "m4"].sort());
+    expect(ids).toEqual(["c1", "c2", "g1", "m1", "m2", "m3", "m4"].sort());
   });
 
   it("drops every tier-3 facet under a module — the Module Schematic's content, not the Service one's", () => {
@@ -94,8 +114,23 @@ describe("projectServiceGraph", () => {
     expect(ids).not.toContain("f3");
   });
 
-  it("drops a comment — an annotation this app's NodeKind cannot represent", () => {
-    expect(graph.nodes.map((n) => n.id)).not.toContain("c1");
+  it("draws a comment as a node, carrying its body and author", () => {
+    const comment = graph.nodes.find((n) => n.id === "c1");
+    expect(comment).toBeDefined();
+    expect(comment?.kind).toBe("comment");
+    expect(comment?.body).toBe("This one gets paged on.");
+    expect(comment?.author).toBe("m.ross");
+  });
+
+  it("positions an anchored comment at its anchor, not its containment parent", () => {
+    // `c1`'s raw `parent` is `svc` (it just belongs under auth-service), but
+    // its `anchor` names `m2` — the node it is drawn pinned to, per
+    // `../engine/engine.ts`'s own "anchored to a node by parentId" wording.
+    expect(graph.nodes.find((n) => n.id === "c1")?.parentId).toBe("m2");
+  });
+
+  it("floats a comment with no anchor — parentId null", () => {
+    expect(graph.nodes.find((n) => n.id === "c2")?.parentId).toBeNull();
   });
 
   it("draws a group as a node, but see index.test.ts / index.ts for why it is not counted", () => {
@@ -105,6 +140,14 @@ describe("projectServiceGraph", () => {
     // containment box the Service Schematic draws.
     expect(graph.nodes.map((n) => n.id)).toContain("g1");
     expect(graph.nodes.find((n) => n.id === "g1")?.kind).toBe("group");
+  });
+
+  it("draws 7 nodes but counts 4 — a group and a comment are drawn, neither counted", () => {
+    // `m1`-`m4` are the only real modules; `g1`, `c1`, `c2` are annotation
+    // tier. `isAnnotationNodeKind` (`./types.ts`) has to name both kinds or
+    // `countNodes` (`./index.ts`) miscounts one of them as a module.
+    expect(graph.nodes).toHaveLength(7);
+    expect(countNodes(graph)).toBe(4);
   });
 
   it("maps a top-level module's parent to null, matching the fixture convention", () => {
@@ -204,6 +247,10 @@ describe("projectServiceGraph", () => {
 
   it("drops an edge naming a group as an endpoint, even though the group itself is drawn", () => {
     expect(graph.edges.some((e) => e.id === "e6")).toBe(false);
+  });
+
+  it("drops an edge naming a comment as an endpoint, even though the comment itself is drawn", () => {
+    expect(graph.edges.some((e) => e.id === "e7")).toBe(false);
   });
 
   it("keeps an implements edge, renaming source/target to from/to", () => {
@@ -329,6 +376,24 @@ describe("projectModuleGraph", () => {
         parent: "mod",
         registry_ref: "lib-jose",
       }),
+      node({ id: "g1", slug: "checks", kind: "group", title: "Checks", parent: "mod" }),
+      node({
+        id: "note1",
+        slug: "anchored-note",
+        kind: "comment",
+        title: "Anchored note",
+        parent: "mod",
+        anchor: "verify",
+        body: "Rotate before touching this.",
+        author: "m.ross",
+      }),
+      node({
+        id: "note2",
+        slug: "floating-note",
+        kind: "comment",
+        title: "Floating note",
+        parent: "mod",
+      }),
       // A different module entirely — nothing here should leak in.
       node({ id: "mod2", slug: "token-issuer", kind: "module", parent: "svc" }),
       node({
@@ -367,11 +432,32 @@ describe("projectModuleGraph", () => {
 
   it("includes only token-verifier's own facets, not token-issuer's", () => {
     const ids = graph.nodes.map((n) => n.id).sort();
-    expect(ids).toEqual(["budget", "doc", "mod", "test1", "verify", "dep"].sort());
+    expect(ids).toEqual(
+      ["budget", "doc", "mod", "test1", "verify", "dep", "g1", "note1", "note2"].sort(),
+    );
   });
 
   it("keeps a facet's real parent id — the module's own, not null", () => {
     expect(graph.nodes.find((n) => n.id === "verify")?.parentId).toBe("mod");
+  });
+
+  it("draws a group facet on the Module Schematic — the same annotation-tier gap the Service tier had", () => {
+    const group = graph.nodes.find((n) => n.id === "g1");
+    expect(group).toBeDefined();
+    expect(group?.kind).toBe("group");
+  });
+
+  it("draws a comment facet on the Module Schematic, positioned at its anchor", () => {
+    const comment = graph.nodes.find((n) => n.id === "note1");
+    expect(comment).toBeDefined();
+    expect(comment?.kind).toBe("comment");
+    expect(comment?.body).toBe("Rotate before touching this.");
+    expect(comment?.author).toBe("m.ross");
+    expect(comment?.parentId).toBe("verify");
+  });
+
+  it("floats a module-tier comment with no anchor — parentId null", () => {
+    expect(graph.nodes.find((n) => n.id === "note2")?.parentId).toBeNull();
   });
 
   it("draws a contract method's signature, returns, and exported flag — not a stored covers count", () => {

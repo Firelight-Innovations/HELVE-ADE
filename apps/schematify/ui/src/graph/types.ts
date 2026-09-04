@@ -32,10 +32,10 @@ export type NodeKind =
  *  `../engine/config.ts`'s own `ANNOTATION_KINDS` for the engine's wider
  *  vocabulary, but never counted as a node and never an edge endpoint (the
  *  owner's ruling on the wave 2 acceptance count — "it arranges and it
- *  annotates, it does not mean"). `"comment"` is not a member: this app's
- *  `NodeKind` has no member of that name at all, a separate gap the wiring
- *  handoff names rather than papers over here. */
-export const ANNOTATION_NODE_KINDS: readonly NodeKind[] = ["group"];
+ *  annotates, it does not mean"). Both members are real `NodeKind`s — a
+ *  `comment` projects onto a Schematic the same way a `group` does
+ *  (`../graph/project.ts`), just never counted here. */
+export const ANNOTATION_NODE_KINDS: readonly NodeKind[] = ["group", "comment"];
 
 /** Whether `kind` is annotation-tier — see `ANNOTATION_NODE_KINDS`. */
 export function isAnnotationNodeKind(kind: NodeKind): boolean {
@@ -154,6 +154,14 @@ export interface GraphNode {
   /** A module root only: PRD §12.5's tier-3 screen-reference path,
    *  `schematify://screen/<slug>`. */
   screenRef?: string;
+
+  /** `comment`: the note text — named to match `CommentFields.body`
+   *  (`crates/schematify-core/src/node.rs`) and `../engine/doc.ts`'s
+   *  `SchematicNode.body`, which `../engine/layout.ts`'s `buildDoc` reads
+   *  this field into. */
+  body?: string;
+  /** `comment`: who wrote it — see `body` above. */
+  author?: string;
 
   // --- PRD §12.12 Inspector content (Wave 6) --------------------------------
 

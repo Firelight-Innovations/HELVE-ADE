@@ -43,6 +43,12 @@ export function buildDoc(
     },
     collapsed: node.collapsed ?? false,
     role: roleOf(node, config),
+    // A real `comment` node reaches `buildDoc` through `graph.nodes` like any
+    // other kind (`../graph/project.ts`), not only through a purely cosmetic
+    // annotation stored in the layout file (`fromAnnotation`, below) — so its
+    // text has to be carried the same way every other field on this line is.
+    author: node.author,
+    body: node.body,
     badge: node.badge,
     lifecycle: node.lifecycle,
     layer: node.layer,
