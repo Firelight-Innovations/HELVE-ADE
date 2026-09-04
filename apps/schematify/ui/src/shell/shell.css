@@ -758,6 +758,15 @@
   font-size: 10.5px;
 }
 
+/* Cell 5: a reparent, duplicate, or dragged-in edge this session has not
+ * reached a real nodes/edges file (see StatusBar.tsx's own header comment).
+ * `--kv-warn` rather than the cell's default dim tertiary text, so the one
+ * cell naming session-only, at-risk work reads differently from the other 4,
+ * which report a saved or computed state. */
+.kv-statusbar__cell--warning {
+  color: var(--kv-warn);
+}
+
 /* --- Stack Schematic first-run empty state ------------------------------------ */
 
 .kv-empty-stack {
