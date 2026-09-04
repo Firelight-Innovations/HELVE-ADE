@@ -111,10 +111,10 @@ function asLifecycle(value: string): Lifecycle {
 }
 
 /**
- * The 2 raw kinds this projection *draws* on a Service Schematic: `module`
- * (PRD tier 2) and `group`, the annotation-tier containment box PRD §11.3
- * and §12.4 both draw on the canvas. `service` is never a member — it is
- * the root the whole graph is drawn under, carried separately as
+ * The 3 raw kinds this projection *draws* on a Service Schematic: `module`
+ * (PRD tier 2), `group`, and `comment` — the 2 annotation-tier kinds PRD
+ * §11.3 and §12.4 both draw on the canvas. `service` is never a member — it
+ * is the root the whole graph is drawn under, carried separately as
  * `serviceSlug`/`serviceTitle`.
  *
  * Every other kind is a tier-3 facet the Module Schematic draws, not the
@@ -122,29 +122,51 @@ function asLifecycle(value: string): Lifecycle {
  * the bug that inflated a 12-module real service into 70 nodes on first
  * contact with real data; see the wiring handoff.
  *
- * A `group` is drawn but not counted — see `ANNOTATION_NODE_KINDS` in
- * `./types.ts`, which `countNodes` reads for the status-bar figure, and
- * `MODULE_ONLY_EDGE_ENDPOINT_KINDS` below, which keeps a group out of the
- * edge list the same way. Drawn and counted are 2 different questions; a
- * `comment` answers the first "nowhere" (this app's `NodeKind` has no
- * member for it at all, a separate open gap the wiring handoff names) and
- * a `group` answers it "yes" while still answering the second "no".
+ * A `group` or `comment` is drawn but not counted — see
+ * `ANNOTATION_NODE_KINDS` in `./types.ts`, which `countNodes` reads for the
+ * status-bar figure, and `MODULE_ONLY_EDGE_ENDPOINT_KINDS` below, which
+ * keeps both out of the edge list the same way. Drawn and counted are 2
+ * different questions; both annotation kinds answer the 2nd "no" while
+ * still answering the 1st "yes".
  */
-const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module", "group"]);
+const SERVICE_SCHEMATIC_KINDS: ReadonlySet<string> = new Set(["module", "group", "comment"]);
 
 /**
  * The 1 raw kind an edge may connect to on a Service Schematic: `module`.
- * PRD §11.3's annotation tier — `group` here, `comment` never reaching this
- * far at all — carries no semantic edge, per the same ruling
- * `SERVICE_SCHEMATIC_KINDS` above encodes: "an annotation-tier box is never
- * a node and never an edge endpoint" (WIREFRAME-EXTRACT.md's Resolutions
- * section). A `group` can be drawn while still never appearing as an
- * edge's `from`/`to`.
+ * PRD §11.3's annotation tier — `group` and `comment` alike — carries no
+ * semantic edge, per the same ruling `SERVICE_SCHEMATIC_KINDS` above
+ * encodes: "an annotation-tier box is never a node and never an edge
+ * endpoint" (WIREFRAME-EXTRACT.md's Resolutions section). Either kind can be
+ * drawn while still never appearing as an edge's `from`/`to`.
  */
 const MODULE_ONLY_EDGE_ENDPOINT_KINDS: ReadonlySet<string> = new Set(["module"]);
 
-function asNodeKind(rawKind: "module" | "group"): NodeKind {
+function asNodeKind(rawKind: "module" | "group" | "comment"): NodeKind {
   return rawKind;
+}
+
+/**
+ * A `comment`'s position on the canvas: `../engine/engine.ts`'s own
+ * `addComment` doc says it plainly — "anchored to a node by `parentId` or
+ * floating free" — so `CommentFields.anchor` (a node id, or absent) is what
+ * this projection has to put in `GraphNode.parentId` for a comment, not the
+ * envelope's own containment `parent` the way every other kind uses it.
+ * `parent` still decides which tier's subtree the comment belongs to at all
+ * (`isDescendantOf` reads it below, kind notwithstanding); `anchor` only
+ * decides where a comment that IS included draws relative to another node.
+ */
+function commentParentId(node: RawNode): string | null {
+  return typeof node.anchor === "string" ? node.anchor : null;
+}
+
+/** `comment`: the note text and its author, straight off `CommentFields` —
+ *  see `./types.ts`'s `GraphNode.body`/`author` for why they keep those
+ *  names rather than `docBody`-style ones. */
+function commentFields(node: RawNode): Pick<GraphNode, "body" | "author"> {
+  return {
+    body: typeof node.body === "string" ? node.body : undefined,
+    author: typeof node.author === "string" ? node.author : undefined,
+  };
 }
 
 /**
@@ -226,15 +248,21 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
     id: node.id,
     slug: node.slug,
     title: node.title,
-    kind: asNodeKind(node.kind as "module" | "group"),
+    kind: asNodeKind(node.kind as "module" | "group" | "comment"),
     layer: asLayer(node.layer),
     lifecycle: asLifecycle(node.lifecycle),
-    parentId: node.parent === serviceNode.id ? null : (node.parent ?? null),
+    parentId:
+      node.kind === "comment"
+        ? commentParentId(node)
+        : node.parent === serviceNode.id
+          ? null
+          : (node.parent ?? null),
     // No structural source for PRD §12.1's ENTRY badge exists in
     // `crates/schematify-core` yet — `ServiceFields.entry_point` is prose
     // ("how the service starts"), not a flag on a module. STALE is
     // derivable; see the wiring handoff.
     ...staleFields(node, byId, nowMs),
+    ...(node.kind === "comment" ? commentFields(node) : {}),
   }));
 
   // A group can be drawn (above) while never becoming an edge endpoint —
@@ -269,14 +297,19 @@ export function projectServiceGraph(raw: RawGraph, serviceSlug: string): Service
 
 // --- Module Schematic (PRD §12.11, tier 3) ---------------------------------
 
-/** PRD §12.11's 5 facet kinds — every `NodeKind` a Module Schematic draws
- *  that is not the module root itself. */
+/** PRD §12.11's 5 facet kinds, plus the 2 annotation-tier kinds PRD §11.3
+ *  draws on every tier (`group`, `comment`) — every `NodeKind` a Module
+ *  Schematic draws that is not the module root itself. Omitting the latter
+ *  2 here was the same bug `SERVICE_SCHEMATIC_KINDS` above had: a project's
+ *  module-scoped comment or group never reached this tier at all. */
 const MODULE_FACET_KINDS: ReadonlySet<string> = new Set([
   "contract-method",
   "test-case",
   "budget",
   "doc-block",
   "external-dep",
+  "group",
+  "comment",
 ]);
 
 /** The 3 tier-3 edge kinds PRD §11.1 closes the vocabulary to. Unlike the
@@ -327,7 +360,7 @@ function budgetProbeCommand(node: RawNode): string | undefined {
 
 /** One facet's kind-specific fields (PRD §12.11), the tier-3 counterpart of
  *  `projectServiceGraph`'s inline node map — split into its own function
- *  because a `switch` over 5 kinds inline would out-grow what that map
+ *  because a `switch` over 6 kinds inline would out-grow what that map
  *  reads comfortably. A contract method's covers count is deliberately not
  *  one of these fields: wave 6 removed `GraphNode.coversCount` as a PRD
  *  §0.4 breach (a stored count that could drift from the edges) and
@@ -364,6 +397,8 @@ function facetFields(
         docAudience: typeof node.audience === "string" ? node.audience : undefined,
         docBody: typeof node.body === "string" ? node.body : undefined,
       };
+    case "comment":
+      return commentFields(node);
     case "external-dep": {
       const entry =
         typeof node.registry_ref === "string" ? libraries.get(node.registry_ref) : undefined;
@@ -420,7 +455,13 @@ export function projectModuleGraph(raw: RawGraph, moduleSlug: string): Schematic
       // A facet's real parent is already the module's own id — module.ts's
       // stand-in fixture set it exactly this way — so unlike the service
       // tier's root-becomes-null rewrite, only the root itself is `null`.
-      parentId: isRoot ? null : (node.parent ?? null),
+      // A comment is the one exception: see `commentParentId` — its drawn
+      // position comes from `anchor`, never from this containment `parent`.
+      parentId: isRoot
+        ? null
+        : node.kind === "comment"
+          ? commentParentId(node)
+          : (node.parent ?? null),
       description: isRoot && typeof node.description === "string" ? node.description : undefined,
       screenRef: isRoot ? firstScreenRef(node.ui_refs) : undefined,
       ...staleFields(node, byId, nowMs),
