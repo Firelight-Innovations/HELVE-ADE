@@ -890,6 +890,13 @@ fn list_runs(context: &CallContext, params: Option<&Value>) -> Result<Value, Rpc
 /// storing a count, and this function is where that rule is kept for the
 /// dashboard specifically, the same way `lint_graph` keeps it for Problems.
 ///
+/// An id that resolves to a real node of any other kind is refused rather
+/// than drawn as a module — this dashboard's counters and history are
+/// scoped by `NodeKind::Module` semantics (children, budgets, tests), and
+/// silently applying that scope to a service or a leaf node produces
+/// numbers that answer nothing real. The slug lookup below already carried
+/// this rule; this doc note is the id path catching up to it.
+///
 /// Contract change history (the dashboard's 4th table) is not shaped here.
 /// No schema in this crate records a per-method change log — `AuditRow`
 /// records a lifecycle *transition*, not the contract edit that motivated
@@ -927,6 +934,12 @@ fn module_dashboard(context: &CallContext, params: Option<&Value>) -> Result<Val
     let node = graph
         .node(module_id)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no node with id {module_id}")))?;
+    if *node.kind() != NodeKind::Module {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{module_id} is a {}, not a module", node.kind()),
+        ));
+    }
     let store = Store::open(root);
 
     // Budgets and tests are graph state — a probe declaration or a linked
@@ -2889,6 +2902,30 @@ mod tests {
         })
     }
 
+    /// A bare `Module` node, for tests that need a legal `module_dashboard`
+    /// scope without a service's shape — `sample_service_node` above is
+    /// wrong for that: its whole point is being a *service*, and
+    /// `module_dashboard` now refuses anything that is not a module.
+    fn sample_module_node() -> Node {
+        use schematify_core::{Authorship, Lifecycle, NodeEnvelope, NodeKind, Slug};
+
+        Node::new(NodeEnvelope {
+            id: schematify_core::mint_id(),
+            slug: Slug::new("sample-module").expect("legal slug"),
+            kind: NodeKind::Module,
+            title: "Sample Module".to_string(),
+            description: None,
+            lifecycle: Lifecycle::Accepted,
+            layer: None,
+            parent: None,
+            decisions: Vec::new(),
+            authored_by: Authorship::Human,
+            created: "2026-09-03T00:00:00Z".to_string(),
+            superseded_by: None,
+            stale: None,
+        })
+    }
+
     fn budget_module_node(id: Uuid, slug: &str, metric: &str) -> Node {
         use schematify_core::{
             Authorship, BudgetFields, BudgetTier, Lifecycle, NodeEnvelope, NodeKind, Probe, Slug,
@@ -3147,7 +3184,7 @@ mod tests {
         store.init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let scope = sample_service_node();
+        let scope = sample_module_node();
         store.write_node(&scope).expect("seed write succeeds");
 
         let value = dispatch(
@@ -3196,7 +3233,7 @@ mod tests {
         store.init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let scope = sample_service_node();
+        let scope = sample_module_node();
         store.write_node(&scope).expect("seed write succeeds");
         let scope_id = scope.id();
 
@@ -3234,7 +3271,7 @@ mod tests {
                 "at": "2026-09-03T00:00:00Z",
                 "outcome": "matched",
                 "node_id": scope_id.to_string(),
-                "slug": "auth-service",
+                "slug": "sample-module",
                 "site": { "file": "src/only_evidence_this_test_wrote.rs", "line": 1 },
             })
             .to_string(),
@@ -3283,7 +3320,7 @@ mod tests {
         store.init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let scope = sample_service_node();
+        let scope = sample_module_node();
         store.write_node(&scope).expect("seed write succeeds");
         let scope_id = scope.id();
 
@@ -3488,5 +3525,39 @@ mod tests {
         )
         .expect_err("an id with no node is refused");
         assert_eq!(err.code, INVALID_PARAMS);
+    }
+
+    /// The regression this wave exists to close: an id that resolves to a
+    /// real node, just not a module one, must be refused rather than drawn
+    /// as if it were the module it names. `sample_service_node` names a
+    /// `Service`, and the slug lookup path already refuses this shape (it
+    /// filters on `kind == Module` before ever matching a slug) — this pins
+    /// the id path to the same rule.
+    #[test]
+    fn module_dashboard_refuses_a_service_id() {
+        let dir = TempDir::new("module-dashboard-wrong-kind");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let service = sample_service_node();
+        store.write_node(&service).expect("seed write succeeds");
+
+        let err = dispatch(
+            &context,
+            "schematify/module-dashboard",
+            Some(json!({ "actor": "human", "module": service.id().to_string() })),
+        )
+        .expect_err("a service id is refused, not drawn as a module");
+        assert_eq!(err.code, INVALID_PARAMS);
+        // Names which failure this is — a real node of the wrong kind, not
+        // an id that resolves to nothing — so a caller can tell the two
+        // apart, per the slug path's existing "no module node with slug"
+        // wording for its own refusal.
+        assert!(
+            err.message.contains("service") && err.message.contains("not a module"),
+            "expected the error to name the found kind, got: {}",
+            err.message
+        );
     }
 }
