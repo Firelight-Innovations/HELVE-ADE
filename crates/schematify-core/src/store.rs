@@ -390,14 +390,14 @@ impl Store {
     /// Move a node's lifecycle on, writing the node and appending the audit
     /// row as the one action PRD section 6.3 allows.
     ///
-    /// `node` supplies an id and nothing else trusted: the real lifecycle
-    /// comes from disk ([`Store::read_node`]), checked against the table
-    /// ([`check_transition`]). `node.lifecycle` is compared against that
-    /// read only as the caller's claimed starting state, refused on
-    /// disagreement ([`CoreError::StaleTransitionClaim`]). Only the disk
-    /// copy, the lifecycle move, and the two side-fields a transition may
-    /// carry (`stale`, `superseded_by`) are persisted - never the rest of
-    /// the caller's copy. `node` becomes the real result on success.
+    /// `node` supplies an id and nothing else trusted: the real lifecycle comes
+    /// from disk ([`Store::read_node`]), checked against the table
+    /// ([`check_transition`]). `node.lifecycle` is compared against that read
+    /// only as the caller's claimed starting state, refused on disagreement
+    /// ([`CoreError::StaleTransitionClaim`]). Only the disk copy, the lifecycle
+    /// move, and the two side-fields a transition may carry (`stale`,
+    /// `superseded_by`) are persisted, never the rest of the caller's copy, and
+    /// `stale` is cleared by any move out of it. `node` becomes the real result.
     ///
     /// # Errors
     ///
@@ -451,14 +451,28 @@ impl Store {
 
         // Built from `before`, the disk copy, not from the caller's `node` -
         // see the doc comment above for why. `stale` and `superseded_by` are
-        // the two fields a transition is documented to carry alongside the
-        // lifecycle move, each gated to the one row of the table that
-        // reaches it, so neither can be smuggled in on an unrelated move.
+        // the only two fields a transition may carry alongside the lifecycle
+        // move, and each is handled on its own terms below.
         let mut after = before.clone();
         after.envelope.lifecycle = to;
-        if to == Lifecycle::Stale {
-            after.envelope.stale = node.envelope.stale.clone();
-        }
+
+        // Carried in on the move into `stale`, and cleared by every move out
+        // of it. PRD section 7.4 says a human re-review resolves staleness and
+        // that nothing else does, and `stale -> accepted` and `stale ->
+        // specified` are that re-review, so leaving the state is what resolves
+        // the mark. Gating the copy alone left no path through this function
+        // that could clear it. Clearing consults the caller for nothing, so
+        // the trust boundary is untouched: a caller still cannot write a value
+        // here, only lose one it was never entitled to keep.
+        after.envelope.stale = if to == Lifecycle::Stale {
+            node.envelope.stale.clone()
+        } else {
+            None
+        };
+
+        // `superseded_by` needs no mirror-image clear. `deprecated` is
+        // terminal - no row of the table leaves it - so a successor written on
+        // the way in can never be carried into some later state.
         if to == Lifecycle::Deprecated {
             after.envelope.superseded_by = node.envelope.superseded_by;
         }
@@ -567,8 +581,20 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lifecycle::Staleness;
     use crate::node::{Authorship, NodeEnvelope, NodeKind};
     use crate::slug::Slug;
+
+    /// The mark a staleness cascade hands in with the move into `stale`,
+    /// shaped as PRD section 7.4 draws it: the module whose contract moved,
+    /// the member that moved, and when.
+    fn mark() -> Staleness {
+        Staleness {
+            source: Uuid::from_u128(2),
+            member: Some("verify-signature".to_owned()),
+            at: "2026-08-25T11:40:00Z".to_owned(),
+        }
+    }
 
     fn node(id: u128, lifecycle: Lifecycle) -> Node {
         Node::new(NodeEnvelope {
@@ -814,6 +840,80 @@ mod tests {
         // `node` is overwritten with the real, disk-sourced result, so a
         // caller cannot even read its own forged copy back as if it had won.
         assert_eq!(value.envelope.title, "Token Verifier");
+    }
+
+    /// One half of the `stale` rule: the mark is the one thing a caller may
+    /// hand in alongside the move into `stale`, because the cascade that
+    /// fires the move knows the contract that changed and a graph reloaded
+    /// afterwards does not.
+    #[test]
+    fn write_transition_carries_the_staleness_mark_in_on_the_move_to_stale() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path());
+        store.init().unwrap();
+        let mut value = node(1, Lifecycle::Accepted);
+        store.write_node(&value).unwrap();
+
+        value.envelope.stale = Some(mark());
+        store
+            .write_transition(
+                &mut value,
+                Lifecycle::Stale,
+                Actor::System,
+                "schematify",
+                "2026-08-25T11:40:00Z",
+                "An upstream contract changed.",
+            )
+            .unwrap();
+
+        let on_disk: Node =
+            serde_json::from_str(&fs::read_to_string(store.node_path(value.id())).unwrap())
+                .unwrap();
+        assert_eq!(on_disk.envelope.stale, Some(mark()));
+        assert_eq!(value.envelope.stale, Some(mark()));
+    }
+
+    /// The other half, and issue #110's regression: the table lets a reviewer
+    /// take a node back out of `stale`, and the copy above was gated on
+    /// `to == Stale`, so the mark read off disk survived every such move and
+    /// nothing reaching this function could clear it. PRD section 7.4 makes a
+    /// human re-review the one thing that resolves staleness, and these two
+    /// rows are that re-review.
+    #[test]
+    fn write_transition_clears_the_staleness_mark_when_a_reviewer_resolves_it() {
+        for to in [Lifecycle::Accepted, Lifecycle::Specified] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = Store::open(directory.path());
+            store.init().unwrap();
+            let mut value = node(1, Lifecycle::Stale);
+            value.envelope.stale = Some(mark());
+            store.write_node(&value).unwrap();
+
+            store
+                .write_transition(
+                    &mut value,
+                    to,
+                    Actor::Human,
+                    "m.ross",
+                    "2026-08-25T14:02:00Z",
+                    "Re-reviewed against the new signature.",
+                )
+                .unwrap();
+
+            assert_eq!(value.envelope.lifecycle, to);
+            assert_eq!(
+                value.envelope.stale, None,
+                "stale -> {to} resolves the mark"
+            );
+
+            let text = fs::read_to_string(store.node_path(value.id())).unwrap();
+            let on_disk: Node = serde_json::from_str(&text).unwrap();
+            assert_eq!(on_disk.envelope.stale, None);
+            assert!(
+                !text.contains("\"stale\""),
+                "a resolved mark is absent from the file rather than null: {text}"
+            );
+        }
     }
 
     #[test]
