@@ -215,13 +215,17 @@ export function ingestRun(module: string, path: string): Promise<{ ingested: boo
  * `schematify/write-node`/`write-edge`. `engine/engine.ts`'s own
  * `nodeJson`/`edgeJson` (reparent, duplicate, edge creation) send a
  * deliberately partial node or edge — no `lifecycle`, `authored_by` or
- * `created` — because that engine "writes only what a duplicate or a
- * reparent can honestly know". Those fields are required on the real schema,
- * so routing the partial payload straight through would fail every gesture;
- * inventing the missing content here would be guessing, not wiring. A node
- * drag persists for real (`writeLayout`, above); a reparent, duplicate, or
- * dragged edge persists only for the session, same as before this wave. Full
- * record: `docs/overnight-jobs/overnight-2/handoffs/wiring.md`.
+ * `created`, fields the real schema requires — because that engine "writes
+ * only what a duplicate or a reparent can honestly know"; inventing them
+ * here would be guessing, not wiring. A node drag persists for real
+ * (`writeLayout`, above); a reparent, duplicate, or dragged edge persists
+ * only for the session. Full record: `docs/overnight-jobs/overnight-2/
+ * handoffs/wiring.md`.
+ *
+ * That deferral is no longer silent, though: `SchematicEngine.semanticWrites`
+ * tracks every path this `Map` has touched, and the status bar's 5th cell
+ * (`statusCell5`, `./index.ts`) reads it every render, so a session-only
+ * write now says so on screen instead of looking saved.
  */
 export function createBackendSeam(): SchematifySeamLike {
   const semantic = new Map<string, unknown>();
