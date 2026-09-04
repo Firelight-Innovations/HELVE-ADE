@@ -200,3 +200,67 @@ The defect is a `mousedown`/`mouseup` pairing inside a scroll container: it need
 layout and hit-testing to reproduce. The vitest runner is `node` with no DOM and
 no rendering library (STANDARDS.md §8.3), so nothing in this repository can hold
 it. `selection.test.ts` sits underneath this and would not have caught it.
+
+---
+
+## src/shell/worktree/sectionFloor.ts
+
+### The error nobody could read
+
+`WorktreePanel` splits its height between the commit graph and this cluster's
+changes. Both halves are `overflow: hidden`, and every child of the
+source-control half is `flex: none`, so a half shorter than its own chrome
+neither scrolls nor squeezes — it clips, last child first. The last child is the
+commit box, and the first thing inside the commit box is `.worktree__error`, the
+only place a failed git operation is reported.
+
+The floor on the divider was one constant, `MIN_SECTION_PX = 120`. With a diff
+pane open the half's unshrinkable children summed to roughly 360px: the branch
+row, the diff pane's own `min-height: 220px`, and the commit box. Dragged to
+that floor, the commit box was entirely outside the box that clips. A commit
+with nothing staged then failed, wrote its message into `failure`, rendered it,
+and rendered it off-screen. The panel reported nothing, and there was no second
+channel it could have reported on.
+
+### Two floors, because they answer different questions
+
+`clipFloorPx` is the guarantee: the sum of the children that must never be lost,
+written to the section's `min-height`. `dragFloorPx` is the comfort: that plus a
+list worth looking at, and it bounds the drag gesture.
+
+They are separate because the drag clamp cannot cover every case. It runs on
+`pointermove` and knows the panel's height at the moment of the gesture — it
+says nothing about the ratio React starts at, or about a window shrunk after the
+divider was placed. `min-height` covers both, and it is the smaller number, so
+the graph is squeezed as little as the guarantee allows.
+
+### Why the graph is the half that shrinks
+
+A `min-height` is only honoured by taking the difference out of another flex
+item. With every item `flex-shrink: 0` — which is what both sections were, and
+for a good reason recorded in `worktreePanel.css` — flexbox has nowhere to take
+it from, so it overflows the column instead and clips the very box the
+`min-height` was protecting. `.worktreepanel__section--top` therefore takes
+`flex-shrink: 1` back. Nothing shrinks in the ordinary case, because
+`sectionBasis` keeps the two bases summing to the column exactly and there is no
+negative free space until the `min-height` creates some. The graph is the right
+half to squeeze: it scrolls its own contents and loses rows, not surfaces.
+
+### Why the diff pane moved inside `.worktree__body`
+
+Making the floor big enough for the diff pane's 220px would have been a floor of
+roughly 360px, which is most of a panel. The alternative is to stop the diff
+pane competing with the commit box at all: the lists and the diff now share one
+flexible child, so the diff's height comes out of the list. The commit box's
+height stops depending on whether a diff is open, which is what makes a floor
+statable in the first place. The diff pane's `min-height` also became
+`min(220px, 100%)`, since a floor taller than the box it stands in is not a
+floor — it is an overflow with a destination.
+
+### What is not covered by a test
+
+The clipping itself. Reproducing it needs layout, and the vitest runner is
+`node` with no DOM (STANDARDS.md §8.3). `sectionFloor.test.ts` holds the
+arithmetic that reaches `flex-basis` and `min-height` instead — including the
+property the bug violated, that no reachable divider position leaves the bottom
+section below the height its error line needs.

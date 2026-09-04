@@ -211,56 +211,61 @@ export default function SourceControlView({
         count={changeCount(status)}
       />
 
-      <div className="worktree__lists">
-        <Section
-          title="Staged Changes"
-          changes={status.staged}
-          staged
-          selected={selected}
-          busy={busy}
-          onToggle={toggle}
-          onToggleAll={toggleSection}
-          onSelect={setSelected}
-        />
-        <Section
-          title="Changes"
-          changes={status.unstaged}
-          staged={false}
-          selected={selected}
-          busy={busy}
-          onToggle={toggle}
-          onToggleAll={toggleSection}
-          onSelect={setSelected}
-        />
-        {changeCount(status) === 0 && <div className="worktree__quiet">No changes</div>}
-      </div>
+      {/* The lists and the diff share one flexible box, so that the diff pane's
+          height is taken out of the list rather than out of the commit box
+          below — see `.worktree__body` in `worktree.css` for the failure that
+          shape prevents. */}
+      <div className="worktree__body">
+        <div className="worktree__lists">
+          <Section
+            title="Staged Changes"
+            changes={status.staged}
+            staged
+            selected={selected}
+            busy={busy}
+            onToggle={toggle}
+            onToggleAll={toggleSection}
+            onSelect={setSelected}
+          />
+          <Section
+            title="Changes"
+            changes={status.unstaged}
+            staged={false}
+            selected={selected}
+            busy={busy}
+            onToggle={toggle}
+            onToggleAll={toggleSection}
+            onSelect={setSelected}
+          />
+          {changeCount(status) === 0 && <div className="worktree__quiet">No changes</div>}
+        </div>
 
-      {selected !== null && (
-        <div className="worktree__diff">
-          <div className="worktree__diff-head">
-            {/* Which of the two diffs this is. A path can be in both lists at
+        {selected !== null && (
+          <div className="worktree__diff">
+            <div className="worktree__diff-head">
+              {/* Which of the two diffs this is. A path can be in both lists at
                 once with different contents on each side, so the header naming
                 only the file leaves the two indistinguishable — and the diff
                 now follows a row across the index rather than closing, which
                 makes the pane change under you without the path changing. */}
-            <span className="worktree__diff-side">
-              {selected.staged ? "Staged" : "Working tree"}
-            </span>
-            <span className="worktree__diff-path">{selected.path}</span>
-            <button
-              type="button"
-              className="worktree__diff-close"
-              onClick={() => setSelected(null)}
-              aria-label="Close diff"
-            >
-              ×
-            </button>
-          </div>
-          {diff === null ? (
-            <div className="worktree__quiet">Loading diff…</div>
-          ) : (
-            <Suspense fallback={<div className="worktree__quiet">Loading diff…</div>}>
-              {/* Inline rather than side by side: see `renderSideBySide` in
+              <span className="worktree__diff-side">
+                {selected.staged ? "Staged" : "Working tree"}
+              </span>
+              <span className="worktree__diff-path">{selected.path}</span>
+              <button
+                type="button"
+                className="worktree__diff-close"
+                onClick={() => setSelected(null)}
+                aria-label="Close diff"
+              >
+                ×
+              </button>
+            </div>
+            {diff === null ? (
+              <div className="worktree__quiet">Loading diff…</div>
+            ) : (
+              <Suspense fallback={<div className="worktree__quiet">Loading diff…</div>}>
+                {/* Inline rather than side by side: see `renderSideBySide` in
                   DiffViewProps for why the panel's width settles this.
 
                   `language` is TOML or nothing, because that is the entire set
@@ -275,21 +280,22 @@ export default function SourceControlView({
                   a note's identity rather than a filter — the same line of the
                   same file is different code staged and unstaged — so the two
                   lists' notes never mix. */}
-              <AnnotatedDiff
-                original={diff.original}
-                modified={diff.modified}
-                language={isTomlPath(selected.path) ? TOML_LANGUAGE_ID : undefined}
-                renderSideBySide={false}
-                path={selected.path}
-                scope={selected.staged ? "staged" : "unstaged"}
-                clusterId={clusterId}
-                control={review}
-                send={reviewSend}
-              />
-            </Suspense>
-          )}
-        </div>
-      )}
+                <AnnotatedDiff
+                  original={diff.original}
+                  modified={diff.modified}
+                  language={isTomlPath(selected.path) ? TOML_LANGUAGE_ID : undefined}
+                  renderSideBySide={false}
+                  path={selected.path}
+                  scope={selected.staged ? "staged" : "unstaged"}
+                  clusterId={clusterId}
+                  control={review}
+                  send={reviewSend}
+                />
+              </Suspense>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="worktree__commit">
         {failure !== null && <div className="worktree__error">{failure}</div>}
