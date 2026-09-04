@@ -25,8 +25,8 @@ use crate::apps::CallContext;
 use kaava_rpc::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND};
 use schematify_core::{
     contract_fields_changed, ingest_run_file, lint, load_project, stale_cascade, Actor, BudgetTier,
-    CoreError, Decision, DecisionStatus, Edge, Flow, Graph, Lifecycle, Node, NodeKind,
-    ProjectBrief, Screen, Store, TestStatus, Uuid,
+    CoreError, Decision, DecisionStatus, Edge, EdgeKind, Flow, Graph, Lifecycle, Node, NodeKind,
+    ProjectBrief, Screen, Store, TestStatus, Uri, Uuid,
 };
 use serde_json::{json, Value};
 use tauri::AppHandle;
@@ -394,6 +394,14 @@ fn apply_stale_cascade(
 /// containment lives on the child node's `parent` field per PRD §4.1 and a
 /// second copy in `edges/` would be a second truth. `stored: false` in the
 /// response is how the frontend tells the two cases apart.
+///
+/// A `references_ui` edge additionally re-derives its source module's
+/// `ui_refs` cache — decision SCH-ARC-006, PRD §5.11 — through
+/// [`sync_ui_refs`]. This is the one edge kind PRD §5.11 names, and it fires
+/// on every write of that kind: a new edge or a change to an existing one's
+/// `superseded_by` both reach here with the same `source`, so `ui_refs`
+/// never has a chance to drift the way `lint::ui_refs_cache_mismatch` (rule
+/// L08) checks for.
 fn write_edge(context: &CallContext, params: Option<&Value>) -> Result<Value, RpcError> {
     actor_param(params)?;
     let root = require_project(context)?;
@@ -403,7 +411,65 @@ fn write_edge(context: &CallContext, params: Option<&Value>) -> Result<Value, Rp
     let stored = store.write_edge(&edge).map_err(core_rpc)?;
     let path = stored.then(|| store.edge_path(edge.id).display().to_string());
 
-    Ok(json!({ "id": edge.id, "stored": stored, "path": path }))
+    let ui_refs_synced = stored && edge.kind == EdgeKind::ReferencesUi;
+    if ui_refs_synced {
+        sync_ui_refs(&store, root, edge.source)?;
+    }
+
+    Ok(json!({ "id": edge.id, "stored": stored, "path": path, "uiRefsSynced": ui_refs_synced }))
+}
+
+/// Re-derives one module's `ui_refs` cache from its live `references_ui`
+/// edges and rewrites the node file if anything changed.
+///
+/// Mirrors `lint::ui_refs_cache_mismatch`'s own derivation exactly — every
+/// *live* `references_ui` edge (`Edge::is_live`) whose `source` is `module`,
+/// targets collected into a sorted, deduplicated list — so a project that
+/// passes the linter's L08 check today keeps passing it after this call.
+///
+/// Silently does nothing when `module` does not resolve to a real
+/// [`NodeKind::Module`] node: a dangling or misdirected edge source is
+/// `load_project`'s and the linter's problem to report, not this sync's to
+/// paper over by inventing a node.
+fn sync_ui_refs(store: &Store, root: &Path, module: Uuid) -> Result<(), RpcError> {
+    let outcome = load_project(root).map_err(core_rpc)?;
+    let Some(node) = outcome.graph.node(module) else {
+        return Ok(());
+    };
+    if *node.kind() != NodeKind::Module {
+        return Ok(());
+    }
+    let Ok(mut fields) = node.module() else {
+        return Ok(());
+    };
+
+    let mut refs: Vec<Uuid> = outcome
+        .graph
+        .edges()
+        .filter(|e| e.kind == EdgeKind::ReferencesUi && e.is_live() && e.source == module)
+        .map(|e| e.target)
+        .collect();
+    refs.sort_unstable();
+    refs.dedup();
+    let derived: Vec<Uri> = refs.into_iter().map(Uri::screen).collect();
+    if fields.ui_refs == derived {
+        return Ok(());
+    }
+    fields.ui_refs = derived;
+
+    // Built from the loaded node rather than from `Node::new`, so that
+    // `with_fields` overwrites `ui_refs` on top of the map that was on disk
+    // instead of replacing it. A module node may legally carry keys
+    // `ModuleFields` does not model — PRD §11.2 registers kinds this build has
+    // never seen, and `Node::fields` is an open map precisely so a round trip
+    // through this crate cannot drop them. Rebuilding from an empty envelope
+    // would delete every one of them as a side effect of caching a screen
+    // reference.
+    let updated = node
+        .clone()
+        .with_fields(&fields)
+        .map_err(|e| RpcError::new(INTERNAL_ERROR, format!("could not shape ui_refs: {e}")))?;
+    store.write_node(&updated).map_err(core_rpc)
 }
 
 /// `schematify/write-layout`. Writes `layout/<slug>.json` and nothing else —
@@ -1704,6 +1770,281 @@ mod tests {
         assert_eq!(written.kind, schematify_core::EdgeKind::DependsOn);
     }
 
+    /// A screen, shared by the product-layer write tests and the `ui_refs`
+    /// sync tests. The slug is a parameter because the sync tests need two
+    /// distinct screens to prove the cache is rebuilt from the whole live edge
+    /// set rather than appended to. `backed_by` is left empty — the reverse
+    /// direction (a screen naming its backing modules) is not part of what
+    /// `sync_ui_refs` derives.
+    fn sample_screen(slug: &str) -> Screen {
+        use schematify_core::{mint_id, ScreenKind, Slug};
+
+        Screen {
+            id: mint_id(),
+            kind: ScreenKind::default(),
+            slug: Slug::new(slug).expect("legal slug"),
+            title: "Login form".to_owned(),
+            purpose: "Collects credentials and starts a session.".to_owned(),
+            states: vec!["empty".to_owned(), "locked".to_owned()],
+            acceptance: vec!["A locked account shall show the recovery path.".to_owned()],
+            design_ref: None,
+            backed_by: Vec::new(),
+        }
+    }
+
+    /// Decision SCH-ARC-006 / PRD §5.11: writing a `references_ui` edge
+    /// re-derives the source module's `ui_refs` cache, not just the edge
+    /// file. Two screens, added one write at a time, prove the cache is
+    /// rebuilt from the whole live edge set rather than merely appended to.
+    #[test]
+    fn write_edge_syncs_ui_refs_when_a_references_ui_edge_is_written() {
+        let dir = TempDir::new("write-edge-ui-refs-sync");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let module = sample_module("login-form-backend", Lifecycle::Draft, None);
+        store.write_node(&module).expect("seed module");
+        let screen_a = sample_screen("login-form");
+        let screen_b = sample_screen("recovery-form");
+        store.write_screen(&screen_a).expect("seed screen a");
+        store.write_screen(&screen_b).expect("seed screen b");
+
+        let edge_a = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::ReferencesUi,
+            module.id(),
+            screen_a.id,
+            "2026-09-03T00:00:00Z",
+        );
+        let value = dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge_a })),
+        )
+        .expect("write-edge succeeds");
+        assert_eq!(value["uiRefsSynced"], true);
+
+        let after_first: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        let fields_after_first = after_first.module().expect("parses as module fields");
+        assert_eq!(
+            fields_after_first.ui_refs,
+            vec![schematify_core::Uri::screen(screen_a.id)],
+            "the first reference lands in the cache"
+        );
+
+        let edge_b = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::ReferencesUi,
+            module.id(),
+            screen_b.id,
+            "2026-09-03T00:05:00Z",
+        );
+        dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "agent", "edge": edge_b })),
+        )
+        .expect("second write-edge succeeds");
+
+        let after_second: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        let mut refs = after_second
+            .module()
+            .expect("parses as module fields")
+            .ui_refs;
+        refs.sort_unstable();
+        let mut expected = vec![
+            schematify_core::Uri::screen(screen_a.id),
+            schematify_core::Uri::screen(screen_b.id),
+        ];
+        expected.sort_unstable();
+        assert_eq!(
+            refs, expected,
+            "the cache holds both live references, not just the one just written"
+        );
+    }
+
+    /// The other half of "every edge change": superseding a `references_ui`
+    /// edge drops its screen out of the cache, because `sync_ui_refs` reads
+    /// only *live* edges (`Edge::is_live`).
+    ///
+    /// The mid-test assertion that the reference is *present* before it is
+    /// superseded is load-bearing, not decoration. Without it the closing
+    /// `is_empty` holds trivially in a build where the sync never runs at all,
+    /// and the test passes while proving nothing — which is exactly what it did
+    /// before this assertion was added.
+    #[test]
+    fn write_edge_drops_a_superseded_reference_from_ui_refs() {
+        let dir = TempDir::new("write-edge-ui-refs-supersede");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let module = sample_module("login-form-backend", Lifecycle::Draft, None);
+        store.write_node(&module).expect("seed module");
+        let screen = sample_screen("login-form");
+        store.write_screen(&screen).expect("seed screen");
+
+        let mut edge = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::ReferencesUi,
+            module.id(),
+            screen.id,
+            "2026-09-03T00:00:00Z",
+        );
+        dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge })),
+        )
+        .expect("first write-edge succeeds");
+
+        let while_live: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            while_live
+                .module()
+                .expect("parses as module fields")
+                .ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "the reference is in the cache while its edge is live"
+        );
+
+        edge.superseded_by = Some(schematify_core::mint_id());
+        dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge })),
+        )
+        .expect("superseding write-edge succeeds");
+
+        let after: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert!(
+            after
+                .module()
+                .expect("parses as module fields")
+                .ui_refs
+                .is_empty(),
+            "a superseded reference is not live, so it drops out of the cache"
+        );
+    }
+
+    /// The sync fires on `references_ui` and on nothing else. `a` is seeded
+    /// with a cache already in it and then made the *source* of a `depends_on`
+    /// edge, so a sync that ignored `kind` would derive an empty reference set
+    /// for `a` and wipe that cache. Asserting the surviving cache, not only the
+    /// `uiRefsSynced` flag: the flag is computed from `edge.kind` in
+    /// [`write_edge`] itself and would still read `false` with the call to
+    /// [`sync_ui_refs`] deleted outright.
+    #[test]
+    fn write_edge_does_not_touch_ui_refs_for_a_non_references_ui_edge() {
+        let dir = TempDir::new("write-edge-ui-refs-unrelated");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let screen = sample_screen("login-form");
+        store.write_screen(&screen).expect("seed screen");
+        let mut a = sample_module("a", Lifecycle::Draft, None);
+        a = a
+            .with_fields(&schematify_core::ModuleFields {
+                allowed_libraries: Vec::new(),
+                ui_refs: vec![schematify_core::Uri::screen(screen.id)],
+            })
+            .expect("module fields shape");
+        let b = sample_module("b", Lifecycle::Draft, None);
+        store.write_node(&a).expect("seed a");
+        store.write_node(&b).expect("seed b");
+
+        let edge = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::DependsOn,
+            a.id(),
+            b.id(),
+            "2026-09-03T00:00:00Z",
+        );
+        let value = dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge })),
+        )
+        .expect("write-edge succeeds");
+        assert_eq!(value["uiRefsSynced"], false);
+
+        let after: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(a.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            after.module().expect("parses as module fields").ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "an unrelated edge write leaves the cache exactly as it found it"
+        );
+    }
+
+    /// A module node may carry keys `ModuleFields` does not model — PRD §11.2
+    /// registers kinds this build has never seen, and `Node::fields` is an open
+    /// map so that a round trip cannot drop them. The sync rewrites the node
+    /// file, so it is the round trip most able to lose them: it must overwrite
+    /// `ui_refs` on the map that was on disk, not rebuild the map from the two
+    /// fields it happens to know about.
+    #[test]
+    fn write_edge_keeps_module_fields_the_sync_does_not_model() {
+        let dir = TempDir::new("write-edge-ui-refs-unmodelled");
+        let store = Store::open(dir.path());
+        store.init().expect("init succeeds");
+        let context = context_at(dir.path());
+
+        let mut module = sample_module("login-form-backend", Lifecycle::Draft, None);
+        module.fields.insert(
+            "runbook".to_string(),
+            json!("https://example.invalid/runbook"),
+        );
+        store.write_node(&module).expect("seed module");
+        let screen = sample_screen("login-form");
+        store.write_screen(&screen).expect("seed screen");
+
+        let edge = Edge::new(
+            schematify_core::mint_id(),
+            EdgeKind::ReferencesUi,
+            module.id(),
+            screen.id,
+            "2026-09-03T00:00:00Z",
+        );
+        dispatch(
+            &context,
+            "schematify/write-edge",
+            Some(json!({ "actor": "human", "edge": edge })),
+        )
+        .expect("write-edge succeeds");
+
+        let after: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            after.module().expect("parses as module fields").ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "the cache is still written"
+        );
+        assert_eq!(
+            after.fields.get("runbook"),
+            Some(&json!("https://example.invalid/runbook")),
+            "caching a screen reference does not delete a field this build does not model"
+        );
+    }
+
     #[test]
     fn write_layout_then_read_layout_round_trips_the_exact_content_sent() {
         let dir = TempDir::new("write-layout-roundtrip");
@@ -2142,7 +2483,7 @@ mod tests {
         Store::open(dir.path()).init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let screen = sample_screen();
+        let screen = sample_screen("login-form");
         let params = json!({ "actor": "human", "screen": screen });
 
         dispatch(&context, "schematify/write-screen", Some(params)).expect("write-screen succeeds");
@@ -2163,7 +2504,7 @@ mod tests {
         Store::open(dir.path()).init().expect("init succeeds");
         let context = context_at(dir.path());
 
-        let mut screen = sample_screen();
+        let mut screen = sample_screen("login-form");
         dispatch(
             &context,
             "schematify/write-screen",
@@ -2496,22 +2837,6 @@ mod tests {
         )
         .expect_err("a successor id that already exists is refused, same as write-decision");
         assert_eq!(err.code, INVALID_PARAMS);
-    }
-
-    fn sample_screen() -> Screen {
-        use schematify_core::mint_id;
-
-        Screen {
-            id: mint_id(),
-            kind: schematify_core::ScreenKind::default(),
-            slug: schematify_core::Slug::new("login-form").expect("legal slug"),
-            title: "Login form".to_owned(),
-            purpose: "Collects credentials and starts a session.".to_owned(),
-            states: vec!["empty".to_owned(), "locked".to_owned()],
-            acceptance: vec!["A locked account shall show the recovery path.".to_owned()],
-            design_ref: None,
-            backed_by: Vec::new(),
-        }
     }
 
     fn sample_flow() -> Flow {
