@@ -1854,7 +1854,10 @@ mod tests {
             &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
         )
         .expect("parses as a node");
-        let mut refs = after_second.module().expect("parses as module fields").ui_refs;
+        let mut refs = after_second
+            .module()
+            .expect("parses as module fields")
+            .ui_refs;
         refs.sort_unstable();
         let mut expected = vec![
             schematify_core::Uri::screen(screen_a.id),
@@ -1907,7 +1910,10 @@ mod tests {
         )
         .expect("parses as a node");
         assert_eq!(
-            while_live.module().expect("parses as module fields").ui_refs,
+            while_live
+                .module()
+                .expect("parses as module fields")
+                .ui_refs,
             vec![schematify_core::Uri::screen(screen.id)],
             "the reference is in the cache while its edge is live"
         );
@@ -1925,7 +1931,11 @@ mod tests {
         )
         .expect("parses as a node");
         assert!(
-            after.module().expect("parses as module fields").ui_refs.is_empty(),
+            after
+                .module()
+                .expect("parses as module fields")
+                .ui_refs
+                .is_empty(),
             "a superseded reference is not live, so it drops out of the cache"
         );
     }
@@ -2828,7 +2838,6 @@ mod tests {
         .expect_err("a successor id that already exists is refused, same as write-decision");
         assert_eq!(err.code, INVALID_PARAMS);
     }
-
 
     fn sample_flow() -> Flow {
         use schematify_core::mint_id;
