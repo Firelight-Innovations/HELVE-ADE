@@ -258,3 +258,11 @@ windows-core = "0.61"
 # declarations, which is the whole of what a bitmask setter needs, where
 # `windows` wraps every call in generated types this would not use.
 windows-sys = { version = "0.61", features = ["Win32_System_Diagnostics_Debug"] }
+
+[dev-dependencies]
+# A throwaway git repository for `mcp::config`'s drift tests. Those read the
+# *committed* `.mcp.json` rather than the working copy, and proving that they do
+# needs a repository whose two halves can be made to disagree — not this one,
+# which a test must never dirty. Already a workspace dependency, pinned once
+# there and used the same way by `schematify-core`; nothing shipped links it.
+tempfile.workspace = true
