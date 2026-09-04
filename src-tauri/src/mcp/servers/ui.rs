@@ -14,13 +14,10 @@
 //! Why the protocol reaches the webview through COM rather than a debug port,
 //! and what that buys: `docs/design-notes/agent-ui-driving.md`.
 //!
-//! **Prefer [`super::agent`].** It hosts these six tools — literally these, by
-//! delegation — alongside the shell reads and a direct line into any app's Rust
-//! half, which is what an agent driving this window actually needs at once.
-//! This module stays registered because the capability is its, because a client
-//! that wants only input has no reason to be handed twelve tools, and because
-//! its tests are the ones that hold this code to account. Neither server is
-//! reachable without developer mode.
+//! **Prefer [`super::agent`]**, which hosts these six by delegation next to the
+//! shell reads and a line into any app's Rust half. This module stays
+//! registered because the capability is its, its tests are what hold this code
+//! to account, and a client wanting only input needs no twelve tools.
 
 use crate::devtools;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};

@@ -3,8 +3,6 @@
 //! One module each, owning its tool descriptors, schemas and handler, and
 //! declaring a single `pub static SERVER` for [`seed`] to register.
 //!
-//! ## Before adding one
-//!
 //! **If the harness can already do it, it does not get a server.** No file
 //! reading, writing or listing, no search, no git. Every agent worth pointing at
 //! OpenKaava arrives with those, and a second worse copy costs a permission surface
@@ -13,22 +11,13 @@
 //! What earns a server is something that exists only inside OpenKaava and has no
 //! filesystem equivalent — Schematify's design model is the first real case, because
 //! an agent cannot read a spec's *boundaries* by opening a file. [`debug`] is
-//! the second, [`design`] the third and [`ui`] the fourth. Each module's own doc
-//! says which fact about it earns its place, and — for the two that write —
-//! which fact decides its gate, because "it writes" is not on its own one.
+//! the second, [`design`] the third and [`ui`] the fourth; each module's doc says
+//! what earns its place, and what decides its gate where it writes.
 //!
-//! ## The rule that is about clients rather than tools
-//!
-//! [`agent`] is the fifth, and it is the one that does not fit the paragraph
-//! above: it hosts no capability of its own beyond three tools, and nine of its
-//! twelve belong to [`ui`] and [`debug`]. It earns its place on a different
-//! axis. Schematify's design model *did* turn out to need reaching, and the
-//! literal reading of the rule would have given it a sixth server — then the
-//! next app a seventh, until an agent doing one job holds four connections and
-//! four switches, any of which can be the one that is off. So the composition
-//! lives in one server and the capabilities stay in the modules that own them.
-//! Nothing here is a second copy of anything: `agent` indexes their tool arrays
-//! and delegates their calls.
+//! [`agent`] is the fifth and the exception, earning its place on the client's
+//! axis rather than a capability's: nine of its twelve tools are [`ui`]'s and
+//! [`debug`]'s, composed so one job needs one connection instead of four. It
+//! indexes their arrays and delegates, so nothing here is a second copy.
 
 pub mod agent;
 pub mod debug;
@@ -46,17 +35,15 @@ use super::Registry;
 /// line that should grow a `cfg` — left alone so that switching echo off is its
 /// own decision rather than a side effect of adding something beside it.
 ///
-/// `debug` is likewise unconditional, and for a reason that will outlast echo's:
-/// the builds worth debugging include the release one. A shipped OpenKaava that
-/// misbehaves on a machine none of us have is exactly the case where reading its
-/// layout and its failures is worth the most, and a server compiled out of that
-/// build cannot answer.
+/// `debug` is likewise unconditional, for a reason that will outlast echo's: a
+/// shipped OpenKaava misbehaving on a machine none of us have is exactly where
+/// reading its layout and its failures is worth the most, and a server compiled
+/// out of that build cannot answer.
 ///
 /// `design` ships for the ordinary user rather than for us — the comments it
-/// serves are theirs, left in a release build — which is why it is the one write
-/// surface with no gate. `ui` ships too and is the one that can click; what makes
-/// that safe is not a `cfg` but `dev_only`, a gate the tests below can hold to
-/// account where a missing module cannot.
+/// serves are theirs — which is why it is the one write surface with no gate.
+/// `ui` ships too and can click; what makes that safe is not a `cfg` but
+/// `dev_only`, a gate the tests below can hold to account.
 ///
 /// `agent` is last because it is the one that composes the others, and it
 /// carries `ui`'s gate for `ui`'s reason: it can click too.

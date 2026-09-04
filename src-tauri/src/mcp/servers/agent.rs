@@ -1,83 +1,22 @@
 //! The one server an agent working on OpenKaava connects to.
 //!
-//! Everything an agent needs to drive this window, behind a single endpoint:
-//! the six interaction tools [`super::ui`] owns, the three reads
-//! [`super::debug`] owns, and the three below that had no home before — a way
-//! to call any app's Rust half, a way to mount an app, and a way to point a
-//! cluster at a project.
+//! Everything needed to drive this window behind a single endpoint: the six
+//! interaction tools [`super::ui`] owns, the three reads [`super::debug`] owns,
+//! and three that had no home before — [`app_call`] reaches any app's Rust
+//! half, [`open_app`] mounts one, [`set_project`] points a cluster at a folder
+//! without raising a picker.
 //!
-//! ## Why unified rather than one server per app
+//! One server rather than four because the tools are separable and the *task*
+//! is not: testing an app means screenshotting it, reading the shell layout,
+//! calling a method, then checking `recent_errors` — one loop, and otherwise
+//! four switches to leave off. [`super::ui`] and [`super::debug`] stay
+//! registered for the cases that want them alone, and [`TOOL_LIST`] composes
+//! their tools rather than restating them.
 //!
-//! The registry's doctrine is one server per thing that earns one, and read
-//! literally that would give Schematify its own, then the next app another.
-//! What that misses is who the client is. An agent testing Schematify needs to
-//! screenshot the window, read the shell layout, call `schematify/lint`, and
-//! check `recent_errors` afterwards — four servers for one loop, each with its
-//! own switch, its own row in `.mcp.json`, and its own chance of being the one
-//! that is off. The tools are separable; the *task* is not.
-//!
-//! So `ui` and `debug` stay registered, unchanged, for the cases that want them
-//! alone — `debug` in particular ships in release builds and this does not —
-//! and this composes their tools rather than restating them. [`TOOL_LIST`]
-//! indexes their const arrays, and [`call`] hands those nine names straight
-//! back to the module that owns them, so their tests go on testing the code
-//! that actually runs.
-//!
-//! ## Why the three new tools exist
-//!
-//! [`app_call`] is the one that changes what is possible. An app's Rust half
-//! was reachable only from its own frontend, over `invoke`; an agent wanting
-//! Schematify's eighteen methods had to smuggle `window.__TAURI__.core.invoke`
-//! through an `eval` string and parse whatever came back. That works and it is
-//! miserable: no schema, no error codes, quoting inside quoting.
-//!
-//! [`open_app`] and [`set_project`] are here because the path that avoids the
-//! native folder picker has to be reachable without clicking. `home/open-project`
-//! raises `rfd::FileDialog::pick_folder()`, which is modal and waits for a
-//! person; there is no person. [`app_call`] refuses it, `home/new-project` and
-//! `files/save-as` by name for that reason — see [`NEEDS_A_PERSON`], which also
-//! explains why this path needs the guard when the frontend's does not.
-//!
-//! ## What [`app_call`] does not do that `commands::app_call` does
-//!
-//! That command moves every dispatch onto `spawn_blocking`, and its doc says
-//! why: an app's Rust half does blocking work — a quarter-megabyte `files/read`
-//! off a slow disk — that has no business on the thread it was called from.
-//! This path has no such hop. `mcp::listener::call_tool` is an `async fn` that
-//! calls `Registry::call` inline, so a slow app method occupies a runtime
-//! worker for its duration.
-//!
-//! That is survivable and the dialog case is not, which is why one is a guard
-//! and the other is this paragraph: a worker busy for 200ms is a worker busy
-//! for 200ms, where a worker parked on a modal dialog is parked until a person
-//! who is not there dismisses it. If a tool here ever grows genuinely slow, the
-//! fix is to make `Call` async rather than to widen [`NEEDS_A_PERSON`].
-//!
-//! ## What is not tested here
-//!
-//! The three handlers all need an `AppHandle`, and `registry.rs` says plainly
-//! that a test cannot construct one. So the tests below cover the tool list,
-//! the schemas and the two pure guards, and the handlers themselves are
-//! acceptance-tested against a launched instance:
-//!
-//! ```sh
-//! pnpm probe --agent --server agent set_project '{"path":"…/fixtures/saas-backend"}'
-//! pnpm probe --agent --server agent open_app    '{"appId":"schematify"}'
-//! pnpm probe --agent --server agent app_call    '{"app":"schematify","method":"schematify/state"}'
-//! pnpm probe --agent --server agent app_call    '{"app":"home","method":"home/open-project"}'
-//! ```
-//!
-//! The last of those must come back refused rather than hanging, and is the one
-//! worth running every time this file changes.
-//!
-//! ## The gate
-//!
-//! `dev_only`, and for [`super::ui`]'s reason rather than a new one: this can
-//! click, and `eval` reaches every `#[tauri::command]` through
-//! `window.__TAURI__`. Absorbing `debug`'s three reads does put them behind
-//! developer mode *here* — that is what `debug` staying registered is for. A
-//! release build that misbehaves is still diagnosed through `kaava-debug`,
-//! ungated, exactly as before.
+//! `dev_only`, for [`super::ui`]'s reason rather than a new one: this can
+//! click, and `eval` reaches every `#[tauri::command]`. Gating `debug`'s reads
+//! *here* is what `debug` staying registered is for — a release build that
+//! misbehaves is still diagnosed through `kaava-debug`, ungated, as before.
 
 use crate::apps;
 use crate::layout::SplitDir;
@@ -350,6 +289,14 @@ fn default_cluster(app: &AppHandle) -> Option<String> {
 /// The context is resolved here rather than taken from the caller for the same
 /// reason the Tauri command resolves it on its worker: it has to see the layout
 /// as it is when the call runs, not as it was when the request was parsed.
+///
+/// What this gives up against that command is the `spawn_blocking` hop. A slow
+/// app method — a quarter-megabyte `files/read` off a cold disk — occupies a
+/// runtime worker here for its duration, because `mcp::listener::call_tool`
+/// calls `Registry::call` inline. Survivable, where a modal dialog is not: a
+/// worker busy for 200ms comes back, and one parked on a picker waits for a
+/// person who is not there. If a tool grows genuinely slow the fix is to make
+/// `Call` async, not to widen [`NEEDS_A_PERSON`].
 fn app_call(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcError> {
     let id = required(params, "app")?;
     let method = required(params, "method")?;
@@ -466,6 +413,20 @@ fn set_project(app: &AppHandle, params: Option<&Value>) -> Result<Value, RpcErro
     Ok(json!({ "cluster": cluster, "project": path }))
 }
 
+/// What is provable without an `AppHandle`, which is all of it bar the three
+/// handlers — `registry.rs` says plainly that a test cannot construct one. So:
+/// the tool list, the schemas, and the two pure guards. The handlers are
+/// acceptance-tested against a launched instance instead:
+///
+/// ```sh
+/// pnpm probe --agent --server agent set_project '{"path":"…/fixtures/saas-backend"}'
+/// pnpm probe --agent --server agent open_app    '{"appId":"schematify"}'
+/// pnpm probe --agent --server agent app_call    '{"app":"schematify","method":"schematify/state"}'
+/// pnpm probe --agent --server agent app_call    '{"app":"home","method":"home/open-project"}'
+/// ```
+///
+/// The last must come back refused rather than hanging, and is worth running
+/// every time this file changes.
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,11 +14,10 @@
 //! Full argument, including why this ships in release builds:
 //! `docs/design-notes/agent-debugging.md`.
 //!
-//! [`super::agent`] hosts these three reads too, by delegation, next to the
-//! tools that drive the window. Prefer it while *working on* OpenKaava — but this
-//! module is the one to reach for when diagnosing a shipped build, because it
-//! is the one that is there without developer mode. That difference is the
-//! reason both are registered rather than one replacing the other.
+//! [`super::agent`] hosts these three by delegation, next to the tools that
+//! drive the window; prefer it while *working on* OpenKaava. This module is what
+//! diagnoses a shipped build, being the one there without developer mode —
+//! which is why both are registered rather than one replacing the other.
 
 use crate::diagnostics::diagnostics;
 use crate::mcp::{McpServer, McpTool, ToolAnswer};
