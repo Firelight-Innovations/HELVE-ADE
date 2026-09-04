@@ -1870,6 +1870,12 @@ mod tests {
     /// The other half of "every edge change": superseding a `references_ui`
     /// edge drops its screen out of the cache, because `sync_ui_refs` reads
     /// only *live* edges (`Edge::is_live`).
+    ///
+    /// The mid-test assertion that the reference is *present* before it is
+    /// superseded is load-bearing, not decoration. Without it the closing
+    /// `is_empty` holds trivially in a build where the sync never runs at all,
+    /// and the test passes while proving nothing — which is exactly what it did
+    /// before this assertion was added.
     #[test]
     fn write_edge_drops_a_superseded_reference_from_ui_refs() {
         let dir = TempDir::new("write-edge-ui-refs-supersede");
@@ -1895,6 +1901,16 @@ mod tests {
             Some(json!({ "actor": "human", "edge": edge })),
         )
         .expect("first write-edge succeeds");
+
+        let while_live: Node = serde_json::from_str(
+            &fs::read_to_string(store.node_path(module.id())).expect("module file exists"),
+        )
+        .expect("parses as a node");
+        assert_eq!(
+            while_live.module().expect("parses as module fields").ui_refs,
+            vec![schematify_core::Uri::screen(screen.id)],
+            "the reference is in the cache while its edge is live"
+        );
 
         edge.superseded_by = Some(schematify_core::mint_id());
         dispatch(
