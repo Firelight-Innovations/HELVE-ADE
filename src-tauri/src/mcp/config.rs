@@ -323,4 +323,148 @@ mod tests {
         let path = config_path(Path::new("/projects/thing"));
         assert_eq!(path.file_name().and_then(|n| n.to_str()), Some(".mcp.json"));
     }
+
+    /// The repository's own `.mcp.json` is a real file this module's output has
+    /// to keep matching, not just a fixture. It was committed once, by a
+    /// merge (`9f5e300`) that landed each of `kaava-debug` and `kaava-echo`
+    /// twice with identical bodies — `serde_json` silently kept the last
+    /// occurrence of each on read, so the file parsed and worked, and nobody
+    /// noticed the JSON text itself was malformed.
+    ///
+    /// `merge` cannot reproduce that: it builds a `serde_json::Map`, which has
+    /// no way to hold two entries under one key. So the bug was never in this
+    /// module — it was the tracked file drifting from anything this module
+    /// would write. This test reads the tracked file as text, the way a
+    /// hand-edit or a bad merge would leave it, rather than going through
+    /// `serde_json::Value` first, which would have hidden the very duplication
+    /// it exists to catch.
+    #[test]
+    fn the_tracked_mcp_json_has_no_duplicate_keys() {
+        let text = include_str!("../../../.mcp.json");
+        if let Err(key) = duplicate_object_key(text) {
+            panic!("{key} appears twice in the tracked .mcp.json");
+        }
+    }
+
+    /// The other half of staying current: the tracked file is meant to be what
+    /// a fresh checkout's first `sync` would write — `merge`'s own docs call it
+    /// "the same file for every developer" — so it has to name every server
+    /// that ships enabled by default, not just the two that existed when it was
+    /// last hand-updated. `kaava-design` shipped after the file was last
+    /// touched and was missing from it until this test was added.
+    #[test]
+    fn the_tracked_mcp_json_matches_a_fresh_syncs_default_output() {
+        let tracked: Value = serde_json::from_str(include_str!("../../../.mcp.json"))
+            .expect("the tracked file is valid JSON");
+
+        let registry = crate::mcp::Registry::default();
+        crate::mcp::servers::seed(&registry);
+        let ids = registry.enabled_ids(false);
+
+        let generated = merge(None, &ids).unwrap();
+
+        assert_eq!(
+            tracked, generated,
+            "the tracked .mcp.json no longer matches what a fresh checkout's \
+             first sync would write for the servers that ship enabled by \
+             default; regenerate it"
+        );
+    }
+
+    /// A duplicate top-level `mcpServers` key, or a duplicate key inside it,
+    /// makes `Err` with the repeated key. Walks the whole document rather than
+    /// just `mcpServers`, since a merge can duplicate any object in the file,
+    /// not only the one this module writes into.
+    ///
+    /// `serde_json::Value` cannot answer this itself — deserializing into it
+    /// silently keeps the last of a repeated key, which is exactly the
+    /// behaviour that let the bug this test exists for go unnoticed. So this
+    /// walks the token stream directly with a `Visitor` that tracks the keys
+    /// it has already seen at each object it opens.
+    fn duplicate_object_key(text: &str) -> Result<(), String> {
+        use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+        use std::collections::HashSet;
+        use std::fmt;
+
+        struct NoDuplicateKeys;
+
+        impl<'de> Visitor<'de> for NoDuplicateKeys {
+            type Value = ();
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "any JSON value")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+                let mut seen = HashSet::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if !seen.insert(key.clone()) {
+                        return Err(serde::de::Error::custom(key));
+                    }
+                    map.next_value::<Checked>()?;
+                }
+                Ok(())
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+                while seq.next_element::<Checked>()?.is_some() {}
+                Ok(())
+            }
+
+            fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+                Ok(())
+            }
+            fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+                Ok(())
+            }
+            fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+                Ok(())
+            }
+            fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+                Ok(())
+            }
+            fn visit_str<E>(self, _: &str) -> Result<(), E> {
+                Ok(())
+            }
+            fn visit_unit<E>(self) -> Result<(), E> {
+                Ok(())
+            }
+        }
+
+        /// A value visited only for its duplicate-key check; its content is
+        /// otherwise discarded.
+        struct Checked;
+
+        impl<'de> Deserialize<'de> for Checked {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                deserializer
+                    .deserialize_any(NoDuplicateKeys)
+                    .map(|_| Checked)
+            }
+        }
+
+        let mut de = serde_json::Deserializer::from_str(text);
+        Checked::deserialize(&mut de)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Proves the checker above actually looks: a hand-built document with a
+    /// repeated key must fail it, or `the_tracked_mcp_json_has_no_duplicate_keys`
+    /// would be trusting a check that always passes.
+    #[test]
+    fn duplicate_object_key_catches_a_repeated_key() {
+        let err =
+            duplicate_object_key(r#"{ "mcpServers": { "kaava-echo": {}, "kaava-echo": {} } }"#)
+                .expect_err("a repeated key must be reported");
+        assert!(
+            err.contains("kaava-echo"),
+            "expected the repeated key in the error, got {err}"
+        );
+    }
+
+    #[test]
+    fn duplicate_object_key_accepts_a_well_formed_document() {
+        assert!(duplicate_object_key(r#"{ "a": { "b": 1 }, "c": [1, 2, 3] }"#).is_ok());
+    }
 }
