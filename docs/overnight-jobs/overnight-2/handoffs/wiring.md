@@ -389,6 +389,23 @@ the layout write became real. Completing the other two is Wave 3 (widen
 node-creation form that knows an author and a lifecycle) engineering, not a
 wiring change.
 
+**A later fix stopped this from being silent, without changing any of the
+above.** The gap this section describes was previously invisible: a reparent
+looked exactly as saved as a node drag, and only reopening the project (or
+reading this file) told a person otherwise. `SchematicEngine.semanticWrites`
+(`engine/engine.ts`) already recorded every path the in-memory `Map` had
+touched; what was missing was anything reading it. The status bar now has a
+5th cell (`shell/StatusBar.tsx`, `statusCell5` in `graph/index.ts`) that
+reads `engine.semanticWrites` on every render and draws `N unsaved changes —
+session only, lost on reload` the moment any reparent, duplicate, or edge
+creation has happened this session, blank otherwise. This is presentation
+only — it does not write anything, and it does not make the fix above
+optional. It exists so the gap this section documents is visible to the
+person hitting it, not just to whoever next reads this handoff. Wiring the
+real `write-node`/`write-edge` commands (Wave 3 or Wave 6, above) is still
+the fix that empties `semanticWrites` for good; once it lands, cell 5 goes
+blank on its own and nothing else about it needs to change.
+
 ## How the front end selects the fixture for tests
 
 Unchanged from before this wave, and this is the answer to "how do tests

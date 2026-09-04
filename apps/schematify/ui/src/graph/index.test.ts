@@ -1,10 +1,14 @@
 /**
- * The 2 status-bar cells and the Outline footer are exact-string acceptance
- * conditions for Wave 2 (PRD §17), so these assertions match those strings
- * literally rather than loosely. Everything here is computed from
- * `AUTH_SERVICE_GRAPH` at call time — none of it is a stored count, per PRD
- * §0.4 — so a change to the fixture that changed a count would fail exactly
- * the test that should catch it.
+ * Cell 1 and cell 2 are exact-string acceptance conditions for Wave 2 (PRD
+ * §17), so these assertions match those strings literally rather than
+ * loosely. Cell 5 (the session-only semantic-write notice, added later — see
+ * `StatusBar.tsx`'s own header comment) carries the same exact-string
+ * discipline for the same reason: a person reads this cell, so its wording
+ * is the acceptance condition, not a loose "is truthy" check. Everything
+ * here is computed from `AUTH_SERVICE_GRAPH` (or, for cell 5, a literal path
+ * list) at call time — none of it is a stored count, per PRD §0.4 — so a
+ * change to the fixture that changed a count would fail exactly the test
+ * that should catch it.
  */
 import { describe, expect, it } from "vitest";
 import { AUTH_SERVICE_GRAPH } from "./fixture";
@@ -18,6 +22,7 @@ import {
   outlineFooter,
   statusCell1,
   statusCell2,
+  statusCell5,
 } from "./index";
 
 describe("loadGraph", () => {
@@ -67,6 +72,32 @@ describe("status bar", () => {
 
   it("draws cell 2 as modified when the layout is not clean", () => {
     expect(statusCell2(AUTH_SERVICE_GRAPH, false)).toBe("layout/auth-service.json modified");
+  });
+
+  it("draws cell 5 blank when nothing has written to the semantic layer", () => {
+    expect(statusCell5([])).toBe("");
+  });
+
+  it("draws cell 5 with a singular noun for exactly 1 semantic write", () => {
+    expect(statusCell5(["nodes/token-issuer.json"])).toBe(
+      "1 unsaved change — session only, lost on reload",
+    );
+  });
+
+  it("draws cell 5 with a plural noun and the distinct file count for several writes", () => {
+    expect(statusCell5(["nodes/token-issuer.json", "edges/e1.json"])).toBe(
+      "2 unsaved changes — session only, lost on reload",
+    );
+  });
+
+  it("counts a path once no matter how many times undo/redo replayed it", () => {
+    // `engine.semanticWrites` records one array entry per write event, so a
+    // reparent that gets undone and redone appears twice for the same path
+    // (`engine.ts`'s `applySemantic`). Cell 5 counts files at risk, not
+    // write events, so this must still read 1 rather than 3.
+    expect(statusCell5(["nodes/a.json", "nodes/a.json", "nodes/a.json"])).toBe(
+      "1 unsaved change — session only, lost on reload",
+    );
   });
 });
 

@@ -449,6 +449,7 @@ function Schematify({
         layoutClean={!engine.layoutDirty}
         findings={findings}
         latestRun={latestRun}
+        semanticWrites={engine.semanticWrites}
       />
       {dashboardModule !== null ? (
         <ModuleDashboard dashboard={dashboard} error={dashboardError} onClose={onCloseDashboard} />
