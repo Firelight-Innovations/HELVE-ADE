@@ -334,15 +334,25 @@ mod tests {
     /// `merge` cannot reproduce that: it builds a `serde_json::Map`, which has
     /// no way to hold two entries under one key. So the bug was never in this
     /// module — it was the tracked file drifting from anything this module
-    /// would write. This test reads the tracked file as text, the way a
-    /// hand-edit or a bad merge would leave it, rather than going through
-    /// `serde_json::Value` first, which would have hidden the very duplication
-    /// it exists to catch.
+    /// would write. This test reads the file as text, the way a hand-edit or a
+    /// bad merge would leave it, rather than going through `serde_json::Value`
+    /// first, which would have hidden the very duplication it exists to catch.
     #[test]
     fn the_tracked_mcp_json_has_no_duplicate_keys() {
-        let text = include_str!("../../../.mcp.json");
-        if let Err(key) = duplicate_object_key(text) {
-            panic!("{key} appears twice in the tracked .mcp.json");
+        if let Err(key) = duplicate_object_key(&committed_mcp_json()) {
+            panic!("{key} appears twice in the committed .mcp.json");
+        }
+
+        // The working copy as well, when there is one. Unlike the drift check
+        // below, this half cannot go red from a running OpenKaava — `sync`
+        // builds a `serde_json::Map`, which has no way to hold a key twice — so
+        // reading both costs nothing and catches a bad merge resolution while
+        // it is still uncommitted, which is where it is cheapest to fix.
+        let working = repo_root().join(".mcp.json");
+        if let Ok(text) = std::fs::read_to_string(&working) {
+            if let Err(key) = duplicate_object_key(&text) {
+                panic!("{key} appears twice in your working copy of .mcp.json");
+            }
         }
     }
 
@@ -354,8 +364,8 @@ mod tests {
     /// touched and was missing from it until this test was added.
     #[test]
     fn the_tracked_mcp_json_matches_a_fresh_syncs_default_output() {
-        let tracked: Value = serde_json::from_str(include_str!("../../../.mcp.json"))
-            .expect("the tracked file is valid JSON");
+        let tracked: Value =
+            serde_json::from_str(&committed_mcp_json()).expect("the committed file is valid JSON");
 
         let registry = crate::mcp::Registry::default();
         crate::mcp::servers::seed(&registry);
@@ -365,10 +375,160 @@ mod tests {
 
         assert_eq!(
             tracked, generated,
-            "the tracked .mcp.json no longer matches what a fresh checkout's \
+            "the committed .mcp.json no longer matches what a fresh checkout's \
              first sync would write for the servers that ship enabled by \
-             default; regenerate it"
+             default; regenerate it and commit the result. This reads HEAD, not \
+             your working copy, so a running OpenKaava having rewritten the file \
+             on disk is not what failed here"
         );
+    }
+
+    /// The regression test for #111. What the two tests above read must not
+    /// depend on what is on disk, and the way to prove that is to make the two
+    /// disagree.
+    ///
+    /// In a repository of its own rather than this one: a test that dirtied the
+    /// developer's `.mcp.json` to make a point about dirty working copies would
+    /// be the same bug wearing a hat. The `TempDir` takes the whole thing with
+    /// it when it drops.
+    #[test]
+    fn a_dirty_working_copy_is_not_what_the_committed_blob_reads() {
+        let repo = tempfile::tempdir().unwrap();
+        let root = repo.path();
+        let file = root.join(".mcp.json");
+
+        let committed = "{\n  \"mcpServers\": {\n    \"kaava-echo\": {}\n  }\n}\n";
+        std::fs::write(&file, committed).unwrap();
+
+        run_git(root, &["init", "--quiet"]);
+        // `core.autocrlf` off so the blob is byte-for-byte what was written
+        // here whatever the developer's global config says; an identity and
+        // `--no-gpg-sign` so this works on a machine that has configured
+        // neither, or has configured signing.
+        run_git(root, &["config", "core.autocrlf", "false"]);
+        run_git(root, &["add", ".mcp.json"]);
+        run_git(
+            root,
+            &[
+                "-c",
+                "user.name=drift test",
+                "-c",
+                "user.email=drift@example.invalid",
+                "commit",
+                "--quiet",
+                "--no-gpg-sign",
+                "-m",
+                "seed",
+            ],
+        );
+
+        // What a running OpenKaava does to the file: `sync` with nothing
+        // enabled writes an empty table over it.
+        std::fs::write(&file, "{\n  \"mcpServers\": {}\n}\n").unwrap();
+        assert_ne!(std::fs::read_to_string(&file).unwrap(), committed);
+
+        assert_eq!(committed_blob(root, "HEAD:.mcp.json").unwrap(), committed);
+    }
+
+    /// Run `git` in `repo` and fail the test loudly if it does not answer.
+    ///
+    /// Only for the seeding above, where every call is expected to succeed and
+    /// there is nothing useful to do with a failure but stop.
+    fn run_git(repo: &Path, args: &[&str]) {
+        let output = git(repo, args).unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    /// The repository this test binary is testing, resolved when it runs.
+    ///
+    /// `env!("CARGO_MANIFEST_DIR")` bakes a path in at compile time, and this
+    /// workspace is built from several git worktrees sharing one
+    /// `CARGO_TARGET_DIR` — a binary compiled from one of them can be run from
+    /// another and would then read that other checkout's history. Cargo sets
+    /// the same name in the test process's *environment*, so reading it at
+    /// runtime always names the worktree under test. The compile-time value is
+    /// the fallback for a test binary invoked directly, outside cargo, where
+    /// the path it was built from is the best guess available.
+    fn repo_root() -> PathBuf {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .unwrap_or_else(|_| env!("CARGO_MANIFEST_DIR").to_string());
+        Path::new(&manifest)
+            .parent()
+            .expect("src-tauri sits directly under the repository root")
+            .to_path_buf()
+    }
+
+    /// This repository's `.mcp.json` as it is committed at `HEAD`.
+    ///
+    /// Through git rather than `include_str!`, which reads the *working tree*.
+    /// A running OpenKaava rewrites that file — `sync` writes an empty table
+    /// when `mcp.writeProjectConfig` is off — so the old spelling turned normal,
+    /// documented behaviour into a red `cargo test --workspace` on an otherwise
+    /// clean checkout, and told the developer to regenerate a file that was
+    /// already correct (issue #111).
+    ///
+    /// At test time rather than from a `build.rs` that stamps the blob in.
+    /// A build script would have to be told when to re-run, which means naming
+    /// files inside `.git` that mean different things in a worktree, mid-rebase
+    /// and in a repository whose refs are packed — and a stale stamp is the
+    /// same class of wrong answer this is fixing. Spawning git when the test
+    /// runs cannot go stale. It also stops `.mcp.json` being a compile-time
+    /// input, so editing it no longer rebuilds the crate.
+    fn committed_mcp_json() -> String {
+        committed_blob(&repo_root(), "HEAD:.mcp.json").unwrap_or_else(|e| {
+            panic!(
+                "{e}\nthis test reads the committed .mcp.json rather than your \
+                 working copy, so it needs git on PATH and the file committed \
+                 at HEAD"
+            )
+        })
+    }
+
+    /// One path out of git's object database, at one revision.
+    ///
+    /// The error is a message rather than a discarded `Option` so a caller can
+    /// say which of the two things went wrong — no git, or nothing committed
+    /// there — instead of reporting drift that is not there. Deliberately not
+    /// `git::show`, which is shaped for the source-control panel: it collapses
+    /// both failures into `None`, and this is the one caller for which the
+    /// difference is the whole message.
+    fn committed_blob(repo: &Path, spec: &str) -> Result<String, String> {
+        let output = git(repo, &["show", spec])?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "git show {spec} failed in {}: {}",
+                repo.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// Spawn `git` in `repo` and collect it. Non-zero exits come back as `Ok`;
+    /// only failing to run at all is an `Err`.
+    fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+        let mut command = std::process::Command::new("git");
+        command.current_dir(repo).args(args);
+
+        // Otherwise each spawn flashes a console window on Windows, the same
+        // reason `git::run_git` sets it.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        command
+            .output()
+            .map_err(|e| format!("could not run git in {}: {e}", repo.display()))
     }
 
     /// A duplicate top-level `mcpServers` key, or a duplicate key inside it,
