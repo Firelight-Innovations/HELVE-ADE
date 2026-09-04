@@ -890,6 +890,13 @@ fn list_runs(context: &CallContext, params: Option<&Value>) -> Result<Value, Rpc
 /// storing a count, and this function is where that rule is kept for the
 /// dashboard specifically, the same way `lint_graph` keeps it for Problems.
 ///
+/// An id that resolves to a real node of any other kind is refused rather
+/// than drawn as a module — this dashboard's counters and history are
+/// scoped by `NodeKind::Module` semantics (children, budgets, tests), and
+/// silently applying that scope to a service or a leaf node produces
+/// numbers that answer nothing real. The slug lookup below already carried
+/// this rule; this doc note is the id path catching up to it.
+///
 /// Contract change history (the dashboard's 4th table) is not shaped here.
 /// No schema in this crate records a per-method change log — `AuditRow`
 /// records a lifecycle *transition*, not the contract edit that motivated
@@ -927,6 +934,12 @@ fn module_dashboard(context: &CallContext, params: Option<&Value>) -> Result<Val
     let node = graph
         .node(module_id)
         .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no node with id {module_id}")))?;
+    if *node.kind() != NodeKind::Module {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("{module_id} is a {}, not a module", node.kind()),
+        ));
+    }
     let store = Store::open(root);
 
     // Budgets and tests are graph state — a probe declaration or a linked
