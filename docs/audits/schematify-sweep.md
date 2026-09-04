@@ -73,6 +73,29 @@ everything else, every time it moves a lifecycle.
 **The fix for both:** read the node from disk using only the caller's id,
 validate `from` against that, and apply only lifecycle plus audit.
 
+### B2b — `schematify/write-node` ignores the lifecycle gate entirely
+
+`src-tauri/src/apps/schematify.rs` (`write_node`)
+
+Found while fixing B1/B2, and **more severe than either.** `write-node` accepts
+and persists any `lifecycle` value with no call to `check_transition`, no actor
+gate, and no audit row.
+
+Reproduced against the live app. Node `rate-limiter`
+(`01a03637-7800-702c-8ba9-ddd34a5262f9`), genuinely `draft` on disk. Sent its
+own JSON back through `write-node` with `lifecycle` set to `"accepted"`, as
+**`actor: "agent"`**. It returned `{id, path, staled: []}`. On disk afterwards:
+`accepted`.
+
+B1 required the caller to lie about the from-state, and there was at least a
+gate there to lie *to*. Here there is nothing to defeat: a caller does not need
+to forge anything, because nothing looks. And the actor matters —
+`reviewed → accepted` is documented human-only, and an **agent** crossed the
+whole ladder in a single write.
+
+So PRD §7's lifecycle model is advisory as shipped. Every gate B1 describes can
+be bypassed more simply through the general node editor.
+
 ### B3 — "Fit" permanently destroys the Schematic canvas
 
 `apps/schematify/ui/src/engine/` (viewport/fit computation)
