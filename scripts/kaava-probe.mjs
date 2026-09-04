@@ -8,6 +8,14 @@
  *   node scripts/kaava-probe.mjs --server ui snapshot
  *   node scripts/kaava-probe.mjs --agent --server ui click '{"target":"e12"}'
  *
+ * `--server agent` is the one to reach for while working on OpenKaava: it hosts
+ * the tools above and adds a direct line into any app's Rust half.
+ *
+ *   node scripts/kaava-probe.mjs --agent --server agent snapshot
+ *   node scripts/kaava-probe.mjs --agent --server agent set_project '{"path":"C:/some/project"}'
+ *   node scripts/kaava-probe.mjs --agent --server agent app_call \
+ *     '{"app":"schematify","method":"schematify/lint","params":{"actor":"agent"}}'
+ *
  * Prints the tool's JSON result on stdout and nothing else, so it can be piped
  * into `jq` or read straight by an agent. Everything explanatory goes to stderr.
  * A tool that answers with an image is written to a PNG instead, and the path
